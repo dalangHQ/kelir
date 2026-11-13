@@ -1,695 +1,360 @@
-# Maturity Layer Enforcement: L1 / L2 / L3
+# Misalignments Between `cans/artifacts/examples` and `cans/` Spec — with codebase changes
 
-Below is the analysis of the current concern leaks plus a concrete, prioritized enforcement plan (checker rules → file renames → L3 stubs). The codebase is already disciplined in most places (`kelir-storage`, `kelir-wire`, `kelir-terminal`, `kelir-checkpoint`, `kelir-host` use `.run.rs` cleanly), but the remaining leaks are concentrated and can be fixed mechanically.
+## 1. Suspend / Resume Signatures (Spec Contradicted by Artifacts)
 
----
+The spec's SSOT-A1 pin in `cans/08-lifecycle.md` says:
 
-## Part 1 — Current State Analysis
+> **Canonical:** `Session.suspend(reason: SuspendReason)` / `Session.resume()`
+> **Non-conforming sides:** TS `Session.suspend(path)` / `resume(path)`; Py `Session.suspend()` (no reason) / `resume(path)`
 
-### Naming law (as enforced by `kelir-maturity::level_of`)
+**But every TS/Python example calls `suspend(reason)` and `resume()` (no path):**
 
-| Suffix | Level | Meaning |
+| File | Call | Spec says |
 |---|---|---|
-| `.rs` (any, including `lib.rs` / `mod.rs` / `main.rs`) | **L1** | type defs, trait surfaces, re-exports |
-| `.flow.rs` | **L2** | orchestration/flow logic |
-| `.run.rs` | **L3** | execution/runtime logic |
+| `autonomous-swe-agent.py` | `session.suspend(External(...))` / `session.resume()` | Py suspend takes no reason; resume takes path |
+| `autonomous-swe-agent.ts` | `session.suspend(SuspendReason.external(...))` / `session.resume()` | TS suspend takes path; resume takes path |
+| `serverless-webhook.py` | `session.suspend(External(...))` | Py suspend takes no reason |
+| `serverless-webhook.ts` | `session.suspend(SuspendReason.external(...))` | TS suspend takes path |
+| `policy-matrix.py` | `session.suspend(ResourcePressure())` / `session.resume()` | Py suspend takes no reason |
+| `policy-matrix.ts` | `session.suspend(SuspendReason.resourcePressure)` / `session.resume()` | TS suspend takes path |
 
-### Concern leaks found
+The artifacts are actually conforming to the **canonical** reason-based form, which directly contradicts the spec's claim that TS/Py are non-conforming. Either the spec's "non-conforming sides" section is stale, or the artifacts were updated without the spec.
 
-#### A. `mod.rs` / `lib.rs` carrying L2 logic in **L1-only or L1-L2-only crates**
+### Changes Needed in Codebase
 
-These are treated as L1 by the checker, but hold `async fn`, `tokio`, `Mutex`, `RwLock`, or large `impl` blocks — a **hard concern leak**. Crates that only allow `["L1","L2"]` cannot legally hold these as `.run.rs`, so the logic must move into `.flow.rs` siblings.
+- **`cans/08-lifecycle.md`**: delete the "Non-conforming sides" block. The artifacts and the shipped SDKs are already canonical:
+  - `crates/kelir/src/session_lifecycle.flow.rs` (`Session::suspend(reason)` / `Session::resume()`)
+  - `crates/kelir/src/sandbox_runtime.flow.rs` (`Sandbox::suspend(reason)` / `Sandbox::resume()`)
+  - `packages/py/kelir/lifecycle_session.py` (`Session.suspend(reason)` derives `session_dir()/suspend.img` internally)
+  - `packages/ts/core/src/session.lifecycle.ts` (`Session.suspend(reason)` does the same)
+- The only surface that still takes a path is the lower-level `VmHandle` (`NativeVmHandle::suspend(&self, path)`, `PyVmHandle::suspend(&self, path)` in `crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`). That is intentional because `VmControl::suspend(reason, path)` in `crates/kelir-interface/src/handles_lifecycle.flow.rs` takes both. Do **not** change `VmHandle` — fix the spec's language to describe `VmHandle::suspend(reason, path)` as the low-level primitive and `Session::suspend(reason)` as the SDK surface.
+- Optional: give `NativeSessionHandle::suspend`/`PySessionHandle::suspend` the reason-based form (deriving the path like the SDKs do) so the binding layer matches the SDK layer. Current stubs are `suspend(path)` calling `self.vm.suspend(SDK_SUSPEND_REASON, &path)` with a hard-coded reason — replace that with a real `reason` argument and path derivation.
 
-| Crate | File | Approx. logic | Suggested split |
-|---|---|---|---|
-| `kelir-engine` | `dispatch_plugin/mod.rs` | ~900 lines — `PipelineEngine` | `dispatch_plugin/mod.rs` (re-exports), `dispatch_plugin/engine.flow.rs`, `dispatch_plugin/quarantine.flow.rs`, `dispatch_plugin/registration.flow.rs` |
-| `kelir-engine` | `bus/mod.rs` | ~250 lines — `BusDispatcher`, `OwnedBusDispatcher` | `bus/mod.rs`, `bus/dispatcher.flow.rs`, `bus/frame.flow.rs` |
-| `kelir-engine` | `planes/storage/mod.rs` | ~350 lines — `StoragePlane` | `planes/storage/mod.rs`, `plane.flow.rs`, `config.flow.rs`, `unbound_io.flow.rs` |
-| `kelir-engine` | `planes/wire/mod.rs` | ~400 lines — `WirePlane` + `Unbound*Ops` | `planes/wire/mod.rs`, `plane.flow.rs`, `unbound_ops.flow.rs` |
-| `kelir-engine` | `planes/terminal/mod.rs` | ~130 lines | `plane.flow.rs` |
-| `kelir-engine` | `planes/checkpoint/mod.rs` | ~100 lines | `plane.flow.rs` |
-| `kelir-engine` | `planes/host/mod.rs` | ~100 lines | `plane.flow.rs` |
-| `kelir-engine` | `vmm/mod.rs` | ~50 lines — `DriverRouter` | `router.flow.rs` |
-| `kelir-engine` | `plugin_registry.rs` | ~100 lines — `resolve_plugin_registrations`, `parse_plugin_manifest` | `plugin_registry/mod.rs` + `resolve.flow.rs` + `manifest.flow.rs` |
-| `kelir-interface` | `bin/codegen/merkle_codegen.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/otlp_codegen.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/py_codegen.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/sdk_py.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/sdk_ts.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/ts_codegen.rs` | emit logic | `.flow.rs` |
-| `kelir-interface` | `bin/codegen/wire_codegen.rs` | emit logic | `.flow.rs` |
+---
 
-`naming_codegen.rs` stays `.rs` (pure transform helpers). `main.rs` stays.
+## 2. Capability Key Naming: `repo-policy` vs `policy`
 
-#### B. `lib.rs` carrying L2 logic in **L1-L2-L3-allowed** crates
+Spec (`cans/03-sdk-architecture.md`, SSOT-A1):
+> Capability keys are plugin names. Keys: `ledger`, `db-proxy`, `policy`, `transaction`, `container`.
 
-These crates allow the fix, so this is a *softer* leak (still a leak because `.rs` = L1).
+The plugin in `autonomous-swe-agent.py` is named `repo-policy`:
+```python
+class RepoPolicyPlugin(BasePlugin):
+    name = "repo-policy"
+```
+And the fixture has `[plugins."repo-policy"]`.
 
-| Crate | File | Suggested split |
+Yet Python accesses it as:
+```python
+c.cap.policy.violations          # autonomous-swe-agent.py
+```
+While TypeScript accesses it correctly by plugin name:
+```typescript
+c["repo-policy"].policy.violations   // autonomous-swe-agent.ts
+```
+
+This violates the SSOT-A1 rule ("the capability key is the plugin name") and is inconsistent across languages. The spec's key list including `policy` appears to be either describing a different plugin or codifying the Python bug.
+
+### Changes Needed in Codebase
+
+- **`packages/py/kelir/service_caps.py`**:
+  - Rename `class PolicyCap` → `class RepoPolicyCap` (keep `PolicyCap = RepoPolicyCap` as a deprecation alias, or drop).
+  - Change `Caps.__init__` from `self.policy = PolicyCap()` to `self.repo_policy = RepoPolicyCap()`.
+  - Add `"repo-policy": "repo_policy"` to `_CAP_KEY_ALIASES` so `materialize_cap(cap, "repo-policy", record)` lands on `cap.repo_policy`.
+  - If keeping `policy` as a convenience alias, make it a property returning `repo_policy` and document the alias in the class docstring.
+- **`packages/py/kelir/__init__.py`**: update the `from kelir.service_caps import (...)` re-export (`PolicyCap` → `RepoPolicyCap`).
+- **`cans/03-sdk-architecture.md`** SSOT-A1 key list: replace `policy` with `repo-policy` (or rename the plugin to `policy` — but the class name `RepoPolicyPlugin` and the fixture `[plugins."repo-policy"]` argue against that).
+- **`cans/artifacts/examples/autonomous-swe-agent.py`**: change `c.cap.policy.violations` to `c.cap.repo_policy.violations`. (The TS example is already correct.)
+- The TypeScript side (`packages/ts/core/src/plugins.registry.ts`) already generates `c["repo-policy"]` from the plugin name and requires no change.
+
+---
+
+## 3. Checkpoint / Lineage API: `create` vs `create_step` vs `vm.checkpoint`
+
+Spec (`cans/03-sdk-architecture.md`):
+> Checkpoint: `session.checkpoint.create(label)`, `session.rollback()`
+
+Spec (`cans/09-snapshots.md`):
+> Not visible in `session.lineage()`
+
+**What the artifacts actually use:**
+
+| File | Call | Conforms? |
 |---|---|---|
-| `kelir-catalog` | `lib.rs` — `CatalogDb` + all DB I/O | `lib.rs` re-exports; `catalog_db.flow.rs` (or `.run.rs` — see Part 3) |
-| `kelir-otlp` | `lib.rs` — `OtlpExporter`, `OtlpEncoder`, `OtlpEndpoint`, `phase_spans` | `lib.rs` re-exports; `exporter.flow.rs`, `encoder.flow.rs`, `span.flow.rs` |
-| `kelir-plugin-cli` | `main.rs` — 130-line dispatcher | Keep as binary entry, but move `check`, `check_layers`, `check_budgets`, `dispatch` into `dispatch.flow.rs` |
-| `plugin-chaos` | `lib.rs` — `FaultTable`, `apply_network_rules`, `apply_storage_rules` | `lib.rs` (trait impl) + `fault_table.flow.rs` |
-| `plugin-mcp` | `lib.rs` — `McpEndpointService`, `McpCtxStreamSink` | `lib.rs` + `mcp_service.flow.rs` |
-| `plugin-mesh` | `lib.rs` — `MeshState`, `HandshakeDriver`, `decode_peer_handshake`, `MeshCtx` | `lib.rs` + `mesh_state.flow.rs` + `handshake.flow.rs` |
-| `plugin-profile` | `lib.rs` — `ProfileState`, `NamespaceRouter`, `JsonPatch` application | `lib.rs` (types only) + `profile_state.flow.rs` + `patch.flow.rs` |
-| `plugin-replay` | `lib.rs` — `ReplayState`, `ReplayPmuSampler` | `lib.rs` + `replay_state.flow.rs` |
-| `plugin-supply-chain` | `lib.rs` — `WxTokenLedger`, `WxTokenChannel`, `SupplyChainState` | `lib.rs` + `wx_token.flow.rs` + `state.flow.rs` |
-| `plugin-tool-guard` | `lib.rs` — `ToolGuardState`, `TraceQuota`, `guard_tool_call` | `lib.rs` + `tool_guard_state.flow.rs` |
-| `plugin-transaction` | `lib.rs` — `PeerCoordination` | `lib.rs` + `coordination.flow.rs` |
-| `plugin-vault` | `lib.rs` — `MetadataEndpoint`, `serve_metadata_session` | `lib.rs` + `metadata_endpoint.flow.rs` |
-| `plugin-wire-ingress` | `lib.rs` — `IngressState`, `IngressRoutingService` | `lib.rs` + `ingress_state.flow.rs` |
-| `kelir-bindings/napi` | `lib.rs` — `NativeKelirBuilder` + 10 handle classes | `lib.rs` + `handles.flow.rs` + `builder.flow.rs` |
-| `kelir-bindings/pyo3` | `lib.rs` — `PyKelirBuilder` + 10 handle classes | `lib.rs` + `handles.flow.rs` + `builder.flow.rs` |
+| `git-gate.py` / `.ts` | `session.checkpoint.create("git-gate-base")` | ✅ `create(label)` |
+| `multi-vm-swarm.py` / `.ts` | `child.checkpoint.create(...)` | ✅ `create(label)` |
+| `replay.py` / `.ts` | `session.checkpoint.create(...)` | ✅ `create(label)` |
+| `autonomous-swe-agent.py` / `.ts` | `session.vm.checkpoint("clean_base")` | ❌ not `session.checkpoint.create` |
+| `policy-matrix.py` / `.ts` / `.rs` | `c.vm.checkpoint("policy-yield")` | ❌ not `session.checkpoint.create` |
+| `hook-matrix-full.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
+| `policy-matrix.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
+| `git-gate.rs` | `session.checkpoint.create_step(...)` | ❌ low-level `create_step` |
+| `replay.rs` | `session.checkpoint.create_step(...)` | ❌ low-level `create_step` |
+| `multi-vm-swarm.rs` | `child.checkpoint.create_step(child.lineage(1), …)` | ❌ low-level `create_step` |
+| `autonomous-swe-agent.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
 
-`plugin-container`, `plugin-db-proxy`, `plugin-ledger` already split correctly — use them as the reference pattern.
+**Every Rust example** uses `create_step`/`commit_step`/`lineage(1)`, while **every Python/TypeScript example** (except the `vm.checkpoint` ones) uses `create`. The spec's stated SDK surface is `create(label)` and `lineage()`. So:
 
-#### C. `kelir-adapters/kelir-pack/src/main.rs`
+- Rust examples are systematically non-conforming to the SDK surface.
+- `autonomous-swe-agent` and `policy-matrix` (Py/TS) use `session.vm.checkpoint`, which is not the spec's stated surface.
+- `session.lineage(1)` appears in every Rust example; the spec says `session.lineage()` (no args).
 
-Has `fetch_manifest`, `phase1_scan_headers`, `phase2_emit_erofs` — L3 work-in-progress. This is the clearest L3 target:
+This is a cross-language API split: Rust exposes `create_step`/`lineage(1)`, Py/TS expose `create`/`vm.checkpoint`. The spec describes only one of these.
 
-```
-crates/kelir-adapters/kelir-pack/src/
-  main.rs                     (thin: arg parse + dispatch)
-  pack.flow.rs                (run orchestration)
-  oci.run.rs                  (registry fetch — TODO L3)
-  erofs.run.rs                (EROFS emit — TODO L3)
-```
+### Changes Needed in Codebase
 
-#### D. Confirmed clean (no action)
-
-- `kelir/src/**` — `lib.rs` thin, logic in `.flow.rs`. `planes/storage_plane.rs` and `planes/wire_plane.rs` are pure config structs (L1).
-- `kelir-storage`, `kelir-storage-io`, `kelir-terminal`, `kelir-checkpoint`, `kelir-host`, `kelir-wire` — `.run.rs` already used for implementations.
-- `kelir-shim` — `.run.rs` already correct.
-- `kelir-testkit`, `kelir-plugin-testkit` — `.run.rs` correct.
+- **`cans/03-sdk-architecture.md` "Session-surfaces" table**: split the single checkpoint row into two, matching the code:
+  - **Rust**: `session.lineage(root_pid) -> PidLineage`; `session.checkpoint.create_step(lineage, SnapshotDescriptor) -> u64`; `session.checkpoint.commit_step(lineage) -> u64`; `session.checkpoint.rollback_step(lineage) -> SnapshotDescriptor`; `session.checkpoint.branch_from(node_id, lineage)`; `session.checkpoint.restore(node_id, guest_monotonic_ns) -> SnapshotDescriptor`; `session.checkpoint.head(lineage) -> Option<u64>`; `session.checkpoint.lineage(node_id) -> Vec<u64>`; `session.checkpoint.compact(lineage)`; `session.checkpoint.monotonic_watermark_ns()`.
+  - **Py/TS**: `session.checkpoint.create(label) -> SnapshotDescriptor` (one-shot, wraps `VmHandle::checkpoint`); `session.vm.checkpoint(label) -> SnapshotDescriptor` (low-level, same call).
+- **`cans/09-snapshots.md`**: change `session.lineage()` to `session.lineage(root_pid)` for Rust; document the Py/TS `Session.rollback(snapshot)`/`VmHandle.rollback(snapshot)` surfaces as the only lineage-visible surface for those SDKs.
+- **`crates/kelir/src/session_lifecycle.flow.rs`**: add an explicit `pub fn lineage(&self, pid: u32) -> PidLineage` on `Session<Plugins, Params>` delegating to `self.core.lineage(pid)`. Right now every Rust example relies on `Deref` to `kelir_engine::Session::lineage(pid)` — the spec does not document that this is `Session`-visible, and `Session::rollback(lineage)` depends on it. Add it, or the Deref contract needs to be spelled out.
+- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: add `NativeCheckpointHandle::lineage(pid)` and `create_step`/`commit_step`/`rollback_step`/`head`/`compact` to `NativeCheckpointHandle` and `PyCheckpointHandle` — OR leave them Rust-only and document that the Py/TS SDKs use the one-shot `create`/`vm.checkpoint` surfaces only. Do not leave the examples using `vm.checkpoint` while claiming to use the spec's `session.checkpoint.create` surface.
+- **`cans/artifacts/examples/autonomous-swe-agent.py` / `.ts`** and **`policy-matrix.py` / `.ts`**: use `session.checkpoint.create("clean_base")` (or `c.checkpoint.create("policy-yield")`) rather than `session.vm.checkpoint(...)`. Both work through the bindings, but the examples should not teach the undocumented surface.
+- `crates/kelir-engine/src/session_lifecycle.flow.rs` already exposes `lineage(pid)` (engine `Session`) and `CheckpointPlane::create_step`/`commit_step`/`lineage(node_id)`/`compact` — those are the intended Rust low-level surfaces; the spec just does not name them.
 
 ---
 
-## Part 2 — Enforcement Rules for `kelir-maturity`
+## 4. Fork API: `session.fork()` vs `session.vm.fork()`
 
-The current checker only compares filename suffix to `allowed_levels`. It does **not** catch concern leaks. Add a structural check (new module `kelir-maturity/src/structure.rs`) that flags:
+Spec (`cans/08-lifecycle.md`):
+> `session.vm.fork()` returns full Session
 
-### Rule S1 — `.rs` (L1) must be pure
-
-For any `.rs` file **not** ending in `.flow.rs` / `.run.rs`:
-- **forbid** `async fn`, `.await`, `tokio::`, `spawn(`, `std::thread::spawn`, `#[tokio::main]`, `#[tokio::test]`
-- **forbid** `Mutex<`, `RwLock<` **only when** the file also contains `impl` blocks with `&mut self` methods (pure state-holder types stay L1)
-- **hint**: `move to <stem>.flow.rs`
-
-### Rule S2 — `lib.rs` / `mod.rs` must be aggregators
-
-- **forbid** when line count > 120 **and** file contains `impl` blocks with method bodies beyond simple derive/constructor shims
-- **hint**: `extract <Type>.flow.rs from <path>`
-
-### Rule S3 — `.flow.rs` (L2) must not spawn runtime
-
-- **forbid** `std::thread::spawn`, `#[tokio::main]`, `tokio::runtime::Runtime::new` in `.flow.rs`
-- **hint**: `move to <stem>.run.rs` (this catches L3 logic that leaked into L2)
-
-### Rule S4 — `.run.rs` (L3) placement
-
-- Crates with `allowed_levels = ["L1","L2"]` **must not** contain any `.run.rs` file (already enforced by existing check — keep).
-- Crates with `allowed_levels` **including L3** that contain `async fn` + `std::process`/`tokio::fs`/`libc::` in a `.flow.rs` — suggest `.run.rs` rename.
-
-### Rule S5 — `mod.rs` sibling logic
-
-- **forbid** a `mod.rs` in a crate whose `allowed_levels` excludes L2 containing any `impl` with `async fn` (this is the precise signature of the current `kelir-engine` leaks).
-
-Add these to `perf/maturity-policy.toml` as `[level.L1].forbid`, `[level.L2].forbid`, and make **forbid rules error** (currently warn-only). Also extend `kelir-maturity/src/main.rs`:
-
-```rust
-// kelir-maturity/src/main.rs
-fn cmd_check(args: &[String]) -> ExitCode {
-    let strict = args.iter().any(|a| a == "--strict");
-    // existing structural check …
-    let report = check_tree(&root, &policy);
-    let structural = kelir_maturity::structure::check(&root, &policy);
-    for fail in structural.fails.iter().chain(report.fails.iter()) {
-        print_line(&format!("FAIL {fail}"));
-    }
-    if strict && !(report.fails.is_empty() && structural.fails.is_empty()) {
-        return ExitCode::from(1);
-    }
-    // …
-}
-```
-
-Wire `check --strict` into `just check-maturity` and CI matrix.
-
----
-
-## Part 3 — L3 Stub Preparation
-
-Crates at `["L1","L2","L3"]` that currently have `.flow.rs` for things that must become `.run.rs` once implemented. **Create these files now as stubs** with a structured `TODO (L3) [tag]: …; slop: …` comment so the slop register and maturity checker both see them:
-
-| Crate | File | Purpose |
+| File | Call | Conforms? |
 |---|---|---|
-| `kelir-catalog` | `src/catalog_db.run.rs` | SQLite I/O (`open`, `lookup_session`, `unregister_session`, `disk_lock_handoff`, `heartbeat_lease`, `prune_*`) |
-| `kelir-otlp` | `src/exporter.run.rs` | gRPC/HTTP export transport (`export_receipt` / `export_metrics` / `export_causal_delta`) |
-| `kelir-otlp` | `src/encoder.run.rs` | OTLP protobuf encoding (`encode_*` currently all `NotImplemented`) |
-| `plugin-ledger` | `src/wal.run.rs` | LMDB WAL append + Ed25519 leaf signing (`LocalMerkleDbSink::emit_delta`, `LedgerCtx::finalize`) |
-| `plugin-tool-guard` | `src/guard.run.rs` | taint-gated approval, JSON-RPC error synthesis (currently `evaluate_tool_call` returns `Ok(Pass)`) |
-| `plugin-mesh` | `src/federation.run.rs` | peer publish / await-winner / mTLS handshake framing |
-| `plugin-vault` | `src/metadata.run.rs` | metadata HTTP response writer / JSON encoder (currently hand-rolled) |
-| `kelir-adapters/kelir-pack` | `src/oci.run.rs` | streaming HTTPS fetch of OCI manifest + layers |
-| `kelir-adapters/kelir-pack` | `src/erofs.run.rs` | single-pass EROFS emit + BLAKE3 CAS blob write |
-| `kelir-bindings/napi` | `src/handles.run.rs` | async handle impls for `NativeVmHandle` / `NativeSessionHandle` (currently in `lib.rs`) |
-| `kelir-bindings/pyo3` | `src/handles.run.rs` | async handle impls for `PySessionHandle` (currently in `lib.rs`) |
+| `autonomous-swe-agent.py` | `await parent.vm.fork()` | ✅ |
+| `autonomous-swe-agent.ts` | `await session.vm.fork()` | ✅ |
+| `autonomous-swe-agent.rs` | `session.fork().await?` | ❌ `session.fork()` |
+| `multi-vm-swarm.py` | `await session.fork()` | ❌ `session.fork()` |
+| `multi-vm-swarm.ts` | `await session.vm.fork()` | ✅ |
+| `multi-vm-swarm.rs` | `session.fork().await?` | ❌ `session.fork()` |
 
-Each stub follows the existing `TODO (L3) [tag]: …; slop: …` convention already present in the codebase, so the slop register gate continues to pass.
+`multi-vm-swarm.py` and both Rust examples use `session.fork()`, while the spec and TS examples use `session.vm.fork()`.
 
-`.flow.rs` siblings for those should shrink to orchestration only (already covered by Part 2 file moves).
+### Changes Needed in Codebase
+
+- **`cans/08-lifecycle.md`**: change `session.vm.fork()` to `session.fork() -> Session`. The code only has `Session::fork()`:
+  - `crates/kelir/src/session_lifecycle.flow.rs`: `Session::fork() -> Session<Plugins, Params>` (rebinds plugins, registration, vetoes, catalog).
+  - `crates/kelir-bindings/napi/src/handles.flow.rs`: `NativeSessionHandle::fork() -> NativeSessionHandle` on the session handle.
+  - `crates/kelir-bindings/pyo3/src/handles.flow.rs`: `PySessionHandle::fork() -> PySessionHandle`.
+  - `crates/kelir-interface/src/handles_lifecycle.flow.rs`: `VmHandle` has **no** `fork()` method — only `checkpoint`/`rollback`/`suspend`/`resume`/`export_snapshot`/`import_snapshot`/`adjust_balloon`/`set_vcpus`/`map_shared_region`/`clock`.
+- If the spec genuinely wants `session.vm.fork()`, add a `fork()` to `VmHandle`/`NativeVmHandle`/`PyVmHandle` that returns a full `Session`. That would require plumbing plugin state into the VM handle (currently the fork logic lives on `Session` in `crates/kelir/src/session_lifecycle.flow.rs`, not on `VmHandle`), so the correct fix is the other way: the spec changes to `session.fork()`.
+- Update the TS example (`autonomous-swe-agent.ts`, `multi-vm-swarm.ts`) and the Python `autonomous-swe-agent.py` to `session.fork()` — no code change, just the examples (they're not in the live tree, but the spec should match the code that ships).
 
 ---
 
-## Part 4 — Prioritized Execution Order
+## 5. Rollback API: No-Arg vs `vm.rollback(snapshot)` vs `rollback(lineage)`
 
-| Priority | Action | Effort |
+Spec (`cans/03-sdk-architecture.md`, `cans/08-lifecycle.md`):
+> `session.rollback()` — no socket-preserving flag
+
+| File | Call | Conforms? |
 |---|---|---|
-| **P0** | Extend `kelir-maturity` with `structure::check` (Rules S1–S5) and switch `forbid` to error under `--strict` | ~1 file |
-| **P1** | Split `kelir-engine` `mod.rs` files (biggest concern leak; 9 files) — move `PipelineEngine`, `BusDispatcher`, `StoragePlane`, `WirePlane`, etc. into sibling `.flow.rs` | ~9 moves, mechanical |
-| **P1** | Rename `kelir-interface/bin/codegen/*.rs` → `.flow.rs` (7 files) | 7 renames |
-| **P2** | Split plugin `lib.rs` files (13 plugins) — each one file split out | ~13 moves |
-| **P2** | Split `kelir-catalog/lib.rs`, `kelir-otlp/lib.rs` | 2 files |
-| **P2** | Split `kelir-bindings/napi/lib.rs`, `kelir-bindings/pyo3/lib.rs` | 2 files |
-| **P3** | Create L3 `.run.rs` stubs (Part 3 table) | 11 stubs |
-| **P3** | Split `kelir-adapters/kelir-pack/src/main.rs` into `main.rs` + `pack.flow.rs` | 1 file |
-| **P3** | Split `kelir-plugin-cli/src/main.rs` dispatcher into `dispatch.flow.rs` | 1 file |
+| `autonomous-swe-agent.py` | `await session.vm.rollback(base)` | ❌ |
+| `autonomous-swe-agent.ts` | `await session.vm.rollback(baseSnap)` | ❌ |
+| `autonomous-swe-agent.rs` | `session.rollback(lineage).await?` | ❌ |
+| `policy-matrix.py` | `await c.vm.rollback(pre)` | ❌ |
+| `policy-matrix.ts` | `await c.vm.rollback(pre)` | ❌ |
+| `policy-matrix.rs` | `session.rollback(lineage).await?` | ❌ |
+| `replay.py` / `.ts` | `await session.rollback(snapshot)` | ❌ |
+| `replay.rs` | `session.rollback(lineage).await?` | ❌ |
 
-The invariant after P0–P2 is that:
+Three different surfaces (`session.rollback()`, `session.vm.rollback(snap)`, `session.rollback(lineage)`), none of which match the spec's no-arg `session.rollback()`. The spec is contradicted by all three artifacts.
 
-- every `.rs` in a `["L1","L2"]` crate contains no `async fn`, `tokio::`, `spawn`, or `Mutex`-with-`&mut self` impls;
-- every `lib.rs`/`mod.rs` is a thin aggregator;
-- every `.flow.rs` that spawns threads or blocks on runtime is renamed `.run.rs`;
-- every `["L1","L2","L3"]` crate has explicit `.run.rs` files for its I/O surface.
+### Changes Needed in Codebase
 
-That lets L3 proceed by filling stubs without re-touching the L2 layer — the exact goal stated.
-
-# CI Gating: Where It's Actually Weak, and How to Close Each Hole
-
-You're right — several gates are **fail-open** right now. Below is the exact set, ranked by impact, with the minimal patch for each.
-
----
-
-## Part 1 — Fail-Open Points (with file references)
-
-| Gate | Current behavior | Where it fails open | Impact |
-|---|---|---|---|
-| `kelir-maturity check` | `forbid` rules → `report.warns` | `crates/kelir-maturity/src/lib.rs` ~line 190 | **Highest** — no content rule can fail CI today |
-| `kelir-maturity check` | `l2_max_delta_per_pr` parsed | `Policy::from_toml` stores it; `check_tree` never reads it | No budget enforcement |
-| `kelir-maturity check` | No structural rules | Missing `structure.rs` module | No concern-leak detection at all |
-| `kelir-plugin-cli check --layers` | Only 3 hardcoded prefixes | `crates/kelir-plugin-cli/src/layers_cli.run.rs` `RULES` | Tier-to-tier rule stubbed (`// TODO (L3) [pe_01_…]`) |
-| `check-manifest` | `quadrant` field parsed | `CaseEntry.quadrant: Option<String>` never read | No quadrant validation |
-| `check-manifest` | `target_tier`/`target_crate` cross-checks manifest ↔ case file only | Not against the tier roster | A case can target a nonexistent crate as long as both sides agree |
-| `check-tests` | `harness_exempt_files` returns `HashSet::new()` on parse error | `check_tests.run.rs` `harness_exempt_files` | **Fails open**: a malformed map lets every test file pass exemption |
-| `scorecard` | `CaseEntry { case_id, quadrant, title }` parsed | `scorecard_testkit.run.rs` | `quadrant`/`title` never validated, no drift detection |
-
-The **kelir-maturity** gap is the dominant one — it's the only gate with content-level rules, and those rules cannot currently fail.
+- **`cans/03-sdk-architecture.md` / `cans/08-lifecycle.md`**: replace the single `session.rollback()` row with the actual surface set:
+  - **Rust**: `session.rollback(lineage: PidLineage)` — rolls back to the head of `lineage` (implemented in `crates/kelir/src/session_lifecycle.flow.rs`, delegates through `self.checkpoint.head(lineage)` + `self.checkpoint.restore(...)` + `self.rollback_to(...)`).
+  - **Rust convenience**: `session.rollback_here(pid: u32)` — resolves `pid` to a lineage and calls `session.rollback(lineage)` (same file).
+  - **Py/TS**: `session.vm.rollback(snapshot: SnapshotDescriptor)` — `VmHandle::rollback(&SnapshotDescriptor)` in `crates/kelir-interface/src/handles_lifecycle.flow.rs`; bindings in `crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs` take the snapshot.
+  - **Py/TS convenience**: `session.rollback(snapshot: SnapshotDescriptor)` — currently in `packages/py/kelir/lifecycle_session.py` (`Session.rollback` delegates to `self.vm.rollback(snapshot)` when a snapshot is passed; the no-arg branch raises the missing-native error). Same in `packages/ts/core/src/session.lifecycle.ts`.
+- If the spec's no-arg `session.rollback()` is intended, implement it. The cleanest implementation:
+  - Rust: `Session::rollback_here(pid)` already exists — surface it as `session.rollback()` with `pid` inferred from the current `HandlerCtx` (or add `session.rollback()` as "roll back to head of session root lineage").
+  - Py/TS: `Session.rollback()` (no arg) should resolve to the session's root lineage head. The Py/TS bindings currently error on `rollback()` no-arg — either implement head-of-lineage rollback in `NativeSessionHandle::rollback`/`PySessionHandle::rollback`, or remove the no-arg stub and update the spec.
 
 ---
 
-## Part 2 — The Patch Set
+## 6. Rollback API Shape: Three Different Signatures, Spec Says None Takes Arguments
 
-### P0.1 — Promote `forbid` → `fails` in `kelir-maturity`
+**Spec** (`cans/03-sdk-architecture.md`, "Session control surface"):
+> `session.rollback()` — no socket-preserving flag
 
-**`crates/kelir-maturity/src/lib.rs`** (replace the two rule-scanning loops):
+**Artifacts:**
 
-```rust
-// BEFORE
-for r in policy.rules_for(level, true) {
-    for (n, line) in src.lines().enumerate() {
-        if r.regex.is_match(line) {
-            report.warns.push(format!(
-                "{}:{}: {} (forbid, warn-only this wave)",
-                file.display(), n + 1, r.id
-            ));
-        }
-    }
-}
-
-// AFTER
-for r in policy.rules_for(level, true) {
-    for (n, line) in src.lines().enumerate() {
-        if r.regex.is_match(line) {
-            let hint = r.hint.as_deref().unwrap_or("");
-            report.fails.push(format!(
-                "{}:{}: [forbid:{}] {}",
-                file.display(), n + 1, r.id, hint
-            ));
-        }
-    }
-}
-```
-
-Add a `[policy] forbid_mode = "warn" | "error"` toggle in `perf/maturity-policy.toml` — default `"error"`. Phased rollout only if the codebase isn't green yet; the default must be `"error"` so a future contributor cannot silently reintroduce the leak.
-
-### P0.2 — Add `kelir-maturity/src/structure.rs` (new)
-
-This is the missing enforcement for the concern leaks you flagged. It applies the L1/L2/L3 contract *structurally*, not just by filename.
-
-```rust
-// crates/kelir-maturity/src/structure.rs
-#![forbid(unsafe_code)]
-
-use std::path::Path;
-use std::fs;
-use crate::{level_of, Level, Policy, CheckReport, crate_of};
-
-/// Rules applied to every .rs file, independent of filename suffix.
-pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
-    let Ok(src) = fs::read_to_string(path) else { return };
-    let level = level_of(path);
-    let lines = src.lines().count();
-
-    // S1: L1 (.rs) must be pure — no async fn / .await / tokio:: / spawn()
-    if level == Level::L1 && has_runtime_concern(&src) {
-        report.fails.push(format!(
-            "{}: [structure:S1] L1 file carries runtime concern (async fn/.await/tokio::/spawn); move to <stem>.flow.rs",
-            path.display()
-        ));
-    }
-
-    // S2: lib.rs / mod.rs must be aggregators (≤120 lines, no impl bodies with &mut self)
-    if is_aggregator(path) && lines > 120 && has_mutating_impl(&src) {
-        report.fails.push(format!(
-            "{}:{}: [structure:S2] lib.rs/mod.rs is not an aggregator; extract the impl to <Type>.flow.rs",
-            path.display(), lines
-        ));
-    }
-
-    // S3: .flow.rs (L2) must not spawn runtime or use tokio::runtime::Runtime
-    if level == Level::L2 && (src.contains("std::thread::spawn")
-        || src.contains("#[tokio::main]")
-        || src.contains("tokio::runtime::Runtime::new")
-        || src.contains("tokio::runtime::Builder"))
-    {
-        report.fails.push(format!(
-            "{}: [structure:S3] L2 file spawns a runtime; move to <stem>.run.rs (requires allowed_levels += L3)",
-            path.display()
-        ));
-    }
-
-    // S4: L3-allowed crate with async fn + real I/O in .flow.rs → require .run.rs
-    if level == Level::L2 && crate_allows_l3(&crate_of(path))
-        && has_runtime_concern(&src)
-        && has_io_concern(&src)
-    {
-        report.fails.push(format!(
-            "{}: [structure:S4] .flow.rs carries I/O (std::fs/tokio::fs/libc/std::process) inside an L3-allowed crate; move to <stem>.run.rs",
-            path.display()
-        ));
-    }
-
-    // S5: mod.rs with async impls is always a leak
-    if is_aggregator(path) && src.contains("async fn") && has_mutating_impl(&src) {
-        report.fails.push(format!(
-            "{}: [structure:S5] mod.rs carries async impl bodies; extract to <impl>.flow.rs",
-            path.display()
-        ));
-    }
-}
-
-fn has_runtime_concern(src: &str) -> bool {
-    src.contains("async fn")
-        || src.contains(".await")
-        || src.contains("tokio::")
-        || src.contains("std::thread::spawn")
-        || src.contains("#[tokio::main]")
-        || src.contains("#[tokio::test]")
-}
-
-fn has_io_concern(src: &str) -> bool {
-    src.contains("std::fs::")
-        || src.contains("tokio::fs::")
-        || src.contains("libc::")
-        || src.contains("std::process::")
-        || src.contains("rusqlite::")
-}
-
-fn has_mutating_impl(src: &str) -> bool {
-    // A crude but effective detector: an `impl` block containing `&mut self`.
-    src.split("impl").skip(1).any(|block| {
-        let body = block.split('{').next().unwrap_or("");
-        body.contains("&mut self")
-    })
-}
-
-fn is_aggregator(path: &Path) -> bool {
-    matches!(
-        path.file_name().and_then(|n| n.to_str()),
-        Some("lib.rs" | "mod.rs")
-    )
-}
-
-fn crate_allows_l3(crate_dir: &Path) -> bool {
-    let levels = crate::read_allowed_levels(&crate_dir.join("Cargo.toml"));
-    levels.contains(&Level::L3)
-}
-```
-
-Wire into `check_tree`:
-
-```rust
-// kelir-maturity/src/lib.rs
-pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
-    let mut report = CheckReport::default();
-    for file in rs_files(root) {
-        report.files += 1;
-        // existing placement + content checks…
-        crate::structure::check_file(&file, policy, &mut report); // NEW
-    }
-    report
-}
-```
-
-Expose as a public module:
-
-```rust
-// kelir-maturity/src/lib.rs
-pub mod structure;
-```
-
-### P0.3 — Enforce `l2_max_delta_per_pr`
-
-**`crates/kelir-maturity/src/main.rs`** — add a `--base` flag and a delta counter:
-
-```rust
-fn cmd_check(args: &[String]) -> ExitCode {
-    let root = flag(args, "--root").map(PathBuf::from)
-        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let strict = args.iter().any(|a| a == "--strict");
-    let policy = load_policy(&root);
-    let mut report = check_tree(&root, &policy);
-
-    // NEW: L2 delta budget vs the PR base
-    if let Some(base) = flag(args, "--base") {
-        match l2_delta_lines(&root, Path::new(&base)) {
-            Ok(delta) => {
-                let max = policy.l2_max_delta_per_pr;
-                if max > 0 && delta > max as u64 {
-                    report.fails.push(format!(
-                        "L2 delta budget exceeded: {} .flow.rs lines changed vs {} (max {})",
-                        delta, base, max
-                    ));
-                }
-            }
-            Err(e) => {
-                report.fails.push(format!("L2 delta: {e}"));
-            }
-        }
-    }
-
-    for fail in &report.fails { print_line(&format!("FAIL {fail}")); }
-    // …warns, summary…
-    if report.passed() || (!strict && report.fails.is_empty()) {
-        ExitCode::from(if report.passed() { 0 } else { 1 })
-    } else {
-        ExitCode::from(1)
-    }
-}
-
-fn l2_delta_lines(root: &Path, base: &Path) -> Result<u64, String> {
-    // Count lines changed in *.flow.rs between base and working tree.
-    let output = std::process::Command::new("git")
-        .arg("-C").arg(root)
-        .arg("diff").arg("--numstat").arg(base)
-        .arg("--").arg("*.flow.rs")
-        .output()
-        .map_err(|e| format!("git diff failed: {e}"))?;
-    let mut total = 0u64;
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let mut parts = line.split('\t');
-        let (Some(add), Some(del)) = (parts.next(), parts.next()) else { continue };
-        total += add.parse::<u64>().unwrap_or(0);
-        total += del.parse::<u64>().unwrap_or(0);
-    }
-    Ok(total)
-}
-```
-
-`--strict` makes the process non-zero on any `fails`; without `--strict`, only structural content failures fail. In CI, always run `--strict`.
-
-### P0.4 — Extend `perf/maturity-policy.toml` with the concern rules
-
-```toml
-# perf/maturity-policy.toml
-[budget]
-# L2 delta budget per PR; enforced by `kelir-maturity check --base origin/main`
-L2_max_delta_per_pr = 800
-
-[policy]
-forbid_mode = "error"
-
-[level.L1]
-forbid = [
-  # S1: any L1 purity violation, expressed as a rule for the existing content pass
-  { id = "pe_20_l1_async", pattern = "async fn .*\\bimpl\\b", hint = "move to <Type>.flow.rs" },
-  { id = "pe_20_l1_spawn", pattern = "std::thread::spawn|tokio::spawn", hint = "move to <stem>.run.rs" },
-  { id = "pe_20_l1_await", pattern = "\\.await\\b", hint = "move to <stem>.flow.rs" },
-]
-
-[level.L2]
-forbid = [
-  { id = "pe_20_l2_spawn", pattern = "std::thread::spawn|#\\[tokio::main\\]", hint = "move to <stem>.run.rs" },
-  { id = "pe_20_l2_runtime", pattern = "tokio::runtime::Runtime::new|tokio::runtime::Builder", hint = "move to <stem>.run.rs" },
-]
-
-[level.L3]
-warn = [
-  { id = "pe_20_l3_todo", pattern = "// TODO \\(L3\\)", hint = "L3 stubs are visible in `kelir-maturity list --level L3`" },
-]
-```
-
-`kelir-maturity check --strict` now **fails CI** on any `forbid` match. It also fails on structural rules S1–S5.
-
----
-
-### P1.1 — Implement the tier-to-tier rule in `layers_cli`
-
-**`crates/kelir-plugin-cli/src/layers_cli.run.rs`** — replace the stub `check()`:
-
-```rust
-pub fn check() -> Result<(), CliError> {
-    // Part A: existing prefix bans (kept for defense in depth)
-    let root = crate::workspace_root()?;
-    for (path, forbidden) in RULES {
-        check_dir(&root.join(path), forbidden)?;
-    }
-
-    // Part B: per-plugin tier-to-tier rule per cans/02-plugin-model.md#Plugin-tiering
-    let roster = crate::audit_cli::tier_roster()?;
-    let mut violations = Vec::new();
-    for plugin in &roster {
-        for dep in &plugin.deps {
-            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
-                if dep_tier.level >= plugin.tier.level {
-                    violations.push(format!(
-                        "tier violation: `{}` (tier {}) depends on `{}` (tier {}); dependencies must be downward-only",
-                        plugin.tier.crate_name, plugin.tier.level,
-                        dep_tier.crate_name, dep_tier.level,
-                    ));
-                }
-            }
-        }
-        for dep in &plugin.dev_deps {
-            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
-                if dep_tier.level >= plugin.tier.level {
-                    violations.push(format!(
-                        "tier violation: `{}` (tier {}) dev-depends on `{}` (tier {})",
-                        plugin.tier.crate_name, plugin.tier.level,
-                        dep_tier.crate_name, dep_tier.level,
-                    ));
-                }
-            }
-        }
-    }
-    if !violations.is_empty() {
-        return Err(violations.join("\n").into());
-    }
-    Ok(())
-}
-```
-
-This also clears the existing `// TODO (L3) [pe_01_…]` in `layers_cli.run.rs`.
-
-The helper functions `tier_roster` and `tier_of` already exist in `audit_cli.run.rs` (private). Promote them to `pub(crate)` — no behavioral change, just visibility.
-
-### P1.2 — Close the fail-open `harness_exempt_files`
-
-**`crates/kelir-testkit/src/bin/check_tests.run.rs`** — replace:
-
-```rust
-// BEFORE
-fn harness_exempt_files(repo_root: &Path) -> HashSet<String> {
-    let Ok(raw) = fs::read_to_string(&map_path) else { return HashSet::new(); };
-    let Ok(map) = serde_yaml::from_str::<CaseMap>(&raw) else { return HashSet::new(); };
-    // …
-}
-
-// AFTER
-fn harness_exempt_files(repo_root: &Path) -> Result<HashSet<String>, String> {
-    let map_path = repo_root.join("cans/artifacts/test-plan/case-to-test-map.yaml");
-    let raw = fs::read_to_string(&map_path)
-        .map_err(|e| format!("check-tests: cannot read {}: {e}", map_path.display()))?;
-    let map: CaseMap = serde_yaml::from_str(&raw)
-        .map_err(|e| format!("check-tests: cannot parse {}: {e}", map_path.display()))?;
-    Ok(map.harness_tests.into_iter().filter(|t| !t.file.is_empty()).map(|t| t.file).collect())
-}
-
-// in main():
-let harness_exempt = match harness_exempt_files(&repo_root) {
-    Ok(set) => set,
-    Err(e) => { eprintln!("ERROR: {e}"); return ExitCode::FAILURE; }
-};
-```
-
-This clears the `// TODO (L3) [governance_tools]: fail closed when the typed map parse fails` comment in `check_tests.run.rs`.
-
-### P1.3 — Validate `quadrant` in `check-manifest`
-
-**`crates/kelir-testkit/src/bin/check_manifest.run.rs`** — add the missing check:
-
-```rust
-const QUADRANTS: &[&str] = &["happy-path", "sad-path", "security", "performance"];
-
-// in main(), inside the per-case loop:
-match &case.quadrant {
-    Some(q) if QUADRANTS.contains(&q.as_str()) => {}
-    Some(q) => {
-        eprintln!("ERROR: {}: invalid quadrant: {}", case.case_id, q);
-        errors += 1;
-    }
-    None => {
-        eprintln!("ERROR: {}: missing quadrant", case.case_id);
-        errors += 1;
-    }
-}
-```
-
-Also add a `target_crate` validation against the tier roster:
-
-```rust
-// after roster is available
-let roster = crate::audit_cli::tier_roster()?;
-let roster_names: std::collections::HashSet<&str> =
-    roster.iter().map(|p| p.tier.crate_name.as_str()).collect();
-
-match &case.target_crate {
-    Some(krate) if valid_target_crate(&repo_root, krate) && roster_names.contains(krate.as_str()) => {}
-    Some(krate) => {
-        eprintln!("ERROR: {}: target_crate `{}` not in tier roster", case.case_id, krate);
-        errors += 1;
-    }
-    None => { /* existing missing-field error */ }
-}
-```
-
-This closes `// TODO (L3) [governance_tools]: read CaseEntry.quadrant in the manifest gate`.
-
-### P1.4 — Read and validate `quadrant`/`title` in `scorecard`
-
-**`crates/kelir-testkit/src/bin/scorecard_testkit.run.rs`** — extend the coverage matrix rendering to include the `quadrant` and `title` fields already in `CaseEntry`:
-
-```rust
-out.push_str("| Domain | Prefix | Cases | Happy | Sad | Security | Performance | Status |\n");
-out.push_str("|---|---|---:|---:|---:|---:|---:|---|\n");
-for (name, domain) in &manifest.domains {
-    let domain_cases: Vec<&CaseEntry> = manifest.cases.iter().filter(|c| &c.domain == name).collect();
-    let count = |q: &str| domain_cases.iter().filter(|c| c.quadrant == q).count();
-    let status = if domain_cases.len() == domain.case_count { "pass" } else { "drift" };
-    out.push_str(&format!(
-        "| `{}` | `{}` | {} | {} | {} | {} | {} | {} |\n",
-        name, domain.prefix, domain_cases.len(),
-        count("happy-path"), count("sad-path"), count("security"), count("performance"),
-        status
-    ));
-}
-```
-
-Also assert `title` is non-empty and doesn't start with `TODO`:
-
-```rust
-if case.title.trim().is_empty() || case.title.starts_with("TODO") {
-    eprintln!("ERROR: {}: title is empty or a TODO placeholder", case.case_id);
-    errors += 1;
-}
-```
-
-This closes `// TODO (L3) [governance_tools]: read CaseEntry case_id/quadrant/title in the scorecard gate`.
-
----
-
-## Part 3 — CI Command Matrix
-
-CI must run **all** of these as hard gates. Order: cheap → expensive, so failures surface fast.
-
-| Step | Command | Fails on |
+| File | Call | Shape |
 |---|---|---|
-| 1 | `cargo run -p kelir-maturity --bin kelir-maturity -- check --base origin/main --strict` | placement + **forbid** content rules + **structural rules S1–S5** + **L2 delta budget** |
-| 2 | `cargo run -p kelir-plugin-cli -- check --layers` | prefix bans + **per-plugin tier-to-tier** |
-| 3 | `cargo run -p kelir-plugin-cli -- check --graph` | dependency cycles / forbidden crates |
-| 4 | `cargo run -p kelir-plugin-cli -- check --budgets` | perf budgets |
-| 5 | `for p in $(ls crates/kelir-plugins); do cargo run -p kelir-plugin-cli -- check -p $p; done` | per-plugin tier/deps/rings |
-| 6 | `cargo run -p kelir-testkit --bin check-manifest` | manifest ↔ disk sync, **quadrant**, `target_crate ∈ roster`, TODO tags ↔ register |
-| 7 | `cargo run -p kelir-testkit --bin check-tests` | anti-slop AS-01..AS-08, filename grammar, **fail-closed on map parse** |
-| 8 | `cargo run -p kelir-testkit --bin check-scenarios` | scenario tier + adjacent plane coverage |
-| 9 | `cargo run -p kelir-testkit --bin scorecard -- check` | scorecard drift incl. **quadrant counts + title** |
-| 10 | `cargo run -p kelir-plugin-cli -- parity run` | parity vectors |
-| 11 | `cargo run -p kelir-plugin-cli -- fixtures --verify` | fixture digests |
+| `autonomous-swe-agent.py` | `await session.vm.rollback(base)` / `await c.vm.rollback(pre)` | takes `SnapshotDescriptor` |
+| `autonomous-swe-agent.ts` | `await session.vm.rollback(baseSnap)` / `await c.vm.rollback(pre)` | takes `SnapshotDescriptor` |
+| `autonomous-swe-agent.rs` | `session.rollback(lineage).await?` | takes lineage |
 
-Add to `just`:
+Three different surfaces (`session.rollback()`, `session.vm.rollback(snap)`, `session.rollback(lineage)`), none of which match the spec's no-arg `session.rollback()`. The spec is contradicted by all three artifacts.
 
-```make
-check-maturity:
-    cargo run -p kelir-maturity --bin kelir-maturity -- check --base origin/main --strict
+### Changes Needed in Codebase
 
-check-all: check-maturity
-    cargo run -p kelir-plugin-cli -- check --layers
-    cargo run -p kelir-plugin-cli -- check --graph
-    cargo run -p kelir-plugin-cli -- check --budgets
-    cargo run -p kelir-testkit --bin check-manifest
-    cargo run -p kelir-testkit --bin check-tests
-    cargo run -p kelir-testkit --bin check-scenarios
-    cargo run -p kelir-testkit --bin scorecard -- check
-    cargo run -p kelir-plugin-cli -- parity run
-    cargo run -p kelir-plugin-cli -- fixtures --verify
-```
+(Consolidated with item 5.)
 
-CI `.github/workflows/ci.yml`:
-
-```yaml
-- name: Maturity gate (strict)
-  run: cargo run -p kelir-maturity --bin kelir-maturity -- check --base origin/${{ github.base_ref }} --strict
-- name: Layer gate
-  run: cargo run -p kelir-plugin-cli -- check --layers
-- name: Graph gate
-  run: cargo run -p kelir-plugin-cli -- check --graph
-# …remaining gates…
-```
+- **`crates/kelir/src/session_lifecycle.flow.rs`**: `Session::rollback(lineage)` exists; `Session::rollback_here(pid)` exists. Neither takes no args. If the spec's no-arg `session.rollback()` is to survive, add `Session::rollback()` that resolves the head of the session's *root* lineage (`root_pid = 1` or a `session.root_lineage()` helper) and calls `rollback_here`. Otherwise remove the no-arg from the spec.
+- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::rollback` and `PySessionHandle::rollback` are `fn rollback(&self)` no-arg stubs that always return an error with the message `"rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking (L3)"`. Either:
+  - Implement them to mean "roll back to the head of the session's root lineage", or
+  - Remove the no-arg binding methods and require callers to go through `session.vm.rollback(snapshot)`.
+- **`crates/kelir/src/sandbox_runtime.flow.rs`**: `Sandbox::rollback(&mut self, lineage: PidLineage)` takes a lineage and delegates to `session.rollback(lineage)`. Fine — keep.
+- **`packages/py/kelir/lifecycle_sandbox.py`**: `Sandbox.rollback()` no-arg calls `self._session.rollback()` (no snapshot) and currently errors. Either add a `snapshot: SnapshotDescriptor | None = None` parameter (matching `Session.rollback(snapshot=None)`) or implement no-arg head-of-lineage rollback in the binding.
+- **`packages/ts/core/src/sandbox.runtime.ts`**: `Sandbox.rollback()` no-arg calls `this.booted.rollback()` — same mismatch. Add a snapshot parameter or implement the no-arg form.
+- **`cans/03-sdk-architecture.md`**: document the actual signatures per language, not the single no-arg form.
 
 ---
 
-## Part 4 — Rollout Order
+## 7. `session.spawn(...)` Used Everywhere, but the Only Documented Exec Surface Is `session.exec(cmd, limits?)`
 
-| Wave | Changes | Blocks on |
+**Spec** (`cans/03-sdk-architecture.md`, "Multiplexed binary RPC for SDK consumers"):
+> `session.exec(cmd, limits?)`
+
+The Session-surfaces table lists no `spawn`. But **every** example spawns via `session.spawn(...)`:
+
+| File | Call |
+|---|---|
+| `container.py` / `.ts` / `.rs` | `await session.spawn("podman", [...])` |
+| `hook-matrix.py` / `.ts` / `.rs` | `await session.spawn("cat", [IDENTITY_PATH], cwd="/workspace")` |
+| `autonomous-swe-agent.py` / `.ts` | `await session.spawn(...)` |
+| `db-backed-runtime.py` | `await session.spawn(...)` |
+| `policy-matrix.py` / `.ts` | `await session.spawn(binary, [...])` |
+| `multi-vm-swarm.py` / `.ts` | `child.spawn(...)` |
+
+`session.exec(...)` is never called on a Session in any example. `Sandbox::exec(...)` is used (in `profile.rs` / `profile.py` / `profile.ts`), but `Sandbox` is a different facade. The `Session` exec surface is `spawn(...)` in all practice and `exec(...)` in the spec. This is a systematic contradiction across all 13 plugin examples.
+
+### Changes Needed in Codebase
+
+- **`cans/03-sdk-architecture.md`**: list `session.spawn(binary, argv)` as the primary exec surface on the Session-surfaces table. Keep `session.exec(binary, argv, limits)` as a `SpawnBuilder`-returning variant, and document that it implements `Future<Output = Result<SpawnResult, PluginError>>` (it does — see `impl Future for SpawnBuilder` at the bottom of `crates/kelir/src/session_lifecycle.flow.rs`). The spec's `session.exec(cmd, limits?)` currently reads as returning a `SpawnResult`; it doesn't.
+- **`crates/kelir/src/session_lifecycle.flow.rs`**: the doc comment on `Session::spawn` already says "Idiomatic-Surfaces-Law"; add a doc comment on `Session::exec` clarifying it returns `SpawnBuilder` and is `.await`-ed. Consider renaming `exec` to `spawn_builder` or `exec_builder` so the surface names align with the examples, or keep `exec` and document the difference.
+- **`crates/kelir/src/sandbox_runtime.flow.rs`**: `Sandbox::exec(&mut self, binary, argv)` delegates to `session.spawn(binary, argv)`. Keep as-is; the spec's `Sandbox.exec(cmd, limits?)` should be updated to `Sandbox.exec(binary, argv)`.
+- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::spawn` and `PySessionHandle::spawn` are stubs that error with `"spawn: EXEC stream dispatch lands with the shim wire protocol (L3)"`. The spec should not advertise `session.exec` as the shipped surface while the actual `spawn` is a stub — either:
+  - Implement `spawn` (preferred), or
+  - Document the surface as `session.exec` in all examples.
+- Update `cans/artifacts/examples/*` that call `session.spawn(...)` — no code change needed on the Rust side (`Session::spawn` exists and works), but the spec's "no `spawn`" claim needs to be corrected to match every example.
+
+---
+
+## 8. `get_causal_delta_from_parent()` — Called on Session in Some Examples, on Ledger in Others, and Documented Nowhere
+
+**Spec** (`cans/plugins/ledger.md`, SSOT-A1 pin):
+> `finalize(FinalizeRequest { include_delta, include_merkle_root })` — the sole documented `finalize`.
+
+The spec never says where `get_causal_delta_from_parent()` lives. Artifacts disagree:
+
+| File | Call site | Conforms? |
 |---|---|---|
-| **Wave 1** | `kelir-maturity/structure.rs` + `--strict` + `forbid` → `fails` + `--base` L2 budget + extended `maturity-policy.toml` + `layers_cli` tier rule | None — this makes the gate real |
-| **Wave 2** | `check-manifest` quadrant + `target_crate ∈ roster` + `check-tests` fail-closed parse + `scorecard` quadrant/title | Wave 1 green (else the new gate fails Wave 1's own code) |
-| **Wave 3** | Apply the file moves from the earlier analysis (`kelir-engine/*/mod.rs` → `.flow.rs`, `kelir-catalog/lib.rs` → `catalog_db.run.rs`, etc.) so `--strict` passes | Wave 1 only — the gate is live; violations surface as CI red |
-| **Wave 4** | Create the L3 stubs (`.run.rs` files from the previous analysis) so `kelir-maturity list --level L3` shows the surface | Wave 3 green |
+| `autonomous-swe-agent.py` | `await child.get_causal_delta_from_parent()` | on **Session** |
+| `autonomous-swe-agent.ts` | `await child.getCausalDeltaFromParent()` | on **Session** |
+| `db-backed-runtime.py` | `await ledger.get_causal_delta_from_parent()` | on **Ledger** |
+| `db-backed-runtime.ts` | `await session.getCausalDeltaFromParent()` | on **Session** |
+| `db-backed-runtime.rs` | `// TODO (L3): ... session facade exposes no get_causal_delta_from_parent yet` | **does not exist** in Rust |
 
-**The key property of Wave 1:** once `--strict` is live and `forbid` is promoted, no new concern leaks can be introduced. Wave 3 then proceeds as clean-up, not as new enforcement work.
+`db-backed-runtime.py` calls it on `ledger`; every TS example calls it on `session`; and the Rust artifact's TODO explicitly states **the session facade does not expose it**. The spec needs to name one home; the artifacts currently name three (session, ledger, absent).
+
+### Changes Needed in Codebase
+
+- **`cans/plugins/ledger.md`**: add a "Causal delta access" section naming `ledger.get_causal_delta_from_parent() -> CausalDelta` as canonical (aligns with the Rust TODO comment `"causal deltas are produced by plugin-ledger over the delta chain"`).
+- **`packages/ts/core/src/context.lifecycle.types.ts`**: add `getCausalDeltaFromParent(): Promise<CausalDelta>` to `LedgerHandle`. Currently `LedgerHandle` has `flush`, `countDenials`, `finalize`, `blake3OfProducingProcess` — no causal-delta accessor. `Session.getCausalDeltaFromParent()` in `session.lifecycle.ts` delegates to `native.getCausalDeltaFromParent()`, which is a stub — the canonical path should be `session.cap.ledger.getCausalDeltaFromParent()`.
+- **`packages/py/kelir/service_caps.py`**: `LedgerCap.get_causal_delta_from_parent()` already exists (as a stub with `"kelir native PyO3 bridge (_kelir) is missing: ledger get_causal_delta_from_parent (L3)"`). Keep as the canonical home. `Session.get_causal_delta_from_parent()` in `lifecycle_session.py` should either delegate to `session.cap.ledger.get_causal_delta_from_parent()` or be removed.
+- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::get_causal_delta_from_parent` / `PySessionHandle::get_causal_delta_from_parent` currently error with `"get_causal_delta_from_parent: causal deltas come from plugin-ledger (L3)"` — that is correct behavior, but it contradicts the spec (which does not mention it) and the examples (which call it on Session). Update the examples to call `session.cap.ledger.get_causal_delta_from_parent()` (Py/TS) or `session.get_causal_delta_from_parent()` (Rust — once the Rust session facade gains it, or keep the ledger handle as the source).
+- **`crates/kelir-plugins/plugin-ledger/src/lib.rs`**: add a `pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError>` on `LedgerCtx` (currently `finalize`, `flush`, `count_denials`, `blake3_of_producing_process`). This is the Rust side of the canonical home; today the only surface is `compute_ledger::compute_causal_delta(storage, receipt)` — a free function, not a `LedgerCtx` method.
+- **`db-backed-runtime.rs`**: its TODO says "session facade exposes no `get_causal_delta_from_parent` yet" — that is still true of `crates/kelir/src/session_lifecycle.flow.rs` (the only `get_causal_delta_from_parent` stubs are on the bindings' session handles). Keep the TODO but point at `plugin-ledger`'s `LedgerCtx` as the intended home rather than the session facade.
 
 ---
 
-## What "prepare L3 as files" means for CI, concretely
+## 9. `ledger.flush()` Reachability Contradicts Itself Between Python (works) and TypeScript/Rust (dropped)
 
-After Waves 1–4, the invariant is enforceable by machine:
+**Spec** (`cans/plugins/ledger.md`, "Ledger handler API"):
+> `c.ledger.flush()` forces WAL flush and OTel export
 
-1. **L3 stubs exist** → `kelir-maturity list --level L3` enumerates them, and `check-manifest` sees each `TODO (L3) [tag]` in the slop register. If a `.run.rs` stub is missing for a required trait implementation, `structure::check_file` (Rule S4) flags the `.flow.rs` that *would* host the trait impl.
-2. **L2 cannot regress into L3** → Rules S3, S4, S6 fail any `.flow.rs` that spawns a runtime, calls `tokio::runtime::Runtime::new`, or uses I/O in an L3-allowed crate.
-3. **L1 cannot regress into L2** → Rules S1, S2, S5 fail any `lib.rs`/`mod.rs`/pure `.rs` carrying `async fn`, `.await`, or `tokio::`.
-4. **L2 growth is bounded** → `l2_max_delta_per_pr` in `maturity-policy.toml` fails the `--base` check if a PR adds too much `.flow.rs` logic without moving into `.run.rs`.
+`db-backed-runtime.py` claims this is reachable from `session.cap.ledger`:
+```python
+async def _pre_commit(session: Session) -> None:
+    await session.cap.ledger.flush()
+```
 
-That's the point where CI transitions from "checks a filename pattern" to "enforces the maturity contract" — and the L3 stubs you create are already routed into the enforcement surface (`check-manifest`'s slop register, `kelir-maturity list --level L3`, and the S4 rule that requires `.run.rs` for the trait impls).
+`db-backed-runtime.ts` says the same thing is **not reachable** from the equivalent hook:
+```typescript
+// TODO (L3): flush the ledger here; onPreCommit delivers a LifecycleContext only,
+// and the booted session's ledger handle is not in reach at registration time.
+```
+
+`autonomous-swe-agent.py` and `.ts` both say the shutdown-time flush is dropped:
+```python
+# TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers
+# LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
+```
+
+`db-backed-runtime.rs` sidesteps the problem by capturing `ledger_ctx` outside the closure:
+```rust
+.on_pre_commit({
+    let ledger = ledger_ctx.clone();
+    move |_ctx| Box::pin(async move { ledger.flush().await })
+})
+```
+
+So `flush()` exists on the ledger context (Rust proves it), the Python example calls it, and two TS examples say the hook can't reach it. The spec doesn't specify whether the session or the lifecycle context exposes `flush()`, nor when. This is either three different bugs or three different specs.
+
+### Changes Needed in Codebase
+
+- **`cans/03-sdk-architecture.md` / `cans/08-lifecycle.md`**: state the reachability contract for `ledger.flush()`:
+  - `LifecycleCtx` / `LifecycleContext` must carry the plugin capability struct (or a `session` reference), so `on_pre_commit`/`on_vm_shutdown` handlers can call `ctx.cap.ledger.flush()`.
+  - The Rust example's capture pattern is valid but should be documented as the alternative (for handlers that hold a pre-boot ledger handle).
+- **`packages/py/kelir/model_plugin.py`**: add `cap: Caps` to `LifecycleCtx` (currently `_vetoes` and `_watchdog` only). Update `__init__` signature to accept `cap` and `set_watchdog`/`register_veto` unchanged. `handler` in the fused `LifecycleCtx` gets populated by the fused `run` — which currently calls `hook.run(event)` with the raw payload; the runtime must wrap lifecycle payloads in a `LifecycleCtx` that already carries `cap`.
+- **`packages/ts/core/src/context.lifecycle.types.ts`**: extend `LifecycleContext` with `readonly cap?: { readonly ledger?: LedgerHandle }` (or a `session` field). Currently `LifecycleContext` is `{ setWatchdog, registerVeto }` only — no path to the ledger handle.
+- **`packages/py/kelir/plugin_fusion.py`**: `FusedTrampoline.runs()` currently calls `hook.run({"ring": ring, "ordinal": ordinal})` — for lifecycle hooks the payload must be the `LifecycleCtx` (with `cap` populated), not the ring/ordinal dict. Update the fused runner to distinguish lifecycle hooks and pass the correct ctx.
+- **`packages/ts/core/src/fusion.plugin.ts`**: same — `FusedTrampoline.runs()` passes `{ ring, ordinal }`; for lifecycle hooks, pass the `LifecycleContext` (carrying `cap`).
+- **`crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.flow.rs`**: `dispatch_pre_commit` and `dispatch_lifecycle` call `fused_crossing(TrampolineRing::Lifecycle)` but do not pass `ctx` to the fused callbacks (`FusedTrampolineCallback::run(ring, ordinal)` takes only the ring and ordinal). Either:
+  - Change `FusedTrampolineCallback::run` to accept an optional serialized event payload (so lifecycle hooks get `ctx`), or
+  - Document the capture-at-registration pattern (as `db-backed-runtime.rs` does) as the canonical answer for lifecycle hooks that need pre-boot handles, and leave the fused path event-payload-free.
+- **`db-backed-runtime.py`**: the `_pre_commit(session: Session)` signature is wrong — the fused runner does not pass `Session`. Change to `_pre_commit(ctx)` and capture the ledger handle via the builder (or via a `LifecycleCtx.cap.ledger` once that lands), matching the Rust capture pattern.
+- **`db-backed-runtime.ts`**: keep the comment as a TODO but change it to say "capture the ledger handle at builder time (as in `db-backed-runtime.rs`); `onPreCommit` delivers `LifecycleContext` (which carries `cap.ledger` once the fused lifecycle payload lands)". Today it says "`LifecycleContext` only, and the booted session's ledger handle is not in reach at registration time" — that is accurate today but the spec needs to resolve the design, not preserve the limitation.
+- **`autonomous-swe-agent.py` / `.ts`**: same `_pre_commit(session)`/`on_vm_shutdown` capture issue — the shutdown flush is currently dropped. Either capture the ledger handle at builder time or wait for `LifecycleCtx.cap.ledger` to land.
+
+---
+
+## 10. Checkpoint API: `session.vm.checkpoint(label)` vs `session.checkpoint.create(label)` vs `session.checkpoint.create_step(lineage, descriptor)` — Three Surfaces, One Spec
+
+**Spec** (`cans/03-sdk-architecture.md`):
+> Checkpoint: `session.checkpoint.create(label)`, `session.rollback()`
+
+**Spec** (`cans/09-snapshots.md`):
+> `session.lineage()` (no argument) — enumerated as an SDK accessor
+
+**Artifacts:**
+
+| File | Checkpoint API used | Conforms? |
+|---|---|---|
+| `git-gate.py` / `.ts` | `session.checkpoint.create("git-gate-base")` | ✅ `create(label)` |
+| `multi-vm-swarm.py` / `.ts` | `child.checkpoint.create(...)` | ✅ `create(label)` |
+| `replay.py` / `.ts` | `session.checkpoint.create(...)` | ✅ `create(label)` |
+| `autonomous-swe-agent.py` | `session.vm.checkpoint("clean_base")` | ❌ `session.vm.checkpoint(label)` |
+| `autonomous-swe-agent.ts` | `session.vm.checkpoint("clean_base")` | ❌ `session.vm.checkpoint(label)` |
+| `policy-matrix.py` | `c.vm.checkpoint("policy-yield")` | ❌ `c.vm.checkpoint(label)` |
+| `policy-matrix.ts` | `c.vm.checkpoint("policy-yield")` | ❌ `c.vm.checkpoint(label)` |
+| `hook-matrix-full.rs` | `session.checkpoint.create_step(session.lineage(1), SnapshotDescriptor { … })` + `commit_step(lineage(1))` | ❌ `create_step`/`commit_step` pair |
+| `hook-matrix.rs` (RS) | same `create_step` + `commit_step` | ❌ |
+| `git-gate.rs` | same `create_step` + `commit_step` | ❌ |
+| `replay.rs` | same `create_step` + `commit_step` | ❌ |
+| `multi-vm-swarm.rs` | same `create_step` + `commit_step` | ❌ |
+| `autonomous-swe-agent.rs` | same `create_step` + `commit_step` | ❌ |
+| `policy-matrix.rs` | same `create_step` + `commit_step` | ❌ |
+
+Two distinct divergences under one surface:
+
+- **Host vs vm facade:** `session.checkpoint.create(...)` (documented) vs `session.vm.checkpoint(...)` (used by two plugin examples). The spec's surface table lists `session.checkpoint`, never `session.vm.checkpoint`.
+- **Two-phase step API vs one-shot:** Every Rust example uses `create_step(lineage, descriptor)` + `commit_step(lineage)` — a two-phase API taking a `SnapshotDescriptor` — while every Py/TS example uses the documented one-shot `create(label)`. The spec documents only `create(label)` and does not mention `create_step`/`commit_step` or `SnapshotDescriptor` as construction inputs.
+- **`session.lineage(1)`** is used in every Rust example (with argument `1`); the spec says `session.lineage()` (no argument).
+
+### Changes Needed in Codebase
+
+(Consolidated with item 3.)
+
+- **`cans/03-sdk-architecture.md`** "Session-surfaces" table: split into the two surfaces, as described in item 3.
+- **`cans/09-snapshots.md`**: change `session.lineage()` to `session.lineage(root_pid)` for Rust; document `session.checkpoint.create(label)` as the Py/TS one-shot surface.
+- **`crates/kelir/src/session_lifecycle.flow.rs`**: add `pub fn lineage(&self, pid: u32) -> PidLineage` on `Session` (delegate to `self.core.lineage(pid)`). The Rust examples already rely on this through `Deref`, but the spec doesn't mention it.
+- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeCheckpointHandle::create`/`PyCheckpointHandle::create` already exist and delegate to `VmHandle::checkpoint(label)`. For Rust parity on the Py/TS side, either:
+  - Add `create_step`/`commit_step`/`lineage(pid)`/`head`/`compact` to the checkpoint handles, or
+  - Document that Rust's two-phase step API is Rust-only (it is `CheckpointPlane` on the engine, not a `Session` method exposed through the bindings).
+- **`crates/kelir/src/session_lifecycle.flow.rs`**: note that `Session` derefs to `kelir_engine::Session`, so `session.checkpoint.create_step(...)` resolves through `Deref` to `engine::Session::checkpoint: Arc<CheckpointPlane>`. That is the surface the Rust examples use — keep it, but document the Deref contract explicitly (the spec does not today).
+- **`cans/artifacts/examples/autonomous-swe-agent.py` / `.ts`** and **`policy-matrix.py` / `.ts`**: replace `session.vm.checkpoint(...)` / `c.vm.checkpoint(...)` with `session.checkpoint.create(...)` / `c.checkpoint.create(...)`. Both resolve through the bindings, but the examples should not teach the undocumented `vm.checkpoint` facade for the one-shot path.
+- **`cans/artifacts/examples/*.rs`**: keep `create_step`/`commit_step`/`lineage(1)` but update the spec to name them as the Rust low-level surface (the engine `CheckpointPlane` is the SSOT for the two-phase API; `CheckpointOps` in `crates/kelir-interface/src/checkpoint/ops.flow.rs` is the trait).

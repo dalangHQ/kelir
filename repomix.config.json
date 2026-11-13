@@ -28,7 +28,7 @@
     }
   },
   "include": [
-  //      "AGENTS.md",
+        "AGENTS.md",
   //   "cans/",
        "crates",
         "packages"
@@ -49,13 +49,17 @@
       "cans/artifacts/code",
       "cans/artifacts/config",
       "cans/artifacts/diagrams",
-      "cans/artifacts/examples",
+   //   "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html",
             "**/tests/**",
-             "cans/artifacts/",
+ //            "cans/artifacts/",
             "crates/kelir-testkit/anchors.json",
             "cans/artifacts/test-plan",
-            "cans/artifacts/test-plan/cases"
+            "cans/artifacts/test-plan/cases",
+            "**/*.run.*",
+            "**/*.run.rs",
+"**/*.run.*",
+"**/*run*"
     ]
   },
   "security": {
