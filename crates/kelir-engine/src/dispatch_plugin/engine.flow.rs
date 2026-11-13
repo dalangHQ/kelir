@@ -368,7 +368,11 @@ impl PipelineEngine {
         }
     }
 
-    pub(super) fn fs_scope_allows(scope: &MountScope, path: &std::path::Path, ctx: &HandlerCtx) -> bool {
+    pub(super) fn fs_scope_allows(
+        scope: &MountScope,
+        path: &std::path::Path,
+        ctx: &HandlerCtx,
+    ) -> bool {
         if !scope.allows_device(VirtioDevice::Fs) {
             return false;
         }
