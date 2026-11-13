@@ -325,16 +325,6 @@ check-scenarios:
 check-tests:
     cargo run -p kelir-testkit --bin check-tests
 
-# Full governance gate sweep, cheap -> expensive. CI runs each step as its
-# own job; this recipe is the local equivalent of the whole gate matrix.
-check-all: check-maturity
-    cargo run -p kelir-plugin-cli -- check --layers
-    cargo run -p kelir-plugin-cli -- check --graph
-    cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
-    cargo run -p kelir-testkit --bin check-manifest
-    cargo run -p kelir-testkit --bin check-tests
-    cargo run -p kelir-testkit --bin check-scenarios
-    cargo run -p kelir-testkit --bin scorecard -- check
     cargo run -p kelir-plugin-cli -- parity run
     cargo run -p kelir-plugin-cli -- fixtures --verify
 
@@ -386,4 +376,4 @@ check-types:
 check-gates: check-manifest check-tests check-scenarios check-scorecard
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
-check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-builder-parity check-hygiene lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
