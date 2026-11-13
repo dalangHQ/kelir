@@ -116,6 +116,7 @@
     - Runs in <2s; the only gate for body maturity
     - No path filter: a file move anywhere can break placement
     - Local mirror: `just check-maturity`
+    - Level meanings and placement rule: see: 01-architecture.md#Codebase-invariants
   - Examples compile
     - Job: examples-compile
     - Runs `just check-examples`: the canonical examples in

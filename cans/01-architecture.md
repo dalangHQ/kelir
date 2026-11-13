@@ -73,9 +73,15 @@
           - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
           - Single-line documentation: maximum one line of docstring per public item
         - Maturity discipline
+          - L1 is the contract: interfaces, types, skeletons, empty method signatures only; no implementation logic.
+          - L2 is the wiring: internal state, pipeline dispatch, invocation plumbing end to end; complex algorithms stay // TODO markers returning a typed Result or zero-value.
+          - L3 is the meat: the final TODOs filled in; zero unwritten logic, zero stubs, zero band-aids.
           - Level is the filename suffix: .rs is L1, .flow.rs is L2, .run.rs is L3.
           - Crate role is [package.metadata.kelir].allowed_levels in the crate Cargo.toml.
           - Placement invariant: level_of(file) is in crate.allowed_levels, enforced by kelir-maturity check.
+          - Content rules per level live in perf/maturity-policy.toml; this wave they report as warnings, placement failures fail the job.
+          - A // TODO (L3) in a prepared .run.rs stub warns until the L3 phase fills it; the markers are removed as bodies land.
+          - Current phase is L1/L2 only; no L3 bodies land until the L3 phase opens.
           - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
         - Zero-panic production invariant
           - Workspace-wide deny on unwrap_used, expect_used, and panic
