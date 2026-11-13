@@ -29,25 +29,27 @@ pub fn check() -> Result<(), CliError> {
     let mut violations = Vec::new();
     for plugin in &roster {
         for dep in &plugin.deps {
-            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
-                if dep_tier.level >= plugin.tier.level {
-                    violations.push(format!(
-                        "layer violation: `{}` (tier {}) depends on `{}` (tier {}); dependencies must be downward-only",
-                        plugin.tier.crate_name, plugin.tier.level,
-                        dep_tier.crate_name, dep_tier.level,
-                    ));
-                }
+            let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) else {
+                continue;
+            };
+            if dep_tier.level >= plugin.tier.level {
+                violations.push(format!(
+                    "layer violation: `{}` (tier {}) depends on `{}` (tier {}); dependencies must be downward-only",
+                    plugin.tier.crate_name, plugin.tier.level,
+                    dep_tier.crate_name, dep_tier.level,
+                ));
             }
         }
         for dep in &plugin.dev_deps {
-            if let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) {
-                if dep_tier.level >= plugin.tier.level {
-                    violations.push(format!(
-                        "layer violation: `{}` (tier {}) dev-depends on `{}` (tier {}); dependencies must be downward-only",
-                        plugin.tier.crate_name, plugin.tier.level,
-                        dep_tier.crate_name, dep_tier.level,
-                    ));
-                }
+            let Some(dep_tier) = crate::audit_cli::tier_of(&roster, dep) else {
+                continue;
+            };
+            if dep_tier.level >= plugin.tier.level {
+                violations.push(format!(
+                    "layer violation: `{}` (tier {}) dev-depends on `{}` (tier {}); dependencies must be downward-only",
+                    plugin.tier.crate_name, plugin.tier.level,
+                    dep_tier.crate_name, dep_tier.level,
+                ));
             }
         }
     }

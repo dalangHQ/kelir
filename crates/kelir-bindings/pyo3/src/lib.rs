@@ -3,22 +3,22 @@
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 #![forbid(unsafe_code)]
 
-#[path = "fusion_plugin.flow.rs"]
-pub mod fusion_plugin;
-pub mod storage_bridge;
-#[path = "handles.flow.rs"]
-pub mod handles;
 #[path = "builder.flow.rs"]
 pub mod builder;
+#[path = "fusion_plugin.flow.rs"]
+pub mod fusion_plugin;
+#[path = "handles.flow.rs"]
+pub mod handles;
 #[path = "handles.run.rs"]
 pub mod handles_run;
+pub mod storage_bridge;
 
 pub use builder::PyKelirBuilder;
+pub(crate) use handles::envelope_error;
 pub use handles::{
     PyCheckpointHandle, PyHostHandle, PySessionHandle, PyStepHandle, PyStorageHandle,
     PyTerminalHandle, PyVmHandle, PyVsockHandle, PyWireHandle,
 };
-pub(crate) use handles::envelope_error;
 
 use handles::relay_socket_path;
 use pyo3::prelude::*;

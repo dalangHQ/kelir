@@ -28,7 +28,7 @@ impl Default for TransactionConfig {
 
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[derive(Clone, Debug)]
-struct ActiveTransaction {
+pub(crate) struct ActiveTransaction {
     handle: TransactionHandle,
     namespace: [u8; 16],
     scope: TransactionScope,

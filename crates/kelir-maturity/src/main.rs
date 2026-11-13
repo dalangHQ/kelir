@@ -63,7 +63,7 @@ fn crate_name(file: &Path, root: &Path) -> String {
     let krate = kelir_maturity::crate_of(file);
     let rel = krate.strip_prefix(root).unwrap_or(&krate);
     rel.components()
-        .last()
+        .next_back()
         .map(|c| c.as_os_str().to_string_lossy().into_owned())
         .unwrap_or_default()
 }

@@ -4,7 +4,9 @@ use std::fs;
 use std::path::Path;
 
 pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
-    let Ok(src) = fs::read_to_string(path) else { return };
+    let Ok(src) = fs::read_to_string(path) else {
+        return;
+    };
     let level = level_of(path);
     let lines = src.lines().count();
     let at = path.display().to_string();
@@ -70,9 +72,9 @@ fn record(report: &mut CheckReport, mode: ForbidMode, rule: &str, at: &str, deta
             .fails
             .push(format!("{at}: [structure:{rule}] {detail}"));
     } else {
-        report
-            .warns
-            .push(format!("{at}: {detail} (structure:{rule}, warn-mode rollout)"));
+        report.warns.push(format!(
+            "{at}: {detail} (structure:{rule}, warn-mode rollout)"
+        ));
     }
 }
 

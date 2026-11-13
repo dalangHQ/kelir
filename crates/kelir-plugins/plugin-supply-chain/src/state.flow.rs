@@ -12,8 +12,8 @@ use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSp
 
 use crate::wx_token::{WxAllocToken, WxTokenChannel, WxTokenLedger};
 use crate::{
-    JitValidationService, PackageGuardConfig, SupplyChainConfig, WX_ALLOC_VSOCK_PORT,
-    SCRIPT_DENY_ERRNO, WX_VIOLATION_ERRNO,
+    JitValidationService, PackageGuardConfig, SCRIPT_DENY_ERRNO, SupplyChainConfig,
+    WX_ALLOC_VSOCK_PORT, WX_VIOLATION_ERRNO,
 };
 
 impl Default for PackageGuardConfig {

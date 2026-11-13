@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use kelir_interface::codec_protocol::{FLAG_DATA, FLAG_OPEN};
+use kelir_interface::codec_protocol::{FLAG_DATA, FLAG_OPEN, encode_msg_frame};
 use kelir_interface::plugin_model::{PluginError, StreamFrameSink};
 use kelir_interface::protocol_wire::{MsgType, StreamKind};
 use kelir_transport::Transport;

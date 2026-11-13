@@ -7,10 +7,10 @@ use serde::Deserialize;
 pub mod levels;
 #[path = "policy.flow.rs"]
 pub mod policy;
-#[path = "tree.run.rs"]
-pub mod tree;
 #[path = "structure.run.rs"]
 pub mod structure;
+#[path = "tree.run.rs"]
+pub mod tree;
 
 pub use levels::{crate_of, level_of};
 pub use tree::{check_tree, read_allowed_levels, rs_files};

@@ -3,7 +3,7 @@
 use super::*;
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-struct FusedCrossing<'a> {
+pub(super) struct FusedCrossing<'a> {
     engine: &'a PipelineEngine,
     verdict: Verdict,
 }

@@ -108,7 +108,11 @@ impl WxTokenChannel {
     }
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
-    pub(crate) fn register(&self, peer: VsockPeer, stream: Box<dyn Stream>) -> Result<(), PluginError> {
+    pub(crate) fn register(
+        &self,
+        peer: VsockPeer,
+        stream: Box<dyn Stream>,
+    ) -> Result<(), PluginError> {
         *Self::lock_opt(&self.peer)? = Some(peer);
         *Self::lock_opt(&self.stream)? = Some(stream);
         self.flush_pending()

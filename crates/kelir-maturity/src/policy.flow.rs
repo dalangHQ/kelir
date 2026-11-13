@@ -55,7 +55,7 @@ impl Policy {
             Some(other) => {
                 return Err(format!(
                     "policy.forbid_mode: {other:?} (want \"warn\" or \"error\")"
-                ))
+                ));
             }
         };
         let mut rules = Vec::new();

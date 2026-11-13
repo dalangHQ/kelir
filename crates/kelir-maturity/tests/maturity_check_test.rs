@@ -177,10 +177,12 @@ fn l1_impl_block_fails_in_error_mode() {
         "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert!(report
-        .fails
-        .iter()
-        .any(|f| f.contains("[forbid:impl-block]")));
+    assert!(
+        report
+            .fails
+            .iter()
+            .any(|f| f.contains("[forbid:impl-block]"))
+    );
     assert_eq!(report.hard_fails, 0);
     clean(&root);
 }
@@ -199,10 +201,12 @@ fn forbid_rules_warn_in_warn_mode() {
         "warn-mode rollout keeps forbid rules non-fatal: {:?}",
         report.fails
     );
-    assert!(report
-        .warns
-        .iter()
-        .any(|w| w.contains("impl-block") && w.contains("(forbid, warn-mode rollout)")));
+    assert!(
+        report
+            .warns
+            .iter()
+            .any(|w| w.contains("impl-block") && w.contains("(forbid, warn-mode rollout)"))
+    );
     clean(&root);
 }
 
@@ -235,10 +239,12 @@ fn l2_domain_trait_impl_fails_in_error_mode() {
         "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert!(report
-        .fails
-        .iter()
-        .any(|f| f.contains("[forbid:domain-trait-impl]")));
+    assert!(
+        report
+            .fails
+            .iter()
+            .any(|f| f.contains("[forbid:domain-trait-impl]"))
+    );
     clean(&root);
 }
 
@@ -253,10 +259,12 @@ fn l3_trait_decl_fails_in_error_mode() {
         "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert!(report
-        .fails
-        .iter()
-        .any(|f| f.contains("[forbid:trait-decl]")));
+    assert!(
+        report
+            .fails
+            .iter()
+            .any(|f| f.contains("[forbid:trait-decl]"))
+    );
     clean(&root);
 }
 
@@ -264,7 +272,10 @@ fn l3_trait_decl_fails_in_error_mode() {
 fn structure_s1_l1_runtime_concern_fails() {
     let root = tree("s1");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
-    write_file(&dir.join("src").join("contract.rs"), "pub async fn boot() {}\n");
+    write_file(
+        &dir.join("src").join("contract.rs"),
+        "pub async fn boot() {}\n",
+    );
     let report = check_tree(&root, &policy());
     assert_eq!(report.fails.len(), 1);
     assert!(report.fails[0].contains("contract.rs"));
@@ -328,10 +339,12 @@ fn structure_s5_async_mod_fails() {
         "pub struct S;\nimpl S { pub async fn f(&mut self) {} }\n",
     );
     let report = check_tree(&root, &Policy::empty());
-    assert!(report
-        .fails
-        .iter()
-        .any(|f| f.contains("mod.rs") && f.contains("[structure:S5]")));
+    assert!(
+        report
+            .fails
+            .iter()
+            .any(|f| f.contains("mod.rs") && f.contains("[structure:S5]"))
+    );
     clean(&root);
 }
 
@@ -339,17 +352,22 @@ fn structure_s5_async_mod_fails() {
 fn structure_rules_warn_in_warn_mode() {
     let root = tree("s-warn");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
-    write_file(&dir.join("src").join("contract.rs"), "pub async fn boot() {}\n");
+    write_file(
+        &dir.join("src").join("contract.rs"),
+        "pub async fn boot() {}\n",
+    );
     let report = check_tree(&root, &policy_mode("warn"));
     assert!(
         report.passed(),
         "warn-mode rollout keeps structural rules non-fatal: {:?}",
         report.fails
     );
-    assert!(report
-        .warns
-        .iter()
-        .any(|w| w.contains("contract.rs") && w.contains("(structure:S1, warn-mode rollout)")));
+    assert!(
+        report
+            .warns
+            .iter()
+            .any(|w| w.contains("contract.rs") && w.contains("(structure:S1, warn-mode rollout)"))
+    );
     clean(&root);
 }
 

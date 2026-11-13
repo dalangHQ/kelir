@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 
-#[path = "schema_catalog.flow.rs"]
-pub mod schema_catalog;
 #[path = "catalog_db.flow.rs"]
 pub mod catalog_db;
 #[path = "catalog_db.run.rs"]
 pub mod catalog_db_io;
+#[path = "schema_catalog.flow.rs"]
+pub mod schema_catalog;
 
 pub use catalog_db::{CatalogDb, catalog_path};
 

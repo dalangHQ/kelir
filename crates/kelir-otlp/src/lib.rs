@@ -1,19 +1,19 @@
 #![forbid(unsafe_code)]
 
+#[path = "encoder.flow.rs"]
+pub mod encoder;
+#[path = "encoder.run.rs"]
+pub mod encoder_run;
+#[path = "exporter.flow.rs"]
+pub mod exporter;
+#[path = "exporter.run.rs"]
+pub mod exporter_run;
 #[path = "records_otlp.flow.rs"]
 pub mod records_otlp;
 #[path = "registry_otlp.flow.rs"]
 pub mod registry_otlp;
-#[path = "exporter.flow.rs"]
-pub mod exporter;
-#[path = "encoder.flow.rs"]
-pub mod encoder;
 #[path = "span.flow.rs"]
 pub mod span;
-#[path = "exporter.run.rs"]
-pub mod exporter_run;
-#[path = "encoder.run.rs"]
-pub mod encoder_run;
 
 pub use encoder::OtlpEncoder;
 pub use exporter::{OtlpEndpoint, OtlpExporter, OtlpExporterConfig};

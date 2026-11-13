@@ -10,12 +10,12 @@ use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleParticipant, MountScope, NoDeps, ParkedConnectionReset, PipelineBinder,
     PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{Channel, FilterAction, StreamKind, SuspendUntil};
+use kelir_interface::protocol_wire::{Channel, FilterAction, SuspendUntil};
 
 use crate::{
-    BacklogConfig, BacklogOverflow, L4ForwardFrame, L4_FORWARD_HEADER_LEN,
-    L4_FORWARD_STREAM_KIND, ListenConfig, MAX_PARKED_BYTES, ParkOutcome, ParkedDrain,
-    ParkingConfig, WakeOnPacketConfig, WireIngressConfig,
+    BacklogConfig, BacklogOverflow, L4_FORWARD_HEADER_LEN, L4_FORWARD_STREAM_KIND, L4ForwardFrame,
+    ListenConfig, MAX_PARKED_BYTES, ParkOutcome, ParkedDrain, ParkingConfig, WakeOnPacketConfig,
+    WireIngressConfig,
 };
 
 impl Default for WireIngressConfig {
