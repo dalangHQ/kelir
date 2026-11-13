@@ -1,8 +1,7 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/03-sdk-architecture.md#Rust-SDK
-pub use kelir_engine::planes::storage::storage_reconciler::FsReconcileRequest;
-pub use kelir_engine::planes::storage::storage_synthetic::{
-    DynamicFile, DynamicFileGenerator, SyntheticFile,
+pub use kelir_interface::storage::{
+    DynamicFile, DynamicFileGenerator, FsReconcileRequest, SyntheticFile,
 };
 // see: cans/05-storage-plane.md#Storage-architecture
 pub use kelir_engine::planes::storage::{

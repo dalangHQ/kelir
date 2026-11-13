@@ -546,7 +546,7 @@
           - PyO3 storage_bridge.rs:61-66 extracts bool only
           - PyO3 :162-166 hardcodes non_blocking false
           - NAPI storage_bridge.rs:37 carries the sp_15 TODO marker
-          - flock delegation is TODO (L3) in lock_broker.rs:122,171,179
+          - flock delegation is TODO (L3) in crates/kelir-storage/src/lock_broker.run.rs:128,180,188
         - CompositeBundle unpack: no dedicated case id exists in the register
           - Tracked under the plugin_engine code_only domain group
           - TODO (L3) [plugin_engine] at builder_sdk.rs:194; unpack returns an empty vec

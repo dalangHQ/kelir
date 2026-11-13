@@ -9,7 +9,7 @@ use crate::builder_sdk::{Host, KelirBuilder, Unsealed};
 use crate::hlist_sdk::{HCons, HNil, NoParams};
 use crate::planes::storage_plane::FsReconcileRequest;
 use crate::session_lifecycle::{Session, SpawnResult};
-use kelir_engine::planes::storage::storage_reconciler::CommitStats;
+use kelir_interface::storage::CommitStats;
 use plugin_profile::{ProfileCtx, ProfilePlugin};
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)

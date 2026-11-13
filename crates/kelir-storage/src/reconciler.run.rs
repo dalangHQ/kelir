@@ -1,29 +1,12 @@
 // see: cans/05-storage-plane.md#Workspace-commit
 // see: cans/artifacts/code/reconciler.rs#reconcile_upperdir
-use super::io_storage::StorageIo;
+use kelir_interface::storage::{
+    CommitStats, FsReconcileRequest, ReconcilerOps, StorageIo, TraversalGuard,
+};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TraversalGuard {
-    StrictResolveBeneath,
-    LexicalPrefixCheck,
-}
-
-#[derive(Default)]
-pub struct CommitStats {
-    pub files_changed: u64,
-    pub tombstones_resolved: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct FsReconcileRequest {
-    pub cwd: String,
-    pub atomic_staging: bool,
-    pub fsync: bool,
-}
 
 pub struct StagingGuard {
     pub staged: Vec<PathBuf>,
@@ -188,8 +171,10 @@ impl Reconciler {
         }
         Ok(())
     }
+}
 
-    pub fn reconcile(
+impl ReconcilerOps for Reconciler {
+    fn reconcile(
         &self,
         req: FsReconcileRequest,
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
@@ -210,7 +195,9 @@ impl Reconciler {
             "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::reconcile orchestration for staged entries; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
+}
 
+impl Reconciler {
     // see: cans/05-storage-plane.md#Workspace-commit
     fn walk_broker_dir(
         &self,

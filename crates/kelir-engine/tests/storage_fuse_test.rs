@@ -2,11 +2,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kelir_engine::dispatch_plugin::PipelineEngine;
-use kelir_engine::planes::storage::fuse_storage::{
-    FuseDispatcher, FuseOpcode, FuseReply, FuseRequest,
-};
-use kelir_engine::planes::storage::storage_synthetic::SyntheticFile;
+use kelir_engine::planes::storage::fuse::FuseDispatcher;
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
+use kelir_interface::storage::{FuseOpcode, FuseReply, FuseRequest, SyntheticFile};
+use kelir_storage::RealFuseOps;
 
 fn temp_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));
@@ -34,8 +33,10 @@ impl FsInterposer for PassFs {}
 fn sp_13_synthetic_fuse_inode_read_only_0400() -> Result<(), String> {
     let workspace = temp_workspace("sp13");
     assert!(!workspace.join(".env").exists());
-    let dispatcher = FuseDispatcher::new(engine_with(Arc::new(PassFs)))
-        .with_synthetic_files(vec![SyntheticFile::static_(".env", "SECRET=example")]);
+    let dispatcher = FuseDispatcher::new(Arc::new(
+        RealFuseOps::new(engine_with(Arc::new(PassFs)))
+            .with_synthetic_files(vec![SyntheticFile::static_(".env", "SECRET=example")]),
+    ));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut lookup = FuseRequest {
         opcode: FuseOpcode::Lookup,
@@ -93,7 +94,7 @@ fn sp_11_host_fifo_socket_lookup_enxio() -> Result<(), String> {
         std::os::unix::fs::FileTypeExt::is_socket(&metadata.file_type()),
         "host path is not a socket"
     );
-    let dispatcher = FuseDispatcher::new(engine_with(Arc::new(PassFs)));
+    let dispatcher = FuseDispatcher::new(Arc::new(RealFuseOps::new(engine_with(Arc::new(PassFs)))));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Lookup,
@@ -153,7 +154,8 @@ fn sp_14_in_flight_read_masking_pattern_replace() -> Result<(), String> {
     let config = workspace.join("config.toml");
     std::fs::write(&config, b"token = 'AKIAABCDEFGHIJKLMNOP'\n").map_err(|e| e.to_string())?;
     let masked: &[u8] = b"token = 'REDACTED.aws.key.000'\n";
-    let dispatcher = FuseDispatcher::new(engine_with(Arc::new(MaskingFs)));
+    let dispatcher =
+        FuseDispatcher::new(Arc::new(RealFuseOps::new(engine_with(Arc::new(MaskingFs)))));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Read,
@@ -224,7 +226,7 @@ fn sp_18_write_chunk_64kb_transparent_stream() -> Result<(), String> {
         writes: std::sync::Mutex::new(Vec::new()),
     });
     let interposer: Arc<dyn FsInterposer> = counter.clone();
-    let dispatcher = FuseDispatcher::new(engine_with(interposer));
+    let dispatcher = FuseDispatcher::new(Arc::new(RealFuseOps::new(engine_with(interposer))));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Write,

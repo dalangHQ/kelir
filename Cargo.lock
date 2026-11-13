@@ -748,6 +748,8 @@ dependencies = [
  "kelir-catalog",
  "kelir-interface",
  "kelir-otlp",
+ "kelir-storage",
+ "kelir-storage-io",
  "kelir-transport",
  "libc",
  "serde",
@@ -885,6 +887,26 @@ dependencies = [
  "rustix",
  "seccompiler",
  "vsock",
+]
+
+[[package]]
+name = "kelir-storage"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-engine",
+ "kelir-interface",
+ "kelir-otlp",
+ "kelir-storage-io",
+ "libc",
+]
+
+[[package]]
+name = "kelir-storage-io"
+version = "1.0.0"
+dependencies = [
+ "kelir-interface",
+ "libc",
 ]
 
 [[package]]

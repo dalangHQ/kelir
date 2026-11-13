@@ -1,6 +1,6 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
-use super::LockBrokerWiring;
 use async_trait::async_trait;
+use kelir_engine::planes::storage::LockBrokerWiring;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{HandlerCtx, LockBrokerCoordination};
 use kelir_interface::protocol_wire::Verdict;
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use crate::dispatch_plugin::PipelineEngine;
+use kelir_engine::dispatch_plugin::PipelineEngine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LockKind {

@@ -2,11 +2,11 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 use napi::{Error, Result};
 
-use kelir_engine::planes::storage::storage_synthetic::SyntheticFile;
 use kelir_engine::planes::storage::{
     IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
     WorkspaceEncapsulation,
 };
+use kelir_interface::storage::SyntheticFile;
 
 use crate::{NativeMaskRule, NativeStorageConfig, NativeSyntheticFile};
 

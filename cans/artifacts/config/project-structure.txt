@@ -80,6 +80,13 @@ kelir/
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── delta_attest.rs           # CausalDelta
 │   │   │   │   └── receipt_attest.rs         # ExecutionReceipt
+│   │   │   ├── storage/
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── fuse_ops.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
+│   │   │   │   ├── storage_io.rs          # StorageIo trait, RootHandle, HostFileLock
+│   │   │   │   ├── storage_reconciler.rs  # ReconcilerOps trait, FsReconcileRequest, CommitStats
+│   │   │   │   ├── storage_synthetic.rs   # SyntheticFile, DynamicFile
+│   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
 │   │   │   └── bin/
 │   │   │       └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
 │   │   │           └── plugin_builder_codegen.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
@@ -93,15 +100,10 @@ kelir/
 │   │       ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
 │   │       │   ├── mod.rs
 │   │       │   ├── terminal/mod.rs    # Terminal Plane: virtio-console, VT100 grid, ANSI sanitizer, PTY discipline
-│   │       │   ├── storage/           # Storage Plane: virtio-fs, host CoW broker, reconciler, tombstones, synthetic inodes, flock broker
+│   │       │   ├── storage/           # Storage Plane: L2 façade (StoragePlane, FuseDispatcher, StorageQuota)
 │   │       │   │   ├── mod.rs
-│   │       │   │   ├── fuse_storage.rs
-│   │       │   │   ├── fuse/
-│   │       │   │   │   └── uapi_fuse.rs    # Generated FUSE UAPI tables (linux/fuse.h oracle)
-│   │       │   │   ├── io_storage.rs
-│   │       │   │   ├── lock_broker.rs
-│   │       │   │   ├── storage_reconciler.rs
-│   │       │   │   └── storage_synthetic.rs
+│   │       │   │   ├── fuse.flow.rs
+│   │       │   │   └── storage_quota.flow.rs
 │   │       │   ├── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
 │   │       │   │   ├── mod.rs
 │   │       │   │   └── layout_wire.rs      # L2-L4 frame layout constants
@@ -182,6 +184,21 @@ kelir/
 │   │   │   └── main.rs                # check, list, emit subcommands
 │   │   └── tests/
 │   │       └── check_test.rs          # One passing tree, one failing tree per rule
+│   │
+│   ├── kelir-storage/                 # Storage L3 impls (RealFuseOps, Reconciler, LockBroker); .run.rs stubs
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-storage-io, kelir-otlp, libc
+│   │   └── src/
+│   │       ├── lib.rs                 # Re-exports RealFuseOps, FuseWorker, Reconciler, LockBroker
+│   │       ├── fuse.run.rs            # RealFuseOps + FuseWorker (TODO (L3) shells, no meat)
+│   │       ├── reconciler.run.rs      # Reconciler + StagingGuard
+│   │       ├── lock_broker.run.rs     # LockBroker + HostFdCache
+│   │       └── storage_synthetic.run.rs # Re-exports kelir-interface::storage::synthetic
+│   │
+│   ├── kelir-storage-io/              # Storage I/O L3 impl (RealStorageIo); .run.rs stub
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, libc
+│   │   └── src/
+│   │       ├── lib.rs                 # Re-exports RealStorageIo
+│   │       └── io.run.rs              # RealStorageIo (TODO (L3) shells, no meat)
 │   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"

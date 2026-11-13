@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_engine::planes::storage::LockBrokerWiring;
-use kelir_engine::planes::storage::lock_broker::{LockBroker, LockKey, LockKind, LockRequest};
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,
 };
+use kelir_storage::lock_broker::{LockBroker, LockKey, LockKind, LockRequest};
 
 fn temp_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));

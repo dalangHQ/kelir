@@ -1,87 +1,12 @@
 // see: cans/05-storage-plane.md#Workspace-commit
 // see: cans/05-storage-plane.md#Containment
 // see: cans/05-storage-plane.md#Host-CoW-broker
-use std::path::{Path, PathBuf};
+use kelir_interface::storage::{HostFileLock, RootHandle, StorageIo};
+use std::path::Path;
 
-pub struct RootHandle {
-    pub root: PathBuf,
-}
+pub struct RealStorageIo;
 
-pub struct HostFileLock {
-    pub path: PathBuf,
-}
-
-pub trait StorageIo: Send + Sync {
-    fn open_root(
-        &self,
-        root: &Path,
-    ) -> Result<RootHandle, kelir_interface::plugin_model::PluginError>;
-    fn atomic_rename(
-        &self,
-        temp: &Path,
-        target: &Path,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError>;
-    fn lock_exclusive(
-        &self,
-        path: &Path,
-    ) -> Result<HostFileLock, kelir_interface::plugin_model::PluginError>;
-    fn punch_hole(
-        &self,
-        path: &Path,
-        offset: u64,
-        len: u64,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError>;
-    fn advise_dontneed(
-        &self,
-        path: &Path,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError>;
-    fn remove_file(&self, path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError>;
-    // see: cans/05-storage-plane.md#Host-CoW-broker
-    fn write(
-        &self,
-        path: &Path,
-        offset: u64,
-        data: &[u8],
-    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
-        let _ = (path, offset, data);
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
-        ))
-    }
-    // see: cans/05-storage-plane.md#Host-CoW-broker
-    fn mkdir(
-        &self,
-        path: &Path,
-        mode: u32,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let _ = (path, mode);
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
-        ))
-    }
-    // see: cans/05-storage-plane.md#Host-CoW-broker
-    fn unlink(&self, path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let _ = path;
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
-        ))
-    }
-    // see: cans/05-storage-plane.md#Host-CoW-broker
-    fn rename(
-        &self,
-        from: &Path,
-        to: &Path,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        let _ = (from, to);
-        Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
-        ))
-    }
-}
-
-pub struct UnimplementedStorageIo;
-
-impl StorageIo for UnimplementedStorageIo {
+impl StorageIo for RealStorageIo {
     fn open_root(
         &self,
         root: &Path,

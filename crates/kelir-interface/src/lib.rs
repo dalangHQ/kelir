@@ -18,5 +18,6 @@ pub mod plugin_model;
 pub mod protocol_wire;
 pub mod runtime_block;
 pub mod spawn_transport;
+pub mod storage;
 pub mod telemetry;
 pub mod vsock_mesh;

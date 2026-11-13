@@ -1,8 +1,7 @@
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
+use crate::plugin_model::{FsInodeAttr, PluginError};
 use std::path::Path;
 use std::sync::Arc;
-
-use kelir_interface::plugin_model::{FsInodeAttr, PluginError};
 
 #[derive(Debug, Clone)]
 pub struct DynamicFile {

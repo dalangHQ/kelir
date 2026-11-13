@@ -2,9 +2,17 @@
   - Storage architecture
     - Storage plane attributes
       - see: artifacts/diagrams/storage-architecture.txt
-      - Owner: kelir-engine native storage subsystem (kelir-engine::storage)
+      - Owner: `kelir-storage` (L3) + `kelir-storage-io` (L3) + `kelir-engine::planes::storage` (L2)
       - DAX window lifecycle governed by boot config, not plugin state
       - DAX window is not a stream kind; it is a host-side memory mapping
+    - Crate topology
+      - `kelir-interface::storage` (L1): `FuseOps`, `StorageIo`, `ReconcilerOps` traits + wire types
+      - `kelir-engine::planes::storage` (L2): `StoragePlane` façade, `FuseDispatcher` delegating to `Arc<dyn FuseOps>`, `StorageQuota`
+      - `kelir-storage` (L3): `RealFuseOps`, `Reconciler`, `LockBroker`, synthetic inodes (`.run.rs` stubs, TODO (L3) shells, no meat yet)
+      - `kelir-storage-io` (L3): `RealStorageIo` (`.run.rs` stub, TODO (L3) shells, no meat yet)
+    - Trait seam
+      - `FuseOps` and `StorageIo` live in `kelir-interface::storage`; the L2 façade holds `Arc<dyn FuseOps>`; the L3 impl is `RealFuseOps`; `kelir-engine` cannot name `RealFuseOps`
+      - `ReconcilerOps` lives in `kelir-interface::storage`; the composition root binds the `Reconciler` at seal
     - Single storage abstraction
       - VirtIO-FS only; no in-guest OverlayFS, no virtio-blk workspace disk
       - Host broker implements CoW layering, deletion tracking, quota, commit

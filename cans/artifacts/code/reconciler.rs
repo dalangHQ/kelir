@@ -1,4 +1,4 @@
-// crates/kelir-engine/src/planes/storage/storage_reconciler.rs
+// crates/kelir-storage/src/reconciler.run.rs
 //
 // Diff-only atomic reconciler for the host CoW broker: VirtIO-FS only;
 // no in-guest OverlayFS, no virtio-blk workspace disk. The broker

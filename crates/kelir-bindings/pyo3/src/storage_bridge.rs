@@ -6,11 +6,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict, PyList};
 
-use kelir_engine::planes::storage::storage_synthetic::SyntheticFile;
 use kelir_engine::planes::storage::{
     IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
     WorkspaceEncapsulation,
 };
+use kelir_interface::storage::SyntheticFile;
 
 // see: cans/05-storage-plane.md#Storage-architecture
 #[derive(Default)]

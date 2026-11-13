@@ -1,96 +1,30 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/05-storage-plane.md#Host-CoW-broker
 // see: cans/05-storage-plane.md#Storage-quotas
-pub mod fuse_storage;
-pub mod io_storage;
-pub mod lock_broker;
-pub mod storage_reconciler;
-pub mod storage_synthetic;
+#[path = "fuse.flow.rs"]
+pub mod fuse;
+#[path = "storage_quota.flow.rs"]
+pub mod storage_quota;
+
+pub use storage_quota::StorageQuota;
+
+use kelir_interface::storage::{
+    CommitStats, FsReconcileRequest, ReconcilerOps, StorageIo, SyntheticFile,
+};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
-
-pub struct StorageQuota {
-    allocated_bytes: AtomicU64,
-    allocated_inodes: AtomicU64,
-    max_bytes: u64,
-    max_inodes: u64,
-}
-
-impl StorageQuota {
-    // see: cans/05-storage-plane.md#Storage-quotas
-    pub fn unbounded() -> Self {
-        Self {
-            allocated_bytes: AtomicU64::new(0),
-            allocated_inodes: AtomicU64::new(0),
-            max_bytes: u64::MAX,
-            max_inodes: u64::MAX,
-        }
-    }
-
-    // see: cans/05-storage-plane.md#Storage-quotas
-    pub fn check_quota(
-        &self,
-        bytes_to_write: u64,
-        new_inodes: u64,
-    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        accrue_quota(
-            &self.allocated_bytes,
-            bytes_to_write,
-            self.max_bytes,
-            "byte",
-        )?;
-        if let Err(err) = accrue_quota(&self.allocated_inodes, new_inodes, self.max_inodes, "inode")
-        {
-            self.allocated_bytes
-                .fetch_sub(bytes_to_write, Ordering::SeqCst);
-            return Err(err);
-        }
-        Ok(())
-    }
-}
-
-// see: cans/05-storage-plane.md#Storage-quotas
-fn accrue_quota(
-    counter: &AtomicU64,
-    delta: u64,
-    max: u64,
-    kind: &str,
-) -> Result<(), kelir_interface::plugin_model::PluginError> {
-    let mut current = counter.load(Ordering::SeqCst);
-    loop {
-        let total = current.checked_add(delta).ok_or_else(|| {
-            kelir_interface::plugin_model::PluginError::Halt(format!(
-                "quota {kind} arithmetic overflow"
-            ))
-        })?;
-        if total > max {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Enospc,
-                format!("storage {kind} quota exceeded"),
-            ));
-        }
-        match counter.compare_exchange(current, total, Ordering::SeqCst, Ordering::SeqCst) {
-            Ok(_) => return Ok(()),
-            Err(observed) => current = observed,
-        }
-    }
-}
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub struct StoragePlane {
     workspace_root: PathBuf,
     sparse_upper_path: PathBuf,
     tombstones: Arc<RwLock<HashSet<PathBuf>>>,
     quota: Arc<StorageQuota>,
-    io: Arc<dyn io_storage::StorageIo>,
-    reconciler: OnceLock<storage_reconciler::Reconciler>,
-    lock_broker: OnceLock<Arc<lock_broker::LockBroker>>,
-    lock_namespace: [u8; 16],
+    io: Arc<dyn StorageIo>,
+    reconciler: OnceLock<Arc<dyn ReconcilerOps>>,
     wiring: StorageConfig,
-    fuse_worker: OnceLock<Mutex<fuse_storage::FuseWorker>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-    synthetic_files: Vec<storage_synthetic::SyntheticFile>,
+    synthetic_files: Vec<SyntheticFile>,
 }
 
 // see: cans/05-storage-plane.md#Workspace-commit
@@ -158,18 +92,10 @@ impl StoragePlane {
             workspace_root,
             sparse_upper_path: sparse_upper,
             tombstones: Arc::new(RwLock::new(HashSet::new())),
-            quota: Arc::new(StorageQuota {
-                allocated_bytes: AtomicU64::new(0),
-                allocated_inodes: AtomicU64::new(0),
-                max_bytes,
-                max_inodes,
-            }),
-            io: Arc::new(io_storage::UnimplementedStorageIo),
+            quota: Arc::new(StorageQuota::new(max_bytes, max_inodes)),
+            io: Arc::new(kelir_storage_io::RealStorageIo),
             reconciler: OnceLock::new(),
-            lock_broker: OnceLock::new(),
-            lock_namespace: [0; 16],
             wiring: StorageConfig::default(),
-            fuse_worker: OnceLock::new(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
         }
@@ -196,107 +122,35 @@ impl StoragePlane {
         &self.metrics
     }
 
-    pub fn with_synthetic_files(mut self, files: Vec<storage_synthetic::SyntheticFile>) -> Self {
+    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
         self.synthetic_files = files;
         self
     }
 
-    pub fn synthetic_files(&self) -> &[storage_synthetic::SyntheticFile] {
+    pub fn synthetic_files(&self) -> &[SyntheticFile] {
         &self.synthetic_files
     }
 
-    pub fn with_io(mut self, storage_io: Arc<dyn io_storage::StorageIo>) -> Self {
+    pub fn with_io(mut self, storage_io: Arc<dyn StorageIo>) -> Self {
         self.io = storage_io;
         self
     }
 
-    // TODO (L3) [storage_plane]: first construction wins; later calls with different broker_dir/guard return the anchored reconciler; slop: second broker_dir silently replaces anchored reconciler
-    pub fn reconciler(
-        &self,
-        broker_dir: PathBuf,
-        guard: storage_reconciler::TraversalGuard,
-    ) -> &storage_reconciler::Reconciler {
-        self.reconciler.get_or_init(|| {
-            storage_reconciler::Reconciler::new(
-                broker_dir,
-                self.workspace_root.clone(),
-                guard,
-                self.io.clone(),
-                self.tombstones.clone(),
-            )
-        })
-    }
-
-    // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub fn set_lock_namespace(&mut self, namespace: [u8; 16]) {
-        self.lock_namespace = namespace;
-    }
-
-    pub fn lock_broker(
-        &self,
-        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
-    ) -> &lock_broker::LockBroker {
-        self.lock_broker_arc(engine)
-    }
-
-    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-    pub fn lock_broker_coordination(
-        &self,
-        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
-    ) -> Arc<dyn kelir_interface::plugin_model::LockBrokerCoordination> {
-        let broker: Arc<lock_broker::LockBroker> = Arc::clone(self.lock_broker_arc(engine));
-        broker
-    }
-
-    fn lock_broker_arc(
-        &self,
-        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
-    ) -> &Arc<lock_broker::LockBroker> {
-        // see: cans/05-storage-plane.md#Host-inode-lock-broker
-        let wiring = self.wiring.lock_broker.clone().unwrap_or_default();
-        self.lock_broker.get_or_init(|| {
-            Arc::new(
-                lock_broker::LockBroker::with_wiring(engine, wiring)
-                    .with_namespace(self.lock_namespace),
-            )
-        })
-    }
-
-    // see: cans/05-storage-plane.md#Storage-quotas
-    pub fn quota(&self) -> Arc<StorageQuota> {
-        Arc::clone(&self.quota)
-    }
-
-    pub fn fuse_worker(
-        &self,
-        receiver: std::sync::mpsc::Receiver<fuse_storage::FuseRequest>,
-        engine: Arc<crate::dispatch_plugin::PipelineEngine>,
-        session_id: [u8; 16],
-    ) -> &Mutex<fuse_storage::FuseWorker> {
-        self.fuse_worker.get_or_init(|| {
-            let lock_broker = Arc::clone(self.lock_broker_arc(Arc::clone(&engine)));
-            Mutex::new(
-                fuse_storage::FuseWorker::new(
-                    receiver,
-                    engine,
-                    lock_broker,
-                    Arc::clone(&self.quota),
-                    session_id,
-                )
-                .with_synthetic_files(self.synthetic_files.clone()),
-            )
-        })
+    // TODO (L3) [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
+    pub fn with_reconciler(self, reconciler: Arc<dyn ReconcilerOps>) -> Self {
+        let _ = self.reconciler.set(reconciler);
+        self
     }
 
     // see: cans/05-storage-plane.md#Workspace-commit
     pub fn reconcile(
         &self,
-        req: storage_reconciler::FsReconcileRequest,
-    ) -> Result<storage_reconciler::CommitStats, kelir_interface::plugin_model::PluginError> {
+        req: FsReconcileRequest,
+    ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
         match self.reconciler.get() {
             Some(reconciler) => reconciler.reconcile(req),
             None => Err(kelir_interface::plugin_model::PluginError::Halt(
-                "StoragePlane::reconcile needs the anchored reconciler; call reconciler() first"
+                "StoragePlane::reconcile needs the anchored reconciler; call with_reconciler() first"
                     .into(),
             )),
         }
@@ -346,12 +200,12 @@ impl StoragePlane {
 
     // see: cans/05-storage-plane.md#Storage-quotas
     pub fn allocated_bytes(&self) -> u64 {
-        self.quota.allocated_bytes.load(Ordering::SeqCst)
+        self.quota.allocated_bytes()
     }
 
     // see: cans/05-storage-plane.md#Storage-quotas
     pub fn allocated_inodes(&self) -> u64 {
-        self.quota.allocated_inodes.load(Ordering::SeqCst)
+        self.quota.allocated_inodes()
     }
 
     // see: cans/05-storage-plane.md#Host-CoW-broker

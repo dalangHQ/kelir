@@ -373,7 +373,7 @@ impl Session {
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         trampoline: Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
-        synthetic_files: Vec<crate::planes::storage::storage_synthetic::SyntheticFile>,
+        synthetic_files: Vec<kelir_interface::storage::SyntheticFile>,
         plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         let mut engine = crate::dispatch_plugin::PipelineEngine::new();
@@ -400,7 +400,7 @@ impl Session {
         plugins: &[crate::plugin_registry::PluginRegistration],
         engine: crate::dispatch_plugin::PipelineEngine,
         metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-        synthetic_files: Vec<crate::planes::storage::storage_synthetic::SyntheticFile>,
+        synthetic_files: Vec<kelir_interface::storage::SyntheticFile>,
         plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         if let Some(reason) = config.missing_boot_path() {
@@ -423,12 +423,6 @@ impl Session {
         )
         .with_synthetic_files(synthetic_files)
         .with_wiring(plane_wiring.storage);
-        // TODO (L3) [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
-        // see: cans/05-storage-plane.md#Workspace-commit
-        storage.reconciler(
-            workspace_root.join("broker"),
-            crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
-        );
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
         let wire = crate::planes::wire::WirePlane::new().with_wiring(match plane_wiring.wire {
             Some(mut wiring) => {
@@ -658,12 +652,6 @@ impl Session {
                 DEFAULT_WORKSPACE_QUOTA_INODES,
             )
             .with_wiring(storage_wiring);
-            // TODO (L3) [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
-            // see: cans/05-storage-plane.md#Workspace-commit
-            storage.reconciler(
-                workspace_root.join("broker"),
-                crate::planes::storage::storage_reconciler::TraversalGuard::StrictResolveBeneath,
-            );
             let checkpoint = Arc::new(
                 crate::planes::checkpoint::CheckpointPlane::new()
                     .with_metrics(Arc::clone(&metrics)),
@@ -939,7 +927,7 @@ impl Session {
         &self,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let workspace_root = session_dir(&self.session_id)?.join("workspace");
-        let request = crate::planes::storage::storage_reconciler::FsReconcileRequest {
+        let request = kelir_interface::storage::FsReconcileRequest {
             cwd: workspace_root.display().to_string(),
             atomic_staging: true,
             fsync: true,

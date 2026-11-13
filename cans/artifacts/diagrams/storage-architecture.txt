@@ -83,4 +83,11 @@
 │      against the broker delta only; counters track sparse upper file bytes  │
 │      + tombstone count + new inodes. The lowerdir host workspace incurs     │
 │      zero statfs traversal (zero-crawl baseline).                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ 11. CRATE TOPOLOGY (filename-driven maturity):                              │
+│    - kelir-interface::storage (L1): FuseOps, StorageIo, ReconcilerOps.      │
+│    - kelir-engine::planes::storage (L2): StoragePlane + FuseDispatcher      │
+│      façade delegating to Arc<dyn FuseOps>.                                 │
+│    - kelir-storage + kelir-storage-io (L3): RealFuseOps, Reconciler,        │
+│      LockBroker, RealStorageIo — .run.rs stubs, TODO (L3), no meat.         │
 └─────────────────────────────────────────────────────────────────────────────┘

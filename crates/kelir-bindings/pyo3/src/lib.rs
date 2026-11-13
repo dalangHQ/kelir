@@ -14,7 +14,6 @@ pub mod storage_bridge;
 
 use fusion_plugin::{FusedTrampolineDescriptor, TrampolineTable, attach_runs, convert_descriptor};
 use kelir_engine::Session;
-use kelir_engine::planes::storage::storage_reconciler::FsReconcileRequest;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason, VmConfig, default_vm_config,
 };
@@ -23,6 +22,7 @@ use kelir_interface::handles_lifecycle::VmHandle as CoreVmHandle;
 use kelir_interface::hex_codec::decode_hex_fixed;
 use kelir_interface::plugin_model::{PluginError, PluginRegistration};
 use kelir_interface::runtime_block::block_on;
+use kelir_interface::storage::FsReconcileRequest;
 
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 fn halt(error: PluginError) -> PyErr {
