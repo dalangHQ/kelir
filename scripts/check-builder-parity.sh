@@ -7,8 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 YAML="$ROOT/scripts/builder-parity-verbs.yaml"
-RS_BUILDER="crates/kelir/src/builder_sdk.rs crates/kelir/src/builder_plugin.rs"
-RS_SCOPES="crates/kelir/src/builder_scopes.rs"
+RS_BUILDER="crates/kelir/src/builder_sdk.flow.rs crates/kelir/src/builder_plugin.flow.rs"
+RS_SCOPES="crates/kelir/src/builder_scopes.flow.rs"
 TS_BUILDER="packages/ts/core/src/builder.lifecycle.ts"
 TS_SCOPES="packages/ts/core/src/hook.registry.ts"
 PY_FILE="packages/py/kelir/kelir_builder.py"
@@ -493,11 +493,11 @@ check_guard_shape() {
 # see: cans/02-plugin-model.md#Chain-decisions
 check_fork_host_errors() {
     check
-    if grep -qE "fn fork_state.*Result<" crates/kelir-interface/src/plugin_model.rs crates/kelir/src/builder_plugin.rs; then
+    if grep -qE "fn fork_state.*Result<" crates/kelir-interface/src/plugin_model.flow.rs crates/kelir/src/builder_plugin.flow.rs; then
         :
-    elif ! grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Mode," \
-        && ! grep -A1 "> AnyPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Mode," \
-        && grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.rs | grep -q "for KelirBuilder<Plugin,"; then
+    elif ! grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.flow.rs | grep -q "for KelirBuilder<Mode," \
+        && ! grep -A1 "> AnyPlugin\$" crates/kelir/src/builder_plugin.flow.rs | grep -q "for KelirBuilder<Mode," \
+        && grep -A1 "> KelirPlugin\$" crates/kelir/src/builder_plugin.flow.rs | grep -q "for KelirBuilder<Plugin,"; then
         :
     else
         fail "rust: host-mode fork does not error (want fork_state returning Result, or KelirPlugin/AnyPlugin implemented for plugin-mode builders only)"
@@ -513,11 +513,11 @@ check_fork_host_errors() {
 # see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
 check_seal_time_mount_checks() {
     check
-    rs_seal_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn seal\($' '^    pub fn ' || true)"
+    rs_seal_body="$(body_lines crates/kelir/src/builder_sdk.flow.rs '^    pub fn seal\($' '^    pub fn ' || true)"
     if printf '%s' "$rs_seal_body" | grep -qF "plugin already mounted"; then :; else fail "rust: seal() does not reject a duplicate mount (want 'plugin already mounted' in seal())"; fi
     check
-    rs_plugin_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn plugin<' '^    pub fn r#use' || true)"
-    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
+    rs_plugin_body="$(body_lines crates/kelir/src/builder_sdk.flow.rs '^    pub fn plugin<' '^    pub fn r#use' || true)"
+    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.flow.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
     if printf '%s\n%s' "$rs_plugin_body" "$rs_use_body" | grep -qF "already mounted"; then fail "rust: duplicate-mount check still runs at mount time (.plugin()/.use())"; fi
     check
     ts_use_body="$(body_lines "$TS_BUILDER" '^  use<' '^  plugin<' || true)"
@@ -537,8 +537,8 @@ check_seal_time_mount_checks() {
 # see: cans/03-sdk-architecture.md#Unified-builder-surface
 check_plugin_mount_alias() {
     check
-    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
-    if grep -qE "pub fn plugin<" crates/kelir/src/builder_sdk.rs && printf '%s' "$rs_use_body" | grep -qF "self.plugin(plugin)"; then :; else fail "rust: .plugin() mount alias missing on the host builder (want pub fn plugin + r#use delegating to self.plugin)"; fi
+    rs_use_body="$(body_lines crates/kelir/src/builder_sdk.flow.rs '^    pub fn r#use' '^    pub fn plugin_instance' || true)"
+    if grep -qE "pub fn plugin<" crates/kelir/src/builder_sdk.flow.rs && printf '%s' "$rs_use_body" | grep -qF "self.plugin(plugin)"; then :; else fail "rust: .plugin() mount alias missing on the host builder (want pub fn plugin + r#use delegating to self.plugin)"; fi
     check
     ts_plugin_body="$(body_lines "$TS_BUILDER" '^  plugin<' '^  private checkedTrapContext' || true)"
     if printf '%s' "$ts_plugin_body" | grep -qF "return this.use(plugin)"; then :; else fail "ts: .plugin() does not delegate to .use()"; fi

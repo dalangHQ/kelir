@@ -23,6 +23,7 @@ use kelir::{
 const IDENTITY_PATH: &str = "/workspace/.policy/identity";
 const IDENTITY_CONTENT: &[u8] = b"policy-matrix-identity\n";
 const DENY_MARKER: &[u8] = b"198.51.100.";
+const ABORT_MARKER: &[u8] = b"203.0.113.99";
 const TOKEN_PREFIX: &[u8] = b"sk_live_";
 const TOKEN_SUFFIX_LEN: usize = 24;
 const TOKEN_LEN: usize = TOKEN_PREFIX.len() + TOKEN_SUFFIX_LEN;
@@ -127,6 +128,15 @@ impl NetInterposer for HookMatrixPlugin {
         if frame.windows(DENY_MARKER.len()).any(|w| w == DENY_MARKER) {
             return Ok(FilterAction::Suspend {
                 until: SuspendUntil::Deadline(0),
+            });
+        }
+        Ok(FilterAction::Forward)
+    }
+
+    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        if frame.windows(ABORT_MARKER.len()).any(|w| w == ABORT_MARKER) {
+            return Ok(FilterAction::Abort {
+                reason: "inbound abort marker".into(),
             });
         }
         Ok(FilterAction::Forward)

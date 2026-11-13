@@ -7,6 +7,7 @@ import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil,
 const IDENTITY_PATH = "/workspace/.policy/identity";
 const IDENTITY_CONTENT = "policy-matrix-identity\n";
 const DENY_MARKER = "198.51.100.";
+const ABORT_MARKER = "203.0.113.99";
 const TOKEN_PREFIX = "sk_live_";
 const TOKEN_LEN = TOKEN_PREFIX.length + 24;
 const CARRYOVER = TOKEN_LEN - 1;
@@ -52,6 +53,13 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
       return FilterAction.Suspend(SuspendUntil.deadline(0));
+    }
+    return FilterAction.Forward;
+  })
+  .onNetInbound((frame) => {
+    const text = Buffer.from(frame).toString("latin1");
+    if (text.includes(ABORT_MARKER)) {
+      return FilterAction.Abort("inbound abort marker");
     }
     return FilterAction.Forward;
   })

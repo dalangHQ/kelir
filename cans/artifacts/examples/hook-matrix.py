@@ -22,6 +22,7 @@ from kelir.model_plugin import (
 IDENTITY_PATH = "/workspace/.policy/identity"
 IDENTITY_CONTENT = b"policy-matrix-identity\n"
 DENY_MARKER = b"198.51.100."
+ABORT_MARKER = b"203.0.113.99"
 TOKEN_PREFIX = b"sk_live_"
 TOKEN_LEN = len(TOKEN_PREFIX) + 24
 CARRYOVER = TOKEN_LEN - 1
@@ -72,6 +73,11 @@ class HookMatrixPlugin(BasePlugin):
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
         if DENY_MARKER in frame:
             return FilterAction.suspend(until=Deadline(0))
+        return FilterAction.forward()
+
+    def on_net_inbound(self, frame: bytearray) -> FilterAction:
+        if ABORT_MARKER in frame:
+            return FilterAction.abort(reason="inbound abort marker")
         return FilterAction.forward()
 
     # see: cans/05-storage-plane.md#Storage-plane

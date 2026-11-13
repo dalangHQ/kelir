@@ -52,6 +52,15 @@ where
 {
 }
 
+// see: cans/02-plugin-model.md#Compile-time-prerequisites
+impl<Head, Tail, OtherTail> Satisfies<kelir_interface::plugin_model::HCons<Head, OtherTail>>
+    for HCons<Head, Tail>
+where
+    Head: Clone + Send + Sync + 'static,
+    Tail: HList + Satisfies<OtherTail>,
+{
+}
+
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 pub struct Here;
 
