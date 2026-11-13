@@ -44,8 +44,8 @@ kelir/
 │   │   │   ├── builder_plugin.rs          # Plugin-mode chain (KelirPlugin trait + ring traits)
 │   │   │   ├── builder_scopes.rs          # Scope builders for the fluent plugin-creation builder
 │   │   │   ├── hlist_sdk.rs               # Heterogeneous plugin-context list
-│   │   │   ├── plugin_model.rs              # Facade plugin re-exports
-│   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
+│   │   │   ├── plugin_model.flow.rs              # Facade plugin re-exports
+│   │   │   ├── protocol_wire.flow.rs            # Facade protocol re-exports
 │   │   │   ├── sandbox_runtime.rs             # Sandbox entrypoint
 │   │   │   ├── session_lifecycle.rs             # Session assembly from builder parts
 │   │   │   ├── telemetry_attest.rs           # Facade telemetry re-exports
@@ -71,31 +71,31 @@ kelir/
 │   │   ├── Cargo.toml                 # Dependencies: serde, blake3, ciborium, thiserror, async-trait, tokio
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Re-exports all core contracts
-│   │   │   ├── plugin_model.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
+│   │   │   ├── plugin_model.flow.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
 │   │   │   ├── driver_interface.rs              # VmmDriver, VmConfig, SnapshotDescriptor, WatchdogAction
-│   │   │   ├── protocol_wire.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
-│   │   │   ├── codec_protocol.rs               # Frame codec
+│   │   │   ├── protocol_wire.flow.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
+│   │   │   ├── codec_protocol.flow.rs               # Frame codec
 │   │   │   ├── credential_vault.rs          # Credential descriptors
-│   │   │   ├── fusion_plugin.rs              # AOT hook-fusion descriptors
-│   │   │   ├── handlers_plugin.rs            # HandlerCtx constructors
-│   │   │   ├── handles_lifecycle.rs             # Session/VM handle types
-│   │   │   ├── vsock_mesh.rs               # Vsock addressing
+│   │   │   ├── fusion_plugin.flow.rs              # AOT hook-fusion descriptors
+│   │   │   ├── handlers_plugin.flow.rs            # HandlerCtx constructors
+│   │   │   ├── handles_lifecycle.flow.rs             # Session/VM handle types
+│   │   │   ├── vsock_mesh.flow.rs               # Vsock addressing
 │   │   │   ├── wire/
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── net_ops.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
-│   │   │   │   ├── dns_ops.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
-│   │   │   │   ├── udp_nat.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
-│   │   │   │   └── l4_ops.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
+│   │   │   │   ├── dns_ops.flow.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
+│   │   │   │   ├── udp_nat.flow.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
+│   │   │   │   └── l4_ops.flow.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
 │   │   │   ├── telemetry/
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── delta_attest.rs           # CausalDelta
-│   │   │   │   └── receipt_attest.rs         # ExecutionReceipt
+│   │   │   │   ├── delta_attest.flow.rs           # CausalDelta
+│   │   │   │   └── receipt_attest.flow.rs         # ExecutionReceipt
 │   │   │   ├── storage/
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── fuse_ops.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
+│   │   │   │   ├── fuse_ops.flow.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
 │   │   │   │   ├── storage_io.rs          # StorageIo trait, RootHandle, HostFileLock
 │   │   │   │   ├── storage_reconciler.rs  # ReconcilerOps trait, FsReconcileRequest, CommitStats
-│   │   │   │   ├── storage_synthetic.rs   # SyntheticFile, DynamicFile
+│   │   │   │   ├── storage_synthetic.flow.rs   # SyntheticFile, DynamicFile
 │   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
 │   │   │   └── bin/
 │   │   │       └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
@@ -265,7 +265,7 @@ kelir/
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"
 │   │   ├── src/
-│   │   │   ├── codec_protocol.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
+│   │   │   ├── codec_protocol.flow.rs               # Raw slice bit-shift frame codec (zero serde/ciborium)
 │   │   │   ├── introspect_trap.rs          # Trap inspection for the seccomp notifier
 │   │   │   ├── introspect/
 │   │   │   │   └── uapi_trap.rs            # Generated ELF UAPI constants (linux/elf.h oracle)
@@ -425,12 +425,12 @@ kelir/
 │       │   ├── build.rs
 │       │   └── src/
 │       │       ├── lib.rs
-│       │       └── fusion_plugin.rs          # Fused trampoline descriptor conversion
+│       │       └── fusion_plugin.flow.rs          # Fused trampoline descriptor conversion
 │       └── pyo3/                      # Rust -> Python PyO3 bridge
 │           ├── Cargo.toml
 │           ├── src/
 │           │   ├── lib.rs
-│           │   └── fusion_plugin.rs          # Fused trampoline descriptor conversion
+│           │   └── fusion_plugin.flow.rs          # Fused trampoline descriptor conversion
 │           └── tests/
 │               └── descriptor_pyo3_test.rs
 │

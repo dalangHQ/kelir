@@ -1,10 +1,11 @@
 // see: cans/07-wire-plane.md#Wire-architecture
-#[path = "dns_ops.rs"]
+#[path = "dns_ops.flow.rs"]
 pub mod dns;
-#[path = "l4_ops.rs"]
+#[path = "l4_ops.flow.rs"]
 pub mod l4;
 #[path = "net_ops.rs"]
 pub mod net;
+#[path = "udp_nat.flow.rs"]
 pub mod udp_nat;
 
 pub use dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};
