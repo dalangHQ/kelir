@@ -1,4 +1,3 @@
-// TODO (L3) [governance_tools]: read CaseEntry.quadrant in the manifest gate; slop: quadrant parsed but never checked
 #![allow(dead_code)]
 use kelir_testkit::CaseMap;
 use kelir_testkit::case_map::SlopRegister;
@@ -114,6 +113,14 @@ fn valid_enum(value: &str, allowed: &[&str]) -> bool {
     allowed.contains(&value)
 }
 
+// see: cans/artifacts/test-plan/matrix.yaml#confusion_matrix.quadrants
+const QUADRANTS: &[&str] = &[
+    "true_positive",
+    "false_positive",
+    "false_negative",
+    "true_negative",
+];
+
 // see: cans/artifacts/test-plan/manifest.yaml#domains
 fn domain_of(rel: &str) -> Option<&str> {
     let after_cases = rel.strip_prefix("cases/")?;
@@ -148,6 +155,88 @@ fn valid_target_crate(repo_root: &Path, value: &str) -> bool {
             && (entry.path().join("Cargo.toml").is_file()
                 || entry.path().join("package.json").is_file())
     })
+}
+
+#[derive(serde::Deserialize)]
+struct PluginRootToml {
+    package: PluginPackageToml,
+}
+
+#[derive(serde::Deserialize)]
+struct PluginPackageToml {
+    name: String,
+    #[serde(default)]
+    metadata: Option<PluginMetadataToml>,
+}
+
+#[derive(serde::Deserialize)]
+struct PluginMetadataToml {
+    kelir: PluginKelirToml,
+}
+
+#[derive(serde::Deserialize)]
+struct PluginKelirToml {
+    tier: PluginTierToml,
+}
+
+#[derive(serde::Deserialize)]
+struct PluginTierToml {
+    level: u8,
+    name: String,
+}
+
+// see: cans/02-plugin-model.md#Plugin-tiering
+fn tier_roster(repo_root: &Path) -> Result<Vec<String>, String> {
+    let plugin_dir = repo_root.join("crates/kelir-plugins");
+    let entries = fs::read_dir(&plugin_dir)
+        .map_err(|e| format!("check-manifest: cannot read {}: {e}", plugin_dir.display()))?;
+    let mut roster: Vec<String> = Vec::new();
+    for entry in entries {
+        let dir = entry
+            .map_err(|e| format!("check-manifest: cannot read {}: {e}", plugin_dir.display()))?
+            .path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(&manifest)
+            .map_err(|e| format!("check-manifest: cannot read {}: {e}", manifest.display()))?;
+        let parsed: PluginRootToml = toml::from_str(&text)
+            .map_err(|e| format!("check-manifest: {} rejected: {e}", manifest.display()))?;
+        if parsed.package.metadata.is_none() {
+            return Err(format!(
+                "check-manifest: {} declares no [package.metadata.kelir.tier]",
+                manifest.display()
+            ));
+        }
+        roster.push(parsed.package.name);
+    }
+    if roster.is_empty() {
+        return Err(format!(
+            "check-manifest: no plugin manifests found under {}",
+            plugin_dir.display()
+        ));
+    }
+    roster.sort();
+    Ok(roster)
+}
+
+// see: cans/02-plugin-model.md#Plugin-tiering
+fn plugin_crate_name(repo_root: &Path, krate: &str) -> Option<String> {
+    let dir = repo_root.join(krate);
+    if !dir
+        .parent()
+        .is_some_and(|parent| parent.ends_with("kelir-plugins"))
+    {
+        return None;
+    }
+    let manifest = dir.join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).ok()?;
+    let parsed: PluginRootToml = toml::from_str(&text).ok()?;
+    Some(parsed.package.name)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -303,6 +392,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // see: cans/02-plugin-model.md#Plugin-tiering
+    let mut roster_names: HashSet<String> = HashSet::new();
+    match tier_roster(&repo_root) {
+        Ok(names) => roster_names.extend(names),
+        Err(err) => {
+            eprintln!("ERROR: {err}");
+            errors += 1;
+        }
+    }
+
     for case in &manifest.cases {
         match &case.target_tier {
             Some(tier) if valid_enum(tier, &["unit", "integration", "e2e"]) => {}
@@ -319,7 +418,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         match &case.target_crate {
-            Some(krate) if valid_target_crate(&repo_root, krate) => {}
+            Some(krate) if valid_target_crate(&repo_root, krate) => {
+                match plugin_crate_name(&repo_root, krate) {
+                    Some(name) if roster_names.contains(&name) => {}
+                    Some(name) => {
+                        eprintln!(
+                            "ERROR: manifest {}: target_crate `{krate}` ({name}) is not in the plugin tier roster",
+                            case.case_id
+                        );
+                        errors += 1;
+                    }
+                    None => {}
+                }
+            }
             Some(krate) => {
                 eprintln!(
                     "ERROR: manifest {}: target_crate is not a crate or crate bucket on disk: {}",
@@ -329,6 +440,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             None => {
                 eprintln!("ERROR: manifest {}: missing target_crate", case.case_id);
+                errors += 1;
+            }
+        }
+        match &case.quadrant {
+            Some(quadrant) if QUADRANTS.contains(&quadrant.as_str()) => {}
+            Some(quadrant) => {
+                eprintln!(
+                    "ERROR: manifest {}: invalid quadrant: {}",
+                    case.case_id, quadrant
+                );
+                errors += 1;
+            }
+            None => {
+                eprintln!("ERROR: manifest {}: missing quadrant", case.case_id);
                 errors += 1;
             }
         }

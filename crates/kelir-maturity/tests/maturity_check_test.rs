@@ -1,5 +1,7 @@
 // see: cans/01-architecture.md#Codebase-invariants
-use kelir_maturity::{Level, Policy, check_tree, crate_of, level_of, read_allowed_levels};
+use kelir_maturity::{
+    ForbidMode, Level, Policy, check_tree, crate_of, level_of, read_allowed_levels,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +19,15 @@ pattern = '^\s*(pub\s+)?trait\b'
 
 fn policy() -> Policy {
     let parsed = Policy::from_toml(POLICY);
+    assert!(parsed.is_ok(), "test policy must parse");
+    match parsed {
+        Ok(p) => p,
+        Err(_) => Policy::empty(),
+    }
+}
+
+fn policy_mode(mode: &str) -> Policy {
+    let parsed = Policy::from_toml(&format!("[policy]\nforbid_mode = \"{mode}\"\n{POLICY}"));
     assert!(parsed.is_ok(), "test policy must parse");
     match parsed {
         Ok(p) => p,
@@ -99,6 +110,7 @@ fn placement_fails_for_l3_in_l1_l2_crate() {
     write_file(&dir.join("src").join("body.run.rs"), "pub fn run() {}\n");
     let report = check_tree(&root, &policy());
     assert_eq!(report.fails.len(), 1);
+    assert_eq!(report.hard_fails, 1);
     assert!(report.fails[0].contains("body.run.rs"));
     assert!(report.fails[0].contains("L3"));
     clean(&root);
@@ -152,8 +164,8 @@ fn l3_todo_warns_but_passes() {
 }
 
 #[test]
-fn l1_impl_block_warns_but_passes() {
-    let root = tree("impl");
+fn l1_impl_block_fails_in_error_mode() {
+    let root = tree("impl-err");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
     write_file(
         &dir.join("src").join("lib.rs"),
@@ -161,17 +173,56 @@ fn l1_impl_block_warns_but_passes() {
     );
     let report = check_tree(&root, &policy());
     assert!(
-        report.passed(),
-        "content rules warn only: {:?}",
+        !report.passed(),
+        "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert_eq!(report.warns.len(), 1);
-    assert!(report.warns[0].contains("impl-block"));
+    assert!(report
+        .fails
+        .iter()
+        .any(|f| f.contains("[forbid:impl-block]")));
+    assert_eq!(report.hard_fails, 0);
     clean(&root);
 }
 
 #[test]
-fn l2_domain_trait_impl_warns() {
+fn forbid_rules_warn_in_warn_mode() {
+    let root = tree("impl-warn");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(
+        &dir.join("src").join("lib.rs"),
+        "pub struct S;\nimpl S { pub fn f(&self) {} }\n",
+    );
+    let report = check_tree(&root, &policy_mode("warn"));
+    assert!(
+        report.passed(),
+        "warn-mode rollout keeps forbid rules non-fatal: {:?}",
+        report.fails
+    );
+    assert!(report
+        .warns
+        .iter()
+        .any(|w| w.contains("impl-block") && w.contains("(forbid, warn-mode rollout)")));
+    clean(&root);
+}
+
+#[test]
+fn forbid_mode_defaults_to_error_when_absent() {
+    let parsed = Policy::from_toml(POLICY);
+    assert!(parsed.is_ok(), "test policy must parse");
+    if let Ok(p) = parsed {
+        assert_eq!(p.forbid_mode, ForbidMode::Error);
+    }
+}
+
+#[test]
+fn forbid_mode_rejects_unknown_value() {
+    let parsed = Policy::from_toml("[policy]\nforbid_mode = \"loud\"\n");
+    assert!(parsed.is_err(), "unknown forbid_mode must be a parse error");
+}
+
+#[test]
+fn l2_domain_trait_impl_fails_in_error_mode() {
     let root = tree("domain");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
     write_file(
@@ -180,28 +231,125 @@ fn l2_domain_trait_impl_warns() {
     );
     let report = check_tree(&root, &policy());
     assert!(
-        report.passed(),
-        "content rules warn only: {:?}",
+        !report.passed(),
+        "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert_eq!(report.warns.len(), 1);
-    assert!(report.warns[0].contains("domain-trait-impl"));
+    assert!(report
+        .fails
+        .iter()
+        .any(|f| f.contains("[forbid:domain-trait-impl]")));
     clean(&root);
 }
 
 #[test]
-fn l3_trait_decl_warns() {
+fn l3_trait_decl_fails_in_error_mode() {
     let root = tree("trait");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
     write_file(&dir.join("src").join("body.run.rs"), "pub trait Foo {}\n");
     let report = check_tree(&root, &policy());
     assert!(
-        report.passed(),
-        "content rules warn only: {:?}",
+        !report.passed(),
+        "error-mode forbid rules must fail: {:?}",
         report.fails
     );
-    assert_eq!(report.warns.len(), 1);
-    assert!(report.warns[0].contains("trait-decl"));
+    assert!(report
+        .fails
+        .iter()
+        .any(|f| f.contains("[forbid:trait-decl]")));
+    clean(&root);
+}
+
+#[test]
+fn structure_s1_l1_runtime_concern_fails() {
+    let root = tree("s1");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("contract.rs"), "pub async fn boot() {}\n");
+    let report = check_tree(&root, &policy());
+    assert_eq!(report.fails.len(), 1);
+    assert!(report.fails[0].contains("contract.rs"));
+    assert!(report.fails[0].contains("[structure:S1]"));
+    clean(&root);
+}
+
+#[test]
+fn structure_s2_oversized_aggregator_fails() {
+    let root = tree("s2");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    let mut lib = String::new();
+    for i in 0..120 {
+        lib.push_str(&format!("pub const F{i}: u8 = 0;\n"));
+    }
+    lib.push_str("pub struct S;\nimpl S { pub fn f(&mut self) { let _ = F0; } }\n");
+    write_file(&dir.join("src").join("lib.rs"), &lib);
+    let report = check_tree(&root, &Policy::empty());
+    assert_eq!(report.fails.len(), 1);
+    assert!(report.fails[0].contains("lib.rs"));
+    assert!(report.fails[0].contains("[structure:S2]"));
+    clean(&root);
+}
+
+#[test]
+fn structure_s3_flow_runtime_fails() {
+    let root = tree("s3");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(
+        &dir.join("src").join("spawn.flow.rs"),
+        "pub fn start() { std::thread::spawn(|| {}); }\n",
+    );
+    let report = check_tree(&root, &Policy::empty());
+    assert_eq!(report.fails.len(), 1);
+    assert!(report.fails[0].contains("spawn.flow.rs"));
+    assert!(report.fails[0].contains("[structure:S3]"));
+    clean(&root);
+}
+
+#[test]
+fn structure_s4_flow_io_in_l3_crate_fails() {
+    let root = tree("s4");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(
+        &dir.join("src").join("io.flow.rs"),
+        "pub async fn load() -> Vec<u8> { std::fs::read(\"x\").unwrap_or_default() }\n",
+    );
+    let report = check_tree(&root, &Policy::empty());
+    assert_eq!(report.fails.len(), 1);
+    assert!(report.fails[0].contains("io.flow.rs"));
+    assert!(report.fails[0].contains("[structure:S4]"));
+    clean(&root);
+}
+
+#[test]
+fn structure_s5_async_mod_fails() {
+    let root = tree("s5");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(
+        &dir.join("src").join("deep").join("mod.rs"),
+        "pub struct S;\nimpl S { pub async fn f(&mut self) {} }\n",
+    );
+    let report = check_tree(&root, &Policy::empty());
+    assert!(report
+        .fails
+        .iter()
+        .any(|f| f.contains("mod.rs") && f.contains("[structure:S5]")));
+    clean(&root);
+}
+
+#[test]
+fn structure_rules_warn_in_warn_mode() {
+    let root = tree("s-warn");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("contract.rs"), "pub async fn boot() {}\n");
+    let report = check_tree(&root, &policy_mode("warn"));
+    assert!(
+        report.passed(),
+        "warn-mode rollout keeps structural rules non-fatal: {:?}",
+        report.fails
+    );
+    assert!(report
+        .warns
+        .iter()
+        .any(|w| w.contains("contract.rs") && w.contains("(structure:S1, warn-mode rollout)")));
     clean(&root);
 }
 
@@ -221,7 +369,8 @@ fn shipped_policy_parses() {
         Ok(p) => p,
         Err(_) => Policy::empty(),
     };
-    assert_eq!(policy.l2_max_delta_per_pr, 20);
+    assert_eq!(policy.l2_max_delta_per_pr, 60);
+    assert_eq!(policy.forbid_mode, ForbidMode::Warn);
     assert!(policy.rules.iter().any(|r| r.id == "impl-block"));
     assert!(policy.rules.iter().any(|r| r.id == "domain-trait-impl"));
     assert!(policy.rules.iter().any(|r| r.id == "trait-decl"));

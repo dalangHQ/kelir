@@ -4,11 +4,24 @@
 pub mod records_otlp;
 #[path = "registry_otlp.flow.rs"]
 pub mod registry_otlp;
+#[path = "exporter.flow.rs"]
+pub mod exporter;
+#[path = "encoder.flow.rs"]
+pub mod encoder;
+#[path = "span.flow.rs"]
+pub mod span;
+#[path = "exporter.run.rs"]
+pub mod exporter_run;
+#[path = "encoder.run.rs"]
+pub mod encoder_run;
 
+pub use encoder::OtlpEncoder;
+pub use exporter::{OtlpEndpoint, OtlpExporter, OtlpExporterConfig};
 pub use records_otlp::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
 pub use registry_otlp::{MetricRegistry, MetricSnapshot};
+pub use span::OtlpSpan;
+pub(crate) use span::phase_spans;
 
-use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, PhaseTimings};
 use thiserror::Error;
 
 // see: cans/14-observability.md#Metrics-pipeline
@@ -22,174 +35,4 @@ pub enum OtlpError {
     NotImplemented(String),
     #[error("OTLP endpoint invalid: {0}")]
     InvalidEndpoint(String),
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtlpEndpoint {
-    pub url: String,
-}
-
-impl OtlpEndpoint {
-    pub fn new(url: impl Into<String>) -> Result<Self, OtlpError> {
-        let url = url.into();
-        if url.starts_with("http://") || url.starts_with("https://") {
-            Ok(Self { url })
-        } else {
-            Err(OtlpError::InvalidEndpoint(url))
-        }
-    }
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtlpExporterConfig {
-    pub endpoint: OtlpEndpoint,
-    pub service_name: String,
-}
-
-impl OtlpExporterConfig {
-    pub fn new(endpoint: OtlpEndpoint, service_name: impl Into<String>) -> Self {
-        Self {
-            endpoint,
-            service_name: service_name.into(),
-        }
-    }
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OtlpSpan {
-    pub name: String,
-    pub start_ns: u64,
-    pub end_ns: u64,
-}
-
-impl OtlpSpan {
-    pub fn new(name: impl Into<String>, start_ns: u64, end_ns: u64) -> Self {
-        Self {
-            name: name.into(),
-            start_ns,
-            end_ns,
-        }
-    }
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-// see: cans/10-attestation.md#phase-spans
-pub(crate) fn phase_spans(timings: Option<&PhaseTimings>) -> Vec<OtlpSpan> {
-    let mut spans = Vec::new();
-    if let Some(timings) = timings {
-        let mut start_ns = 0;
-        for (name, duration_ns) in [
-            ("trap_ingress", timings.trap_ingress_ns),
-            ("ffi_hop", timings.ffi_hop_ns),
-            ("policy", timings.policy_ns),
-            ("verdict_egress", timings.verdict_egress_ns),
-        ] {
-            spans.push(OtlpSpan::new(name, start_ns, start_ns + duration_ns));
-            start_ns += duration_ns;
-        }
-    }
-    spans
-}
-
-// see: cans/14-observability.md#Metrics-pipeline
-#[derive(Debug, Clone, Default)]
-pub struct OtlpEncoder;
-
-impl OtlpEncoder {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn encode_receipt(&self, record: &OtlpReceiptRecord) -> Result<Vec<u8>, OtlpError> {
-        let _ = record;
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: encode the receipt record into an OTLP protobuf payload.; slop: receipt bytes mistaken for export, zero gRPC frames sent
-        Err(OtlpError::NotImplemented(
-            "encode_receipt OTLP protobuf encoding (L3)".to_string(),
-        ))
-    }
-
-    pub fn encode_phase_timings(
-        &self,
-        record: &OtlpPhaseTimingRecord,
-    ) -> Result<Vec<u8>, OtlpError> {
-        let _ = record;
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: encode the phase-timing record into an OTLP protobuf payload.; slop: timing bytes mistaken for export, zero gRPC frames sent
-        Err(OtlpError::NotImplemented(
-            "encode_phase_timings OTLP protobuf encoding (L3)".to_string(),
-        ))
-    }
-
-    pub fn encode_span(&self, span: &OtlpSpan) -> Result<Vec<u8>, OtlpError> {
-        let _ = span;
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: encode the span into an OTLP protobuf payload.; slop: span bytes mistaken for export, zero gRPC frames sent
-        Err(OtlpError::NotImplemented(
-            "encode_span OTLP protobuf encoding (L3)".to_string(),
-        ))
-    }
-
-    pub fn encode_causal_delta(
-        &self,
-        record: &OtlpCausalDeltaRecord,
-    ) -> Result<Vec<u8>, OtlpError> {
-        let _ = record;
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: encode the causal-delta record into an OTLP protobuf payload.; slop: delta bytes mistaken for export, zero gRPC frames sent
-        Err(OtlpError::NotImplemented(
-            "encode_causal_delta OTLP protobuf encoding (L3)".to_string(),
-        ))
-    }
-
-    pub fn encode_metrics(&self, snapshot: &MetricSnapshot) -> Result<Vec<u8>, OtlpError> {
-        let _ = snapshot;
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: encode the metric snapshot into an OTLP protobuf payload.; slop: metric bytes mistaken for export, zero gRPC frames sent
-        Err(OtlpError::NotImplemented(
-            "encode_metrics OTLP protobuf encoding (L3)".to_string(),
-        ))
-    }
-}
-
-pub struct OtlpExporter {
-    pub config: OtlpExporterConfig,
-    pub encoder: OtlpEncoder,
-}
-
-impl OtlpExporter {
-    pub fn new(endpoint: impl Into<String>) -> Result<Self, OtlpError> {
-        Ok(Self {
-            config: OtlpExporterConfig::new(OtlpEndpoint::new(endpoint)?, "kelir"),
-            encoder: OtlpEncoder::new(),
-        })
-    }
-
-    pub fn with_config(config: OtlpExporterConfig) -> Self {
-        Self {
-            config,
-            encoder: OtlpEncoder::new(),
-        }
-    }
-
-    pub fn export_receipt(&self, receipt: &ExecutionReceipt) -> Result<Vec<u8>, OtlpError> {
-        let record = OtlpReceiptRecord::from_receipt(receipt);
-        self.encoder.encode_receipt(&record)
-    }
-
-    pub fn export_phase_timings(&self, timings: &PhaseTimings) -> Result<Vec<u8>, OtlpError> {
-        let record = OtlpPhaseTimingRecord::from_timings(timings);
-        self.encoder.encode_phase_timings(&record)
-    }
-
-    pub fn export_span(&self, span: &OtlpSpan) -> Result<Vec<u8>, OtlpError> {
-        self.encoder.encode_span(span)
-    }
-
-    pub fn export_causal_delta(&self, delta: &CausalDelta) -> Result<Vec<u8>, OtlpError> {
-        let record = OtlpCausalDeltaRecord::from_delta(delta);
-        self.encoder.encode_causal_delta(&record)
-    }
-
-    pub fn export_metrics(&self, snapshot: &MetricSnapshot) -> Result<Vec<u8>, OtlpError> {
-        self.encoder.encode_metrics(snapshot)
-    }
 }
