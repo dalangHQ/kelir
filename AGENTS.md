@@ -26,6 +26,7 @@ If this file and another doc disagree on *how* work is done, this file wins. If 
 - **L1 — The Contract.** Compilable interfaces, types, skeletons, empty method signatures only. No implementation logic. A cheatsheet the compiler accepts.
 - **L2 — The Skeleton & Flow (Wiring).** Internal state, pipeline dispatch, invocation plumbing, the whole execution path wired end to end. Complex algorithms stay as `// TODO` markers returning a typed `Result` or zero-value.
 - **L3 — The Meat (Deep Implementation).** Fill in the final TODOs. Zero unwritten logic, zero stubs, zero band-aids.
+- Level is the filename suffix: `.rs` is L1, `.flow.rs` is L2, `.run.rs` is L3 (cans/01-architecture.md#Maturity-discipline).
 - Current phase: **L1/L2 only. No L3, no inline tests.** L3 starts only when the user says so.
 
 ## 3. Comment law (hard rule)
