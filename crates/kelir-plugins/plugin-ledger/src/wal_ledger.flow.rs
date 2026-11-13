@@ -32,6 +32,7 @@ pub struct WalRecord {
 }
 
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
+#[path = "wal_ledger/merkle_wal.flow.rs"]
 pub mod merkle_wal;
 
 impl WalRecord {

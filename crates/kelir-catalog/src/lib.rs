@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+#[path = "schema_catalog.flow.rs"]
 pub mod schema_catalog;
 
 use crate::schema_catalog::{IncarnationId, LeaseKind, SCHEMA_SQL, SessionRow};

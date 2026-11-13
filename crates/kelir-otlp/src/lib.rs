@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
+#[path = "records_otlp.flow.rs"]
 pub mod records_otlp;
+#[path = "registry_otlp.flow.rs"]
 pub mod registry_otlp;
 
 pub use records_otlp::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};

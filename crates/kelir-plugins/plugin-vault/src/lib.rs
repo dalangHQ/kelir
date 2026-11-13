@@ -1,6 +1,7 @@
 // see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
+#[path = "service_vault.flow.rs"]
 pub mod service_vault;
 
 use std::sync::{Arc, Mutex, MutexGuard};

@@ -11,6 +11,7 @@ use napi::{Error, Result, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex as AsyncMutex;
 
+#[path = "fusion_plugin.flow.rs"]
 pub mod fusion_plugin;
 pub mod storage_bridge;
 

@@ -2,9 +2,13 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3) [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
+#[path = "pgwire_db_proxy.flow.rs"]
 pub mod pgwire_db_proxy;
+#[path = "reassembler_wire.run.rs"]
 pub mod reassembler_wire;
+#[path = "service_db_proxy.flow.rs"]
 pub mod service_db_proxy;
+#[path = "sqlite_db_proxy.flow.rs"]
 pub mod sqlite_db_proxy;
 pub use service_db_proxy::SqlProxyService;
 

@@ -9,6 +9,7 @@ use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 
+#[path = "fusion_plugin.flow.rs"]
 pub mod fusion_plugin;
 pub mod storage_bridge;
 

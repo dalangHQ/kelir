@@ -13,6 +13,7 @@ use kelir_interface::plugin_model::{
 };
 use kelir_interface::protocol_wire::{Errno, TrapEvent, Verdict};
 
+#[path = "service_container.flow.rs"]
 pub mod service_container;
 
 pub use service_container::{ContainerCtx, ContainerService, SharedContainerService};

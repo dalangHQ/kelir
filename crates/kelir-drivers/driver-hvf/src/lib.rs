@@ -3,6 +3,7 @@
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-hvf
+#[path = "sys_driver.run.rs"]
 pub mod sys_driver;
 
 use kelir_interface::driver_interface::{

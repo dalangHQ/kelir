@@ -7,6 +7,7 @@
 
 mod codec_protocol;
 mod introspect_trap;
+#[path = "multiplexer_protocol.run.rs"]
 mod multiplexer_protocol;
 mod pty_terminal;
 mod trap_protocol;

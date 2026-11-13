@@ -187,22 +187,22 @@ kelir/
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Transport trait (read/write/flush)
-│   │   │   ├── spsc_ring.rs           # SpscRingTransport + OwnedSpscRing
-│   │   │   ├── fallback_transport.rs            # VsockFallbackTransport + NamedPipeFallbackTransport
-│   │   │   └── host_bind.rs           # HostListener: SO_REUSEADDR|SO_REUSEPORT bind for the wire-plane port-forward registry
+│   │   │   ├── spsc_ring.flow.rs           # SpscRingTransport + OwnedSpscRing
+│   │   │   ├── fallback_transport.flow.rs            # VsockFallbackTransport + NamedPipeFallbackTransport
+│   │   │   └── host_bind.run.rs           # HostListener: SO_REUSEADDR|SO_REUSEPORT bind for the wire-plane port-forward registry
 │   │   └── tests/
 │   │       └── ring_spsc_transport_test.rs
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # CatalogDb: open, register_session, lookup_session, disk_lock_handoff, heartbeat_lease
-│   │   │   └── schema_catalog.rs              # SessionRow, CasLease, IncarnationId
+│   │   │   └── schema_catalog.flow.rs              # SessionRow, CasLease, IncarnationId
 │   │   └── tests/
 │   │       └── session_lease_catalog_test.rs
 │   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # OtlpExporter, OtlpEncoder, OtlpEndpoint, OtlpSpan
-│   │   │   ├── records_otlp.rs             # OTLP record transforms (receipts, causal deltas)
-│   │   │   └── registry_otlp.rs            # MetricRegistry + MetricSnapshot
+│   │   │   ├── records_otlp.flow.rs             # OTLP record transforms (receipts, causal deltas)
+│   │   │   └── registry_otlp.flow.rs            # MetricRegistry + MetricSnapshot
 │   │   └── tests/
 │   │       └── exporter_otlp_test.rs
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
@@ -270,7 +270,7 @@ kelir/
 │   │   │   ├── introspect/
 │   │   │   │   └── uapi_trap.rs            # Generated ELF UAPI constants (linux/elf.h oracle)
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
-│   │   │   ├── multiplexer_protocol.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
+│   │   │   ├── multiplexer_protocol.run.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
 │   │   │   ├── pty_terminal.rs                 # openpty() line discipline broker for console ring
 │   │   │   └── trap_protocol.rs                # seccomp-unotify trap forwarder
 │   │   └── tests/
@@ -288,7 +288,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   └── sys_driver.rs             # Raw Hypervisor.framework bindings
+│   │   │   │   └── sys_driver.run.rs             # Raw Hypervisor.framework bindings
 │   │   │   └── tests/
 │   │   │       └── lazy_construction_driver_test.rs
 │   │   ├── driver-openvmm/            # Windows WHP + ConPTY (scoped strictly to windows-sys)
@@ -320,8 +320,8 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   ├── wal_ledger.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
-│   │   │   │   ├── otel_ledger.rs            # W3C traceparent context propagator
+│   │   │   │   ├── wal_ledger.flow.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
+│   │   │   │   ├── otel_ledger.flow.rs            # W3C traceparent context propagator
 │   │   │   │   └── compute_ledger.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
 │   │   │   └── tests/
 │   │   │       └── wal_merkle_attest_test.rs
@@ -332,7 +332,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs             # Verdict engine (Pass | Patch(PgFrame) | Drop | Suspend | Abort)
-│   │   │   │   └── pgwire_db_proxy.rs          # L7 pgwire parsing
+│   │   │   │   └── pgwire_db_proxy.flow.rs          # L7 pgwire parsing
 │   │   │   └── tests/
 │   │   │       └── proxy_pgwire_protocol_test.rs
 │   │   ├── plugin-mesh/               # Sovereign federation transport: peer vsock stream with mTLS framing
@@ -356,21 +356,21 @@ kelir/
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs             # ToolInterposer: on_tool_list, on_tool_call, on_tool_result
 │   │   │   │   ├── jsonrpc.rs         # JSON-RPC 2.0 parsing
-│   │   │   │   └── service_tool_guard.rs         # Tool-call interposition service
+│   │   │   │   └── service_tool_guard.flow.rs         # Tool-call interposition service
 │   │   │   └── tests/
 │   │   │       └── interposer_tool_guard_test.rs
 │   │   ├── plugin-vault/              # Out-of-band credential broker, host keyring sole secret store, mlock zeroization on drop
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   └── service_vault.rs         # Vault broker service
+│   │   │   │   └── service_vault.flow.rs         # Vault broker service
 │   │   │   └── tests/
 │   │   │       └── token_metadata_vault_test.rs
 │   │   ├── plugin-container/          # Rootless OCI container runner & cgroup v2 setup
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/
 │   │   │       ├── lib.rs
-│   │   │       └── service_container.rs         # Container runner service
+│   │   │       └── service_container.flow.rs         # Container runner service
 │   │   ├── plugin-replay/             # PMU instruction-stepped deterministic clock replay
 │   │   │   ├── Cargo.toml
 │   │   │   └── src/lib.rs
@@ -378,7 +378,7 @@ kelir/
 │   │       ├── Cargo.toml
 │   │       ├── src/
 │   │       │   ├── lib.rs             # TransactionService: scoped 2PC, savepoints, taint rollback
-│   │       │   └── service_transaction.rs         # 2PC coordination service
+│   │       │   └── service_transaction.flow.rs         # 2PC coordination service
 │   │       └── tests/
 │   │           └── twopc_transaction_test.rs
 │   │   # No tests/ yet in: chaos, container, mcp, mesh, profile, replay

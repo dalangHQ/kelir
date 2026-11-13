@@ -10,6 +10,7 @@ use kelir_interface::plugin_model::PluginError;
 
 use crate::pgwire_db_proxy::PgFrameDescriptor;
 
+#[path = "reassembler_wire/layout_wire.flow.rs"]
 mod layout_wire;
 
 pub use self::layout_wire::{

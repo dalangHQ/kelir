@@ -13,7 +13,9 @@ use kelir_otlp::registry_otlp::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
 
 pub mod compute_ledger;
+#[path = "otel_ledger.flow.rs"]
 pub mod otel_ledger;
+#[path = "wal_ledger.flow.rs"]
 pub mod wal_ledger;
 
 pub use otel_ledger::TraceParent;

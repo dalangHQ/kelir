@@ -16,6 +16,7 @@ use kelir_interface::plugin_model::{
 };
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
+#[path = "service_transaction.flow.rs"]
 pub mod service_transaction;
 pub use service_transaction::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
 

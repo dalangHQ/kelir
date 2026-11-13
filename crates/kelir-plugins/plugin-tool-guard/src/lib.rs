@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3) [governance_tools]: tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt; slop: test_tool_guard.rs missing, guard verdicts untested, Pass stub passes vacuously
+#[path = "service_tool_guard.flow.rs"]
 pub mod service_tool_guard;
 
 use std::collections::HashMap;
