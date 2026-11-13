@@ -187,9 +187,9 @@
         - Asserts every nested scope exists on host mode and plugin mode
         - Asserts every mount merges: host descriptors include plugin hooks
         - 50 builder cases: one per verb (30), one per scope (8), one per merge (8)
-        - Plus one per chain verb (4)
-        - 58 vectors live in vectors.json; 62 total once the 4 chain cases generate
-          - 50 builder cases plus the 12 other cases
+        - Plus one per chain verb (5)
+        - 58 vectors live in vectors.json; 63 total once the 5 chain cases generate
+          - 50 builder cases plus the 13 other cases
         - Asserts every Verdict and FilterAction outcome appears in a case
         - Verb home: see: 02-plugin-model.md#Chainable-verbs
         - Scope home: see: 02-plugin-model.md#Nested-scopes
@@ -199,7 +199,7 @@
         - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
       - --fluent-builder-coverage
         - History, not a second gate: see: #--unified-builder-coverage
-        - Current count there: 46 builder cases, 58 vectors; 50/62 once the 4 chain cases generate
+        - Current count there: 46 builder cases, 58 vectors; 50/63 once the 5 chain cases generate
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes
@@ -294,13 +294,18 @@
       - Reusable workflow sketch: see: artifacts/config/plugin-ci-reusable.yml
       - Attestation flow sketch: see: [6]
     - External repos run local contract audit via `kelir-plugin-cli check`
+    - External-plugin layout gate
+      - External repos must match 02-plugin-model.md#External-plugins
+      - Hand-written bindings/ts or bindings/py fail the layout gate
+      - Enforcement: spec-only; owner is kelir-plugin-cli check (no hook yet)
     - Standalone plugin repo layout: see: 02-plugin-model.md#External-plugins
   - Plugin registry
     - First-class plugin catalog is compiled in; external index poller is opt-in
     - Downstream state shape when enabled: see: [6]
     - Index schema indexes by plugin crate, tier, ring mask, telemetry role
   - Multi-language parity gate
-    - Rust macros generate typed FFI stubs: napi-rs for TS, pyo3 for Python
+    - Rust codegen generates typed wrappers from kelir-interface types
+      - napi-rs bridges TS, pyo3 bridges Python; both Kelir-owned
     - Parity evaluated on identical wire frame inputs and outputs using vectors.json
     - Syntax is idiomatic per language runtime, not copied across SDKs
     - Gating is behavioral, not type-level
@@ -331,12 +336,19 @@
     - Binding coverage assertion
       - Every kelir-engine primitive exposed in FFI must have a parity test
       - Missing coverage blocks core and plugin releases immediately
+    - Generated-bindings drift gate
+      - Generated TS/Python wrappers must match the Rust codegen output
+      - Drift fails CI; regenerate with the Rust codegen bin
+      - Enforcement: just check-codegen (codegen drift check)
+    - Foreign-local-only rule
+      - A foreign plugin runs only on its authoring-language host
+      - Enforcement: spec-only; owner is kelir-plugin-cli check (no hook yet)
     - Release gate: kelir-engine release requires parity green
     - Unified-builder parity vectors
       - vectors.json gains a plugin-merge case family
-      - Builder cases: 30 verb, 8 scope, 8 merge, 4 chain
-        - 62 vectors total once generated (58 live)
-      - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, lock broker
+      - Builder cases: 30 verb, 8 scope, 8 merge, 5 chain
+        - 63 vectors total once generated (58 live)
+      - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, lock broker, chaos-only
       - Each chain case pins builder name, requires list, and ring set with ordinals
       - Chain cases are built by the parity run as one expression per SDK
         - No reassignment, no ? mid-chain

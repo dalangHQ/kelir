@@ -61,3 +61,8 @@ from kelir import KelirBuilder
 def wire_ingress_builder(config: WireIngressConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else WireIngressConfig()
     return KelirBuilder.plugin("wire-ingress").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def wire_ingress(config: WireIngressConfig | None = None) -> KelirBuilder:
+    return wire_ingress_builder(config)

@@ -37,24 +37,59 @@ from kelir.plugin_fusion import (
 )
 
 
+# see: cans/03-sdk-architecture.md#Python-SDK
+KELIR_ADDON_ABI_VERSION = 1
+
+# see: cans/03-sdk-architecture.md#Python-SDK
+NATIVE_BRIDGE_MODULES: tuple[str, ...] = ("kelir._kelir", "_kelir")
+
+
+# see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+class NativeAddonMissingError(EConfig):
+    pass
+
+
+# see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+class NativeAddonAbiMismatchError(EConfig):
+    def __init__(self, expected: int, found: int) -> None:
+        super().__init__(
+            f"kelir native PyO3 extension (_kelir) ABI version mismatch: expected {expected}, found {found}"
+        )
+        self.expected_abi_version = expected
+        self.found_abi_version = found
+
+
+# see: cans/03-sdk-architecture.md#Python-SDK
+def _verify_native_bridge_abi(bridge: Any) -> None:
+    abi_version = getattr(bridge, "abi_version", None)
+    found = abi_version() if callable(abi_version) else None
+    if found != KELIR_ADDON_ABI_VERSION:
+        raise NativeAddonAbiMismatchError(
+            KELIR_ADDON_ABI_VERSION, found if isinstance(found, int) else -1
+        )
+
+
+# see: cans/03-sdk-architecture.md#Python-SDK
 def _load_native_bridge() -> Any:
-    # see: cans/03-sdk-architecture.md#Python-SDK
-    try:
-        return importlib.import_module("kelir._kelir")
-    except ImportError:
-        pass
-    try:
-        return importlib.import_module("_kelir")
-    except ImportError as exc:
-        raise EConfig(
-            "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
-        ) from exc
+    for module in NATIVE_BRIDGE_MODULES:
+        try:
+            bridge = importlib.import_module(module)
+        except ImportError:
+            continue
+        _verify_native_bridge_abi(bridge)
+        return bridge
+    # TODO (L3) [bindings_py]: ship the precompiled _kelir wheel next to the package.; slop: dist ships without native extension, boot fails closed with NativeAddonMissingError
+    raise NativeAddonMissingError(
+        "kelir native PyO3 extension (_kelir) is missing: install the precompiled wheel (L3)"
+    )
 
 
 # see: cans/03-sdk-architecture.md#Python-SDK
 def _require_native(native: Any, what: str) -> Any:
     if native is None:
-        raise EConfig(f"kelir native PyO3 bridge (_kelir) is missing: {what} (L3)")
+        raise NativeAddonMissingError(
+            f"kelir native PyO3 bridge (_kelir) is missing: {what} (L3)"
+        )
     return native
 
 

@@ -24,33 +24,13 @@ import type {
 } from "./context.lifecycle.types.js";
 import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
-
-// see: cans/03-sdk-architecture.md#Cross-SDK-guarantees
-interface NativeRelayBridge {
-  readonly relaySocketPath: (sessionId: string) => string;
-}
-
-// see: cans/03-sdk-architecture.md#Cross-SDK-guarantees
-async function loadNativeRelayBridge(): Promise<NativeRelayBridge> {
-  const specifier = "./native/kelir.node";
-  try {
-    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.; slop: dist ships without native addon, boot fails with wrong EConfig
-    const addon = (await import(specifier)) as unknown as {
-      readonly default?: NativeRelayBridge;
-    };
-    return (addon.default ?? addon) as NativeRelayBridge;
-  } catch {
-    throw new EConfig(
-      "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
-    );
-  }
-}
+import { loadNativeAddon } from "./fusion.plugin.js";
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
 export async function relaySocketPath(sessionId: string): Promise<string> {
-  const bridge = await loadNativeRelayBridge();
+  const addon = await loadNativeAddon();
   try {
-    return bridge.relaySocketPath(sessionId);
+    return addon.relaySocketPath(sessionId);
   } catch (error) {
     throw new EConfig(
       error instanceof Error ? error.message : String(error),
@@ -195,7 +175,7 @@ export class Session {
   private suspendedReasonValue: SuspendReason | undefined;
 
   constructor(native: NativeSessionHandle) {
-    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: only the NAPI addon constructs Session, from a booted native handle.; slop: Session constructed without native handle, boot check bypassed
+    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
     this.native = native;
     this.driverName = native.driverName;
     this.bootMs = native.bootMs;

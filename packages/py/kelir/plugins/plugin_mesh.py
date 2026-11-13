@@ -48,3 +48,8 @@ from kelir import KelirBuilder
 def mesh_builder(config: MeshConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else MeshConfig()
     return KelirBuilder.plugin("mesh").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def mesh(config: MeshConfig | None = None) -> KelirBuilder:
+    return mesh_builder(config)

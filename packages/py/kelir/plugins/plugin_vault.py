@@ -31,3 +31,8 @@ from kelir import KelirBuilder
 def vault_builder(config: VaultConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else VaultConfig()
     return KelirBuilder.plugin("vault").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def vault(config: VaultConfig | None = None) -> KelirBuilder:
+    return vault_builder(config)

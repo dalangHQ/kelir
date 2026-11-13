@@ -3,7 +3,14 @@
 // see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_plugin
 // see: cans/artifacts/examples/fluent-builder-chaos.py#build_chaos_plugin
 
-import { createPlugin, FilterAction, type KelirBuilder } from "@kelir/core";
+import {
+  chaos,
+  createPlugin,
+  FilterAction,
+  kelir,
+  type ChaosConfig,
+  type KelirBuilder,
+} from "@kelir/core";
 
 // see: cans/02-plugin-model.md#Unified-builder
 // The canonical chaos plugin: identical behaviour in all three languages.
@@ -31,3 +38,43 @@ export function buildChaosPlugin(): KelirBuilder<"chaos", unknown, "ledger", unk
       }),
     );
 }
+
+// see: cans/plugins/chaos.md#Network-chaos
+// see: cans/plugins/chaos.md#Storage-chaos
+export function chaosConfig(): ChaosConfig {
+  return {
+    network: [
+      {
+        target: "example.invalid",
+        direction: "outbound",
+        baseMs: 0,
+        jitterMs: 0,
+        dropRate: 0,
+        injectRst: true,
+      },
+    ],
+    fs: [{ targetPath: "/workspace/scratch", simulateError: "enospc", errorProbability: 1 }],
+  };
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// see: cans/plugins/chaos.md#Plugin-chaos
+export function buildChaosHost(config: ChaosConfig) {
+  return kelir({
+    vcpus: 1,
+    memoryMb: 256,
+    kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
+    rootfsErofs: "./fixtures/rootfs-chaos.erofs",
+    tscLocked: true,
+    enableWatchdog: false,
+    driver: "auto",
+  }).use(chaos(config));
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+async function main(): Promise<void> {
+  buildChaosHost(chaosConfig()).seal();
+  buildChaosPlugin();
+}
+
+main().catch(console.error);

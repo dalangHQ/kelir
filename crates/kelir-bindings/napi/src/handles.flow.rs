@@ -8,6 +8,7 @@ use napi_derive::napi;
 use tokio::sync::Mutex as AsyncMutex;
 
 use kelir_engine::Session;
+use kelir_interface::addon_abi::KELIR_ADDON_ABI_VERSION;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason,
 };
@@ -46,6 +47,12 @@ pub fn relay_socket_path(session_id: String) -> Result<String> {
     Session::relay_socket_path(&id)
         .map_err(halt)
         .map(|path| path.display().to_string())
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+#[napi]
+pub fn abi_version() -> u32 {
+    KELIR_ADDON_ABI_VERSION
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces

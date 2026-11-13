@@ -20,11 +20,13 @@ pub use handles::{
     PyTerminalHandle, PyVmHandle, PyVsockHandle, PyWireHandle,
 };
 
+use handles::abi_version;
 use handles::relay_socket_path;
 use pyo3::prelude::*;
 
 #[pymodule]
 fn _kelir(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(abi_version, m)?)?;
     m.add_function(wrap_pyfunction!(relay_socket_path, m)?)?;
     m.add_class::<PyKelirBuilder>()?;
     m.add_class::<PySessionHandle>()?;

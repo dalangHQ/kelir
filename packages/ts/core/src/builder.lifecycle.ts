@@ -41,9 +41,9 @@ import {
   FusedTrampoline,
   RingEvent,
   lifecycleTagFor,
+  loadNativeAddon,
   type FusedTrampolineDescriptor,
   type HookDescriptor,
-  type NativeAddonBinding,
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 
@@ -823,21 +823,6 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return FusedTrampoline.fuse(this.registry.hooks);
   }
 
-  private async loadNativeAddon(): Promise<NativeAddonBinding> {
-    const specifier = "./native/kelir.node";
-    try {
-      // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle and verify its ABI version.; slop: dist ships without native addon, boot fails with wrong EConfig
-      const addon = (await import(specifier)) as unknown as {
-        readonly default?: NativeAddonBinding;
-      };
-      return (addon.default ?? addon) as NativeAddonBinding;
-    } catch {
-      throw new EConfig(
-        "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
-      );
-    }
-  }
-
   async boot(): Promise<Session & Ctx> {
     if (this.mode === "plugin") {
       throw new EConfig(
@@ -846,7 +831,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     }
     const fused = this.fuse();
     const descriptor = fused.describe();
-    const addon = await this.loadNativeAddon();
+    const addon = await loadNativeAddon();
     const nativeBuilder = new addon.NativeKelirBuilder({
       vcpus: this.kelirConfig.vcpus,
       memoryMb: this.kelirConfig.memoryMb,

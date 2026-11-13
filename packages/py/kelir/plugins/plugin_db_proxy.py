@@ -55,3 +55,8 @@ from kelir import KelirBuilder
 def db_proxy_builder(config: DbProxyConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else DbProxyConfig()
     return KelirBuilder.plugin("db-proxy").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def db_proxy(config: DbProxyConfig | None = None) -> KelirBuilder:
+    return db_proxy_builder(config)

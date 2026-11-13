@@ -88,7 +88,7 @@ pub fn dispatch(args: &[String]) -> Result<(), CliError> {
         "manifest" => manifest_cli::run()?,
         "registry" => registry_cli::run()?,
         "rings" => rings_cli::run()?,
-        "new" | "scaffold" => scaffold_cli::run()?,
+        "new" | "scaffold" => scaffold_cli::run(&args[2..])?,
         "setup" => setup_cli::run(&args[2..])?,
         "spec" => spec_cli::run(&args[2..])?,
         "vectors" => vectors_cli::run(&args[2..])?,

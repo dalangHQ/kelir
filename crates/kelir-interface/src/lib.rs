@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 // TODO (L3) [protocol_mux]: tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
+pub mod addon_abi;
 pub mod chaos_types;
 pub mod checkpoint;
 #[path = "codec_protocol.flow.rs"]

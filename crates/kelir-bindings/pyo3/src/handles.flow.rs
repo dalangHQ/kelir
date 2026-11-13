@@ -7,6 +7,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 
 use kelir_engine::Session;
+use kelir_interface::addon_abi::KELIR_ADDON_ABI_VERSION;
 use kelir_interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason,
 };
@@ -57,6 +58,12 @@ pub(crate) fn relay_socket_path(session_id: String) -> PyResult<String> {
     Session::relay_socket_path(&id)
         .map_err(halt)
         .map(|path| path.display().to_string())
+}
+
+// see: cans/03-sdk-architecture.md#Python-SDK
+#[pyfunction]
+pub(crate) fn abi_version() -> u32 {
+    KELIR_ADDON_ABI_VERSION
 }
 
 // see: cans/09-snapshots.md#Archives-and-portability

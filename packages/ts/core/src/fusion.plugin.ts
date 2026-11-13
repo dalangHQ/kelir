@@ -259,7 +259,73 @@ export interface NativeKelirOptionsBinding {
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export interface NativeAddonBinding {
+  readonly abiVersion: () => number;
+  readonly relaySocketPath: (sessionId: string) => string;
   readonly NativeKelirBuilder: new (
     options?: NativeKelirOptionsBinding,
   ) => NativeKelirBuilderBinding;
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export const KELIR_ADDON_ABI_VERSION = 1;
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export const NATIVE_ADDON_SPECIFIERS: readonly string[] = [
+  "./native/kelir.node",
+];
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+export class NativeAddonMissingError extends EConfig {
+  constructor(message: string) {
+    super(message);
+    this.name = "NativeAddonMissingError";
+  }
+}
+
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+export class NativeAddonAbiMismatchError extends EConfig {
+  readonly expectedAbiVersion: number;
+  readonly foundAbiVersion: number;
+
+  constructor(expected: number, found: number) {
+    super(
+      `kelir native NAPI addon ABI version mismatch: expected ${expected}, found ${found}`,
+    );
+    this.name = "NativeAddonAbiMismatchError";
+    this.expectedAbiVersion = expected;
+    this.foundAbiVersion = found;
+  }
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export function verifyNativeAddonAbi(addon: NativeAddonBinding): void {
+  const found: unknown =
+    typeof addon.abiVersion === "function" ? addon.abiVersion() : undefined;
+  if (found !== KELIR_ADDON_ABI_VERSION) {
+    throw new NativeAddonAbiMismatchError(
+      KELIR_ADDON_ABI_VERSION,
+      typeof found === "number" ? found : -1,
+    );
+  }
+}
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export async function loadNativeAddon(): Promise<NativeAddonBinding> {
+  for (const specifier of NATIVE_ADDON_SPECIFIERS) {
+    let addon: unknown;
+    try {
+      addon = await import(specifier);
+    } catch {
+      continue;
+    }
+    const binding =
+      (addon as { readonly default?: NativeAddonBinding }).default ??
+      (addon as NativeAddonBinding);
+    verifyNativeAddonAbi(binding);
+    return binding;
+  }
+  // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle.; slop: dist ships without native addon, boot fails closed with NativeAddonMissingError
+  throw new NativeAddonMissingError(
+    "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
+  );
 }

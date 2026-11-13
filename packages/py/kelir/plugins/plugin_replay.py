@@ -33,3 +33,8 @@ from kelir import KelirBuilder
 def replay_builder(config: ReplayConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ReplayConfig()
     return KelirBuilder.plugin("replay").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def replay(config: ReplayConfig | None = None) -> KelirBuilder:
+    return replay_builder(config)

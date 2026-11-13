@@ -42,6 +42,7 @@ class Session:
     # see: cans/03-sdk-architecture.md#Python-SDK
     @classmethod
     def from_native(cls, handle: Any) -> Session:
+        # TODO (L3) [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
         session = cls()
         session._native = handle
         session.driver_name = str(handle.driver_name)

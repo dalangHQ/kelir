@@ -39,3 +39,8 @@ from kelir import KelirBuilder
 def profile_builder(config: ProfileConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ProfileConfig()
     return KelirBuilder.plugin("profile").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def profile(config: ProfileConfig | None = None) -> KelirBuilder:
+    return profile_builder(config)

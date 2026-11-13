@@ -31,3 +31,8 @@ from kelir import KelirBuilder
 def tool_guard_builder(config: ToolGuardConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ToolGuardConfig()
     return KelirBuilder.plugin("tool-guard").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def tool_guard(config: ToolGuardConfig | None = None) -> KelirBuilder:
+    return tool_guard_builder(config)

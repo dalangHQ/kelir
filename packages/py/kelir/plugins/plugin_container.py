@@ -34,3 +34,8 @@ from kelir import KelirBuilder
 def container_builder(config: ContainerConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ContainerConfig()
     return KelirBuilder.plugin("container").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def container(config: ContainerConfig | None = None) -> KelirBuilder:
+    return container_builder(config)

@@ -23,6 +23,6 @@ pub use handles::{
     NativeGuestClockRecord, NativeHostHandle, NativePluginContextRecord,
     NativePluginContextSurface, NativeReconcileOptions, NativeSessionHandle,
     NativeSnapshotDescriptorRecord, NativeStepHandle, NativeStorageHandle, NativeTerminalHandle,
-    NativeTerminalReadRecord, NativeVmHandle, NativeVsockHandle, NativeWireHandle,
+    NativeTerminalReadRecord, NativeVmHandle, NativeVsockHandle, NativeWireHandle, abi_version,
     relay_socket_path,
 };

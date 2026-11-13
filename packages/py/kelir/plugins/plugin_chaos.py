@@ -52,3 +52,8 @@ from kelir import KelirBuilder
 def chaos_builder(config: ChaosConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else ChaosConfig()
     return KelirBuilder.plugin("chaos").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def chaos(config: ChaosConfig | None = None) -> KelirBuilder:
+    return chaos_builder(config)

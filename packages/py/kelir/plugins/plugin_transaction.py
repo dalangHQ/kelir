@@ -32,3 +32,8 @@ from kelir import KelirBuilder
 def transaction_builder(config: TransactionConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else TransactionConfig()
     return KelirBuilder.plugin("transaction").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def transaction(config: TransactionConfig | None = None) -> KelirBuilder:
+    return transaction_builder(config)

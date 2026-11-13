@@ -189,5 +189,13 @@ pub fn emit_python_factory(plugin: &BuilderPlugin) -> String {
     chain.push_str(".context(lambda: cfg)");
     lines.push(format!("    return {chain}"));
     lines.push(String::new());
+    lines.push(String::new());
+    lines.push("# see: cans/02-plugin-model.md#Unified-builder".to_string());
+    lines.push(format!(
+        "def {}(config: {} | None = None) -> KelirBuilder:",
+        plugin.module_name, plugin.config_name
+    ));
+    lines.push(format!("    return {}_builder(config)", plugin.module_name));
+    lines.push(String::new());
     lines.join("\n")
 }

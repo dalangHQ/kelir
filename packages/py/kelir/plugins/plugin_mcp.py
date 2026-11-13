@@ -30,3 +30,8 @@ from kelir import KelirBuilder
 def mcp_builder(config: McpConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else McpConfig()
     return KelirBuilder.plugin("mcp").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def mcp(config: McpConfig | None = None) -> KelirBuilder:
+    return mcp_builder(config)

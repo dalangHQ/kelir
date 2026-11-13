@@ -53,3 +53,8 @@ from kelir import KelirBuilder
 def ledger_builder(config: LedgerConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else LedgerConfig()
     return KelirBuilder.plugin("ledger").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def ledger(config: LedgerConfig | None = None) -> KelirBuilder:
+    return ledger_builder(config)
