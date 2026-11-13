@@ -16,8 +16,7 @@ use kelir_interface::storage::{
     FsReconcileRequest, FuseOpcode, FuseReply, FuseRequest, HostFileLock, ReconcilerOps,
     RootHandle, StorageIo, TraversalGuard,
 };
-use kelir_storage::{RealFuseOps, Reconciler};
-use kelir_storage_io::RealStorageIo;
+use kelir_storage::Reconciler;
 use std::os::unix::fs::PermissionsExt;
 
 fn temp_workspace(name: &str) -> PathBuf {
@@ -42,7 +41,7 @@ fn reconciler_for(workspace: &Path) -> Reconciler {
         workspace.join("broker"),
         workspace.to_path_buf(),
         TraversalGuard::StrictResolveBeneath,
-        Arc::new(RealStorageIo),
+        kelir_storage_io::storage_io(),
         Arc::new(RwLock::new(HashSet::new())),
     )
 }
@@ -52,7 +51,7 @@ fn reconciler_for_dirs(broker: &Path, host: &Path) -> Reconciler {
         broker.to_path_buf(),
         host.to_path_buf(),
         TraversalGuard::StrictResolveBeneath,
-        Arc::new(RealStorageIo),
+        kelir_storage_io::storage_io(),
         Arc::new(RwLock::new(HashSet::new())),
     )
 }
@@ -105,9 +104,8 @@ fn sp_02_symlink_traversal_escape_exdev() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/storage_plane/sp_03_setuid_bit_strip_invariant.yaml#case_id
 #[test]
 fn sp_03_setuid_bit_strip_invariant() -> Result<(), String> {
-    let dispatcher = FuseDispatcher::new(Arc::new(RealFuseOps::new(engine_with(Arc::new(
-        PatchInode,
-    )))));
+    let dispatcher =
+        FuseDispatcher::new(kelir_storage::fuse_ops(engine_with(Arc::new(PatchInode))));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Lookup,
@@ -298,7 +296,7 @@ fn sp_09_reconciler_tombstone_unlink_commit() -> Result<(), String> {
         broker,
         host.clone(),
         TraversalGuard::StrictResolveBeneath,
-        Arc::new(RealStorageIo),
+        kelir_storage_io::storage_io(),
         tombstones,
     );
     match reconciler.reconcile(FsReconcileRequest {

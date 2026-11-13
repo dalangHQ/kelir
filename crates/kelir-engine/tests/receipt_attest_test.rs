@@ -10,7 +10,6 @@ use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, Pipeli
 use kelir_interface::protocol_wire::TrapEvent;
 use kelir_interface::storage::{FuseOpcode, FuseRequest};
 use kelir_interface::telemetry::{ExecutionReceipt, ExitKind};
-use kelir_storage::RealFuseOps;
 
 fn attest_workspace(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("kelir-et2-{name}"));
@@ -166,9 +165,8 @@ async fn ar_03_dirty_bytes_exact_byte_accounting() -> Result<(), String> {
     let workspace = attest_workspace("ar03");
     let target = workspace.join("test.dat");
     std::fs::write(&target, b"").map_err(|e| e.to_string())?;
-    let dispatcher = FuseDispatcher::new(Arc::new(RealFuseOps::new(engine_with(Arc::new(
-        AttestPassFs,
-    )))));
+    let dispatcher =
+        FuseDispatcher::new(kelir_storage::fuse_ops(engine_with(Arc::new(AttestPassFs))));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut request = FuseRequest {
         opcode: FuseOpcode::Write,

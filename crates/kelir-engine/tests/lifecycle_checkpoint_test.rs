@@ -1,7 +1,6 @@
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_05_monotonic_clock_clamp_on_resume.yaml#case_id
 use std::sync::Arc;
 
-use kelir_checkpoint::RealCheckpointOps;
 use kelir_engine::planes::checkpoint::CheckpointPlane;
 use kelir_interface::checkpoint::PidLineage;
 use kelir_interface::driver_interface::default_vm_config;
@@ -9,9 +8,9 @@ use kelir_interface::driver_interface::{GuestClock, SnapshotDescriptor};
 use kelir_interface::plugin_model::PluginError;
 
 fn checkpoint_plane() -> CheckpointPlane {
-    CheckpointPlane::new(Arc::new(RealCheckpointOps::new(Arc::new(
+    CheckpointPlane::new(kelir_checkpoint::checkpoint_ops(Arc::new(
         kelir_otlp::registry_otlp::MetricRegistry::new(),
-    ))))
+    )))
 }
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {

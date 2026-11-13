@@ -1,6 +1,6 @@
 // see: cans/05-storage-plane.md#Host-inode-lock-broker
 use async_trait::async_trait;
-use kelir_engine::planes::storage::LockBrokerWiring;
+pub use kelir_engine::planes::storage::LockBrokerWiring;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{HandlerCtx, LockBrokerCoordination};
 use kelir_interface::protocol_wire::Verdict;
@@ -48,32 +48,20 @@ pub enum LockState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HostFdEntry {
+pub(crate) struct HostFdEntry {
     pub host_inode: u64,
     pub fd: i32,
     pub refcount: u32,
 }
 
 #[derive(Default)]
-pub struct HostFdCache {
+pub(crate) struct HostFdCache {
     entries: HashMap<LockKey, HostFdEntry>,
 }
 
 impl HostFdCache {
-    pub fn insert(&mut self, key: LockKey, entry: HostFdEntry) {
-        self.entries.insert(key, entry);
-    }
-
-    pub fn lookup(&self, key: LockKey) -> Option<&HostFdEntry> {
-        self.entries.get(&key)
-    }
-
-    pub fn remove(&mut self, key: LockKey) -> Option<HostFdEntry> {
-        self.entries.remove(&key)
-    }
-
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub fn remove_namespace(&mut self, namespace: [u8; 16]) {
+    pub(crate) fn remove_namespace(&mut self, namespace: [u8; 16]) {
         self.entries.retain(|key, _| key.namespace != namespace);
     }
 }

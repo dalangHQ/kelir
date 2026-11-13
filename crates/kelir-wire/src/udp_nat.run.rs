@@ -1,18 +1,18 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#UDP-socket-reaper
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::wire::udp_nat::{
     UDP_NAT_IDLE_TIMEOUT_SECS, UDP_NAT_SLAB_CAPACITY, UdpNatEntry, UdpNatOps,
 };
 
-pub struct RealUdpNatOps {
+pub(crate) struct RealUdpNatOps {
     udp_nat_slab: Mutex<Vec<Option<UdpNatEntry>>>,
 }
 
 impl RealUdpNatOps {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             udp_nat_slab: Mutex::new(Vec::new()),
         }
@@ -23,6 +23,10 @@ impl Default for RealUdpNatOps {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub(crate) fn build_udp_nat_ops() -> Arc<dyn UdpNatOps> {
+    Arc::new(RealUdpNatOps::new())
 }
 
 impl UdpNatOps for RealUdpNatOps {

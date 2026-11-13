@@ -15,10 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
 
 // see: cans/05-storage-plane.md#Interception-pipeline
-pub struct RealFuseOps {
+pub(crate) struct RealFuseOps {
     engine: Arc<PipelineEngine>,
     synthetic_files: Vec<SyntheticFile>,
     virtual_inodes: RwLock<HashMap<PathBuf, u64>>,
@@ -28,7 +27,7 @@ pub struct RealFuseOps {
 }
 
 impl RealFuseOps {
-    pub fn new(engine: Arc<PipelineEngine>) -> Self {
+    pub(crate) fn new(engine: Arc<PipelineEngine>) -> Self {
         Self {
             engine: Arc::clone(&engine),
             synthetic_files: Vec::new(),
@@ -39,19 +38,7 @@ impl RealFuseOps {
         }
     }
 
-    // see: cans/05-storage-plane.md#Storage-quotas
-    pub fn with_quota(mut self, quota: Arc<StorageQuota>) -> Self {
-        self.quota = quota;
-        self
-    }
-
-    // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub fn with_lock_broker(mut self, lock_broker: Arc<LockBroker>) -> Self {
-        self.lock_broker = lock_broker;
-        self
-    }
-
-    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
+    pub(crate) fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
         self.synthetic_files = files;
         self
     }
@@ -69,6 +56,17 @@ impl RealFuseOps {
         inodes.insert(path.to_path_buf(), ino);
         Ok(ino)
     }
+}
+
+pub(crate) fn build_fuse_ops(engine: Arc<PipelineEngine>) -> Arc<dyn FuseOps> {
+    Arc::new(RealFuseOps::new(engine))
+}
+
+pub(crate) fn build_fuse_ops_with_files(
+    engine: Arc<PipelineEngine>,
+    files: Vec<SyntheticFile>,
+) -> Arc<dyn FuseOps> {
+    Arc::new(RealFuseOps::new(engine).with_synthetic_files(files))
 }
 
 impl FuseOps for RealFuseOps {
@@ -317,50 +315,5 @@ fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
         | Errno::Eunknownkind => Err(PluginError::Halt(format!(
             "FUSE errno {errno} has no POSIX mapping on the storage plane"
         ))),
-    }
-}
-
-pub fn fuse_channel() -> (Sender<FuseRequest>, Receiver<FuseRequest>) {
-    channel()
-}
-
-pub struct FuseWorker {
-    receiver: Receiver<FuseRequest>,
-    dispatcher: RealFuseOps,
-    session_id: [u8; 16],
-}
-
-impl FuseWorker {
-    pub fn new(
-        receiver: Receiver<FuseRequest>,
-        engine: Arc<PipelineEngine>,
-        lock_broker: Arc<LockBroker>,
-        quota: Arc<StorageQuota>,
-        session_id: [u8; 16],
-    ) -> Self {
-        Self {
-            receiver,
-            dispatcher: RealFuseOps::new(engine)
-                .with_lock_broker(lock_broker)
-                .with_quota(quota),
-            session_id,
-        }
-    }
-
-    pub fn dispatcher(&self) -> &RealFuseOps {
-        &self.dispatcher
-    }
-
-    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
-        self.dispatcher = self.dispatcher.with_synthetic_files(files);
-        self
-    }
-
-    pub fn run(&mut self) -> Result<(), PluginError> {
-        // TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: virtqueue consumption loop, recv request, dispatch, reply on queue; slop: FUSE reply never marshalled, virtqueue never consumed
-        let _ = (&self.receiver, &self.dispatcher, self.session_id);
-        Err(PluginError::Halt(
-            "TODO (L3) [vr_10_virtio_fs_fuse_req_channel]: FuseWorker::run needs the virtqueue consumption loop in kelir-drivers/kelir-transport enclave; slop: FUSE reply never marshalled, virtqueue never consumed".into(),
-        ))
     }
 }

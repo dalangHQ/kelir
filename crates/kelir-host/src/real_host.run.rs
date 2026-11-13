@@ -15,7 +15,7 @@ use kelir_interface::host::{
 use kelir_interface::plugin_model::PluginError;
 use kelir_otlp::registry_otlp::MetricRegistry;
 
-pub struct RealHostOps {
+pub(crate) struct RealHostOps {
     pub(crate) reaper_kind: HostReaperKind,
     pub(crate) pressure_level: AtomicU8,
     pub(crate) watcher: Mutex<Option<PressureSubscription>>,
@@ -24,7 +24,7 @@ pub struct RealHostOps {
 }
 
 impl RealHostOps {
-    pub fn new(metrics: Arc<MetricRegistry>) -> Self {
+    pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         let reaper_kind = {
             #[cfg(target_os = "linux")]
             {
@@ -52,6 +52,10 @@ impl RealHostOps {
             metrics,
         }
     }
+}
+
+pub(crate) fn build_host_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn HostOps> {
+    Arc::new(RealHostOps::new(metrics))
 }
 
 #[async_trait]

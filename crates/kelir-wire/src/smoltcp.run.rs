@@ -11,16 +11,16 @@ use kelir_interface::wire::net::{
     dns_payload, link_local_route,
 };
 
-pub struct SmoltcpStack {
+pub(crate) struct SmoltcpStack {
     interface: Option<smoltcp::iface::Interface>,
 }
 
 impl SmoltcpStack {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { interface: None }
     }
 
-    pub fn poll(&mut self) -> Result<bool, PluginError> {
+    pub(crate) fn poll(&mut self) -> Result<bool, PluginError> {
         // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets; slop: host TAP created, frames never sink into smoltcp
         let _ = &self.interface;
         Ok(false)
@@ -33,14 +33,14 @@ impl Default for SmoltcpStack {
     }
 }
 
-pub struct RealNetOps {
+pub(crate) struct RealNetOps {
     stack: Mutex<SmoltcpStack>,
     dns_ops: Arc<dyn DnsOps>,
     allow_udp_proxied: Mutex<bool>,
 }
 
 impl RealNetOps {
-    pub fn new(dns_ops: Arc<dyn DnsOps>) -> Self {
+    pub(crate) fn new(dns_ops: Arc<dyn DnsOps>) -> Self {
         Self {
             stack: Mutex::new(SmoltcpStack::new()),
             dns_ops,
@@ -119,6 +119,10 @@ impl RealNetOps {
             }
         }
     }
+}
+
+pub(crate) fn build_net_ops(dns_ops: Arc<dyn DnsOps>) -> Arc<dyn NetOps> {
+    Arc::new(RealNetOps::new(dns_ops))
 }
 
 impl NetOps for RealNetOps {

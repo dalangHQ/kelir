@@ -22,19 +22,16 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 
 fn full_wiring() -> PlaneWiring {
     let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
-    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
-        Arc::new(kelir_wire::RealDnsOps::new());
+    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     PlaneWiring {
-        terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
-        checkpoint_ops: Some(Arc::new(
-            kelir_checkpoint::RealCheckpointOps::new(metrics()),
-        )),
-        host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
-        net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+        terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
+        checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics())),
+        host_ops: Some(kelir_host::host_ops(metrics())),
+        net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
         dns_ops: Some(dns_ops),
-        udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
-        l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
-        storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
+        udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
+        l4_ops: Some(kelir_wire::l4_ops()),
+        storage_io: Some(kelir_storage_io::storage_io()),
         ..Default::default()
     }
 }
@@ -117,9 +114,9 @@ fn unbound_fuse_ops_has_no_dispatcher() -> Result<(), String> {
 fn bound_fuse_ops_dispatches_synthetic_lookup() -> Result<(), String> {
     let mut engine = PipelineEngine::new();
     engine.bind_fs_scoped(Arc::new(PassFs), MountScope::default());
-    let fuse_ops = Arc::new(
-        kelir_storage::RealFuseOps::new(Arc::new(engine))
-            .with_synthetic_files(vec![SyntheticFile::static_(".env", "SECRET=<redacted>")]),
+    let fuse_ops = kelir_storage::fuse_ops_with_synthetic_files(
+        Arc::new(engine),
+        vec![SyntheticFile::static_(".env", "SECRET=<redacted>")],
     );
     let wiring = PlaneWiring {
         fuse_ops: Some(fuse_ops),

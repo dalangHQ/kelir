@@ -180,7 +180,8 @@ kelir/
 │   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, token shield, log segments)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
 │   │   ├── src/
-│   │   │   ├── lib.rs                 # L2 re-export RealTerminalOps
+│   │   │   ├── lib.rs                 # Seam re-exports terminal_ops; .run.rs modules private
+│   │   │   ├── terminal.flow.rs         # Seam: terminal_ops(metrics) -> Arc<dyn TerminalOps>
 │   │   │   ├── real_terminal.run.rs   # RealTerminalOps struct + TerminalOps impl
 │   │   │   ├── vt100.run.rs           # VT100 state machine, ANSI filter, export
 │   │   │   ├── token_shield.run.rs    # Token shield + prompt wiring
@@ -191,7 +192,8 @@ kelir/
 │   ├── kelir-checkpoint/              # Checkpoint plane: RealCheckpointOps (manifest graph, step slots, compaction)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
 │   │   ├── src/
-│   │   │   ├── lib.rs                 # L2 re-export RealCheckpointOps
+│   │   │   ├── lib.rs                 # Seam re-exports checkpoint_ops; .run.rs modules private
+│   │   │   ├── checkpoint.flow.rs       # Seam: checkpoint_ops(metrics) -> Arc<dyn CheckpointOps>
 │   │   │   ├── real_checkpoint.run.rs # RealCheckpointOps struct + CheckpointOps impl
 │   │   │   ├── manifest_graph.run.rs  # Manifest graph head/lineage
 │   │   │   ├── step_slot.run.rs       # Step slot create/commit/rollback/branch
@@ -200,7 +202,8 @@ kelir/
 │   ├── kelir-host/                    # Host plane: RealHostOps (pressure, balloon, reaper)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp, async-trait, libc
 │   │   ├── src/
-│   │   │   ├── lib.rs                 # L2 re-export RealHostOps
+│   │   │   ├── lib.rs                 # Seam re-exports host_ops; .run.rs modules private
+│   │   │   ├── host.flow.rs             # Seam: host_ops(metrics) -> Arc<dyn HostOps>
 │   │   │   ├── real_host.run.rs       # RealHostOps struct + HostOps impl
 │   │   │   ├── pressure.run.rs        # Pressure subscribe/poll
 │   │   │   ├── balloon.run.rs         # Balloon inflate/reclaim
@@ -273,22 +276,24 @@ kelir/
 │   ├── kelir-storage/                 # Storage L3 impls (RealFuseOps, Reconciler, LockBroker); .run.rs stubs
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-storage-io, kelir-otlp, libc
 │   │   └── src/
-│   │       ├── lib.rs                 # Re-exports RealFuseOps, FuseWorker, Reconciler, LockBroker
-│   │       ├── fuse.run.rs            # RealFuseOps + FuseWorker (TODO (L3) shells, no meat)
+│   │       ├── lib.rs                 # Seam re-exports fuse_ops, reconciler; Reconciler, LockBroker
+│   │       ├── storage.flow.rs        # Seam: fuse_ops, fuse_ops_with_synthetic_files, reconciler
+│   │       ├── fuse.run.rs            # RealFuseOps (TODO (L3) shells, no meat)
 │   │       ├── reconciler.run.rs      # Reconciler + StagingGuard
-│   │       ├── lock_broker.run.rs     # LockBroker + HostFdCache
-│   │       └── storage_synthetic.run.rs # Re-exports kelir-interface::storage::synthetic
+│   │       └── lock_broker.run.rs     # LockBroker + HostFdCache
 │   │
 │   ├── kelir-storage-io/              # Storage I/O L3 impl (RealStorageIo); .run.rs stub
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, libc
 │   │   └── src/
-│   │       ├── lib.rs                 # Re-exports RealStorageIo
+│   │       ├── lib.rs                 # Seam re-exports storage_io
+│   │       ├── storage_io.flow.rs     # Seam: storage_io() -> Arc<dyn StorageIo>
 │   │       └── io.run.rs              # RealStorageIo (TODO (L3) shells, no meat)
 │   │
 │   ├── kelir-wire/                  # Wire plane bodies: smoltcp stack, DNS gateway, UDP NAT, L4 diversion
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, smoltcp, kelir-otlp, kelir-transport
 │   │   └── src/
-│   │       ├── lib.rs                 # Re-exports RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps
+│   │       ├── lib.rs                 # Seam re-exports dns_ops, net_ops, udp_nat_ops, l4_ops
+│   │       ├── wire.flow.rs             # Seam: dns_ops, net_ops, udp_nat_ops, l4_ops
 │   │       ├── smoltcp.run.rs         # SmoltcpStack + RealNetOps
 │   │       ├── dns.run.rs             # RealDnsOps
 │   │       ├── udp_nat.run.rs         # RealUdpNatOps
@@ -305,7 +310,8 @@ kelir/
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
 │   │   │   ├── multiplexer_protocol.run.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
 │   │   │   ├── pty_terminal.run.rs                 # openpty() line discipline broker for console ring
-│   │   │   └── trap_protocol.run.rs                # seccomp-unotify trap forwarder
+│   │   │   ├── trap_protocol.run.rs                # seccomp-unotify trap forwarder
+│   │   │   └── shim.flow.rs                        # Seam: re-exports open_pty_slave, ShimError
 │   │   └── tests/
 │   │       └── pty_discipline_terminal_test.rs
 │   │

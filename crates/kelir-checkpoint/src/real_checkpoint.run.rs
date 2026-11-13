@@ -8,7 +8,7 @@ use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
 use kelir_otlp::registry_otlp::MetricRegistry;
 
-pub struct RealCheckpointOps {
+pub(crate) struct RealCheckpointOps {
     pub(crate) active_steps: Mutex<HashMap<PidLineage, StepSlot>>,
     pub(crate) graph: RwLock<ManifestGraph>,
     pub(crate) next_slot_id: AtomicU64,
@@ -17,7 +17,7 @@ pub struct RealCheckpointOps {
 }
 
 impl RealCheckpointOps {
-    pub fn new(metrics: Arc<MetricRegistry>) -> Self {
+    pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         Self {
             active_steps: Mutex::new(HashMap::new()),
             graph: RwLock::new(ManifestGraph::new()),
@@ -46,6 +46,10 @@ impl RealCheckpointOps {
             .read()
             .map_err(|_| PluginError::Halt("checkpoint graph lock poisoned".into()))
     }
+}
+
+pub(crate) fn build_checkpoint_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn CheckpointOps> {
+    Arc::new(RealCheckpointOps::new(metrics))
 }
 
 impl CheckpointOps for RealCheckpointOps {

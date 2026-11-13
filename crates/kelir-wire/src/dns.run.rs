@@ -1,13 +1,13 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 use std::net::{IpAddr, Ipv4Addr};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};
 use kelir_interface::wire::net::{SYNTHETIC_DNS_GATEWAY_IP, WireWiring};
 
-pub struct RealDnsOps {
+pub(crate) struct RealDnsOps {
     synthetic_dns_ip: Ipv4Addr,
     resolver_nameservers: Vec<IpAddr>,
     allowed_domains: RwLock<Vec<String>>,
@@ -15,7 +15,7 @@ pub struct RealDnsOps {
 }
 
 impl RealDnsOps {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
             resolver_nameservers: host_resolver_nameservers(),
@@ -29,6 +29,10 @@ impl Default for RealDnsOps {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub(crate) fn build_dns_ops() -> Arc<dyn DnsOps> {
+    Arc::new(RealDnsOps::new())
 }
 
 impl DnsOps for RealDnsOps {

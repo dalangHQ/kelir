@@ -1,14 +1,16 @@
 #![forbid(unsafe_code)]
 // see: cans/05-storage-plane.md#Storage-architecture
 #[path = "fuse.run.rs"]
-pub mod fuse;
+mod fuse;
 #[path = "lock_broker.run.rs"]
-pub mod lock_broker;
+mod lock_broker;
 #[path = "reconciler.run.rs"]
-pub mod reconciler;
-#[path = "storage_synthetic.run.rs"]
-pub mod storage_synthetic;
+mod reconciler;
+#[path = "storage.flow.rs"]
+pub mod storage;
 
-pub use fuse::{FuseWorker, RealFuseOps, fuse_channel};
-pub use lock_broker::LockBroker;
-pub use reconciler::Reconciler;
+pub use crate::lock_broker::{
+    LockBroker, LockBrokerWiring, LockGrant, LockKey, LockKind, LockRequest, LockState,
+};
+pub use crate::reconciler::{Reconciler, StagingGuard};
+pub use crate::storage::{fuse_ops, fuse_ops_with_synthetic_files, reconciler};

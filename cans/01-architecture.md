@@ -81,13 +81,19 @@
           - Placement invariant: level_of(file) is in crate.allowed_levels, enforced by kelir-maturity check.
           - Content rules per level live in perf/maturity-policy.toml; this wave they report as warnings, placement failures fail the job.
           - L2 tolerates plumbing os-reach: pure libc constants, std::net types with no IO, reads of a tool's own inputs, session-directory lifecycle; guest-affecting IO and domain-trait impls are L3.
-          - The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3 bindings) is the one place that constructs Real* types; the L2 direct-impl-construct rule guards every other L2 file.
+          - The composition root calls the plane seams, not Real* types.
+            - Each plane .run.rs file holds a pub(crate) build_* fn.
+            - It returns Arc<dyn Trait>; the crate .flow.rs seam delegates.
+            - No .flow.rs file and no lib.rs names a Real* type.
+            - The L2 direct-impl-construct rule guards every other L2 file.
           - A crate with 3+ lib .run.rs files and no .flow.rs is a concern leak.
             - Its L3 bodies have no L2 seam in-crate.
             - The plane crates' Real* types stay pub-reachable past the composition root.
             - kelir-maturity check reports it as concern-leak:C1.
             - It warns while forbid_mode is warn, fails once it flips to error.
             - Binary entry points under src/bin/ do not count.
+            - The seam wave closed all six hits (2026-11-13).
+            - Each plane crate now has one .flow.rs seam; hits are zero.
           - A // TODO (L3) in a prepared .run.rs stub warns until the L3 phase fills it; the markers are removed as bodies land.
           - Current phase is L1/L2 only: no new L3 bodies land until the L3 phase opens; pre-existing L3-shaped bodies are labeled .run.rs as found, not written.
           - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
@@ -268,7 +274,7 @@
     - Python consumer: kelir via PyO3
     - kelir-engine: stripped microkernel (BusDispatcher, PipelineEngine, EventBus, DriverRouter)
     - kelir-storage, kelir-storage-io, kelir-wire, kelir-terminal, kelir-checkpoint, kelir-host: plane bodies (RealFuseOps, RealStorageIo, RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps, RealTerminalOps, RealCheckpointOps, RealHostOps); kelir-engine holds only the L2 façades
-    - Composition root: crates/kelir binds every Real*Ops; see: 03-sdk-architecture.md#Native-Engine-Planes-on-Session
+    - Composition root: crates/kelir binds the plane seams; see: 03-sdk-architecture.md#Native-Engine-Planes-on-Session
     - PipelineEngine: compiles inline interceptors into indexed contiguous tables
     - kelir-drivers: pluggable backends (rustvmm, hvf, openvmm, avf, bwrap, proot)
   - Host state root

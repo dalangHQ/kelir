@@ -8,9 +8,11 @@ mod codec_protocol;
 mod introspect_trap;
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
 #[path = "pty_terminal.run.rs"]
-pub mod pty_terminal;
+mod pty_terminal;
 // see: cans/11-protocol.md#Trap-fast-path
 #[path = "trap_protocol.run.rs"]
 mod trap_protocol;
 // see: cans/11-protocol.md#Trap-fast-path
-pub use trap_protocol::ShimError;
+#[path = "shim.flow.rs"]
+pub mod shim;
+pub use crate::shim::{ShimError, open_pty_slave};

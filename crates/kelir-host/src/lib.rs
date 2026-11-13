@@ -3,12 +3,14 @@
 #![forbid(unsafe_code)]
 
 #[path = "balloon.run.rs"]
-pub mod balloon;
+mod balloon;
+#[path = "host.flow.rs"]
+pub mod host;
 #[path = "pressure.run.rs"]
-pub mod pressure;
+mod pressure;
 #[path = "real_host.run.rs"]
-pub mod real_host;
+mod real_host;
 #[path = "reaper.run.rs"]
-pub mod reaper;
+mod reaper;
 
-pub use real_host::RealHostOps;
+pub use crate::host::host_ops;

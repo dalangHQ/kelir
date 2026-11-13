@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use kelir_interface::terminal::{LogStream, TerminalOps, TerminalWiring};
 use kelir_otlp::registry_otlp::MetricRegistry;
-use kelir_terminal::RealTerminalOps;
+use kelir_terminal::terminal_ops;
 
-fn ops(session_id: [u8; 16]) -> RealTerminalOps {
-    let ops = RealTerminalOps::new(Arc::new(MetricRegistry::new()));
+fn ops(session_id: [u8; 16]) -> Arc<dyn TerminalOps> {
+    let ops = terminal_ops(Arc::new(MetricRegistry::new()));
     ops.bind_session(session_id);
     ops
 }
