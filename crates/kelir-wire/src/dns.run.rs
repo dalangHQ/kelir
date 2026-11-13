@@ -25,6 +25,12 @@ impl RealDnsOps {
     }
 }
 
+impl Default for RealDnsOps {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DnsOps for RealDnsOps {
     // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
     // see: cans/07-wire-plane.md#DNS-policy-filter

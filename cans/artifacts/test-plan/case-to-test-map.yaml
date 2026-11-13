@@ -1672,7 +1672,7 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_03_ansi_sanitizer_osc52_clipboard_drop
   reason: 'TerminalPlane durable log (read_from 0) carries the raw OSC 52 payload verbatim: ''OSC 52 clipboard payload must be purged...got: echo \x1b]52;c;ZXhpbG9pdA==\x07Normal Text''; filter_ansi_shadow is an identity TODO (L3) stub and with_wiring never applies the filters to console output'
 - case_id: tp_04_ansi_sanitizer_title_spoof_strip
@@ -1680,7 +1680,7 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_04_ansi_sanitizer_title_spoof_strip
   reason: 'TerminalPlane durable log carries both BEL- and ST-terminated OSC 0/2 title sequences verbatim (\x1b]0;root@host:~\x07Payload\x1b]2;fake_title\x1b\\Done); filter_ansi_shadow is an identity TODO (L3) stub'
 - case_id: tp_05_token_shield_scrollback_clamping
@@ -1698,7 +1698,7 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: unit
   status: red
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_06_placeholder_mask_carryover_window
   reason: 'TerminalPlane durable log joins the split secret verbatim: ''API key is sk-ant-12345 confirmed'' with no [REDACTED]; no masking engine or carryover window exists (MAX_PLACEHOLDER_LEN has no numeric value in spec; 16-byte window chosen by the case)'
 - case_id: tp_07_vt100_wireframe_matrix_determinism
@@ -1706,7 +1706,7 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_07_vt100_wireframe_matrix_determinism
   note: 'Adapted: two planes resize 80x24 give equal exports (len 1944); feed is a stub.'
 - case_id: tp_08_disclosure_ansi_box_inline_render
@@ -1742,21 +1742,21 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_11_stream_replay_monotonic_cursor_read
 - case_id: tp_12_stream_replay_client_reconnect_resume
   case_file: cases/terminal_plane/tp_12_stream_replay_client_reconnect_resume.yaml
   target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_12_stream_replay_client_reconnect_resume
 - case_id: tp_13_exec_log_file_per_exec_isolation
   case_file: cases/terminal_plane/tp_13_exec_log_file_per_exec_isolation.yaml
   target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_13_exec_log_file_per_exec_isolation
   note: 'Adapted: chunk bytes live in index.bin itself, no separate chunk files, per the case GAP note.'
 - case_id: tp_14_window_resize_exec_control_propagation
@@ -1764,7 +1764,7 @@ cases:
   target_crate: crates/kelir-engine
   target_tier: integration
   status: implemented
-  test_file: crates/kelir-engine/tests/terminal_vt100_matrix_test.rs
+  test_file: crates/kelir-terminal/tests/terminal_vt100_matrix_test.rs
   test_fn: tp_14_window_resize_exec_control_propagation
   note: 'Adapted: resize export sizes asserted (120x40 -> 4840, 80x24 -> 1944); guest winsize propagation not live.'
 - case_id: tp_15_shim_openpty_returns_distinct_master_slave
@@ -2080,3 +2080,17 @@ harness_tests:
     the frame-layout parser, fail-closed on unparseable frames when rules are declared
     and pass-through when the net scope is undeclared; 8 tests; no plan case covers
     net-scope dispatch yet (L2 wiring addition).
+- file: crates/kelir/tests/composition_seal_test.rs
+  reason: Composition-root seal pins per cans/01-architecture.md#Host-runtime (unbound
+    TerminalOps/NetOps fail boot, unbound FuseOps has no dispatcher, bound FuseOps
+    dispatches a synthetic lookup); no plan case covers the composition root yet
+    (L2 wiring addition).
+- file: crates/kelir-maturity/tests/maturity_check_test.rs
+  reason: Maturity checker unit tests per cans/15-operations.md#Maturity-check (level_of,
+    crate_of, allowed-levels parsing, placement pass/fail, content-rule warns, L3 TODO
+    warns on prepared stubs); tool test, not a case test.
+- file: crates/kelir-engine/tests/trap_dispatch_fused_test.rs
+  reason: Fused-trap half split from trap_dispatch_protocol_test.rs (LOC split, work-order-3
+    converge); fused callback drop/order/pass-through/collapse plus unfused ring crossing
+    per cans/02-plugin-model.md#Fused-trampoline (pe_07 case); no dedicated plan case covers
+    the fused-trap suite yet.

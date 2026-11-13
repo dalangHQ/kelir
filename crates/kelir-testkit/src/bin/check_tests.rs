@@ -489,6 +489,9 @@ fn main() -> ExitCode {
             continue;
         };
         counts.rs_src_files += 1;
+        if name.ends_with(".flow.rs") || name.ends_with(".run.rs") {
+            continue;
+        }
         lint_test_filename(
             path,
             &repo_root,

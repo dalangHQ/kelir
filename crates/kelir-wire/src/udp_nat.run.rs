@@ -19,6 +19,12 @@ impl RealUdpNatOps {
     }
 }
 
+impl Default for RealUdpNatOps {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UdpNatOps for RealUdpNatOps {
     // see: cans/07-wire-plane.md#UDP-socket-reaper
     fn udp_nat_alloc(&self, guest_source_port: u16, now_unix: u64) -> Result<(), PluginError> {

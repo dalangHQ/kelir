@@ -13,6 +13,7 @@ pub mod dispatch_plugin;
 pub mod planes;
 pub mod plugin_registry;
 pub mod session_lifecycle;
+pub mod session_support;
 pub mod trap_gate;
 pub mod uart_terminal;
 pub mod vmm;

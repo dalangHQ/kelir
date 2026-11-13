@@ -10,6 +10,12 @@ impl RealL4DivertOps {
     }
 }
 
+impl Default for RealL4DivertOps {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl L4DivertOps for RealL4DivertOps {
     fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {
         // TODO (L3) [wp_12_l4_diversion_passthrough_tls]: divert the guest TCP stream over stream kind 0x0005 to the host target; slop: TLS terminated in supervisor, plaintext in memory

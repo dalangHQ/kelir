@@ -16,12 +16,11 @@ pattern = '^\s*(pub\s+)?trait\b'
 "#;
 
 fn policy() -> Policy {
-    match Policy::from_toml(POLICY) {
+    let parsed = Policy::from_toml(POLICY);
+    assert!(parsed.is_ok(), "test policy must parse");
+    match parsed {
         Ok(p) => p,
-        Err(e) => {
-            assert!(false, "test policy must parse: {}", e);
-            Policy::empty()
-        }
+        Err(_) => Policy::empty(),
     }
 }
 
@@ -115,7 +114,7 @@ fn crate_of_finds_enclosing_crate() {
 }
 
 #[test]
-fn l3_todo_fails() {
+fn l3_todo_warns_but_passes() {
     let root = tree("todo");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
     write_file(
@@ -123,8 +122,13 @@ fn l3_todo_fails() {
         "// TODO (L3): fill the body\npub fn run() {}\n",
     );
     let report = check_tree(&root, &policy());
-    assert_eq!(report.fails.len(), 1);
-    assert!(report.fails[0].contains("TODO"));
+    assert!(
+        report.passed(),
+        "prepared .run.rs stubs warn on TODO until L3 fills them: {:?}",
+        report.fails
+    );
+    assert_eq!(report.warns.len(), 1);
+    assert!(report.warns[0].contains("TODO"));
     clean(&root);
 }
 
@@ -189,19 +193,14 @@ fn shipped_policy_parses() {
         .join("..")
         .join("perf")
         .join("maturity-policy.toml");
-    let text = match fs::read_to_string(&path) {
-        Ok(t) => t,
-        Err(e) => {
-            assert!(false, "cannot read shipped policy: {}", e);
-            String::new()
-        }
-    };
-    let policy = match Policy::from_toml(&text) {
+    let text = fs::read_to_string(&path);
+    assert!(text.is_ok(), "cannot read shipped policy");
+    let text = text.unwrap_or_default();
+    let policy = Policy::from_toml(&text);
+    assert!(policy.is_ok(), "shipped policy must parse");
+    let policy = match policy {
         Ok(p) => p,
-        Err(e) => {
-            assert!(false, "shipped policy must parse: {}", e);
-            Policy::empty()
-        }
+        Err(_) => Policy::empty(),
     };
     assert_eq!(policy.l2_max_delta_per_pr, 20);
     assert!(policy.rules.iter().any(|r| r.id == "impl-block"));

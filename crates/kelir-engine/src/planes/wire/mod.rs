@@ -129,6 +129,14 @@ impl Default for WirePlane {
     }
 }
 
+// see: cans/07-wire-plane.md#Wire-architecture
+pub type WireOps = (
+    Arc<dyn NetOps>,
+    Arc<dyn DnsOps>,
+    Arc<dyn UdpNatOps>,
+    Arc<dyn L4DivertOps>,
+);
+
 impl WirePlane {
     pub fn new() -> Self {
         Self::with_ops(
@@ -158,14 +166,7 @@ impl WirePlane {
         }
     }
 
-    pub fn ops(
-        &self,
-    ) -> (
-        Arc<dyn NetOps>,
-        Arc<dyn DnsOps>,
-        Arc<dyn UdpNatOps>,
-        Arc<dyn L4DivertOps>,
-    ) {
+    pub fn ops(&self) -> WireOps {
         (
             Arc::clone(&self.net_ops),
             Arc::clone(&self.dns_ops),

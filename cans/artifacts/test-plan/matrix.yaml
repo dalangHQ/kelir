@@ -116,7 +116,7 @@ filename_grammar:
     src_rule: "source modules use <domain>_<entity>.py; dots would break import statements"
   role_tokens: [unit, integration, parity, generated]
   harness_exceptions: "case-to-test-map.yaml#harness_tests"
-  src_exemptions: "Rust lib.rs/main.rs/mod.rs structural files, index.ts package entry, __init__.py package markers, *.d.ts ambient declarations"
+  src_exemptions: "Rust lib.rs/main.rs/mod.rs structural files, index.ts package entry, __init__.py package markers, *.d.ts ambient declarations, maturity-suffixed .flow.rs/.run.rs files (naming governed by kelir-maturity check, exempt from NG-06)"
   gates: [NG-01, NG-02, NG-03, NG-04, NG-05, NG-06, NG-07]
 
 ci_gates:

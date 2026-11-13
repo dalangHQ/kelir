@@ -234,9 +234,8 @@ fn cmd_emit(args: &[String], root: &Path) -> ExitCode {
     }
     counts.push_str("\n  }\n}\n");
     let write = |path: &Path, text: &str| -> bool {
-        match path.parent().map(fs::create_dir_all) {
-            Some(Err(_)) => return false,
-            _ => (),
+        if let Some(Err(_)) = path.parent().map(fs::create_dir_all) {
+            return false;
         }
         fs::write(path, text).is_ok()
     };

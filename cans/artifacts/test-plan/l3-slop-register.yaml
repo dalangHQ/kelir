@@ -1,5 +1,5 @@
 $schema: kelir-test-plan/l3-slop-register/v1
-generated: 181 red/gap entries + 17 code_only groups; 542 TODO (L3) markers at base 745c219; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
+generated: 181 red/gap entries + 18 code_only groups; 542 TODO (L3) markers at base 745c219; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
 total_cases: 254
 covered_red_gap: 181
 entries:
@@ -2968,6 +2968,21 @@ code_only:
   - packages/ts/core/src/builder.lifecycle.ts
   - packages/ts/core/src/profile.schema.ts
   - packages/ts/core/src/sandbox.runtime.ts
+- domain: composition_root
+  target_crate: crates/kelir
+  slop_risks:
+  - RealFuseOps left unbound because Session does not share Arc<PipelineEngine>, so FUSE dispatch is unreachable from the session and the dispatcher exists only in tests
+  - kelir-storage Reconciler left unbound because the host broker journal anchors no broker_dir yet, so StoragePlane::reconcile fails closed and terminate flush never commits
+  must_not:
+  - Bind a NopFuseOps or any silent default to satisfy the seal
+  - Invent a broker_dir layout to construct the Reconciler
+  acceptance:
+  - RealFuseOps is bound once Session shares Arc<PipelineEngine>
+  - Reconciler is bound once the host broker journal anchors broker_dir
+  code_todos:
+  - crates/kelir/src/builder_sdk.rs
+  - crates/kelir-bindings/napi/src/lib.rs
+  - crates/kelir-bindings/pyo3/src/lib.rs
 - domain: governance_tools
   target_crate: crates/kelir-plugins
   slop_risks:

@@ -1,6 +1,9 @@
 // see: cans/07-wire-plane.md#Wire-architecture
+#[path = "dns_ops.rs"]
 pub mod dns;
+#[path = "l4_ops.rs"]
 pub mod l4;
+#[path = "net_ops.rs"]
 pub mod net;
 pub mod udp_nat;
 
