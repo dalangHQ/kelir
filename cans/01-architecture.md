@@ -72,6 +72,11 @@
           - Strict file bounds: 500 LOC target, 1,000 LOC hard ceiling per .rs file
           - Test segregation: zero `#[cfg(test)]` in `src/`; tests live in sibling `tests/`
           - Single-line documentation: maximum one line of docstring per public item
+        - Maturity discipline
+          - Level is the filename suffix: .rs is L1, .flow.rs is L2, .run.rs is L3.
+          - Crate role is [package.metadata.kelir].allowed_levels in the crate Cargo.toml.
+          - Placement invariant: level_of(file) is in crate.allowed_levels, enforced by kelir-maturity check.
+          - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
         - Zero-panic production invariant
           - Workspace-wide deny on unwrap_used, expect_used, and panic
           - Production code returns Result; unhandled errors bubble via ?

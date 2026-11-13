@@ -1,0 +1,47 @@
+# perf/maturity-policy.toml
+[budget]
+L2_max_delta_per_pr = 20        # net new L2 files per PR, not net lines
+
+[[level.L1.forbid]]
+id = "impl-block"
+pattern = '^\s*impl\b'
+hint  = "L1 is contract: no impl blocks (derive attrs are fine)"
+
+[[level.L1.forbid]]
+id = "os-reach"
+pattern = '\b(libc|std::fs|std::net|std::process|std::os|tokio::fs|tokio::net|tokio::process|block_on)\b'
+
+[[level.L1.forbid]]
+id = "trait-object"
+pattern = '\bdyn\s+[A-Z]'
+hint  = "trait objects are wiring (L2), not contract (L1)"
+
+[[level.L2.forbid]]
+id = "domain-trait-impl"
+pattern = '^\s*impl\s+(FuseOps|StorageIo|TerminalOps|NetOps|DnsOps|UdpNatOps|TrapInterposer|FsInterposer|NetInterposer|LifecycleParticipant|SystemTelemetryParticipant)\s+for\b'
+hint  = "domain trait impls are bodies (L3)"
+
+[[level.L2.forbid]]
+id = "os-reach"
+pattern = '\b(libc|std::fs|std::net|std::process|std::os)\b'
+
+[[level.L2.forbid]]
+id = "direct-impl-construct"
+pattern = '\bReal[A-Z]\w*::new\('
+hint  = "the seam must go through Arc<dyn Ops>, not the concrete type"
+
+[[level.L3.forbid]]
+id = "trait-decl"
+pattern = '^\s*(pub\s+)?trait\b'
+hint  = "traits are contract (L1)"
+
+[[level.L3.forbid]]
+id = "interface-reexport"
+pattern = '^\s*pub\s+(use|mod)\b.*\b(Ops|Interposer|Participant|Handle)\b'
+hint  = "crate-level re-exports live in lib.rs (L2), not in bodies"
+
+# advisory only — warn, do not fail
+[[level.L2.warn]]
+id = "dyn-any"
+pattern = '\bdyn\s+Any\b'
+hint  = "type erasure defeats the seam; prefer a typed handle"

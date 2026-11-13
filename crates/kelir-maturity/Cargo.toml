@@ -1,0 +1,21 @@
+[package]
+name = "kelir-maturity"
+version = "0.1.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+publish = false
+authors = ["Kelir Contributors"]
+rust-version = "1.85"
+description = "Maturity checker: filename level belongs to crate allowed_levels."
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+regex = "1"
+walkdir = "2"
+
+[lints]
+workspace = true
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]

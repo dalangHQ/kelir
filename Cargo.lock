@@ -791,6 +791,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kelir-maturity"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "toml",
+ "walkdir",
+]
+
+[[package]]
 name = "kelir-napi"
 version = "1.0.0"
 dependencies = [

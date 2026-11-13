@@ -16,3 +16,6 @@ workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]

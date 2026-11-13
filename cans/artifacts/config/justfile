@@ -87,6 +87,10 @@ check-layers:
 check-budgets:
     cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
 
+# --maturity: filename level ∈ crate allowed_levels; the only gate for body maturity.
+check-maturity:
+    cargo run -p kelir-maturity -- check
+
 panic-hunt:
     cargo nextest run -p kelir-core --test panic_hunt
 

@@ -21,3 +21,6 @@ napi-build = "=2.1.0"
 
 [lints]
 workspace = true
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]

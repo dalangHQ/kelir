@@ -74,6 +74,8 @@
         - off, debug symbols off; same code, smaller CI caches
       - Hard performance budget gate
         - Budgets in perf/budgets.toml enforced strictly with enforce = true
+      - Maturity placement gate: kelir-maturity check enforces
+        - level_of(file) ∈ crate.allowed_levels for every .rs file
         - Fast-boot mmap hydration budget: see: 01-architecture.md#Boot-budget
         - Idle memory contraction budget: <4MB RSS via madvise reclaim
         - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
@@ -90,6 +92,7 @@
     - Tiered compilation tier: verify-tiered-compilation; see: #Tiered-compilation
     - Code hygiene gate: check-hygiene enforces 1,000 LOC ceiling and bans
       - inline `#[cfg(test)]` in `src/` across the entire workspace
+    - Maturity check tier: maturity-check; see: #Maturity-check
   - Spec gate
     - Job: cans-check
     - Two tiers, exit-code asserted on parsed JSON, no stderr grep
@@ -101,6 +104,16 @@
     - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       - is dead and gets removed
+  - Maturity check
+    - Job: maturity-check
+    - Runs `just check-maturity`: every .rs file's level from its filename
+      - suffix (.rs L1, .flow.rs L2, .run.rs L3) must sit in its crate's
+      - [package.metadata.kelir] allowed_levels
+    - Content rules in perf/maturity-policy.toml report as warnings this
+      - wave; placement failures fail the job
+    - Runs in <2s; the only gate for body maturity
+    - No path filter: a file move anywhere can break placement
+    - Local mirror: `just check-maturity`
   - Examples compile
     - Job: examples-compile
     - Runs `just check-examples`: the canonical examples in
@@ -372,6 +385,14 @@
       - `kelir-plugin-cli fixtures --verify`: verifies pinned test oracles against fixtures.toml
       - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
         - see: 12-adapters.md#Ingestion-matrix
+      - `kelir-maturity check`: structural placement gate, runs in <2s, the
+        - only gate for body maturity; exit 0 means every .rs file's level
+        - sits in its crate's allowed_levels
+      - `kelir-maturity list --level <L> --crate <crate>`: files at one
+        - level in one crate
+      - `kelir-maturity list --tag <slop-tag>`: L2 files carrying that TODO tag
+      - `kelir-maturity emit --out maturity/`: writes by-crate/, by-tag/,
+        - by-level/, counts.json; generated, never hand-edited
     - Shares implementation with CI
       - A local pass that CI rejects means the CLI is broken
   - Project structure

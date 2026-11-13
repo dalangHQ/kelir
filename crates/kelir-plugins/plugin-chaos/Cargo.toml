@@ -14,6 +14,9 @@ kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }
 [lints]
 workspace = true
 
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]
+
 [package.metadata.kelir.tier]
 level = 3
 name = "chaos"

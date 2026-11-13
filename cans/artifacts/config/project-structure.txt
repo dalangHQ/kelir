@@ -175,6 +175,14 @@ kelir/
 │   │   │       ├── check_scenarios.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
 │   │   │       └── scorecard_testkit.rs       # Scorecard generator and verification gate
 │   │
+│   ├── kelir-maturity/                # Maturity checker: filename level ∈ crate allowed_levels
+│   │   ├── Cargo.toml                 # Depends on serde, toml, regex, walkdir
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # level_of, crate_of, read_allowed_levels, Policy::from_toml
+│   │   │   └── main.rs                # check, list, emit subcommands
+│   │   └── tests/
+│   │       └── check_test.rs          # One passing tree, one failing tree per rule
+│   │
 │   ├── kelir-shim/                    # Guest Paravirtual Micro-Init (<50KB musl PID 1)
 │   │   ├── Cargo.toml                 # Dependencies: blake3, ciborium, kelir-interface, libc; release lto = "fat"
 │   │   ├── src/

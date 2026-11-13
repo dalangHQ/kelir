@@ -591,6 +591,16 @@ jobs:
       - name: Validate Downward-Only Dependencies
         run: cargo run -p kelir-plugin-cli -- check --layers
 
+  maturity-check:
+    needs: [lint-and-types]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - name: Check Body Maturity Placement
+        run: just check-maturity
+
   # ─── PLUGIN CONTRACT AUDIT ─────────────────────────────
   # Same command as `just check-plugin`. The audit that
   # 15-operations.md promises is actually executed here.

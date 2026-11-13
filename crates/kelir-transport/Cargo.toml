@@ -23,3 +23,6 @@ panic = "deny"
 unimplemented = "deny"
 todo = "deny"
 unreachable = "deny"
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]
