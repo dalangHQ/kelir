@@ -164,6 +164,99 @@ fn l3_todo_warns_but_passes() {
 }
 
 #[test]
+fn concern_leak_flags_many_run_without_flow() {
+    let root = tree("leak");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    for name in ["a.run.rs", "b.run.rs", "c.run.rs"] {
+        write_file(&dir.join("src").join(name), "pub fn run() {}\n");
+    }
+    let report = check_tree(&root, &policy());
+    assert!(
+        !report.passed(),
+        "3 .run.rs with no .flow.rs must fail: {:?}",
+        report.fails
+    );
+    assert_eq!(report.fails.len(), 1);
+    assert!(report.fails[0].contains("[concern-leak:C1]"));
+    assert!(report.fails[0].contains("demo"));
+    clean(&root);
+}
+
+#[test]
+fn concern_leak_warns_in_warn_mode() {
+    let root = tree("leak-warn");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    for name in ["a.run.rs", "b.run.rs", "c.run.rs"] {
+        write_file(&dir.join("src").join(name), "pub fn run() {}\n");
+    }
+    let report = check_tree(&root, &policy_mode("warn"));
+    assert!(
+        report.passed(),
+        "warn-mode rollout keeps the concern-leak rule non-fatal: {:?}",
+        report.fails
+    );
+    assert!(report.warns.iter().any(|w| w.contains("concern-leak:C1")));
+    clean(&root);
+}
+
+#[test]
+fn concern_leak_ignores_bin_files() {
+    let root = tree("leak-bin");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    for name in ["a.run.rs", "b.run.rs", "c.run.rs"] {
+        write_file(&dir.join("src").join("bin").join(name), "pub fn run() {}\n");
+    }
+    let report = check_tree(&root, &policy());
+    assert!(
+        report.passed(),
+        "bin entry points have no downstream caller to leak to: {:?}",
+        report.fails
+    );
+    clean(&root);
+}
+
+#[test]
+fn concern_leak_allows_two_run_files() {
+    let root = tree("leak-two");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    for name in ["a.run.rs", "b.run.rs"] {
+        write_file(&dir.join("src").join(name), "pub fn run() {}\n");
+    }
+    let report = check_tree(&root, &policy());
+    assert!(
+        report.passed(),
+        "fewer than 3 .run.rs files is not a leak: {:?}",
+        report.fails
+    );
+    clean(&root);
+}
+
+#[test]
+fn concern_leak_allows_flow_seam() {
+    let root = tree("leak-seam");
+    let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");
+    write_file(&dir.join("src").join("lib.rs"), "pub trait Ops {}\n");
+    write_file(
+        &dir.join("src").join("wiring.flow.rs"),
+        "pub struct Flow { ops: u8 }\n",
+    );
+    for name in ["a.run.rs", "b.run.rs", "c.run.rs"] {
+        write_file(&dir.join("src").join(name), "pub fn run() {}\n");
+    }
+    let report = check_tree(&root, &policy());
+    assert!(
+        report.passed(),
+        "one .flow.rs seam covers any number of .run.rs files: {:?}",
+        report.fails
+    );
+    clean(&root);
+}
+
+#[test]
 fn l1_impl_block_fails_in_error_mode() {
     let root = tree("impl-err");
     let dir = krate(&root, "demo", "\"L1\", \"L2\", \"L3\"");

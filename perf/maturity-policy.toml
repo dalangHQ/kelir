@@ -7,6 +7,13 @@
 # bindings) is the one place that constructs Real* types.
 # L2_max_delta_per_pr governs incremental PRs; the repo-wide rename wave
 # exceeded it once by design (66 new L2 files), it still bounds later PRs.
+# Concern-leak C1 (kelir-maturity check_tree): a crate with >=3 lib .run.rs
+# files and zero .flow.rs files has no L2 seam in-crate; its Real* types stay
+# pub-reachable past the composition root. src/bin/ entry points do not count.
+# It follows forbid_mode like the S-rules: warns while this file says "warn",
+# fails CI once forbid_mode flips to "error". Current hits (2026-11-13):
+# kelir-wire, kelir-storage, kelir-terminal, kelir-host, kelir-checkpoint,
+# kelir-shim — each 4 .run / 0 .flow; the fix is one .flow.rs seam per crate.
 [budget]
 # was 20 until the maturity wave; it adds ~53 .flow.rs by design, mirroring
 # the rename-wave precedent above; step back down once the wave lands.
