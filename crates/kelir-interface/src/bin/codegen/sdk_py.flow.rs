@@ -476,12 +476,17 @@ fn eval_default(
             }
         }
         syn::Expr::Struct(item) => {
-            let struct_name = item
+            let segments: Vec<String> = item
                 .path
                 .segments
-                .last()
+                .iter()
                 .map(|segment| segment.ident.to_string())
-                .unwrap_or_default();
+                .collect();
+            let mut struct_name = segments.last().cloned().unwrap_or_default();
+            // see: cans/03-sdk-architecture.md#Python-SDK
+            if segments.len() == 2 && !proj.structs.iter().any(|s| s.rust_name == struct_name) {
+                struct_name = segments[0].clone();
+            }
             if !proj.structs.iter().any(|s| s.rust_name == struct_name) {
                 return Err(format!(
                     "{}: unsupported default expr for {where_}",
@@ -581,10 +586,12 @@ pub fn emit_py_module(proj: &Projection) -> Result<String, String> {
         lines.push("from typing import Literal".to_string());
     }
     lines.push(String::new());
-    lines.push("from kelir.model_plugin import BasePlugin".to_string());
+    lines.push("from kelir.plugin_model import BasePlugin".to_string());
     lines.push(String::new());
     let mut public: Vec<String> = proj.structs.iter().map(|ps| ps.rust_name.clone()).collect();
     public.push(krate.plugin_class.clone());
+    public.push(format!("{}_builder", krate.module_name));
+    public.push(krate.module_name.clone());
     lines.push("__all__ = [".to_string());
     let mut sorted_public = public.clone();
     sorted_public.sort();
@@ -656,6 +663,14 @@ pub fn emit_py_barrel(projections: &[Projection]) -> String {
         lines.push(format!(
             "from kelir.plugins.plugin_{} import {} as {}",
             proj.krate.module_name, proj.krate.plugin_class, proj.krate.plugin_class
+        ));
+    }
+    lines.push(String::new());
+    lines.push("# see: cans/03-sdk-architecture.md#Python-SDK".to_string());
+    for proj in &ordered {
+        lines.push(format!(
+            "from . import plugin_{} as {}",
+            proj.krate.module_name, proj.krate.module_name
         ));
     }
     lines.push(String::new());

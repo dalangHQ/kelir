@@ -7,7 +7,7 @@ use kelir_interface::errno_types::Errno;
 use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, NoDeps, ParkedConnectionReset, PipelineBinder,
+    KelirPlugin, LifecycleParticipant, MountScope, ParkedConnectionReset, PipelineBinder,
     PluginDeps, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{Channel, FilterAction, SuspendUntil};
@@ -92,9 +92,9 @@ impl IngressState {
             match parked.get_mut(&frame.connection_id) {
                 Some(existing) => {
                     if existing.target_port != frame.target_port {
-                        return Err(PluginError::reject(
-                            Errno::Eproto,
-                            "L4_FORWARD connection id reused for a different target port",
+                        return Err(PluginError::Halt(
+                            "EPROTO: L4_FORWARD connection id reused for a different target port"
+                                .to_string(),
                         ));
                     }
                     if existing.buffered.len() + initial.len() > config.parking.max_buffered_bytes {
@@ -254,7 +254,7 @@ impl ParkedConnectionReset for IngressRoutingService {
 }
 
 // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct WireIngressPlugin {
     pub router: IngressRoutingService,
     config: WireIngressConfig,
@@ -281,11 +281,11 @@ impl WireIngressPlugin {
     }
 
     // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
-    // TODO (L3) [wire_plane]: core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, L4_FORWARD never dispatched, handler dead
+    // L3-GAP: [wire_plane]: core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, L4_FORWARD never dispatched, handler dead
     pub fn on_l4_forward_frame(&self, payload: &mut [u8]) -> Result<FilterAction, PluginError> {
         let Some((l4, initial)) = L4ForwardFrame::decode(payload) else {
             return Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason:
                     "wire-ingress: malformed L4_FORWARD frame header dropped at the ingress stream"
                         .into(),
@@ -299,7 +299,7 @@ impl WireIngressPlugin {
                 until: SuspendUntil::Deadline(self.config.parking.idle_timeout_ms),
             }),
             ParkOutcome::Overflow => Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
             }),
         }
@@ -354,6 +354,3 @@ impl KelirPlugin for WireIngressPlugin {
 impl LifecycleParticipant for WireIngressPlugin {}
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for WireIngressPlugin {
-    type Deps = NoDeps;
-}

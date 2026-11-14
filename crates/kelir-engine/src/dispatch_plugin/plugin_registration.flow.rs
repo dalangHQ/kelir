@@ -91,6 +91,7 @@ impl PipelineEngine {
     // see: cans/08-lifecycle.md#CoW-fork
     // TODO (L2): sinks re-register under MountScope::default(); a fork_state that re-binds the same kind leaves a duplicate entry resolved first-match by stream_sink.
     pub fn rehydrate_host_registration(&mut self, state: HostRegistrationState) {
+        self.sort_rings_by_priority();
         if let Some(callback) = state.on_trap_deny {
             self.set_on_trap_deny_shared(callback);
         }

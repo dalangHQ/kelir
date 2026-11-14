@@ -8,6 +8,8 @@ pub mod handlers_testkit;
 pub mod vectors_chain_testkit;
 #[path = "vectors_parse.flow.rs"]
 pub mod vectors_parse;
+#[path = "vectors_scope_cases.flow.rs"]
+pub mod vectors_scope_cases;
 #[path = "vectors_testkit.flow.rs"]
 pub mod vectors_testkit;
 

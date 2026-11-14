@@ -63,4 +63,4 @@ pub trait VsockServiceHandler: Send + Sync {
     ) -> Result<(), PluginError>;
 }
 
-// TODO (L3) [wire_plane]: core wires listener ports to the virtio-vsock guest CID and dispatches accepted connections to VsockServiceHandler.; slop: listener bound, guest CID dispatch never proven
+// L3-GAP: [wire_plane]: core wires listener ports to the virtio-vsock guest CID and dispatches accepted connections to VsockServiceHandler.; slop: listener bound, guest CID dispatch never proven

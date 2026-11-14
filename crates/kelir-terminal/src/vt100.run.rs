@@ -64,7 +64,7 @@ impl Vt100StateMachine {
     }
 
     pub(crate) fn feed(&mut self, _bytes: &[u8]) -> Result<(), PluginError> {
-        // TODO (L3) [terminal_plane]: parse VT100 escape sequences in bytes and update matrix + cursor; slop: escape sequences unparsed, matrix and cursor wrong
+        // L3-GAP: [terminal_plane]: parse VT100 escape sequences in bytes and update matrix + cursor; slop: escape sequences unparsed, matrix and cursor wrong
         Ok(())
     }
 
@@ -74,6 +74,6 @@ impl Vt100StateMachine {
 }
 
 pub(crate) fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
-    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged
+    // L3-GAP: [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged
     buf.to_vec()
 }

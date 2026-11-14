@@ -5,11 +5,10 @@ use std::thread::JoinHandle;
 use async_trait::async_trait;
 use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
-    PipelineBinder, PluginDeps, TokenRevocation, VirtioDevice,
+    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
+    PluginDeps, TokenRevocation, VirtioDevice,
 };
 use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
@@ -68,9 +67,8 @@ impl MetadataEndpoint {
         let mut serving = self.lock_serving()?;
         serving.retain(|handle| !handle.is_finished());
         if serving.len() >= MAX_CONCURRENT_METADATA_SESSIONS {
-            return Err(PluginError::reject(
-                Errno::Econnrefused,
-                "metadata service: serving capacity exceeded",
+            return Err(PluginError::Halt(
+                "ECONNREFUSED: metadata service: serving capacity exceeded".into(),
             ));
         }
         serving.push(handle);
@@ -102,7 +100,7 @@ impl MetadataEndpoint {
             name: name.into(),
             ttl_seconds: self.config.token_ttl_seconds,
         };
-        // TODO (L3) [gv_03_audience_locking_validation]: parse ttl_seconds and audience query parameters per cans/plugins/vault.md; slop: audience unparsed, query pollutes name, wildcard token issued
+        // L3-GAP: [gv_03_audience_locking_validation]: parse ttl_seconds and audience query parameters per cans/plugins/vault.md; slop: audience unparsed, query pollutes name, wildcard token issued
         match self.broker.issue(&token_request).await {
             Ok(token) => ok_response(&token),
             Err(err) => error_response(err.errno().as_str(), err.reason()),
@@ -111,7 +109,7 @@ impl MetadataEndpoint {
 }
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct VaultPlugin {
     config: VaultConfig,
     endpoint: Arc<MetadataEndpoint>,
@@ -153,7 +151,7 @@ impl VaultPlugin {
     }
 
     // see: cans/plugins/vault.md#Metadata-service-(vault)
-    // TODO (L3) [governance_vault]: no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands; slop: guest CID never bound, any vsock peer passes as session
+    // L3-GAP: [governance_vault]: no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands; slop: guest CID never bound, any vsock peer passes as session
     fn is_session_peer(&self, peer: &VsockPeer) -> bool {
         self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
     }
@@ -165,14 +163,12 @@ impl VaultPlugin {
                 "metadata service: session guest CID unbound at boot; core vsock CID wiring pending (L3)"
                     .into(),
             ),
-            Some(_) => PluginError::reject(Errno::Econnrefused,
-                "metadata service: non-session vsock peer",
-            ),
+            Some(_) => PluginError::Halt("ECONNREFUSED: metadata service: non-session vsock peer".into()),
         }
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // TODO (L3) [governance_vault]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, metadata worker stalls on unread stream
+    // L3-GAP: [governance_vault]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, metadata worker stalls on unread stream
     fn serve_peer_off_worker(
         &self,
         peer: &VsockPeer,
@@ -246,7 +242,7 @@ impl CredentialBrokerCtx {
 
 // see: cans/plugins/vault.md#Return-errno-and-rejection-behavior-(vault)
 fn halt(err: VaultError) -> PluginError {
-    PluginError::reject(err.errno(), err.reason())
+    PluginError::Halt(format!("{}: {}", err.errno(), err.reason()))
 }
 
 // see: cans/08-lifecycle.md#Rollback
@@ -318,9 +314,8 @@ fn read_metadata_request(stream: &mut dyn Stream) -> Result<Vec<u8>, PluginError
     let mut chunk = [0u8; 1024];
     loop {
         if request.len() >= METADATA_MAX_REQUEST_BYTES {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                "metadata request exceeds the 64KB frame budget",
+            return Err(PluginError::Halt(
+                "EINVAL: metadata request exceeds the 64KB frame budget".into(),
             ));
         }
         let read = stream.read(&mut chunk)?;
@@ -351,9 +346,8 @@ fn write_metadata_response(stream: &mut dyn Stream, response: &[u8]) -> Result<(
     while written < response.len() {
         let written_now = stream.write(&response[written..])?;
         if written_now == 0 {
-            return Err(PluginError::reject(
-                Errno::Epipe,
-                "metadata client closed the vsock stream",
+            return Err(PluginError::Halt(
+                "EPIPE: metadata client closed the vsock stream".into(),
             ));
         }
         written += written_now;
@@ -397,7 +391,7 @@ fn http_response(status: &str, body: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-// TODO (L3) [governance_vault]: replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only; slop: hand-rolled escaping ships, crafted value breaks JSON string
+// L3-GAP: [governance_vault]: replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only; slop: hand-rolled escaping ships, crafted value breaks JSON string
 fn json_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     for ch in value.chars() {
@@ -415,6 +409,3 @@ fn json_string(value: &str) -> String {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for VaultPlugin {
-    type Deps = NoDeps;
-}

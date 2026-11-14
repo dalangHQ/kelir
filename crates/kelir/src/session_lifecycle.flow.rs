@@ -5,8 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use kelir_interface::errno_types::Errno;
-use kelir_interface::handlers_plugin::Has;
+use kelir_interface::handlers_plugin::Capability;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
@@ -20,7 +19,54 @@ use crate::hlist_sdk::{HList, HNil, NoParams};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::protocol_wire::{ProcessLimits, StreamKind, TrapEvent, Verdict};
 
-// see: cans/03-sdk-architecture.md#Rust-SDK
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub trait Plane: std::any::Any {
+    fn plane_kind(&self) -> &'static str;
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::terminal::TerminalPlane {
+    fn plane_kind(&self) -> &'static str {
+        "terminal"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::storage::StoragePlane {
+    fn plane_kind(&self) -> &'static str {
+        "storage"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::wire::WirePlane {
+    fn plane_kind(&self) -> &'static str {
+        "wire"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::checkpoint::CheckpointPlane {
+    fn plane_kind(&self) -> &'static str {
+        "checkpoint"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::host::HostPlane {
+    fn plane_kind(&self) -> &'static str {
+        "host"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for VmHandle {
+    fn plane_kind(&self) -> &'static str {
+        "vm"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Session-surfaces
 pub struct Session<Plugins = HNil, Params = NoParams>
 where
     Plugins: HList,
@@ -51,11 +97,45 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-    pub fn ctx<T, Index>(&self) -> &T
+    pub fn cap<P: 'static>(&self) -> Option<&P>
     where
-        Plugins: Has<T, Index>,
+        Plugins: Capability<P>,
     {
-        self.plugins.get()
+        self.plugins.capability()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn plane<P: Plane>(&self) -> Option<&P> {
+        match std::any::type_name::<P>() {
+            "kelir_engine::planes::terminal::TerminalPlane" => {
+                self.core.terminal.as_ref() as &dyn std::any::Any
+            }
+            "kelir_engine::planes::storage::StoragePlane" => {
+                &self.core.storage as &dyn std::any::Any
+            }
+            "kelir_engine::planes::wire::WirePlane" => &self.core.wire as &dyn std::any::Any,
+            "kelir_engine::planes::checkpoint::CheckpointPlane" => {
+                self.core.checkpoint.as_ref() as &dyn std::any::Any
+            }
+            "kelir_engine::planes::host::HostPlane" => &self.core.host as &dyn std::any::Any,
+            "kelir_interface::handles_lifecycle::VmHandle" => &self.vm as &dyn std::any::Any,
+            _ => return None,
+        }
+        .downcast_ref::<P>()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn plane_named(&self, name: &str) -> Option<&dyn std::any::Any> {
+        match name {
+            "vm" => Some(&self.vm),
+            "terminal" => Some(self.core.terminal.as_ref()),
+            "storage" => Some(&self.core.storage),
+            "wire" => Some(&self.core.wire),
+            "checkpoint" => Some(self.core.checkpoint.as_ref()),
+            "host" => Some(&self.core.host),
+            "vsock" => Some(&self.vsock),
+            _ => None,
+        }
     }
 
     pub fn core(&self) -> &kelir_engine::Session {
@@ -162,6 +242,12 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             wire_cfg: self.registration.wire_cfg.clone(),
             lock_broker_cfg: self.registration.lock_broker_cfg.clone(),
             on_trap_deny: None,
+            on_trap_deny_ex: None,
+            fs_cfg: self.registration.fs_cfg.clone(),
+            scope_requires: self.registration.scope_requires.clone(),
+            scope_timeouts: self.registration.scope_timeouts.clone(),
+            scope_priorities: self.registration.scope_priorities.clone(),
+            scope_rules: self.registration.scope_rules.clone(),
             custom_actions: Vec::new(),
             stream_kind_services: Vec::new(),
             // see: cans/08-lifecycle.md#CoW-fork
@@ -224,25 +310,27 @@ impl Session<HNil, NoParams> {
 #[cfg(feature = "plugin-ledger")]
 impl<Plugins: HList, Params> Session<Plugins, Params> {
     // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
-    pub async fn get_causal_delta_from_parent<Index>(
+    pub async fn get_causal_delta_from_parent(
         &self,
     ) -> Result<kelir_interface::telemetry::CausalDelta, PluginError>
     where
-        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+        Plugins: Capability<plugin_ledger::LedgerCtx>,
     {
-        self.ctx::<plugin_ledger::LedgerCtx, Index>()
-            .get_causal_delta_from_parent()
-            .await
+        let ledger = self
+            .cap::<plugin_ledger::LedgerCtx>()
+            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
+        ledger.get_causal_delta_from_parent().await
     }
 
     // see: cans/plugins/ledger.md#Ledger-handler-API
-    pub async fn count_denials<Index>(&self, ppid: u32) -> Result<u64, PluginError>
+    pub async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError>
     where
-        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+        Plugins: Capability<plugin_ledger::LedgerCtx>,
     {
-        self.ctx::<plugin_ledger::LedgerCtx, Index>()
-            .count_denials(ppid)
-            .await
+        let ledger = self
+            .cap::<plugin_ledger::LedgerCtx>()
+            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
+        ledger.count_denials(ppid).await
     }
 }
 
@@ -272,7 +360,7 @@ pub struct SpawnResult {
 pub struct VsockHandle;
 
 impl VsockHandle {
-    // TODO (L3) [wire_plane]: open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.; slop: channel Ok, multiplexed vsock bytes never flow
+    // L3-GAP: [wire_plane]: open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.; slop: channel Ok, multiplexed vsock bytes never flow
     pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
         Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
     }
@@ -368,7 +456,7 @@ impl SpawnBuilder {
 
 // see: cans/11-protocol.md#Per-command-rlimits
 fn encode_exec_control_limits(limits: Option<&ProcessLimits>) -> Vec<u8> {
-    // TODO (L3) [protocol_mux]: serialize the rlimit descriptor onto EXEC control sub-lane 0x03.; slop: rlimit dropped, EXEC sub-lane 0x03 never carries it
+    // L3-GAP: [protocol_mux]: serialize the rlimit descriptor onto EXEC control sub-lane 0x03.; slop: rlimit dropped, EXEC sub-lane 0x03 never carries it
     let _ = limits;
     Vec::new()
 }
@@ -386,9 +474,9 @@ impl Future for SpawnBuilder {
             return Poll::Ready(Err(PluginError::Halt(error.clone())));
         }
         if self.limits.is_some() {
-            return Poll::Ready(Err(PluginError::reject(
-                Errno::Econfig,
-                "per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder",
+            return Poll::Ready(Err(PluginError::Halt(
+                "EConfig: per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder"
+                    .to_string(),
             )));
         }
         let Some(transport) = &self.transport else {
@@ -411,7 +499,7 @@ impl Future for SpawnBuilder {
         };
         match transport.dispatch_exec(&request) {
             Ok(()) => {
-                // TODO (L3) [protocol_mux]: the SpawnResult (exit code, stdout, stderr) lands with live guest exec; dispatch accepted the request but no result channel exists yet.; slop: spawn Ok without a guest result
+                // L3-GAP: [protocol_mux]: the SpawnResult (exit code, stdout, stderr) lands with live guest exec; dispatch accepted the request but no result channel exists yet.; slop: spawn Ok without a guest result
                 Poll::Ready(Err(PluginError::Halt(
                     "TODO (L3): guest exec result".into(),
                 )))

@@ -1091,10 +1091,10 @@ cases:
   case_file: cases/protocol_mux/pm_03_core_stream_kind_reregistration_abort.yaml
   target_crate: crates/kelir-engine
   target_tier: unit
-  status: red
+  status: implemented
   test_file: crates/kelir/tests/stream_kind_protocol_test.rs
   test_fn: pm_03_core_stream_kind_reregistration_abort
-  reason: 'nextest ignored-only: bootstrap sealed with a plugin re-registering the frozen core kind 0x0001 EXEC; register_stream_kind is infallible and seal never surfaces EKindReserved'
+  note: 'Seal aborts with EKindReserved: dispatch_plugin/engine.flow.rs seal loop rejects kind 0x0001 (reserved range <= 0x000F) at boot.'
 - case_id: pm_04_plugin_stream_kind_dynamic_registration
   case_file: cases/protocol_mux/pm_04_plugin_stream_kind_dynamic_registration.yaml
   target_crate: crates/kelir-engine
@@ -1107,10 +1107,10 @@ cases:
   case_file: cases/protocol_mux/pm_05_stream_kind_conflict_ekindconflict.yaml
   target_crate: crates/kelir-engine
   target_tier: unit
-  status: red
+  status: implemented
   test_file: crates/kelir/tests/stream_kind_protocol_test.rs
   test_fn: pm_05_stream_kind_conflict_ekindconflict
-  reason: 'audit rewrite: old implemented test asserted the live vsock-port conflict instead of the case''s kind collision; nextest ignored-only: bootstrap sealed with two plugins registered for the same stream kind 0x0019; EKindConflict never surfaced'
+  note: 'Seal aborts with EKindConflict: dispatch_plugin/engine.flow.rs seal loop rejects the second registration of kind 0x0019 at boot; the structured EKindConflict envelope stays L3 (Halt prefix only).'
 - case_id: pm_06_exec_slot_slab_saturation_reject
   case_file: cases/protocol_mux/pm_06_exec_slot_slab_saturation_reject.yaml
   target_crate: crates/kelir-engine

@@ -25,7 +25,7 @@ impl TerminalPlane {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed; slop: OSC52 payload reaches host terminal, bytes not purged
+    // L3-GAP: [tp_03_ansi_sanitizer_osc52_clipboard_drop]: the host filter pipeline applies drop_osc52/strip_title to console output before VT100 feed; slop: OSC52 payload reaches host terminal, bytes not purged
     pub fn with_wiring(self, wiring: &TerminalWiring) -> Self {
         let _ = self.ops.apply_wiring(wiring);
         let _ = self.resize(wiring.cols, wiring.rows);

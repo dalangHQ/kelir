@@ -18,6 +18,8 @@ pub struct OtlpReceiptRecord {
     pub exit_code: i32,
     pub wall_clock_ns: u64,
     pub spans: Vec<crate::OtlpSpan>,
+    pub hook_spans: Vec<crate::OtlpSpan>,
+    pub ext_raw: Vec<(String, Vec<u8>)>,
 }
 
 // see: cans/14-observability.md#Metrics-pipeline
@@ -30,6 +32,8 @@ impl OtlpReceiptRecord {
             exit_code: receipt.exit_code,
             wall_clock_ns: receipt.wall_clock_ns,
             spans: crate::phase_spans(receipt.phase_timings.as_ref()),
+            hook_spans: crate::hook_spans(&receipt.hook_trace),
+            ext_raw: receipt.ext_raw(),
         }
     }
 }

@@ -10,5 +10,6 @@ pub mod receipt_attest;
 
 pub use delta_attest::CausalDelta;
 pub use receipt_attest::{
-    AttestationToken, ExecutionReceipt, ExitKind, PhaseTimings, ReceiptExtension, ReceiptStore,
+    AttestationToken, ExecutionReceipt, ExitKind, FsVfsExt, HookSpan, NetL7SqlExt, PhaseTimings,
+    ReceiptExtension, ReceiptStore, VerdictKind,
 };

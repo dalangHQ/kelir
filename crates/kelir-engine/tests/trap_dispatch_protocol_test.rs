@@ -9,7 +9,7 @@ use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_engine::planes::checkpoint::CheckpointPlane;
 use kelir_engine::session_lifecycle::PlaneWiring;
 use kelir_interface::checkpoint::PidLineage;
-use kelir_interface::driver_interface::{SnapshotDescriptor, default_vm_config};
+use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{
     FusedTrampolineDescriptor, HookEntry, HookStage, RingChain, TrampolineRing, TrampolineTable,
@@ -33,14 +33,11 @@ fn trap_event() -> TrapEvent {
 }
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
@@ -75,7 +72,7 @@ impl TrapInterposer for DropTrap {
         _ctx: &HandlerCtx,
     ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         Ok(Verdict::Drop {
-            errno: Some(Errno::Eperm),
+            errno: Errno::Eperm,
             reason: "denied".to_string(),
         })
     }
@@ -164,6 +161,7 @@ fn hook_entry(ordinal: u32) -> HookEntry {
         ordinal,
         stage: HookStage::Pre,
         plugin_name: Some(format!("hook-{ordinal}")),
+        priority: 0,
         filter: None,
         lifecycle_tag: None,
         custom_action_name: None,
@@ -188,9 +186,7 @@ async fn pe_04_interceptor_pipeline_monotonic_verdict() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match verdict {
-        Verdict::Drop {
-            errno: Some(errno), ..
-        } => assert_eq!(errno, Errno::Eperm),
+        Verdict::Drop { errno, .. } => assert_eq!(errno, Errno::Eperm),
         other => return Err(format!("first Drop did not halt pipeline: {other:?}")),
     }
     assert!(!second_called.load(Ordering::SeqCst));
@@ -307,10 +303,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match verdict {
-        Verdict::Drop {
-            errno: Some(errno),
-            reason,
-        } => {
+        Verdict::Drop { errno, reason } => {
             assert_eq!(errno, Errno::Efault);
             assert_eq!(reason, "Plugin panicked");
         }
@@ -325,9 +318,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match second {
-        Verdict::Drop {
-            errno: Some(errno), ..
-        } => assert_eq!(errno, Errno::Efault),
+        Verdict::Drop { errno, .. } => assert_eq!(errno, Errno::Efault),
         other => {
             return Err(format!(
                 "engine did not survive quarantined panic: {other:?}"

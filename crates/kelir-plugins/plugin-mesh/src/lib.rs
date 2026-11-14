@@ -50,3 +50,18 @@ pub struct MeshConfig {
     pub traceparent: TraceParentPropagation,
     pub listeners: Vec<PeerListener>,
 }
+
+// see: cans/artifacts/examples/multi-vm-swarm.rs#MeshConfig
+impl Default for MeshConfig {
+    fn default() -> Self {
+        Self {
+            peer_identity: PeerIdentity::Spiffe {
+                trust_domain: String::new(),
+                workload_prefix: String::new(),
+            },
+            mtls: false,
+            traceparent: TraceParentPropagation::InjectAndValidate,
+            listeners: Vec::new(),
+        }
+    }
+}

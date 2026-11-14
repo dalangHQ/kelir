@@ -1,4 +1,4 @@
-// TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: wire the trap/codec/introspect skeleton into live execution; slop: shim skeleton unwired, crate-wide allow until then
+// L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: wire the trap/codec/introspect skeleton into live execution; slop: shim skeleton unwired, crate-wide allow until then
 #![allow(dead_code)]
 // see: cans/11-protocol.md#Wire-framing
 #[allow(unused_imports)]

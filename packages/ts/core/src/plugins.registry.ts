@@ -22,7 +22,7 @@ export interface NetworkFaultRule {
 
 export interface StorageFaultRule {
   readonly targetPath?: string;
-  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress";
+  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress" | "path-traversal" | "etimeout";
   readonly errorProbability?: number;
 }
 

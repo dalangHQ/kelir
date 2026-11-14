@@ -2,7 +2,7 @@
 use super::*;
 
 impl PipelineEngine {
-    // TODO (L3) [plugin_engine]: pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
+    // L3-GAP: [plugin_engine]: pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::HostPressure)?;
@@ -16,7 +16,7 @@ impl PipelineEngine {
                     || interceptor.on_host_pressure(level),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -24,7 +24,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -47,7 +47,7 @@ impl PipelineEngine {
                     || interceptor.on_host_keyring_access(key),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -55,7 +55,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);

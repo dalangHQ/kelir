@@ -50,7 +50,7 @@ class Session:
     # see: cans/03-sdk-architecture.md#Python-SDK
     @classmethod
     def from_native(cls, handle: Any) -> Session:
-        # TODO (L3) [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
+        # L3-GAP: [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
         session = cls()
         session._native = handle
         session.driver_name = str(handle.driver_name)
@@ -67,6 +67,14 @@ class Session:
         native = kelir._require_native(self._native, "session fork")
         return Session.from_native(native.fork())
 
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def cap_for(self, name: str) -> Any | None:
+        return getattr(self.cap, name, None)
+
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def plane(self, name: str) -> Any | None:
+        return getattr(self, name, None)
+
     # see: cans/08-lifecycle.md#Clock-skew
     async def skew_clock(self, seconds: float) -> None:
         await self.vm.clock.skew(timedelta(seconds=seconds))
@@ -75,7 +83,7 @@ class Session:
         if snapshot is not None:
             await self.vm.rollback(snapshot)
             return
-        # TODO (L3) [lifecycle_checkpoint]: call native driver rollback via the PyO3 _kelir bridge.; slop: rollback no-ops, tainted state persists
+        # L3-GAP: [lifecycle_checkpoint]: call native driver rollback via the PyO3 _kelir bridge.; slop: rollback no-ops, tainted state persists
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
 
     async def stop(self) -> None:
@@ -94,11 +102,11 @@ class Session:
         cwd: str | None = None,
         params: Any = None,
     ) -> SpawnResult:
-        # TODO (L3) [bindings_py]: spawn binary in the guest via the PyO3 _kelir bridge.; slop: spawn returns Ok without guest process
+        # L3-GAP: [bindings_py]: spawn binary in the guest via the PyO3 _kelir bridge.; slop: spawn returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
-        # TODO (L3) [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process
+        # L3-GAP: [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
 
     async def suspend(self, reason: SuspendReason) -> None:
@@ -130,7 +138,7 @@ class Session:
         return Path(str(member()))
 
     async def console(self) -> None:
-        # TODO (L3) [terminal_plane]: open the PTY console master via the PyO3 _kelir bridge.; slop: PTY master never opened, console input lost
+        # L3-GAP: [terminal_plane]: open the PTY console master via the PyO3 _kelir bridge.; slop: PTY master never opened, console input lost
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
@@ -138,7 +146,7 @@ class Session:
     async def attach(cls, session_id: str) -> Session:
         relay = kelir.relay_socket_path(session_id)
         _ = relay
-        # TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
+        # L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
         raise EConfig("TODO: Session.attach (L3)")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:

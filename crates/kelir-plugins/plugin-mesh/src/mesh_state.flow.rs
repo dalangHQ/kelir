@@ -7,19 +7,15 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PipelineBinder,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
     PluginDeps,
 };
-use kelir_interface::protocol_wire::Errno;
 use kelir_interface::vsock_mesh::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
 };
 
 use crate::handshake::HandshakeDriver;
 use crate::{MeshConfig, PeerIdentity, PeerRejection};
-
-// see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
-const ECONNREFUSED: Errno = Errno::Econnrefused;
 
 // see: cans/02-plugin-model.md#Latency-ceiling
 const MAX_CONCURRENT_HANDSHAKES: usize = 64;
@@ -43,6 +39,7 @@ pub(crate) struct MeshState {
     peers: Mutex<Vec<PeerRecord>>,
     handshakes: Mutex<Vec<JoinHandle<()>>>,
     rejections: Mutex<Vec<PeerRejection>>,
+    rejection_spans: Mutex<Vec<kelir_interface::telemetry::HookSpan>>,
 }
 
 impl MeshState {
@@ -52,6 +49,7 @@ impl MeshState {
             peers: Mutex::new(Vec::new()),
             handshakes: Mutex::new(Vec::new()),
             rejections: Mutex::new(Vec::new()),
+            rejection_spans: Mutex::new(Vec::new()),
         }
     }
 
@@ -84,9 +82,8 @@ impl MeshState {
         let mut handshakes = self.lock_handshakes()?;
         handshakes.retain(|handle| !handle.is_finished());
         if handshakes.len() >= MAX_CONCURRENT_HANDSHAKES {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                "mesh peer handshake capacity exceeded",
+            return Err(PluginError::Halt(
+                "ECONNREFUSED: mesh peer handshake capacity exceeded".into(),
             ));
         }
         handshakes.push(handle);
@@ -101,6 +98,28 @@ impl MeshState {
             }
             rejections.push(rejection);
         }
+        // see: cans/10-attestation.md#Hook-trace
+        // TODO (L3) [attestation_receipts]: engine pulls the buffered rejection spans into the receipt store; no new trait method.; slop: buffered rejection spans never reach the receipt.
+        if let Ok(mut spans) = self.rejection_spans.lock() {
+            if spans.len() >= MAX_PEER_REJECTIONS {
+                spans.remove(0);
+            }
+            spans.push(kelir_interface::telemetry::HookSpan {
+                plugin: "mesh".to_string(),
+                ring: kelir_interface::fusion_plugin::TrampolineRing::VsockService,
+                verdict_kind: kelir_interface::telemetry::VerdictKind::Drop,
+                duration_ns: 0,
+                ordinal: 0,
+            });
+        }
+    }
+
+    // see: cans/10-attestation.md#Hook-trace
+    pub(crate) fn drain_rejection_spans(&self) -> Vec<kelir_interface::telemetry::HookSpan> {
+        match self.rejection_spans.lock() {
+            Ok(mut spans) => std::mem::take(&mut *spans),
+            Err(_) => Vec::new(),
+        }
     }
 
     // see: cans/plugins/mesh.md#Peer-identity
@@ -111,7 +130,7 @@ impl MeshState {
 }
 
 // see: cans/plugins/mesh.md#Plugin-mesh
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct MeshPlugin {
     config: MeshConfig,
     pub(crate) state: Arc<MeshState>,
@@ -132,7 +151,7 @@ impl MeshPlugin {
                 trust_domain,
                 workload_prefix,
             } => {
-                // TODO (L3) [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
+                // L3-GAP: [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
                 Ok(SpiffeSvid {
                     spiffe_id: SpiffeId {
                         trust_domain: trust_domain.clone(),
@@ -153,28 +172,22 @@ impl MeshPlugin {
     ) -> Result<(), PluginError> {
         let PeerIdentity::Spiffe { trust_domain, .. } = &self.config.peer_identity;
         if &handshake.svid.spiffe_id.trust_domain != trust_domain {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                format!(
-                    "peer {}:{} presented trust domain {}",
-                    peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "ECONNREFUSED: peer {}:{} presented trust domain {}",
+                peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
+            )));
         }
         if peer
             .spiffe_id
             .as_ref()
             .is_some_and(|peer_id| peer_id != &handshake.svid.spiffe_id)
         {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                format!(
-                    "peer {}:{} vsock identity diverges from the handshake SVID",
-                    peer.cid, peer.port
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "ECONNREFUSED: peer {}:{} vsock identity diverges from the handshake SVID",
+                peer.cid, peer.port
+            )));
         }
-        // TODO (L3) [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh
+        // L3-GAP: [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh
         Ok(())
     }
 
@@ -187,7 +200,7 @@ impl MeshPlugin {
         if !self.config.mtls {
             return Ok(());
         }
-        // TODO (L3) [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS
+        // L3-GAP: [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS
         Err(PluginError::Halt(
             "mTLS handshake validation pending (L3)".into(),
         ))
@@ -200,7 +213,7 @@ impl MeshPlugin {
         handshake: &PeerSessionHandshake,
     ) -> Result<(), PluginError> {
         let mut peers = self.state.lock_peers()?;
-        // TODO (L3) [protocol_mux]: peer federation routing tables and call-hop propagation across routines; slop: federation unrouted, call hops never propagate, peers partitioned
+        // L3-GAP: [protocol_mux]: peer federation routing tables and call-hop propagation across routines; slop: federation unrouted, call hops never propagate, peers partitioned
         peers.push(PeerRecord {
             cid: peer.cid,
             port: peer.port,
@@ -212,7 +225,7 @@ impl MeshPlugin {
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // TODO (L3) [protocol_mux]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, worker stalls on unread stream
+    // L3-GAP: [protocol_mux]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, worker stalls on unread stream
     fn spawn_peer_handshake(
         &self,
         peer: &VsockPeer,
@@ -278,9 +291,6 @@ impl LifecycleParticipant for MeshPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for MeshPlugin {
-    type Deps = NoDeps;
-}
 
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
 #[async_trait]
@@ -308,13 +318,18 @@ impl MeshCtx {
         Ok(self.state.lock_rejections()?.clone())
     }
 
+    // see: cans/10-attestation.md#Hook-trace
+    pub fn rejection_spans(&self) -> Vec<kelir_interface::telemetry::HookSpan> {
+        self.state.drain_rejection_spans()
+    }
+
     // see: cans/artifacts/examples/multi-vm-swarm.rs#publish
     pub async fn publish(
         &self,
         _region: &SharedMemoryHandle,
         shard_id: u32,
     ) -> Result<(), PluginError> {
-        // TODO (L3) [protocol_mux]: route the shard announcement over the peer federation streams and propagate the traceparent; slop: announcement unrouted, traceparent lost, shards never converge
+        // L3-GAP: [protocol_mux]: route the shard announcement over the peer federation streams and propagate the traceparent; slop: announcement unrouted, traceparent lost, shards never converge
         let peers = self.state.lock_peers()?;
         let Some(record) = peers.last() else {
             return Err(PluginError::Halt(format!(
@@ -336,7 +351,7 @@ impl MeshCtx {
 
     // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
     pub async fn await_winner(&self, _timeout: Duration) -> Result<u32, PluginError> {
-        // TODO (L3) [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles
+        // L3-GAP: [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles
         let peers = self.state.lock_peers()?;
         Err(PluginError::Halt(format!(
             "mesh winner election pending (L3): {} peers connected",

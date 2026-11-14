@@ -2,7 +2,7 @@
 use std::path::{Path, PathBuf};
 
 use kelir::KelirBuilder;
-use kelir::interface::driver_interface::default_vm_config;
+use kelir::interface::driver_interface::VmConfig;
 use kelir::interface::runtime_block::block_on;
 
 fn session_logs_dir(session_id: &[u8; 16]) -> Result<PathBuf, String> {
@@ -28,14 +28,11 @@ fn drop_session_dir(session_id: &[u8; 16]) {
 #[test]
 #[ignore]
 fn tp_09_exec_stream_sublane_stdio_fidelity() -> Result<(), String> {
-    let config = default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    );
+    let config = VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    };
     let session = block_on(
         KelirBuilder::new(config)
             .seal()

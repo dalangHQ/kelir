@@ -12,7 +12,8 @@ use crate::protocol_wire::Verdict;
 macro_rules! tag_enum {
     ($(#[$attr:meta])* $vis:vis enum $name:ident { $($variant:ident => $tag:literal),+ $(,)? }) => {
         $(#[$attr])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "kebab-case")]
         $vis enum $name {
             $($variant),+
         }
@@ -77,11 +78,16 @@ pub trait FusedTrampolineCallback: Send + Sync + 'static {
 }
 
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
+// see: cans/02-plugin-model.md#TrapFilter-predicates
 #[derive(Debug, Clone, Default)]
 pub struct FilterSnapshot {
     pub binary: Option<String>,
     pub args: Vec<String>,
     pub pattern: Option<String>,
+    pub cwd: Option<String>,
+    pub env: Vec<(String, String)>,
+    pub uid: Option<u32>,
+    pub argv: Option<String>,
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -94,6 +100,7 @@ pub struct HookEntry {
     pub lifecycle_tag: Option<String>,
     pub custom_action_name: Option<String>,
     pub vsock_kind: Option<u32>,
+    pub priority: i32,
     pub run: Option<Arc<dyn FusedTrampolineCallback>>,
 }
 
@@ -107,8 +114,26 @@ impl fmt::Debug for HookEntry {
             .field("lifecycle_tag", &self.lifecycle_tag)
             .field("custom_action_name", &self.custom_action_name)
             .field("vsock_kind", &self.vsock_kind)
+            .field("priority", &self.priority)
             .field("run", &self.run.as_ref().map(|_| "FusedTrampolineCallback"))
             .finish()
+    }
+}
+
+// see: cans/02-plugin-model.md#Hook-ordering
+impl Default for HookEntry {
+    fn default() -> Self {
+        Self {
+            ordinal: 0,
+            stage: HookStage::Single,
+            plugin_name: None,
+            filter: None,
+            lifecycle_tag: None,
+            custom_action_name: None,
+            vsock_kind: None,
+            priority: 0,
+            run: None,
+        }
     }
 }
 
@@ -119,6 +144,7 @@ pub struct RingChain {
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+// see: cans/02-plugin-model.md#Hook-ordering
 #[derive(Debug, Clone, Default)]
 pub struct FusedTrampolineDescriptor {
     pub rings: Vec<RingChain>,
@@ -148,9 +174,12 @@ impl TrampolineTable {
                     chain.ring.as_tag()
                 ));
             }
+            // see: cans/02-plugin-model.md#Hook-ordering
+            let mut hooks = chain.hooks.clone();
+            hooks.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.ordinal.cmp(&b.ordinal)));
             entries.push(TrampolineEntry {
                 ring: chain.ring,
-                hook_count: chain.hooks.len() as u32,
+                hook_count: hooks.len() as u32,
             });
         }
         Ok(Self { entries })

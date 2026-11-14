@@ -1,5 +1,5 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use kelir_engine::dispatch_plugin::PipelineEngine;
@@ -132,6 +132,7 @@ fn builder_descriptor(case: &UnifiedBuilderCase) -> FusedTrampolineDescriptor {
                 ordinal,
                 stage: HookStage::Single,
                 plugin_name,
+                priority: 0,
                 filter: None,
                 lifecycle_tag: None,
                 custom_action_name: None,
@@ -144,6 +145,7 @@ fn builder_descriptor(case: &UnifiedBuilderCase) -> FusedTrampolineDescriptor {
                     ordinal,
                     stage: HookStage::Single,
                     plugin_name,
+                    priority: 0,
                     filter: None,
                     lifecycle_tag: None,
                     custom_action_name: None,
@@ -195,6 +197,119 @@ const PROCESS_EXIT_PENDING: &str =
 // see: cans/15-operations.md#Multi-language-parity-gate
 const STRUCTURAL_ONLY: &str =
     "no wire event on this chain; descriptor construction and prerequisite mounts executed only";
+
+// see: cans/15-operations.md#--trapfilter-coverage
+const TRAPFILTER_PREDICATES: [&str; 5] = ["args", "cwd", "env", "uid", "argv"];
+
+// see: cans/15-operations.md#--trapfilter-coverage
+fn assert_trapfilter_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let Some(case) = vectors
+        .iter()
+        .find(|vector| vector.name == "plugin-builder-trap-filter")
+    else {
+        return Err(
+            "parity: trapfilter coverage missing `plugin-builder-trap-filter` vector".to_string(),
+        );
+    };
+    let Some(builder) = &case.plugin_builder else {
+        return Err(
+            "parity: trapfilter coverage `plugin-builder-trap-filter` has no plugin_builder case"
+                .to_string(),
+        );
+    };
+    let Some(filter) = builder.filter.as_ref().and_then(|value| value.as_object()) else {
+        return Err(
+            "parity: trapfilter coverage `plugin-builder-trap-filter` carries no filter object"
+                .to_string(),
+        );
+    };
+    for predicate in TRAPFILTER_PREDICATES {
+        let Some(value) = filter.get(predicate) else {
+            return Err(format!(
+                "parity: trapfilter coverage filter is missing predicate `{predicate}`"
+            ));
+        };
+        let present = match predicate {
+            "args" | "env" => value.as_array().is_some_and(|list| !list.is_empty()),
+            "cwd" | "argv" => value.as_str().is_some_and(|text| !text.is_empty()),
+            "uid" => value.as_u64().is_some(),
+            _ => false,
+        };
+        if !present {
+            return Err(format!(
+                "parity: trapfilter coverage predicate `{predicate}` is empty in the trap-filter vector"
+            ));
+        }
+    }
+    Ok(())
+}
+
+// see: cans/15-operations.md#--hook-trace-coverage
+const HOOK_TRACE_RINGS: [&str; 8] = [
+    "trap",
+    "fs",
+    "net",
+    "console",
+    "exec",
+    "host",
+    "lifecycle",
+    "telemetry",
+];
+
+// see: cans/15-operations.md#--hook-trace-coverage
+// TODO (L3) [attestation_receipts]: per-ring span collection exists only for Trap dispatch today; the gate asserts the vector suite covers every ring so spans can be produced for each once dispatch lands.; slop: rings without live spans pass the gate on vector coverage alone.
+fn coarse_ring(tag: &str) -> Option<&'static str> {
+    match tag {
+        "trap" | "process-exit" => Some("trap"),
+        "lifecycle" | "host-preempt" => Some("lifecycle"),
+        "heartbeat" | "memory-pressure" | "watchdog" => Some("telemetry"),
+        _ if tag.starts_with("fs-") => Some("fs"),
+        _ if tag.starts_with("net-") => Some("net"),
+        _ if tag.starts_with("console-") => Some("console"),
+        _ if tag.starts_with("exec-") => Some("exec"),
+        _ if tag.starts_with("host-") => Some("host"),
+        _ => None,
+    }
+}
+
+// see: cans/15-operations.md#--hook-trace-coverage
+fn assert_hook_trace_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let mut covered: BTreeSet<&'static str> = BTreeSet::new();
+    for vector in vectors {
+        let Some(builder) = &vector.plugin_builder else {
+            continue;
+        };
+        for (ring, _) in builder.rings.iter().chain(builder.host_rings.iter()) {
+            if let Some(coarse) = coarse_ring(ring.as_tag()) {
+                covered.insert(coarse);
+            }
+        }
+    }
+    for ring in HOOK_TRACE_RINGS {
+        if !covered.contains(ring) {
+            return Err(format!(
+                "parity: hook-trace coverage missing ring `{ring}` in the builder vectors"
+            ));
+        }
+    }
+    let Ok(root) = crate::workspace_root() else {
+        return Err("parity: hook-trace coverage cannot locate the workspace root".to_string());
+    };
+    let pinned = root.join("cans/artifacts/examples/hook-matrix-full.rs");
+    let text = fs::read_to_string(&pinned).map_err(|e| {
+        format!(
+            "parity: hook-trace coverage cannot read {}: {e}",
+            pinned.display()
+        )
+    })?;
+    if !text.contains("HookSpan case") {
+        return Err(
+            "parity: hook-trace coverage missing the comment-pinned HookSpan case in cans/artifacts/examples/hook-matrix-full.rs"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
 
 pub fn assert_vectors(vectors: &[VectorCase]) -> Result<ParityReport, String> {
     if vectors.is_empty() {
@@ -403,6 +518,8 @@ pub fn assert_vectors(vectors: &[VectorCase]) -> Result<ParityReport, String> {
             ));
         }
     }
+    assert_trapfilter_coverage(vectors)?;
+    assert_hook_trace_coverage(vectors)?;
     Ok(report)
 }
 
@@ -420,20 +537,90 @@ fn assert_canonical_roster(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/15-operations.md#--action-coverage
+fn assert_action_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let mut seen: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for vector in vectors {
+        if let Some(builder) = &vector.plugin_builder {
+            for outcome in &builder.expected_outcomes {
+                match outcome {
+                    kelir_plugin_testkit::vectors_testkit::UnifiedBuilderOutcome::Verdict(
+                        verdict,
+                    ) => {
+                        let kind = match verdict {
+                            Verdict::Pass => "Pass",
+                            Verdict::Forward => "Forward",
+                            Verdict::Drop { .. } => "Drop",
+                            Verdict::Suspend { .. } => "Suspend",
+                            Verdict::Abort { .. } => "Abort",
+                            Verdict::Patch(_) => "Patch",
+                            _ => continue,
+                        };
+                        *seen.entry(kind).or_default() += 1;
+                    }
+                    kelir_plugin_testkit::vectors_testkit::UnifiedBuilderOutcome::Filter(_) => {
+                        *seen.entry("Forward").or_default() += 1;
+                    }
+                }
+            }
+        }
+        match &vector.expected_verdict {
+            Verdict::Pass => *seen.entry("Pass").or_default() += 1,
+            Verdict::Forward => *seen.entry("Forward").or_default() += 1,
+            Verdict::Drop { .. } => *seen.entry("Drop").or_default() += 1,
+            Verdict::Suspend { .. } => *seen.entry("Suspend").or_default() += 1,
+            Verdict::Abort { .. } => *seen.entry("Abort").or_default() += 1,
+            Verdict::Patch(_) => *seen.entry("Patch").or_default() += 1,
+            _ => {}
+        }
+    }
+    let required = ["Pass", "Forward", "Drop", "Suspend", "Abort", "Patch"];
+    let missing: Vec<&str> = required
+        .iter()
+        .filter(|kind| !seen.contains_key(**kind))
+        .copied()
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "parity: action coverage missing Action variants {missing:?} in vectors.json chains"
+        ));
+    }
+    println!(
+        "parity: action coverage OK ({}/{} Action variants)",
+        required.len(),
+        required.len()
+    );
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut path = "vectors.json".to_string();
+    let mut action_coverage = false;
+    let mut rest = args;
     match args.first().map(String::as_str) {
         None => {}
         Some("run") => {
-            if let Some(custom) = args.get(1) {
-                path = custom.clone();
-            }
+            rest = &args[1..];
         }
         Some(other) => {
             return Err(CliError::usage(format!(
-                "parity: unknown action `{other}` (expected `run [path]`)"
+                "parity: unknown action `{other}` (expected `run [path] [--action-coverage]`)"
             )));
         }
+    }
+    let positional: Vec<&String> = rest
+        .iter()
+        .filter(|arg| {
+            if arg.as_str() == "--action-coverage" {
+                action_coverage = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    if let Some(custom) = positional.first() {
+        path = (*custom).clone();
     }
     let text = fs::read_to_string(&path).map_err(|e| {
         format!(
@@ -444,6 +631,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     let vectors = suite.vectors.as_slice();
     let report = assert_vectors(vectors)?;
     assert_canonical_roster(vectors)?;
+    if action_coverage {
+        assert_action_coverage(vectors)?;
+    }
     println!(
         "parity: {} vector(s) from {path}: frame-validated {}; watchdog-armed {}; veto-registered {}",
         report.total, report.frame_validated, report.watchdog_armed, report.veto_registered

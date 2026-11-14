@@ -7,8 +7,6 @@ use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::vsock_mesh::VsockPeer;
 
-use crate::WX_VIOLATION_ERRNO;
-
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WxAllocToken {
@@ -18,7 +16,7 @@ pub struct WxAllocToken {
 }
 
 impl WxAllocToken {
-    // TODO (L3) [supply_chain_security]: cross-impl wire sync if a canonical token layout is pinned; see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation; slop: token layout unpinned, cross-impl wire sync diverges silently
+    // L3-GAP: [supply_chain_security]: cross-impl wire sync if a canonical token layout is pinned; see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation; slop: token layout unpinned, cross-impl wire sync diverges silently
     pub const WIRE_LEN: usize = 16 + 8 + 32;
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
@@ -53,7 +51,7 @@ impl WxTokenLedger {
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
     pub(crate) fn mint(&self, binary_blake3: &[u8; 32]) -> Result<WxAllocToken, PluginError> {
-        // TODO (L3) [supply_chain_security]: mint the nonce from the host CSPRNG and sign the token before vsock delivery; slop: nonce zeroed or unsigned, unverified binary presents valid-looking token
+        // L3-GAP: [supply_chain_security]: mint the nonce from the host CSPRNG and sign the token before vsock delivery; slop: nonce zeroed or unsigned, unverified binary presents valid-looking token
         let nonce = u128::from(self.next_nonce.fetch_add(1, Ordering::AcqRel));
         let issued_at_ns = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -77,10 +75,9 @@ impl WxTokenLedger {
             .iter()
             .position(|token| token.nonce == nonce)
             .ok_or_else(|| {
-                PluginError::reject(
-                    WX_VIOLATION_ERRNO,
-                    format!("W^X allocation token {nonce:#x} is unknown or already consumed"),
-                )
+                PluginError::Halt(format!(
+                    "EWXVIOLATION: W^X allocation token {nonce:#x} is unknown or already consumed"
+                ))
             })?;
         Ok(minted.remove(index))
     }
@@ -133,7 +130,7 @@ impl WxTokenChannel {
         let Some(stream) = stream.as_mut() else {
             return Ok(());
         };
-        // TODO (L3) [supply_chain_security]: correlate the channel with the trapped task and move token delivery onto the async transport loop; slop: token delivered off async loop, channel uncorrelated with trapped task
+        // L3-GAP: [supply_chain_security]: correlate the channel with the trapped task and move token delivery onto the async transport loop; slop: token delivered off async loop, channel uncorrelated with trapped task
         for token in pending.iter() {
             let written = stream.write(&token.wire_bytes())?;
             if written != WxAllocToken::WIRE_LEN {

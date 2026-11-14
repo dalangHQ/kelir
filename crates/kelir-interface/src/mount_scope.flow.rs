@@ -74,7 +74,7 @@ impl MountScope {
         }
     }
 
-    // TODO (L3) [pe_20_same_path_different_identity_never_matches]: canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path; slop: swapped identity Passes, exact dev/ino/BLAKE3 match skipped
+    // L3-GAP: [pe_20_same_path_different_identity_never_matches]: canonical (st_dev, st_ino, binary_blake3) — cans/11-protocol.md#Trap-fast-path; slop: swapped identity Passes, exact dev/ino/BLAKE3 match skipped
     // see: cans/02-plugin-model.md#Filter-before-FFI-gate
     pub fn allows_binary(&self, binary: &str) -> bool {
         self.binaries.as_ref().is_none_or(|list| {

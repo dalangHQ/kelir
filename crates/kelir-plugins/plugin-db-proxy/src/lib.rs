@@ -1,7 +1,7 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #![forbid(unsafe_code)]
 
-// TODO (L3) [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
+// L3-GAP: [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
 #[path = "pgwire_db_proxy.flow.rs"]
 pub mod pgwire_db_proxy;
 #[path = "reassembler_wire.run.rs"]
@@ -14,12 +14,13 @@ pub use service_db_proxy::SqlProxyService;
 
 use std::sync::Arc;
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, MountScope, NetInterposer, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink,
+    KelirPlugin, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
     VirtioDevice,
 };
-use kelir_interface::protocol_wire::{Errno, FilterAction, StreamKind, Verdict};
+use kelir_interface::protocol_wire::{FilterAction, StreamKind, Verdict};
 
 use crate::pgwire_db_proxy::PgFrameDescriptor;
 use crate::reassembler_wire::{
@@ -71,7 +72,7 @@ pub struct EphemeralCredentials {
     pub ttl_seconds: u32,
 }
 
-// TODO (L3) [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
+// L3-GAP: [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
 
 // see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
 #[derive(Clone, Debug, Default)]
@@ -82,7 +83,7 @@ pub struct DbProxyConfig {
 }
 
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct DbProxyPlugin {
     pub config: DbProxyConfig,
     pub proxy: Arc<SqlProxy>,
@@ -113,7 +114,7 @@ impl DbProxyPlugin {
         descriptor: PgFrameDescriptor,
     ) -> Result<FilterAction, PluginError> {
         let _ = descriptor;
-        // TODO (L3) [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
+        // L3-GAP: [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
         Ok(FilterAction::Forward)
     }
 
@@ -149,11 +150,11 @@ impl DbProxyPlugin {
             flows.remove(&key);
             return Ok(FilterAction::Forward);
         }
-        // TODO (L3) [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
+        // L3-GAP: [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
         let state = flows.entry(key).or_default();
         match state.reassembly.push_segment(&segment)? {
             SegmentOutcome::Dropped => Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason:
                     "db-proxy: reassembly carryover saturated; silent discard awaits retransmit"
                         .into(),
@@ -170,7 +171,7 @@ impl DbProxyPlugin {
                     }
                     Ok(action)
                 }
-                // TODO (L3) [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
+                // L3-GAP: [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
                 NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
             },
         }
@@ -218,7 +219,7 @@ impl StreamFrameSink for DbSqliteStreamSink {
         match self.bridge.on_client_bytes(stream_id, &mut frame)? {
             Verdict::Pass => Ok(()),
             Verdict::Drop { errno, reason } => {
-                Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
+                Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
             }
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
@@ -259,9 +260,6 @@ impl KelirPlugin for DbProxyPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for DbProxyPlugin {
-    type Deps = NoDeps;
-}
 
 // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
 impl NetInterposer for DbProxyPlugin {

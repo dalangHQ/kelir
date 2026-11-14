@@ -1,9 +1,9 @@
 // see: cans/01-architecture.md#Host-runtime
 #![forbid(unsafe_code)]
-// TODO (L3) [protocol_mux]: wire CustomActionEntry/StreamKindServiceEntry/SdkStreamServiceSink into live stream dispatch; slop: stream services registered but never consumed
+// L3-GAP: [protocol_mux]: wire CustomActionEntry/StreamKindServiceEntry/SdkStreamServiceSink into live stream dispatch; slop: stream services registered but never consumed
 #![allow(dead_code)]
 
-// TODO (L3) [plugin_engine]: tests/ facade integration tests per cans/artifacts/config/project-structure.txt.; slop: facade tests assert Ok(()), no session exercised
+// L3-GAP: [plugin_engine]: tests/ facade integration tests per cans/artifacts/config/project-structure.txt.; slop: facade tests assert Ok(()), no session exercised
 pub use kelir_interface as interface;
 pub use kelir_interface::driver_interface;
 
@@ -15,6 +15,8 @@ pub mod builder_plugin;
 pub mod builder_scopes;
 #[path = "builder_sdk.flow.rs"]
 pub mod builder_sdk;
+#[path = "builder_typestate.flow.rs"]
+pub mod builder_typestate;
 #[path = "hlist_sdk.flow.rs"]
 pub mod hlist_sdk;
 pub mod planes;
@@ -25,14 +27,16 @@ pub mod sandbox_runtime;
 #[path = "session_lifecycle.flow.rs"]
 pub mod session_lifecycle;
 pub mod telemetry_attest;
+#[path = "trap_filter.flow.rs"]
+pub mod trap_filter;
 
 pub use builder_scopes::{
-    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
-    TrapScope,
+    ActionsScope, ConsoleScope, DenyScope, ExecScope, FsScope, FsScopeConfig, HostScope,
+    LifecycleScope, NetScope, ParamsScope, ReadRules, RuleScope, ScopeRules, StreamsScope,
+    TelemetryScope, TrapScope, VsockScope, WriteRules,
 };
 pub use builder_sdk::{
-    Host, KelirBuilder, LifecycleMut, Plugin, PostExecAction, Sealed, StepVerdict, TrapFilter,
-    Unsealed,
+    Host, KelirBuilder, LifecycleMut, Plugin, PostExecAction, Sealed, StepVerdict, Unsealed,
 };
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_interface::checkpoint::{PidLineage, StepSlot};
@@ -42,6 +46,7 @@ pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use kelir_interface::storage::CommitStats;
 pub use planes::storage_plane::{FsReconcileRequest, SnoopRule, SyntheticFile};
+pub use trap_filter::TrapFilter;
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
 pub use builder_sdk::ToolGuardExt;

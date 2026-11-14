@@ -88,7 +88,7 @@ impl FuseOps for RealFuseOps {
                 match self.engine.dispatch_fs_lookup(&request.path, ctx)? {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        // TODO (L3) [sp_11_host_fifo_socket_lookup_enxio]: fill lookup payload from broker getattr; slop: lookup accepts FIFO/socket, ENXIO never returned
+                        // L3-GAP: [sp_11_host_fifo_socket_lookup_enxio]: fill lookup payload from broker getattr; slop: lookup accepts FIFO/socket, ENXIO never returned
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     // see: cans/02-plugin-model.md#Unified-verdict
@@ -143,7 +143,7 @@ impl FuseOps for RealFuseOps {
                     .dispatch_fs_read(&request.path, &request.data, ctx)?;
                 Ok(FuseResponse {
                     guest_inode: request.guest_inode,
-                    // TODO (L3) [sp_14_in_flight_read_masking_pattern_replace]: fill read payload from broker read at offset; slop: guest reads raw secret, host file mutated instead
+                    // L3-GAP: [sp_14_in_flight_read_masking_pattern_replace]: fill read payload from broker read at offset; slop: guest reads raw secret, host file mutated instead
                     reply: FuseReply::Payload(Vec::new()),
                 })
             }
@@ -181,7 +181,7 @@ impl FuseOps for RealFuseOps {
             FuseOpcode::Rename => Err(PluginError::Halt(
                 "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: FUSE RENAME needs the broker upper-file move; slop: in-place write, no temp+rename, inode unchanged".into(),
             )),
-            // TODO (L3) [sp_16_statfs_zero_crawl_constant_time]: statfs replies remaining broker quota from the plane atomics; slop: statfs crawls host tree, time grows with base
+            // L3-GAP: [sp_16_statfs_zero_crawl_constant_time]: statfs replies remaining broker quota from the plane atomics; slop: statfs crawls host tree, time grows with base
             FuseOpcode::Statfs => Err(PluginError::Halt(
                 "TODO (L3) [sp_16_statfs_zero_crawl_constant_time]: FUSE STATFS needs the remaining-quota reply from the plane atomics; slop: statfs crawls host tree, time grows with base"
                     .into(),
@@ -214,15 +214,8 @@ impl FuseOps for RealFuseOps {
                         guest_inode: request.guest_inode,
                         reply: FuseReply::Written(request.size),
                     }),
-                    // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-                    FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {
-                        guest_inode: request.guest_inode,
-                        reply: FuseReply::Written(request.size),
-                    }),
                     // see: cans/05-storage-plane.md#Write-gating
-                    FilterAction::Drop {
-                        errno: Some(errno), ..
-                    } => {
+                    FilterAction::Drop { errno, .. } => {
                         let errno = drop_errno(errno)?;
                         Ok(FuseResponse {
                             guest_inode: request.guest_inode,
@@ -252,7 +245,7 @@ impl FuseOps for RealFuseOps {
                 };
                 self.lock_broker.acquire(&lock_request, ctx)?;
                 let flock_cmd = match request.opcode {
-                    // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
+                    // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
                     FuseOpcode::Setlk => 6,
                     FuseOpcode::Setlkw => 2,
                     _ => 2,
@@ -263,7 +256,7 @@ impl FuseOps for RealFuseOps {
                 {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
-                        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: fill lock payload from host flock grant; conflicts reply EWOULDBLOCK; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
+                        // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: fill lock payload from host flock grant; conflicts reply EWOULDBLOCK; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
                         reply: FuseReply::Payload(Vec::new()),
                     }),
                     Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
@@ -290,30 +283,6 @@ impl FuseOps for RealFuseOps {
 // see: cans/05-storage-plane.md#Write-gating
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
-    match errno {
-        Errno::Eperm => Ok(libc::EPERM),
-        Errno::Enxio => Ok(libc::ENXIO),
-        Errno::Ewouldblock => Ok(libc::EWOULDBLOCK),
-        Errno::Eacces => Ok(libc::EACCES),
-        Errno::Efault => Ok(libc::EFAULT),
-        Errno::Ebusy => Ok(libc::EBUSY),
-        Errno::Exdev => Ok(libc::EXDEV),
-        Errno::Enospc => Ok(libc::ENOSPC),
-        Errno::Erofs => Ok(libc::EROFS),
-        Errno::Econnrefused => Ok(libc::ECONNREFUSED),
-        Errno::Enoent => Ok(libc::ENOENT),
-        Errno::Einval => Ok(libc::EINVAL),
-        Errno::Enodata => Ok(libc::ENODATA),
-        Errno::Epipe => Ok(libc::EPIPE),
-        Errno::Eproto => Ok(libc::EPROTO),
-        Errno::Econfig
-        | Errno::Epolicy
-        | Errno::Etoolquota
-        | Errno::Ewxviolation
-        | Errno::Eclockregress
-        | Errno::Esecurityviolation
-        | Errno::Eunknownkind => Err(PluginError::Halt(format!(
-            "FUSE errno {errno} has no POSIX mapping on the storage plane"
-        ))),
-    }
+    // see: cans/02-plugin-model.md#Unified-verdict
+    Ok(errno.to_os_errno())
 }

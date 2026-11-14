@@ -400,11 +400,11 @@ async def build_runtime(
 
         # see: cans/07-wire-plane.md#Vault-and-credential-flow
         .wire(
-            sinkhole=SinkholeConfig(
-                allowlist=[
+            sinkhole=SinkholeConfig.from_legacy(
+                [
                     "api.stripe.com", "github.com", "*.internal.net",
                 ],
-                drop_all=True,
+                True,
             ),
             ssh_agent_bridge=True,
             vaults=[

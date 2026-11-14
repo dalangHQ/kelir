@@ -300,7 +300,7 @@ impl NativeVmHandle {
 
     #[napi]
     pub async fn map_shared_region(&self, _tag: String, _size_bytes: f64) -> Result<Buffer> {
-        // TODO (L3) [bindings_ts]: hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.; slop: handle never crosses, Buffer fabricated or missing
+        // L3-GAP: [bindings_ts]: hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.; slop: handle never crosses, Buffer fabricated or missing
         Err(missing(
             "map_shared_region: the shared-memory handle crosses via SCM_RIGHTS handoff (L3)",
         ))
@@ -328,7 +328,7 @@ pub struct NativeTerminalHandle {
 impl NativeTerminalHandle {
     #[napi]
     pub fn notice(&self, _message: String) -> Result<()> {
-        // TODO (L3) [terminal_plane]: publish the TerminalNotice event once the reactive event bus lands.; slop: notice never published, terminal state unobserved
+        // L3-GAP: [terminal_plane]: publish the TerminalNotice event once the reactive event bus lands.; slop: notice never published, terminal state unobserved
         Err(missing(
             "terminal notice: TerminalNotice emission lands with the reactive event bus (L3)",
         ))
@@ -459,7 +459,7 @@ pub struct NativeVsockHandle {}
 impl NativeVsockHandle {
     #[napi]
     pub async fn channel(&self, _kind: u32) -> Result<()> {
-        // TODO (L3) [pm_02_stream_mux_open_data_close_flags]: open the duplex channel once the mux SPSC rings carry stream frames.; slop: channel opened without open/data/close flags
+        // L3-GAP: [pm_02_stream_mux_open_data_close_flags]: open the duplex channel once the mux SPSC rings carry stream frames.; slop: channel opened without open/data/close flags
         Err(missing(
             "vsock channel: duplex streams ride the mux SPSC rings (L3)",
         ))
@@ -474,7 +474,7 @@ pub struct NativeStepHandle {}
 impl NativeStepHandle {
     #[napi]
     pub fn last(&self) -> Result<NativeSnapshotDescriptorRecord> {
-        // TODO (L3) [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
+        // L3-GAP: [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",
         ))
@@ -625,7 +625,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn spawn(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
-        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved
+        // L3-GAP: [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved
         Err(missing(
             "spawn: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -633,7 +633,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn exec_in_guest(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
-        // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec rides wrong stream kind, output lost
+        // L3-GAP: [tp_09_exec_stream_sublane_stdio_fidelity]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec rides wrong stream kind, output lost
         Err(missing(
             "exec_in_guest: EXEC stream dispatch lands with the shim wire protocol (L3)",
         ))
@@ -656,7 +656,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn rollback(&self) -> Result<()> {
-        // TODO (L3) [lc_03_step_evaluation_taint_rollback]: lineage-derived head rollback needs the dispatch PID lineage.; slop: rollback without lineage, wrong head restored
+        // L3-GAP: [lc_03_step_evaluation_taint_rollback]: lineage-derived head rollback needs the dispatch PID lineage.; slop: rollback without lineage, wrong head restored
         Err(missing(
             "rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking (L3)",
         ))
@@ -676,7 +676,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn console(&self) -> Result<()> {
-        // TODO (L3) [terminal_plane]: attach the PTY console master once the terminal plane owns it.; slop: PTY never attached, console output lost
+        // L3-GAP: [terminal_plane]: attach the PTY console master once the terminal plane owns it.; slop: PTY never attached, console output lost
         Err(missing(
             "console: PTY master attach lands with the terminal plane console (L3)",
         ))
@@ -684,7 +684,7 @@ impl NativeSessionHandle {
 
     #[napi]
     pub async fn get_causal_delta_from_parent(&self) -> Result<()> {
-        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: causal deltas are produced by plugin-ledger over the delta chain.; slop: deltas fabricated, no merkle aggregation
+        // L3-GAP: [ar_09_causal_delta_aggregation_merkle]: causal deltas are produced by plugin-ledger over the delta chain.; slop: deltas fabricated, no merkle aggregation
         Err(missing(
             "get_causal_delta_from_parent: causal deltas come from plugin-ledger (L3)",
         ))
@@ -693,7 +693,7 @@ impl NativeSessionHandle {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     #[napi]
     pub fn handle_ingress(&self, _options: Object) -> Result<()> {
-        // TODO (L3) [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
+        // L3-GAP: [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
         Err(missing(
             "handle_ingress: inbound connections park in the wire plane listeners (L3)",
         ))

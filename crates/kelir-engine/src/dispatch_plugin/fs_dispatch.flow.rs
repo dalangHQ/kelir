@@ -32,7 +32,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_filter_action(outcome)?
+                outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -63,7 +63,7 @@ impl PipelineEngine {
                     || interceptor.on_fs_lookup(path),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -71,7 +71,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -139,7 +139,7 @@ impl PipelineEngine {
                     || interceptor.on_fs_lock(path, flock_cmd, flock_type, pid),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -147,7 +147,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);

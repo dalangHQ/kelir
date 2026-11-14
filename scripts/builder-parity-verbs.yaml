@@ -4,7 +4,7 @@
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 # see: scripts/check-builder-parity.sh
 schema:
-  placement: flat on the builder, both flat and inside a scope, or registry for TS HookRegistry only
+  placement: flat on the builder, both flat and inside a scope, scoped inside a scope only, or registry for TS HookRegistry only
   scope: scope the verb lives in or opens, empty otherwise
   return: builder Self-this-KelirBuilder, sealed Rust Result Sealed else builder, terminal boot only, scope the scope type, registry HookRegistry this
   sdks: sdks the verb is required in, absence outside the list is not a failure
@@ -49,11 +49,12 @@ verbs:
     status: fixed
     note: wire plane config verb
   params:
-    placement: flat
+    placement: scoped
+    scope: params
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: params model verb; rust and ts retype the builder, py returns Self
+    note: params model verb; scope-only in ParamsScope via .model(); rust and ts retype the builder, py returns Self
   detached:
     placement: flat
     return: builder
@@ -97,35 +98,40 @@ verbs:
     status: fixed
     note: mount scope verb
   fork_with:
-    placement: flat
+    placement: scoped
+    scope: fs
     return: builder
-    sdks: rust,ts,py
+    sdks: rust
     status: fixed
-    note: forkWith in TS, fork_with in Rust/Py
+    note: scope-only in FsScope in Rust; TS/Py keep flat forkWith/fork_with (no scope forkWith sub-node yet)
   vsock_service:
-    placement: flat
+    placement: scoped
+    scope: vsock
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: vsockService in TS, vsock_service in Rust/Py
+    note: scope-only in VsockScope via .service(); vsockService in TS, vsock_service in Rust/Py is the flat spelling
   on_trap_deny:
-    placement: flat
+    placement: scoped
+    scope: deny
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: trap deny hook verb
+    note: trap deny hook verb; scope-only in DenyScope
   register_custom_action:
-    placement: flat
+    placement: scoped
+    scope: actions
     return: builder
     sdks: rust,ts,py
     status: target
-    note: pre-fix missing in ts (A5 added py register_custom_action)
+    note: scope-only in ActionsScope via .register(); pre-fix missing in ts (A5 added py register_custom_action)
   register_stream_kind:
-    placement: flat
+    placement: scoped
+    scope: streams
     return: builder
     sdks: rust,ts,py
     status: target
-    note: pre-fix missing in ts (A5 added py register_stream_kind)
+    note: scope-only in StreamsScope via .register(); pre-fix missing in ts (A5 added py register_stream_kind)
   register_veto:
     placement: flat
     return: builder
@@ -242,174 +248,202 @@ verbs:
     sdks: rust,ts,py
     status: fixed
     note: opens the telemetry scope
+  actions:
+    placement: flat
+    scope: actions
+    return: builder
+    sdks: ts,py
+    status: fixed
+    note: opens the actions scope; rust entry point lives in builder_scopes.flow.rs (RS_SCOPES), not RS_BUILDER
+  streams:
+    placement: flat
+    scope: streams
+    return: builder
+    sdks: ts,py
+    status: fixed
+    note: opens the streams scope; rust entry point lives in builder_scopes.flow.rs (RS_SCOPES), not RS_BUILDER
+  vsock:
+    placement: flat
+    scope: vsock
+    return: builder
+    sdks: ts,py
+    status: fixed
+    note: opens the vsock scope; rust entry point lives in builder_scopes.flow.rs (RS_SCOPES), not RS_BUILDER
+  deny:
+    placement: flat
+    scope: deny
+    return: builder
+    sdks: ts,py
+    status: fixed
+    note: opens the deny scope; rust entry point lives in builder_scopes.flow.rs (RS_SCOPES), not RS_BUILDER
   on_trap:
-    placement: both
+    placement: scoped
     scope: trap
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in TrapScope; scoped return is the scope itself
+    note: scope-only in TrapScope; scoped return is the scope itself
   on_process_exit:
-    placement: both
+    placement: scoped
     scope: trap
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in TrapScope; scoped return is the scope itself
+    note: scope-only in TrapScope; scoped return is the scope itself
   on_fs_lookup:
-    placement: both
+    placement: scoped
     scope: fs
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+    note: scope-only in FsScope; scoped return is the scope itself
   on_fs_read:
-    placement: both
+    placement: scoped
     scope: fs
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+    note: scope-only in FsScope; scoped return is the scope itself
   on_fs_write:
-    placement: both
+    placement: scoped
     scope: fs
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+    note: scope-only in FsScope; scoped return is the scope itself
   on_fs_lock:
-    placement: both
+    placement: scoped
     scope: fs
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in FsScope; scoped return is the scope itself
+    note: scope-only in FsScope; scoped return is the scope itself
   on_net_outbound:
-    placement: both
+    placement: scoped
     scope: net
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in NetScope; scoped return is the scope itself
+    note: scope-only in NetScope; scoped return is the scope itself
   on_net_inbound:
-    placement: both
+    placement: scoped
     scope: net
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in NetScope; scoped return is the scope itself
+    note: scope-only in NetScope; scoped return is the scope itself
   on_console_input:
-    placement: both
+    placement: scoped
     scope: console
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in ConsoleScope; scoped return is the scope itself
+    note: scope-only in ConsoleScope; scoped return is the scope itself
   on_console_output:
-    placement: both
+    placement: scoped
     scope: console
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in ConsoleScope; scoped return is the scope itself
+    note: scope-only in ConsoleScope; scoped return is the scope itself
   on_exec_stdout:
-    placement: both
+    placement: scoped
     scope: exec
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in ExecScope; scoped return is the scope itself
+    note: scope-only in ExecScope; scoped return is the scope itself
   on_exec_stderr:
-    placement: both
+    placement: scoped
     scope: exec
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in ExecScope; scoped return is the scope itself
+    note: scope-only in ExecScope; scoped return is the scope itself
   on_host_lsm_exec:
-    placement: both
+    placement: scoped
     scope: host
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+    note: scope-only in HostScope; scoped return is the scope itself
   on_host_pressure:
-    placement: both
+    placement: scoped
     scope: host
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+    note: scope-only in HostScope; scoped return is the scope itself
   on_host_keyring_access:
-    placement: both
+    placement: scoped
     scope: host
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+    note: scope-only in HostScope; scoped return is the scope itself
   on_host_preempt:
-    placement: both
+    placement: scoped
     scope: host
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in HostScope; scoped return is the scope itself
+    note: scope-only in HostScope; scoped return is the scope itself
   on_vm_init:
-    placement: both
+    placement: scoped
     scope: lifecycle
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+    note: scope-only in LifecycleScope; scoped return is the scope itself
   on_vm_ready:
-    placement: both
+    placement: scoped
     scope: lifecycle
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+    note: scope-only in LifecycleScope; scoped return is the scope itself
   on_vm_shutdown:
-    placement: both
+    placement: scoped
     scope: lifecycle
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+    note: scope-only in LifecycleScope; scoped return is the scope itself
   on_pre_commit:
-    placement: both
+    placement: scoped
     scope: lifecycle
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+    note: scope-only in LifecycleScope; scoped return is the scope itself
   on_post_commit:
-    placement: both
+    placement: scoped
     scope: lifecycle
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in LifecycleScope; scoped return is the scope itself
+    note: scope-only in LifecycleScope; scoped return is the scope itself
   on_memory_pressure:
-    placement: both
+    placement: scoped
     scope: telemetry
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+    note: scope-only in TelemetryScope; scoped return is the scope itself
   on_heartbeat:
-    placement: both
+    placement: scoped
     scope: telemetry
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+    note: scope-only in TelemetryScope; scoped return is the scope itself
   on_watchdog:
-    placement: both
+    placement: scoped
     scope: telemetry
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: flat on the builder, scoped in TelemetryScope; scoped return is the scope itself
+    note: scope-only in TelemetryScope; scoped return is the scope itself
   boot:
     placement: flat
     return: terminal

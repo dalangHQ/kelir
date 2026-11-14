@@ -7,7 +7,7 @@ pub use kelir_interface::plugin_model::{
     ForeignPluginBridge, FsInodeAttr, FsInterposer, HostInterposer, KelirPlugin, LifecycleCtx,
     LifecycleEvent, LifecycleObservation, LifecycleParticipant, LockBrokerCoordination, MountScope,
     NetInterposer, NoDeps, PANIC_QUARANTINE_ENABLED, ParkedConnectionReset, PipelineBinder,
-    PluginClone, PluginDeps, SystemTelemetryParticipant, TrapInterposer, VetoEvent, VirtioDevice,
-    VirtioRing,
+    PluginClone, PluginDeps, SystemTelemetryParticipant, TrapInterposer, Veto, VetoEvent, VetoList,
+    VirtioDevice, VirtioRing,
 };
 pub use kelir_interface::protocol_wire::{Errno, FilterAction, ProcessExit, TrapEvent, Verdict};

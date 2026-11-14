@@ -33,6 +33,10 @@ pub enum Errno {
     Eunknownkind,
     #[serde(rename = "EClockRegress")]
     Eclockregress,
+    #[serde(rename = "PathTraversal")]
+    PathTraversal,
+    #[serde(rename = "ETIMEDOUT")]
+    Etimeout,
 }
 
 impl Errno {
@@ -60,6 +64,36 @@ impl Errno {
             Self::Esecurityviolation => "ESecurityViolation",
             Self::Eunknownkind => "EUnknownKind",
             Self::Eclockregress => "EClockRegress",
+            Self::PathTraversal => "PathTraversal",
+            Self::Etimeout => "ETIMEDOUT",
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Unified-verdict
+    pub fn to_os_errno(&self) -> i32 {
+        match self {
+            Self::Eperm => libc::EPERM,
+            Self::Eacces => libc::EACCES,
+            Self::Enoent => libc::ENOENT,
+            Self::Einval => libc::EINVAL,
+            Self::Enospc => libc::ENOSPC,
+            Self::Erofs => libc::EROFS,
+            Self::Econnrefused => libc::ECONNREFUSED,
+            Self::Enxio => libc::ENXIO,
+            Self::Ewouldblock => libc::EWOULDBLOCK,
+            Self::Efault => libc::EFAULT,
+            Self::Ebusy => libc::EBUSY,
+            Self::Exdev => libc::EXDEV,
+            Self::Epipe => libc::EPIPE,
+            Self::Enodata => libc::ENODATA,
+            Self::Eproto => libc::EPROTO,
+            Self::Etimeout => libc::ETIMEDOUT,
+            Self::PathTraversal | Self::Epolicy | Self::Esecurityviolation | Self::Ewxviolation => {
+                libc::EPERM
+            }
+            Self::Etoolquota | Self::Econfig | Self::Eunknownkind | Self::Eclockregress => {
+                libc::EINVAL
+            }
         }
     }
 
@@ -80,6 +114,7 @@ impl Errno {
             libc::EPIPE => Some(Self::Epipe),
             libc::ENODATA => Some(Self::Enodata),
             libc::EPROTO => Some(Self::Eproto),
+            libc::ETIMEDOUT => Some(Self::Etimeout),
             _ => None,
         }
     }
@@ -130,6 +165,8 @@ impl std::str::FromStr for Errno {
             "ESecurityViolation" => Ok(Self::Esecurityviolation),
             "EUnknownKind" => Ok(Self::Eunknownkind),
             "EClockRegress" => Ok(Self::Eclockregress),
+            "PathTraversal" => Ok(Self::PathTraversal),
+            "ETIMEDOUT" => Ok(Self::Etimeout),
             _ => Err(UnknownErrno(value.to_string())),
         }
     }

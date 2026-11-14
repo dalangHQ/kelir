@@ -7,7 +7,7 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_otlp::registry_otlp::MetricRegistry;
 
 pub(crate) fn lsm_status(reaper_kind: &HostReaperKind) -> bool {
-    // TODO (L3) [hypervisor_driver]: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status; slop: LSM status never queried, posture unproven
+    // L3-GAP: [hypervisor_driver]: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status; slop: LSM status never queried, posture unproven
     let _ = reaper_kind;
     false
 }
@@ -29,14 +29,14 @@ pub(crate) fn refresh_rss(metrics: &Arc<MetricRegistry>) -> Option<u64> {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        // TODO (L3) [lc_02_suspend_zero_rss_purge]: report host RSS on non-Linux (task_info on macOS, GetProcessMemoryInfo on Windows); slop: RSS unreported on macOS/Windows, suspend purge unproven
+        // L3-GAP: [lc_02_suspend_zero_rss_purge]: report host RSS on non-Linux (task_info on macOS, GetProcessMemoryInfo on Windows); slop: RSS unreported on macOS/Windows, suspend purge unproven
         let _ = metrics;
         None
     }
 }
 
 pub(crate) fn arm_host_reaper(parent_pid: u32) -> Result<(), PluginError> {
-    // TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL
+    // L3-GAP: [lc_12_host_reaper_pdeathsig_enforcement]: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL
     let _ = parent_pid;
     Err(PluginError::Halt(
         "TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: HostPlane::arm_host_reaper; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL".into(),

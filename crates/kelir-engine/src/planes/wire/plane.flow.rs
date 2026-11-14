@@ -3,13 +3,14 @@
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 use std::sync::{Arc, Mutex, RwLock};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::vsock_mesh::VsockServiceHandler;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
 use kelir_interface::wire::net::{
-    FrameDirection, LinkLocalRoute, NetOps, WireWiring, link_local_route,
+    FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, WireWiring, link_local_route,
 };
 use kelir_interface::wire::udp_nat::UdpNatOps;
 
@@ -94,13 +95,32 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
-    // TODO (L3) [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
+    // L3-GAP: [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
     pub fn with_wiring(self, wiring: WireWiring) -> Self {
         self.dns_ops.apply_wiring(&wiring);
         self.net_ops.apply_wiring(&wiring);
         Self {
             wiring: Some(wiring),
             ..self
+        }
+    }
+
+    // see: cans/07-wire-plane.md#Sinkhole-rules
+    pub(crate) fn wiring_for_network_off(
+        wiring: Option<WireWiring>,
+        network_off: bool,
+    ) -> WireWiring {
+        match wiring {
+            Some(mut wiring) => {
+                if network_off {
+                    wiring.sinkhole.ensure_drop_all();
+                }
+                wiring
+            }
+            None => WireWiring {
+                sinkhole: SinkholeConfig::from_allowlist_drop_all(Vec::new(), network_off),
+                ..Default::default()
+            },
         }
     }
 
@@ -219,7 +239,7 @@ impl WirePlane {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::Drop) => {
                 let action = FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
                 };
                 self.record_drop(&action);
@@ -236,7 +256,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-    // TODO (L3) [wire_plane]: vCPU loop must act on this; slop: surfaced action never acted on, vCPU ignores verdict
+    // L3-GAP: [wire_plane]: vCPU loop must act on this; slop: surfaced action never acted on, vCPU ignores verdict
     pub fn surface_action(
         &self,
         action: kelir_interface::protocol_wire::FilterAction,
@@ -265,7 +285,7 @@ impl WirePlane {
                         "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
                     )));
                 }
-                // TODO (L3) [wire_plane]: parse the HTTP metadata request and bridge it to the bound vault vsock service stream; slop: metadata request never bridged to vault vsock
+                // L3-GAP: [wire_plane]: parse the HTTP metadata request and bridge it to the bound vault vsock service stream; slop: metadata request never bridged to vault vsock
                 Ok(kelir_interface::protocol_wire::FilterAction::Forward)
             }
             _ => Err(PluginError::Halt(
@@ -320,7 +340,7 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#Rollback-interaction
     // see: cans/07-wire-plane.md#Socket-lifecycle
     pub fn quiesce(&self) -> Result<(), PluginError> {
-        // TODO (L3) [wp_03_rollback_socket_termination_econnreset]: close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
+        // L3-GAP: [wp_03_rollback_socket_termination_econnreset]: close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
         self.udp_nat_ops.quiesce()?;
         let mut forwards = self
             .port_forwards

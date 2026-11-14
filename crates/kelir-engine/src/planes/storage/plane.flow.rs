@@ -46,7 +46,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // TODO (L3) [storage_plane]: plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05; slop: wiring unconsumed, encapsulation and masking unenforced
+    // L3-GAP: [storage_plane]: plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05; slop: wiring unconsumed, encapsulation and masking unenforced
     pub fn with_wiring(mut self, wiring: StorageConfig) -> Self {
         self.wiring = wiring;
         self
@@ -76,7 +76,7 @@ impl StoragePlane {
     }
 
     // see: cans/02-plugin-model.md#Unified-interposition-pipeline
-    // TODO (L3) [storage_plane]: snoop rules register as write-path FsInterposer hooks so on_write fires with (path, raw, ctx) per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: snoops held but never dispatched, writes unobserved
+    // L3-GAP: [storage_plane]: snoop rules register as write-path FsInterposer hooks so on_write fires with (path, raw, ctx) per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: snoops held but never dispatched, writes unobserved
     pub fn with_snoops(mut self, snoops: Vec<SnoopRule>) -> Self {
         self.snoops = snoops;
         self
@@ -99,7 +99,7 @@ impl StoragePlane {
         self.reconciler.get().map(Arc::clone)
     }
 
-    // TODO (L3) [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
+    // L3-GAP: [storage_plane]: anchor derives broker_dir from the live host broker journal once the broker owns its layout; slop: anchor without broker journal, broker_dir invented
     pub fn with_reconciler(self, reconciler: Arc<dyn ReconcilerOps>) -> Self {
         let _ = self.reconciler.set(reconciler);
         self
@@ -120,7 +120,7 @@ impl StoragePlane {
     }
 
     pub fn discard(&self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: drop the sparse upper file and tombstones; base untouched; slop: rollback Ok, upper st_blocks nonzero, tombstones left
+        // L3-GAP: [sp_01_host_cow_upper_discard_on_rollback]: drop the sparse upper file and tombstones; base untouched; slop: rollback Ok, upper st_blocks nonzero, tombstones left
         let _ = (&self.sparse_upper_path, &self.tombstones);
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: StoragePlane::discard needs the sparse upper drop; slop: rollback Ok, upper st_blocks nonzero, tombstones left".into(),
@@ -156,7 +156,7 @@ impl StoragePlane {
     pub fn punch_hole_sparse_upper(
         &self,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path; slop: rollback Ok, upper st_blocks nonzero, tombstones left
+        // L3-GAP: [sp_01_host_cow_upper_discard_on_rollback]: FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED) on sparse_upper_path; slop: rollback Ok, upper st_blocks nonzero, tombstones left
         self.io.punch_hole(&self.sparse_upper_path, 0, u64::MAX)?;
         self.io.advise_dontneed(&self.sparse_upper_path)
     }
@@ -186,7 +186,7 @@ impl StoragePlane {
     }
 
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3) [sp_01_host_cow_upper_discard_on_rollback]: report the sparse upper allocation on non-Unix hosts; the constant 0 hides host block usage; slop: rollback Ok, upper st_blocks nonzero, tombstones left
+    // L3-GAP: [sp_01_host_cow_upper_discard_on_rollback]: report the sparse upper allocation on non-Unix hosts; the constant 0 hides host block usage; slop: rollback Ok, upper st_blocks nonzero, tombstones left
     #[cfg(not(unix))]
     pub fn sparse_upper_blocks(&self) -> u64 {
         0

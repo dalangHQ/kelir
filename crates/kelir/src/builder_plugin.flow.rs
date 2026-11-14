@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use kelir_interface::driver_interface::{
     DaxWindowMode, FastBootMode, WatchdogEvent, WatchdogVerdict,
@@ -20,13 +21,12 @@ use kelir_interface::protocol_wire::{
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::builder_scopes::{
-    ConsoleScope, ExecScope, FsScope, HostScope, LifecycleScope, NetScope, TelemetryScope,
-    TrapScope,
+    ConsoleScope, ExecScope, FsScope, FsScopeConfig, HostScope, LifecycleScope, NetScope,
+    ScopeRules, TelemetryScope, TrapScope,
 };
-use crate::builder_sdk::{
-    Host, KelirBuilder, Plugin, Registration, TrapFilter, Unsealed, filter_matches,
-};
+use crate::builder_sdk::{Host, KelirBuilder, Plugin, Registration, Unsealed};
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams};
+use crate::trap_filter::{TrapFilter, filter_matches};
 
 use crate::builder_adapters::{
     AsyncTrapClosureAdapter, ConsoleClosureAdapter, FsClosureAdapter, HostClosureAdapter,
@@ -91,7 +91,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn fork_with(
+    pub(crate) fn fork_with(
         mut self,
         fork: impl Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
     ) -> Self {
@@ -99,7 +99,57 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn vsock_service<H>(mut self, spec: VsockServiceSpec, handler: H) -> Self
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn scope_require<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.registration
+            .scope_requires
+            .push(std::any::type_name::<P>());
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn scope_timeout(mut self, scope: &'static str, timeout: Duration) -> Self {
+        self.registration.scope_timeouts.push((scope, timeout));
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn scope_priority(mut self, scope: &'static str, priority: i32) -> Self {
+        self.registration.scope_priorities.push((scope, priority));
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn fs_config(mut self, cfg: FsScopeConfig) -> Self {
+        self.registration.fs_cfg = Some(cfg);
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn scope_rules(mut self, scope: &'static str, rules: ScopeRules) -> Self {
+        self.registration.scope_rules.push((scope, rules));
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub(crate) fn on_trap_deny_ex<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+    {
+        self.registration.on_trap_deny_ex = Some(Box::new(
+            move |event: &TrapEvent, verdict: &Verdict, session: &kelir_engine::Session| {
+                let fut = f(event, verdict, session);
+                Box::pin(fut)
+            },
+        ));
+        self
+    }
+
+    pub(crate) fn vsock_service<H>(mut self, spec: VsockServiceSpec, handler: H) -> Self
     where
         H: VsockServiceHandler + 'static,
     {
@@ -153,7 +203,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         if enabled { configure(self) } else { self }
     }
 
-    pub fn on_trap<F>(mut self, f: F) -> Self
+    pub(crate) fn on_trap<F>(mut self, f: F) -> Self
     where
         F: Fn(&TrapEvent, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -166,7 +216,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_process_exit<F>(mut self, f: F) -> Self
+    pub(crate) fn on_process_exit<F>(mut self, f: F) -> Self
     where
         F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync + 'static,
     {
@@ -179,7 +229,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_fs_lookup<F>(mut self, f: F) -> Self
+    pub(crate) fn on_fs_lookup<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -192,7 +242,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_fs_read<F>(mut self, f: F) -> Self
+    pub(crate) fn on_fs_read<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
@@ -205,7 +255,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_fs_write<F>(mut self, f: F) -> Self
+    pub(crate) fn on_fs_write<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, &mut [u8], u32, &HandlerCtx) -> Result<FilterAction, PluginError>
             + Send
@@ -221,7 +271,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_fs_lock<F>(mut self, f: F) -> Self
+    pub(crate) fn on_fs_lock<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, i32, i16, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -234,7 +284,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_net_outbound<F>(mut self, f: F) -> Self
+    pub(crate) fn on_net_outbound<F>(mut self, f: F) -> Self
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
     {
@@ -247,7 +297,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_net_inbound<F>(mut self, f: F) -> Self
+    pub(crate) fn on_net_inbound<F>(mut self, f: F) -> Self
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
     {
@@ -260,7 +310,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_console_input<F>(mut self, f: F) -> Self
+    pub(crate) fn on_console_input<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
@@ -273,7 +323,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_console_output<F>(mut self, f: F) -> Self
+    pub(crate) fn on_console_output<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
@@ -286,7 +336,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_exec_stdout<F>(mut self, f: F) -> Self
+    pub(crate) fn on_exec_stdout<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
@@ -299,7 +349,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_exec_stderr<F>(mut self, f: F) -> Self
+    pub(crate) fn on_exec_stderr<F>(mut self, f: F) -> Self
     where
         F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
     {
@@ -312,7 +362,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_lsm_exec<F>(mut self, f: F) -> Self
+    pub(crate) fn on_host_lsm_exec<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -325,7 +375,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_pressure<F>(mut self, f: F) -> Self
+    pub(crate) fn on_host_pressure<F>(mut self, f: F) -> Self
     where
         F: Fn(u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -338,7 +388,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_keyring_access<F>(mut self, f: F) -> Self
+    pub(crate) fn on_host_keyring_access<F>(mut self, f: F) -> Self
     where
         F: Fn(&str) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
@@ -351,7 +401,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_init<F>(mut self, f: F) -> Self
+    pub(crate) fn on_vm_init<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -370,7 +420,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_ready<F>(mut self, f: F) -> Self
+    pub(crate) fn on_vm_ready<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -389,7 +439,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_vm_shutdown<F>(mut self, f: F) -> Self
+    pub(crate) fn on_vm_shutdown<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -408,7 +458,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_pre_commit<F>(mut self, f: F) -> Self
+    pub(crate) fn on_pre_commit<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -427,7 +477,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_post_commit<F>(mut self, f: F) -> Self
+    pub(crate) fn on_post_commit<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -447,7 +497,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_host_preempt<F>(mut self, f: F) -> Self
+    pub(crate) fn on_host_preempt<F>(mut self, f: F) -> Self
     where
         F: for<'c, 'i> Fn(
                 &'c mut LifecycleCtx<'i>,
@@ -466,7 +516,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_memory_pressure<F, Fut>(mut self, f: F) -> Self
+    pub(crate) fn on_memory_pressure<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(u32, u32) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
@@ -480,7 +530,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_heartbeat<F, Fut>(mut self, f: F) -> Self
+    pub(crate) fn on_heartbeat<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(&Heartbeat) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
@@ -494,7 +544,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn on_watchdog<F, Fut>(mut self, f: F) -> Self
+    pub(crate) fn on_watchdog<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn(&WatchdogEvent) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<WatchdogVerdict, PluginError>> + Send + 'static,

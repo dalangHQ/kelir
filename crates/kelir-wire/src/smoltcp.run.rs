@@ -21,7 +21,7 @@ impl SmoltcpStack {
     }
 
     pub(crate) fn poll(&mut self) -> Result<bool, PluginError> {
-        // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets; slop: host TAP created, frames never sink into smoltcp
+        // L3-GAP: [vr_11_virtio_net_smoltcp_frame_sink]: attach the virtio-net device + SocketSet and run interface.poll over the TCP/UDP sockets; slop: host TAP created, frames never sink into smoltcp
         let _ = &self.interface;
         Ok(false)
     }
@@ -62,12 +62,12 @@ impl RealNetOps {
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
             | FrameClass::UdpOther => Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason: "non-TCP/UDP frame dropped at ingress ring".into(),
             }),
             FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
             FrameClass::Tcp => {
-                // TODO (L3) [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
+                // L3-GAP: [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
                 let _ = self.poll_stack()?;
                 Ok(FilterAction::Forward)
             }
@@ -78,7 +78,7 @@ impl RealNetOps {
         match classify_frame_directional(frame, FrameDirection::Outbound) {
             FrameClass::TooShort | FrameClass::NonIp | FrameClass::NonTcpUdp => {
                 Ok(FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "non-TCP/UDP frame dropped at egress ring".into(),
                 })
             }
@@ -89,12 +89,12 @@ impl RealNetOps {
                     .lock()
                     .map_err(|_| PluginError::Halt("udp proxy flag lock poisoned".into()))?;
                 if *allow {
-                    // TODO (L3) [wire_plane]: forward via the full-cone UDP NAT host socket per guest source port; slop: UDP forwarded without per-port host socket
+                    // L3-GAP: [wire_plane]: forward via the full-cone UDP NAT host socket per guest source port; slop: UDP forwarded without per-port host socket
                     let _ = self.poll_stack()?;
                     Ok(FilterAction::Forward)
                 } else {
                     Ok(FilterAction::Drop {
-                        errno: Some(Errno::Econnrefused),
+                        errno: Errno::Econnrefused,
                         reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
                     })
                 }
@@ -102,18 +102,18 @@ impl RealNetOps {
             FrameClass::TcpDns | FrameClass::UdpDns => {
                 match dns_payload(frame, FrameDirection::Outbound) {
                     Some(payload) => {
-                        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
+                        // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
                         self.dns_ops.resolve_synthetic_dns(payload)?;
                         Ok(FilterAction::Forward)
                     }
                     None => Ok(FilterAction::Drop {
-                        errno: None,
+                        errno: Errno::Eperm,
                         reason: "DNS frame without a gateway payload dropped at egress ring".into(),
                     }),
                 }
             }
             FrameClass::Tcp => {
-                // TODO (L3) [wp_04_userspace_netstack_unprivileged_dial]: run policy + NAT over the outbound TCP stream via the smoltcp stack; slop: dial needs CAP_NET_ADMIN or iptables, not plain socket
+                // L3-GAP: [wp_04_userspace_netstack_unprivileged_dial]: run policy + NAT over the outbound TCP stream via the smoltcp stack; slop: dial needs CAP_NET_ADMIN or iptables, not plain socket
                 let _ = self.poll_stack()?;
                 Ok(FilterAction::Forward)
             }
@@ -134,7 +134,7 @@ impl NetOps for RealNetOps {
         match link_local_route(frame, direction) {
             Some(LinkLocalRoute::Drop) => {
                 return Ok(FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
                 });
             }

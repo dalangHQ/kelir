@@ -36,3 +36,18 @@ pub(crate) fn phase_spans(timings: Option<&PhaseTimings>) -> Vec<OtlpSpan> {
     }
     spans
 }
+
+// see: cans/14-observability.md#Metrics-pipeline
+// see: cans/10-attestation.md#Hook-trace
+pub(crate) fn hook_spans(trace: &[kelir_interface::telemetry::HookSpan]) -> Vec<OtlpSpan> {
+    trace
+        .iter()
+        .map(|span| {
+            OtlpSpan::new(
+                format!("hook:{}/{}", span.ring.as_tag(), span.plugin),
+                span.ordinal as u64,
+                span.ordinal as u64 + span.duration_ns,
+            )
+        })
+        .collect()
+}

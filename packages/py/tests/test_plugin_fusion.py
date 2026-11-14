@@ -19,7 +19,7 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.generated.fusion_tables import LIFECYCLE_TAGS
-from kelir.model_plugin import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
+from kelir.plugin_model import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
 
 
 async def _noop(event: Any) -> None:

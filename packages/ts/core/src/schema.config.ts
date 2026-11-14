@@ -12,6 +12,9 @@ export interface Schema<T = unknown> {
 export type Infer<S> = S extends Schema<infer T> ? T : unknown;
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+export const unknownSchema: Schema<unknown> = { typebox: Type.Unknown() };
+
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 export function validateSchema<S extends Schema<any>>(
   schema: S,
   value: unknown,

@@ -28,7 +28,7 @@ pub struct DnsQuery {
 
 impl DnsQuery {
     pub fn parse(bytes: &[u8]) -> Result<Self, PluginError> {
-        // TODO (L3) [wp_02_synthetic_dns_nxdomain_enforcement]: parse the DNS wire query (name, qtype, EDNS0 OPT record); slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
+        // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: parse the DNS wire query (name, qtype, EDNS0 OPT record); slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         let _ = bytes;
         Err(PluginError::Halt("DNS query parse pending (L3)".into()))
     }
@@ -48,7 +48,7 @@ pub struct DnsResponse {
 impl DnsResponse {
     // see: cans/07-wire-plane.md#EDNS0-downgrade
     pub fn downgrade_edns0(&mut self) {
-        // TODO (L3) [wire_plane]: clear the AD flag bit and the OPT record DO bit inside wire_bytes; slop: AD/DO bits leak upstream, downgrade never applied
+        // L3-GAP: [wire_plane]: clear the AD flag bit and the OPT record DO bit inside wire_bytes; slop: AD/DO bits leak upstream, downgrade never applied
         self.edns_downgraded = true;
     }
 }

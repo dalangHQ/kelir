@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "BacklogConfig",
@@ -13,6 +13,8 @@ __all__ = [
     "WakeOnPacketConfig",
     "WireIngressConfig",
     "WireIngressPlugin",
+    "wire_ingress",
+    "wire_ingress_builder",
 ]
 
 

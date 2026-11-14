@@ -5,7 +5,7 @@ use kelir_interface::protocol_wire::{FilterAction, Verdict};
 
 use crate::vectors_testkit::{
     UnifiedBuilderOutcome, UnifiedBuilderScope, VectorCase, VectorError, plugin_builder_case,
-    plugin_builder_trap_json,
+    plugin_builder_trap_json, trap_filter_five_predicate_json,
 };
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -20,6 +20,11 @@ pub(crate) fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorErro
     let mut cases = Vec::with_capacity(names.len() + 1);
     for (offset, name) in names.iter().enumerate() {
         let seq = 55 + offset as u64;
+        let filter = if *name == "plugin-builder-trap-filter" {
+            Some(trap_filter_five_predicate_json())
+        } else {
+            None
+        };
         cases.push(plugin_builder_case(
             name,
             seq,
@@ -29,6 +34,7 @@ pub(crate) fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorErro
             None,
             vec![plugin_builder_trap_json(seq, "/bin/sh")?],
             vec![UnifiedBuilderOutcome::Verdict(Verdict::Pass)],
+            filter,
         )?);
     }
     cases.push(chaos_plugin_builder_case()?);
@@ -39,7 +45,7 @@ pub(crate) fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorErro
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 // see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_host
-// TODO (L3) [pe_16_chaos_rst_injection_drops_matching_frame]: add the matching-frame vector (FilterAction::Drop, errno ECONNREFUSED) once frame_matches lands; slop: vector asserts Forward for a frame that should Drop once matching lands.
+// L3-GAP: [pe_16_chaos_rst_injection_drops_matching_frame]: add the matching-frame vector (FilterAction::Drop, errno ECONNREFUSED) once frame_matches lands; slop: vector asserts Forward for a frame that should Drop once matching lands.
 fn chaos_plugin_builder_case() -> Result<VectorCase, VectorError> {
     plugin_builder_case(
         "plugin-builder-chaos-only",
@@ -61,5 +67,6 @@ fn chaos_plugin_builder_case() -> Result<VectorCase, VectorError> {
             UnifiedBuilderOutcome::Filter(FilterAction::Forward),
             UnifiedBuilderOutcome::Filter(FilterAction::Forward),
         ],
+        None,
     )
 }

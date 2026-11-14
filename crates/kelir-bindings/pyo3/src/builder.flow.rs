@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 use kelir_engine::Session;
-use kelir_interface::driver_interface::{VmConfig, default_vm_config};
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::plugin_model::PluginRegistration;
 
 use crate::fusion_plugin::{
@@ -43,14 +43,25 @@ impl PyKelirBuilder {
         enable_watchdog: Option<bool>,
         driver: Option<String>,
     ) -> Self {
-        let mut config = default_vm_config(
-            vcpus,
-            memory_mb,
-            kernel,
-            rootfs_erofs,
-            tsc_locked,
-            enable_watchdog,
-        );
+        let mut config = VmConfig::default();
+        if let Some(vcpus) = vcpus {
+            config.vcpus = vcpus;
+        }
+        if let Some(memory_mb) = memory_mb {
+            config.memory_mb = memory_mb;
+        }
+        if let Some(kernel) = kernel {
+            config.kernel_path = kernel.into();
+        }
+        if let Some(rootfs_erofs) = rootfs_erofs {
+            config.rootfs_erofs_path = rootfs_erofs.into();
+        }
+        if let Some(tsc_locked) = tsc_locked {
+            config.tsc_locked = tsc_locked;
+        }
+        if let Some(enable_watchdog) = enable_watchdog {
+            config.enable_watchdog = enable_watchdog;
+        }
         // see: cans/01-architecture.md#Driver-backends
         config.driver_policy.driver = driver.clone();
         Self {
@@ -66,7 +77,7 @@ impl PyKelirBuilder {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3) [bindings_py]: prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.; slop: callbacks stay Python-side, silently dropped
+    // L3-GAP: [bindings_py]: prompt rules and the token-shield clamp callback stay Python-side until the FFI callback bridge lands.; slop: callbacks stay Python-side, silently dropped
     fn set_terminal_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
         let mut wiring = kelir_interface::terminal::TerminalWiring::default();
         for (key, value) in cfg.iter() {
@@ -125,21 +136,75 @@ impl PyKelirBuilder {
                     let sinkhole = value
                         .downcast::<PyDict>()
                         .map_err(|_| PyValueError::new_err("wire sinkhole is not a dict"))?;
+                    let mut allowlist: Vec<String> = Vec::new();
+                    let mut drop_all = false;
+                    let mut rules: Vec<kelir_interface::wire::net::SinkholeRule> = Vec::new();
                     for (sub_key, sub_value) in sinkhole.iter() {
                         match sub_key.to_string().as_str() {
-                            "allowlist" => {
-                                wiring.sinkhole_allowlist =
-                                    sub_value.extract::<Vec<String>>().map_err(|_| {
+                            "rules" => {
+                                let entries = sub_value.downcast::<PyList>().map_err(|_| {
+                                    PyValueError::new_err("sinkhole rules is not a list of dicts")
+                                })?;
+                                for entry in entries.iter() {
+                                    let entry = entry.downcast::<PyDict>().map_err(|_| {
                                         PyValueError::new_err(
-                                            "sinkhole allowlist is not a list of str",
+                                            "sinkhole rules entries must be dicts",
                                         )
-                                    })?
+                                    })?;
+                                    let host = entry
+                                        .get_item("host")?
+                                        .ok_or_else(|| {
+                                            PyValueError::new_err("sinkhole rule has no host")
+                                        })?
+                                        .extract::<String>()
+                                        .map_err(|_| {
+                                            PyValueError::new_err("sinkhole rule host is not a str")
+                                        })?;
+                                    let methods = match entry.get_item("methods")? {
+                                        Some(list) => {
+                                            Some(list.extract::<Vec<String>>().map_err(|_| {
+                                                PyValueError::new_err(
+                                                    "sinkhole rule methods is not a list of str",
+                                                )
+                                            })?)
+                                        }
+                                        None => None,
+                                    };
+                                    let paths = match entry.get_item("paths")? {
+                                        Some(list) => {
+                                            Some(list.extract::<Vec<String>>().map_err(|_| {
+                                                PyValueError::new_err(
+                                                    "sinkhole rule paths is not a list of str",
+                                                )
+                                            })?)
+                                        }
+                                        None => None,
+                                    };
+                                    let allow = match entry.get_item("allow")? {
+                                        Some(flag) => flag.extract::<bool>().map_err(|_| {
+                                            PyValueError::new_err(
+                                                "sinkhole rule allow is not a bool",
+                                            )
+                                        })?,
+                                        None => false,
+                                    };
+                                    rules.push(kelir_interface::wire::net::SinkholeRule {
+                                        host,
+                                        methods,
+                                        paths,
+                                        allow,
+                                    });
+                                }
+                            }
+                            "allowlist" => {
+                                allowlist = sub_value.extract::<Vec<String>>().map_err(|_| {
+                                    PyValueError::new_err("sinkhole allowlist is not a list of str")
+                                })?
                             }
                             "drop_all" => {
-                                wiring.sinkhole_drop_all =
-                                    sub_value.extract::<bool>().map_err(|_| {
-                                        PyValueError::new_err("sinkhole drop_all is not a bool")
-                                    })?
+                                drop_all = sub_value.extract::<bool>().map_err(|_| {
+                                    PyValueError::new_err("sinkhole drop_all is not a bool")
+                                })?
                             }
                             other => {
                                 return Err(PyValueError::new_err(format!(
@@ -148,6 +213,14 @@ impl PyKelirBuilder {
                             }
                         }
                     }
+                    // see: cans/07-wire-plane.md#Sinkhole-rules
+                    wiring.sinkhole = if rules.is_empty() {
+                        kelir_interface::wire::net::SinkholeConfig::from_allowlist_drop_all(
+                            allowlist, drop_all,
+                        )
+                    } else {
+                        kelir_interface::wire::net::SinkholeConfig { rules }
+                    };
                 }
                 "ssh_agent_bridge" => {
                     wiring.ssh_agent_bridge = value
@@ -296,13 +369,13 @@ impl PyKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(PyValueError::new_err(reason));
         }
-        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+        // L3-GAP: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
-        // TODO (L3) [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
-        // TODO (L3) [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
+        // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
@@ -328,7 +401,7 @@ impl PyKelirBuilder {
             plane_wiring,
         )
         .map_err(halt)?;
-        // TODO (L3) [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
+        // L3-GAP: [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
         Ok(PySessionHandle::from_session(
             session,
             self.driver_name.clone(),

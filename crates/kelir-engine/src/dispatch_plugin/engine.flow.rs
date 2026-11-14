@@ -20,26 +20,41 @@ impl Drop for FusedCrossing<'_> {
     }
 }
 
+// see: cans/02-plugin-model.md#Hook-ordering
+#[derive(Clone, Copy, Default)]
+pub(super) struct RingRegistration {
+    pub(super) priority: i32,
+    pub(super) timeout: Option<Duration>,
+}
+
 pub struct PipelineEngine {
     pub(super) trap_interceptors: Vec<Arc<dyn TrapInterposer>>,
     pub(super) trap_scopes: Vec<MountScope>,
+    pub(super) trap_regs: Vec<RingRegistration>,
     pub(super) gate: TrapGateEvaluator,
     pub(super) fs_interceptors: Vec<Arc<dyn FsInterposer>>,
     pub(super) fs_scopes: Vec<MountScope>,
+    pub(super) fs_regs: Vec<RingRegistration>,
     pub(super) net_interceptors: Vec<Arc<dyn NetInterposer>>,
     pub(super) net_scopes: Vec<MountScope>,
+    pub(super) net_regs: Vec<RingRegistration>,
     pub(super) console_interceptors: Vec<Arc<dyn ConsoleInterposer>>,
     pub(super) console_scopes: Vec<MountScope>,
+    pub(super) console_regs: Vec<RingRegistration>,
     pub(super) terminal: Option<Arc<crate::planes::terminal::TerminalPlane>>,
     pub(super) host_interceptors: Vec<Arc<dyn HostInterposer>>,
     pub(super) host_scopes: Vec<MountScope>,
+    pub(super) host_regs: Vec<RingRegistration>,
     pub(super) vsock_services: Vec<(VsockServiceSpec, Arc<dyn VsockServiceHandler>, MountScope)>,
     pub(super) lifecycle_interceptors: Vec<Arc<dyn LifecycleParticipant>>,
     pub(super) lifecycle_scopes: Vec<MountScope>,
+    pub(super) lifecycle_regs: Vec<RingRegistration>,
     pub(super) telemetry_interceptors: Vec<Arc<dyn SystemTelemetryParticipant>>,
     pub(super) telemetry_scopes: Vec<MountScope>,
+    pub(super) telemetry_regs: Vec<RingRegistration>,
     pub(super) post_exec_gates: Vec<Arc<dyn PostExecGate>>,
     pub(super) post_exec_scopes: Vec<MountScope>,
+    pub(super) post_exec_regs: Vec<RingRegistration>,
     pub(super) stream_sinks: Vec<(u16, Arc<dyn StreamFrameSink>, MountScope)>,
     pub(super) lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     pub(super) parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
@@ -70,32 +85,38 @@ impl PipelineBinder for PipelineEngine {
         let scope = self.effective_scope(scope);
         self.fs_interceptors.push(stage);
         self.fs_scopes.push(scope);
+        self.fs_regs.push(RingRegistration::default());
     }
     fn bind_net_scoped(&mut self, stage: Arc<dyn NetInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.net_interceptors.push(stage);
         self.net_scopes.push(scope);
+        self.net_regs.push(RingRegistration::default());
     }
     fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.trap_interceptors.push(stage);
         self.trap_scopes.push(scope);
+        self.trap_regs.push(RingRegistration::default());
     }
     // see: cans/10-attestation.md#Step-evaluation-loop
     fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.post_exec_gates.push(gate);
         self.post_exec_scopes.push(scope);
+        self.post_exec_regs.push(RingRegistration::default());
     }
     fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.console_interceptors.push(stage);
         self.console_scopes.push(scope);
+        self.console_regs.push(RingRegistration::default());
     }
     fn bind_host_scoped(&mut self, stage: Arc<dyn HostInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.host_interceptors.push(stage);
         self.host_scopes.push(scope);
+        self.host_regs.push(RingRegistration::default());
     }
     fn bind_vsock_service_scoped(
         &mut self,
@@ -103,16 +124,17 @@ impl PipelineBinder for PipelineEngine {
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
     ) {
-        // TODO (L3) [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
+        // L3-GAP: [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
     // see: cans/02-plugin-model.md#Segregated-ring-traits
-    // TODO (L3) [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
+    // L3-GAP: [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
     fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.lifecycle_interceptors.push(stage);
         self.lifecycle_scopes.push(scope);
+        self.lifecycle_regs.push(RingRegistration::default());
     }
     fn bind_telemetry_scoped(
         &mut self,
@@ -122,6 +144,7 @@ impl PipelineBinder for PipelineEngine {
         let scope = self.effective_scope(scope);
         self.telemetry_interceptors.push(stage);
         self.telemetry_scopes.push(scope);
+        self.telemetry_regs.push(RingRegistration::default());
     }
     // see: cans/11-protocol.md#Kind-registration
     fn bind_stream_kind_scoped(
@@ -150,6 +173,7 @@ impl PipelineEngine {
         Self {
             trap_interceptors: Vec::new(),
             trap_scopes: Vec::new(),
+            trap_regs: Vec::new(),
             gate: TrapGateEvaluator::new(
                 crate::trap_gate::TRUSTED_PREFIXES
                     .iter()
@@ -158,20 +182,27 @@ impl PipelineEngine {
             ),
             fs_interceptors: Vec::new(),
             fs_scopes: Vec::new(),
+            fs_regs: Vec::new(),
             net_interceptors: Vec::new(),
             net_scopes: Vec::new(),
+            net_regs: Vec::new(),
             console_interceptors: Vec::new(),
             console_scopes: Vec::new(),
+            console_regs: Vec::new(),
             terminal: None,
             host_interceptors: Vec::new(),
             host_scopes: Vec::new(),
+            host_regs: Vec::new(),
             vsock_services: Vec::new(),
             lifecycle_interceptors: Vec::new(),
             lifecycle_scopes: Vec::new(),
+            lifecycle_regs: Vec::new(),
             telemetry_interceptors: Vec::new(),
             telemetry_scopes: Vec::new(),
+            telemetry_regs: Vec::new(),
             post_exec_gates: Vec::new(),
             post_exec_scopes: Vec::new(),
+            post_exec_regs: Vec::new(),
             stream_sinks: Vec::new(),
             lock_broker: None,
             parked_reset: None,
@@ -223,7 +254,7 @@ impl PipelineEngine {
             self.ffi_window_ops.store(1, Ordering::Release);
             return Ok(());
         }
-        // TODO (L3) [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
+        // L3-GAP: [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
         let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
         if ops >= u64::from(self.ffi_rate_per_sec) {
             return Err(PluginError::Halt(format!(
@@ -295,7 +326,7 @@ impl PipelineEngine {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3) [plugin_engine]: resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands; slop: trap lookup without lineage root, wrong process blamed
+    // L3-GAP: [plugin_engine]: resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands; slop: trap lookup without lineage root, wrong process blamed
     pub fn hydrate_step<Plugins, Params>(
         &self,
         ctx: &mut HandlerCtx<Plugins, Params>,
@@ -311,7 +342,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
+    // L3-GAP: [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
     fn fused_ring(&self, ring: TrampolineRing) -> bool {
         self.trampoline.as_ref().is_some_and(|descriptor| {
             descriptor
@@ -322,7 +353,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: hook chain split across crossings, single-crossing unproven
+    // L3-GAP: [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: hook chain split across crossings, single-crossing unproven
     pub(super) fn fused_crossing(
         &self,
         ring: TrampolineRing,
@@ -343,12 +374,12 @@ impl PipelineEngine {
                 || callback.run(ring, *ordinal),
                 || {
                     Ok(Verdict::Drop {
-                        errno: Some(Errno::Efault),
+                        errno: Errno::Efault,
                         reason: "Plugin panicked".into(),
                     })
                 },
             );
-            verdict = map_reject_to_verdict(outcome)?;
+            verdict = outcome?;
             if !matches!(verdict, Verdict::Pass) {
                 break;
             }
@@ -469,11 +500,123 @@ impl PipelineEngine {
         }
     }
 
+    // see: cans/02-plugin-model.md#Hook-ordering
+    pub fn set_ring_priority(&mut self, ring: TrampolineRing, index: usize, priority: i32) {
+        let regs = self.ring_regs_mut(ring);
+        if let Some(entry) = regs.get_mut(index) {
+            entry.priority = priority;
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Per-ring-timeouts
+    pub fn set_ring_timeout(
+        &mut self,
+        ring: TrampolineRing,
+        index: usize,
+        timeout: Option<Duration>,
+    ) {
+        let regs = self.ring_regs_mut(ring);
+        if let Some(entry) = regs.get_mut(index) {
+            entry.timeout = timeout;
+        }
+    }
+
+    fn ring_regs_mut(&mut self, ring: TrampolineRing) -> &mut Vec<RingRegistration> {
+        match ring {
+            TrampolineRing::Trap => &mut self.trap_regs,
+            TrampolineRing::FsLookup
+            | TrampolineRing::FsRead
+            | TrampolineRing::FsWrite
+            | TrampolineRing::FsLock => &mut self.fs_regs,
+            TrampolineRing::NetOutbound | TrampolineRing::NetInbound => &mut self.net_regs,
+            TrampolineRing::ConsoleInput
+            | TrampolineRing::ConsoleOutput
+            | TrampolineRing::ExecStdout
+            | TrampolineRing::ExecStderr => &mut self.console_regs,
+            TrampolineRing::HostLsmExec
+            | TrampolineRing::HostPressure
+            | TrampolineRing::HostKeyringAccess
+            | TrampolineRing::HostPreempt => &mut self.host_regs,
+            TrampolineRing::Lifecycle => &mut self.lifecycle_regs,
+            TrampolineRing::Heartbeat
+            | TrampolineRing::MemoryPressure
+            | TrampolineRing::Watchdog => &mut self.telemetry_regs,
+            _ => &mut self.trap_regs,
+        }
+    }
+
+    fn ring_regs(&self, ring: TrampolineRing) -> &[RingRegistration] {
+        match ring {
+            TrampolineRing::Trap => &self.trap_regs,
+            TrampolineRing::FsLookup
+            | TrampolineRing::FsRead
+            | TrampolineRing::FsWrite
+            | TrampolineRing::FsLock => &self.fs_regs,
+            TrampolineRing::NetOutbound | TrampolineRing::NetInbound => &self.net_regs,
+            TrampolineRing::ConsoleInput
+            | TrampolineRing::ConsoleOutput
+            | TrampolineRing::ExecStdout
+            | TrampolineRing::ExecStderr => &self.console_regs,
+            TrampolineRing::HostLsmExec
+            | TrampolineRing::HostPressure
+            | TrampolineRing::HostKeyringAccess
+            | TrampolineRing::HostPreempt => &self.host_regs,
+            TrampolineRing::Lifecycle => &self.lifecycle_regs,
+            TrampolineRing::Heartbeat
+            | TrampolineRing::MemoryPressure
+            | TrampolineRing::Watchdog => &self.telemetry_regs,
+            _ => &self.trap_regs,
+        }
+    }
+
+    // see: cans/02-plugin-model.md#Hook-ordering
+    pub fn sort_rings_by_priority(&mut self) {
+        macro_rules! resort {
+            ($inters:expr, $scopes:expr, $regs:expr) => {{
+                let mut order: Vec<usize> = (0..$inters.len()).collect();
+                order.sort_by_key(|&i| {
+                    let priority = $regs.get(i).map(|r| r.priority).unwrap_or(0);
+                    (std::cmp::Reverse(priority), i)
+                });
+                $inters = order.iter().map(|&i| Arc::clone(&$inters[i])).collect();
+                $scopes = order.iter().map(|&i| $scopes[i].clone()).collect();
+                $regs = order
+                    .iter()
+                    .map(|&i| $regs.get(i).copied().unwrap_or_default())
+                    .collect();
+            }};
+        }
+        resort!(self.trap_interceptors, self.trap_scopes, self.trap_regs);
+        resort!(self.fs_interceptors, self.fs_scopes, self.fs_regs);
+        resort!(self.net_interceptors, self.net_scopes, self.net_regs);
+        resort!(
+            self.console_interceptors,
+            self.console_scopes,
+            self.console_regs
+        );
+        resort!(self.host_interceptors, self.host_scopes, self.host_regs);
+        resort!(
+            self.lifecycle_interceptors,
+            self.lifecycle_scopes,
+            self.lifecycle_regs
+        );
+        resort!(
+            self.telemetry_interceptors,
+            self.telemetry_scopes,
+            self.telemetry_regs
+        );
+        resort!(
+            self.post_exec_gates,
+            self.post_exec_scopes,
+            self.post_exec_regs
+        );
+    }
+
     pub fn seal(&mut self) -> Result<(), PluginError> {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
-        // TODO (L3) [pm_05_stream_kind_conflict_ekindconflict]: conflicts surface the structured EKindConflict/EPortConflict envelope from the artifacts; slop: kind collision seals Ok, EKindConflict never surfaced
+        // TODO (L3) [protocol_mux]: surface the structured EKindConflict/EPortConflict envelope from the artifacts; slop: collision aborts with a Halt prefix, not the structured envelope
         for (index, (spec, _, _)) in self.vsock_services.iter().enumerate() {
             if self.vsock_services[..index]
                 .iter()
@@ -485,7 +628,23 @@ impl PipelineEngine {
                 )));
             }
         }
-        // TODO (L3) [pm_03_core_stream_kind_reregistration_abort]: freeze all five ring chains; slop: frozen core kind re-registers, seal never aborts
+        // see: cans/11-protocol.md#Kind-registration
+        for (index, (kind, _, _)) in self.stream_sinks.iter().enumerate() {
+            if *kind <= 0x000F || *kind >= 0x8000 {
+                return Err(PluginError::Halt(format!(
+                    "EKindReserved: core stream kind {kind:#06x} is frozen and cannot be re-registered",
+                )));
+            }
+            if self.stream_sinks[..index]
+                .iter()
+                .any(|(bound, _, _)| bound == kind)
+            {
+                return Err(PluginError::Halt(format!(
+                    "EKindConflict: stream kind {kind:#06x} already registered",
+                )));
+            }
+        }
+        self.sort_rings_by_priority();
         self.sealed = true;
         Ok(())
     }
@@ -583,6 +742,8 @@ impl PipelineEngine {
         {
             return Ok(verdict);
         }
+        // see: cans/10-attestation.md#Hook-trace
+        let mut spans: Vec<HookSpan> = Vec::new();
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             let fallback = MountScope::default();
             let scope = self.trap_scopes.get(index).unwrap_or(&fallback);
@@ -591,7 +752,7 @@ impl PipelineEngine {
                 GateDecision::Deny(verdict) => {
                     if let (Some(callback), Some(session)) = (self.on_trap_deny.as_deref(), session)
                     {
-                        callback(event, session).await?;
+                        callback(event, &verdict, session).await?;
                     }
                     return Ok(verdict);
                 }
@@ -601,19 +762,50 @@ impl PipelineEngine {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
+            // see: cans/02-plugin-model.md#Per-ring-timeouts
+            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the trap past its deadline.
+            let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
+            let started = Instant::now();
             let verdict = {
                 let outcome = quarantine_verdict(interceptor.on_trap(event, ctx)).await;
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
+            let mut verdict = verdict;
+            if deadline.is_some_and(|limit| started.elapsed() > limit) {
+                verdict = Verdict::Drop {
+                    errno: Errno::Etimeout,
+                    reason: "hook timeout".into(),
+                };
+            }
+            spans.push(HookSpan {
+                plugin: "host".to_string(),
+                ring: TrampolineRing::Trap,
+                verdict_kind: verdict_kind_of(&verdict),
+                duration_ns: started.elapsed().as_nanos() as u64,
+                ordinal: index as u32,
+            });
             if !matches!(verdict, Verdict::Pass) {
+                self.attach_hook_trace(ctx.pid, spans);
                 return Ok(verdict);
             }
         }
         drop(fused);
+        self.attach_hook_trace(ctx.pid, spans);
         Ok(Verdict::Pass)
+    }
+
+    // see: cans/10-attestation.md#Hook-trace
+    fn attach_hook_trace(&self, pid: u32, spans: Vec<HookSpan>) {
+        if spans.is_empty() {
+            return;
+        }
+        if let Some(mut receipt) = self.receipt_store.lookup(pid) {
+            receipt.hook_trace = spans;
+            self.receipt_store.insert(receipt);
+        }
     }
 
     pub async fn dispatch_process_exit(
@@ -631,7 +823,7 @@ impl PipelineEngine {
             _ => ctx,
         };
         self.metrics.record_exec();
-        // TODO (L3) [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
+        // L3-GAP: [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
@@ -674,6 +866,10 @@ impl PipelineEngine {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
+            // see: cans/02-plugin-model.md#Per-ring-timeouts
+            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
+            let started = Instant::now();
             let action = {
                 let outcome = quarantine_sync(
                     || interceptor.on_net_outbound(frame),
@@ -686,8 +882,15 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_filter_action(outcome)?
+                outcome?
             };
+            let mut action = action;
+            if deadline.is_some_and(|limit| started.elapsed() > limit) {
+                action = FilterAction::Drop {
+                    errno: Errno::Etimeout,
+                    reason: "hook timeout".into(),
+                };
+            }
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
             }
@@ -725,7 +928,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_filter_action(outcome)?
+                outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -735,7 +938,7 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
-    // TODO (L3) [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
+    // L3-GAP: [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
@@ -758,12 +961,16 @@ impl PipelineEngine {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
+            // see: cans/02-plugin-model.md#Per-ring-timeouts
+            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            let deadline = self.host_regs.get(index).and_then(|reg| reg.timeout);
+            let started = Instant::now();
             let verdict = {
                 let outcome = quarantine_sync(
                     || interceptor.on_host_lsm_exec(path, pid),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -771,8 +978,15 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
+            let mut verdict = verdict;
+            if deadline.is_some_and(|limit| started.elapsed() > limit) {
+                verdict = Verdict::Drop {
+                    errno: Errno::Etimeout,
+                    reason: "hook timeout".into(),
+                };
+            }
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }

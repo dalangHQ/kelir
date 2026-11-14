@@ -77,7 +77,9 @@ fn check_py_modules(root: &Path, expected: &HashSet<String>) -> Result<(), Strin
     names.sort();
     for name in names {
         let stem = name.strip_suffix(".py").unwrap_or(&name);
-        if stem != "__init__" && !expected.contains(stem) {
+        // see: cans/03-sdk-architecture.md#Python-SDK
+        let short_alias = format!("plugin_{stem}");
+        if stem != "__init__" && !expected.contains(stem) && !expected.contains(&short_alias) {
             return Err(format!("unexpected python plugin module: {name}"));
         }
     }
@@ -116,10 +118,20 @@ fn main() -> ExitCode {
         "ReceiptExtension",
         "PhaseTimings",
         "ExitKind",
+        "VerdictKind",
+        "HookSpan",
+        "FsVfsExt",
+        "NetL7SqlExt",
         "ExecutionReceipt",
         "CausalDelta",
     ];
-    const NATIVE_SKIP: &[&str] = &["ReceiptExtension"];
+    const NATIVE_SKIP: &[&str] = &[
+        "ReceiptExtension",
+        "VerdictKind",
+        "HookSpan",
+        "FsVfsExt",
+        "NetL7SqlExt",
+    ];
 
     let ts_telemetry =
         ts_codegen::emit_telemetry(&model, ORDER, NATIVE_SKIP).unwrap_or_else(|e| die(&e));

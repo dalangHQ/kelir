@@ -53,10 +53,61 @@ pub trait NetOps: Send + Sync {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
+// see: cans/07-wire-plane.md#Sinkhole-rules
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SinkholeRule {
+    pub host: String,
+    pub methods: Option<Vec<String>>,
+    pub paths: Option<Vec<String>>,
+    pub allow: bool,
+}
+
+// see: cans/07-wire-plane.md#Sinkhole-rules
+#[derive(Debug, Clone, Default)]
+pub struct SinkholeConfig {
+    pub rules: Vec<SinkholeRule>,
+}
+
+// see: cans/07-wire-plane.md#Sinkhole-rules
+impl SinkholeConfig {
+    pub fn from_allowlist_drop_all(allowlist: Vec<String>, drop_all: bool) -> Self {
+        let mut rules: Vec<SinkholeRule> = allowlist
+            .into_iter()
+            .map(|host| SinkholeRule {
+                host,
+                methods: None,
+                paths: None,
+                allow: true,
+            })
+            .collect();
+        if drop_all {
+            rules.push(SinkholeRule {
+                host: "*".to_string(),
+                methods: None,
+                paths: None,
+                allow: false,
+            });
+        }
+        Self { rules }
+    }
+
+    // see: cans/07-wire-plane.md#Sinkhole-rules
+    pub fn ensure_drop_all(&mut self) {
+        if !self.rules.iter().any(|rule| !rule.allow) {
+            self.rules.push(SinkholeRule {
+                host: "*".to_string(),
+                methods: None,
+                paths: None,
+                allow: false,
+            });
+        }
+    }
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
 #[derive(Debug, Clone, Default)]
 pub struct WireWiring {
-    pub sinkhole_allowlist: Vec<String>,
-    pub sinkhole_drop_all: bool,
+    pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
     pub vault_placeholders: Vec<String>,
     pub l4_proxies: Vec<(u16, String)>,
@@ -88,7 +139,7 @@ pub enum LinkLocalRoute {
 }
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// TODO (L3) [wire_plane]: drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault; slop: cloud IMDS endpoint reaches vault, quarantine bypassed
+// L3-GAP: [wire_plane]: drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault; slop: cloud IMDS endpoint reaches vault, quarantine bypassed
 pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
     let remote = frame_remote_ip(frame, direction)?;
     if !remote.is_link_local() {

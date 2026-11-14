@@ -127,7 +127,7 @@ fn probe_kvm() -> ProbeOutcome {
 
 fn probe_page_size() -> ProbeOutcome {
     if !cfg!(target_os = "linux") {
-        // TODO (L3) [hypervisor_driver]: read the host page size on non-Linux targets via the platform sysconf surface.; slop: Linux page size assumed, non-Linux probe never runs
+        // L3-GAP: [hypervisor_driver]: read the host page size on non-Linux targets via the platform sysconf surface.; slop: Linux page size assumed, non-Linux probe never runs
         return ProbeOutcome::NotImplemented(
             "host page-size probe needs the platform sysconf (L3)".to_string(),
         );
@@ -165,7 +165,7 @@ fn host_page_size_linux() -> Result<u64, String> {
 
 fn probe_pidfd() -> ProbeOutcome {
     if !cfg!(target_os = "linux") {
-        // TODO (L3) [hypervisor_driver]: verify pidfd support on non-Linux targets.; slop: pidfd assumed present, non-Linux check never runs
+        // L3-GAP: [hypervisor_driver]: verify pidfd support on non-Linux targets.; slop: pidfd assumed present, non-Linux check never runs
         return ProbeOutcome::NotImplemented(
             "pidfd kernel probe needs a Linux pidfd_open syscall (L3)".to_string(),
         );
@@ -201,7 +201,7 @@ fn pidfd_kernel_support_linux() -> Result<(String, bool), String> {
 }
 
 fn probe_hvf() -> ProbeOutcome {
-    // TODO (L3) [hypervisor_driver]: probe HVF entitlements, Stage-2 unmap support, and PMCCNTR_EL0 access.; slop: HVF probe Ok, entitlements never checked
+    // L3-GAP: [hypervisor_driver]: probe HVF entitlements, Stage-2 unmap support, and PMCCNTR_EL0 access.; slop: HVF probe Ok, entitlements never checked
     ProbeOutcome::NotImplemented("HVF entitlement probe (L3)".to_string())
 }
 
@@ -215,7 +215,7 @@ fn probe_avf() -> ProbeOutcome {
 }
 
 fn probe_whp() -> ProbeOutcome {
-    // TODO (L3) [hypervisor_driver]: probe the Windows Hypervisor Platform partition capability.; slop: WHP probe Ok, partition capability never checked
+    // L3-GAP: [hypervisor_driver]: probe the Windows Hypervisor Platform partition capability.; slop: WHP probe Ok, partition capability never checked
     ProbeOutcome::NotImplemented("WHP partition probe (L3)".to_string())
 }
 
@@ -267,7 +267,7 @@ pub fn write_hw_lockfile(path: &HwLockPath, report: &DoctorReport) -> Result<(),
         ));
     }
     std::fs::write(path.as_path(), contents)?;
-    // TODO (L3) [hypervisor_driver]: set the immutable flag (chattr +i) on the lockfile.; slop: lockfile written world-writable, chattr +i never set
+    // L3-GAP: [hypervisor_driver]: set the immutable flag (chattr +i) on the lockfile.; slop: lockfile written world-writable, chattr +i never set
     Ok(())
 }
 

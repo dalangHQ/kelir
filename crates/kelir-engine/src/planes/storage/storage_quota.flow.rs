@@ -68,10 +68,9 @@ fn accrue_quota(
             ))
         })?;
         if total > max {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Enospc,
-                format!("storage {kind} quota exceeded"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "ENOSPC: storage {kind} quota exceeded"
+            )));
         }
         match counter.compare_exchange(current, total, Ordering::SeqCst, Ordering::SeqCst) {
             Ok(_) => return Ok(()),

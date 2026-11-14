@@ -23,7 +23,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use kelir_interface::checkpoint::PidLineage;
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
@@ -42,7 +42,7 @@ use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
     StepVerdict, TrapEvent, Verdict,
 };
-use kelir_interface::telemetry::{ExecutionReceipt, ReceiptStore};
+use kelir_interface::telemetry::{ExecutionReceipt, HookSpan, ReceiptStore, VerdictKind};
 use kelir_interface::terminal::LogStream;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -52,8 +52,7 @@ use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
 pub use engine::PipelineEngine;
 pub(crate) use quarantine::{
-    Quarantined, map_reject_to_filter_action, map_reject_to_verdict, quarantine_sync,
-    quarantine_unit, quarantine_verdict,
+    Quarantined, quarantine_sync, quarantine_unit, quarantine_verdict, verdict_kind_of,
 };
 pub use registration::{
     CustomActionBinding, CustomActionCallback, HostRegistrationState, TrapDenyCallback,

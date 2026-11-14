@@ -49,8 +49,8 @@ fn pe_16_chaos_rst_injection_drops_matching_frame() -> Result<(), String> {
     match plugin.on_net_outbound(&mut matching) {
         Ok(FilterAction::Drop { errno, reason }) => {
             assert_eq!(
-                errno.map(|errno| errno.as_str()),
-                Some("ECONNREFUSED"),
+                errno.as_str(),
+                "ECONNREFUSED",
                 "RST injection must carry ECONNREFUSED, reason: {reason}"
             );
             assert!(

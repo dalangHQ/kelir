@@ -3,21 +3,18 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use kelir::builder_sdk::KelirBuilder;
-use kelir::interface::driver_interface::default_vm_config;
+use kelir::interface::driver_interface::VmConfig;
 use kelir::interface::driver_interface::{
     ExternalSuspendKind, GuestClock, SnapshotDescriptor, SuspendReason,
 };
 use kelir::plugin_model::PluginError;
 
 fn builder_config() -> kelir::interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 fn step_descriptor(offset_ns: u64) -> SnapshotDescriptor {
@@ -92,9 +89,15 @@ async fn lc_04_draining_state_rejection_ebusy() -> Result<(), String> {
 #[ignore]
 async fn lc_07_cow_fork_uncloned_descriptor_veto() -> Result<(), String> {
     let mut builder = KelirBuilder::new(builder_config());
-    builder
-        .lifecycle_mut()
-        .register_veto(kelir::plugin_model::VetoEvent::Fork, Box::new(|| false));
+    builder.lifecycle_mut().register_veto(
+        kelir::plugin_model::VetoEvent::Fork,
+        Box::new(|| kelir::plugin_model::Veto {
+            allowed: false,
+            by: String::new(),
+            reason: String::new(),
+            recovery: None,
+        }),
+    );
     let session = builder
         .seal()
         .map_err(|e| e.to_string())?
@@ -195,12 +198,15 @@ async fn lc_09_graceful_shutdown_syncfs_flushed() -> Result<(), String> {
     let fired = Arc::new(AtomicBool::new(false));
     let observer = Arc::clone(&fired);
     let mut session = KelirBuilder::new(builder_config())
-        .on_vm_shutdown(move |_ctx| {
-            let observer = Arc::clone(&observer);
-            Box::pin(async move {
-                observer.store(true, Ordering::SeqCst);
-                Ok(())
+        .lifecycle(|l| {
+            l.on_vm_shutdown(move |_ctx| {
+                let observer = Arc::clone(&observer);
+                Box::pin(async move {
+                    observer.store(true, Ordering::SeqCst);
+                    Ok(())
+                })
             })
+            .end()
         })
         .seal()
         .map_err(|e| e.to_string())?
@@ -227,12 +233,15 @@ async fn lc_10_abrupt_kill_dirty_shutdown_receipt() -> Result<(), String> {
     let fired = Arc::new(AtomicBool::new(false));
     let observer = Arc::clone(&fired);
     let mut session = KelirBuilder::new(builder_config())
-        .on_vm_shutdown(move |_ctx| {
-            let observer = Arc::clone(&observer);
-            Box::pin(async move {
-                observer.store(true, Ordering::SeqCst);
-                Ok(())
+        .lifecycle(|l| {
+            l.on_vm_shutdown(move |_ctx| {
+                let observer = Arc::clone(&observer);
+                Box::pin(async move {
+                    observer.store(true, Ordering::SeqCst);
+                    Ok(())
+                })
             })
+            .end()
         })
         .seal()
         .map_err(|e| e.to_string())?

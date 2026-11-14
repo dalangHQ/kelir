@@ -2,6 +2,8 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
 // see: cans/10-attestation.md#Execution-receipts
 
+import type { RingEvent } from "./generated/fusion.tables.generated.js";
+
 export interface GuestClock {
   readonly absoluteWallClockNs: number;
   readonly monotonicOffsetNs: number;
@@ -37,6 +39,32 @@ export type ExitKind =
   | { readonly kind: "dirty-shutdown" }
   | { readonly kind: "hard-killed" };
 
+export type VerdictKind =
+  | { readonly kind: "pass" }
+  | { readonly kind: "forward" }
+  | { readonly kind: "drop" }
+  | { readonly kind: "suspend" }
+  | { readonly kind: "abort" }
+  | { readonly kind: "patch" };
+
+export interface HookSpan {
+  readonly plugin: string;
+  readonly ring: RingEvent;
+  readonly verdictKind: VerdictKind;
+  readonly durationNs: number;
+  readonly ordinal: number;
+}
+
+export interface FsVfsExt {
+  readonly servedInodes: number;
+  readonly roots: readonly string[];
+}
+
+export interface NetL7SqlExt {
+  readonly statements: number;
+  readonly distinctShapes: number;
+}
+
 export interface ExecutionReceipt {
   readonly pid: number;
   readonly binaryPath: string;
@@ -51,6 +79,9 @@ export interface ExecutionReceipt {
   readonly egressBytes: number;
   readonly egressDroppedBytes: number;
   readonly extensions: readonly ReceiptExtension[];
+  readonly hookTrace: readonly HookSpan[];
+  readonly fsVfsExt?: FsVfsExt | null;
+  readonly netL7SqlExt?: NetL7SqlExt | null;
 }
 
 export interface CausalDelta {
@@ -119,6 +150,9 @@ export interface NativeExecutionReceiptRecord {
   readonly egressBytes: number;
   readonly egressDroppedBytes: number;
   readonly extensions: readonly ReceiptExtension[];
+  readonly hookTrace: readonly HookSpan[];
+  readonly fsVfsExt?: FsVfsExt | null;
+  readonly netL7SqlExt?: NetL7SqlExt | null;
 }
 
 export interface NativeCausalDeltaRecord {
@@ -173,6 +207,9 @@ export function fromNativeExecutionReceipt(raw: NativeExecutionReceiptRecord): E
     egressBytes: raw.egressBytes,
     egressDroppedBytes: raw.egressDroppedBytes,
     extensions: raw.extensions,
+    hookTrace: raw.hookTrace,
+    fsVfsExt: raw.fsVfsExt ?? null,
+    netL7SqlExt: raw.netL7SqlExt ?? null,
   };
 }
 

@@ -8,14 +8,14 @@ pub struct LockBrokerWiring {
 }
 
 // see: cans/05-storage-plane.md#Virtual-ID-remapping
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IdmapConfig {
     pub guest_uid: u32,
     pub host_uid: u32,
 }
 
 // see: cans/05-storage-plane.md#In-flight-read-masking
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MaskReadRule {
     pub glob: String,
     pub patterns: Vec<(String, String)>,

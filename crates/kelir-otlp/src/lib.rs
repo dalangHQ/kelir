@@ -20,7 +20,7 @@ pub use exporter::{OtlpEndpoint, OtlpExporter, OtlpExporterConfig};
 pub use records_otlp::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
 pub use registry_otlp::{MetricRegistry, MetricSnapshot};
 pub use span::OtlpSpan;
-pub(crate) use span::phase_spans;
+pub(crate) use span::{hook_spans, phase_spans};
 
 use thiserror::Error;
 

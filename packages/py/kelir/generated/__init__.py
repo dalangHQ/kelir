@@ -15,6 +15,10 @@ from kelir.generated.attest_telemetry import (
     ReceiptExtension,
     PhaseTimings,
     ExitKind,
+    VerdictKind,
+    HookSpan,
+    FsVfsExt,
+    NetL7SqlExt,
     ExecutionReceipt,
     CausalDelta,
 )

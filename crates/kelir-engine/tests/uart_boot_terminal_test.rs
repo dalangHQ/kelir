@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use kelir_engine::Session;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::telemetry::ExitKind;
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
@@ -22,14 +22,11 @@ fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
 }
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_12_arm64_stage2_4k_on_16k_host.yaml#case_id

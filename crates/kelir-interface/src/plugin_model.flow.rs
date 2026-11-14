@@ -15,7 +15,6 @@ use crate::driver_interface::{
     BalloonConvergence, EntropyBackend, EntropyStreamPosition, PmuSampler, VmConfig, VmmDriver,
     VmmError, WatchdogAction, WatchdogEvent, WatchdogVerdict,
 };
-use crate::errno_types::Errno;
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
@@ -49,8 +48,6 @@ pub enum PluginError {
     WxViolation { pid: u32, operation: String },
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
-    #[error("{errno}: {reason}")]
-    Reject { errno: Errno, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
     #[error("Plugin halted: {0}")]
@@ -84,16 +81,6 @@ impl PartialEq for PluginError {
                     conflict: right_conflict,
                 },
             ) => left_resource == right_resource && left_conflict == right_conflict,
-            (
-                Self::Reject {
-                    errno: left_errno,
-                    reason: left_reason,
-                },
-                Self::Reject {
-                    errno: right_errno,
-                    reason: right_reason,
-                },
-            ) => left_errno == right_errno && left_reason == right_reason,
             (Self::Io(left), Self::Io(right)) => {
                 match (left.raw_os_error(), right.raw_os_error()) {
                     (Some(left), Some(right)) => left == right,
@@ -115,13 +102,6 @@ impl PluginError {
         Self::AmbiguousMutation {
             resource: resource.into(),
             conflict: conflict.into(),
-        }
-    }
-
-    pub fn reject(errno: Errno, reason: impl Into<String>) -> Self {
-        Self::Reject {
-            errno,
-            reason: reason.into(),
         }
     }
 }
@@ -214,7 +194,17 @@ pub trait TokenRevocation: Send + Sync {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-pub type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> bool + Send + Sync>)>;
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Veto {
+    pub allowed: bool,
+    pub by: String,
+    pub reason: String,
+    pub recovery: Option<String>,
+}
+
+// see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
+pub type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> Veto + Send + Sync>)>;
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
 fn vmm_error(error: VmmError) -> PluginError {
@@ -222,7 +212,7 @@ fn vmm_error(error: VmmError) -> PluginError {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-// TODO (L3) [plugin_engine]: veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.; slop: veto callback without Send+Sync, LifecycleCtx Send unproven
+// L3-GAP: [plugin_engine]: veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.; slop: veto callback without Send+Sync, LifecycleCtx Send unproven
 pub struct LifecycleCtx<'a> {
     pub config: &'a VmConfig,
     pub session_id: &'a str,
@@ -291,7 +281,7 @@ impl<'a> LifecycleCtx<'a> {
     pub fn register_veto(
         &mut self,
         event: VetoEvent,
-        callback: Box<dyn Fn() -> bool + Send + Sync>,
+        callback: Box<dyn Fn() -> Veto + Send + Sync>,
     ) {
         self.vetoes.push((event, callback));
     }
@@ -589,6 +579,13 @@ pub type NoDeps = HNil;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HNil;
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl<P: 'static> crate::handlers_plugin::Capability<P> for HNil {
+    fn capability(&self) -> Option<&P> {
+        None
+    }
+}
+
 // see: cans/02-plugin-model.md#Compile-time-prerequisites
 #[derive(Clone, Debug)]
 pub struct HCons<Head, Tail> {
@@ -600,6 +597,9 @@ pub struct HCons<Head, Tail> {
 pub trait PluginDeps {
     type Deps;
 }
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub use kelir_interface_macros::PluginDeps;
 
 #[async_trait]
 pub trait LifecycleParticipant: Send + Sync {

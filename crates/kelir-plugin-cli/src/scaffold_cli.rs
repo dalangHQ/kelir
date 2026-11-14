@@ -1,6 +1,6 @@
 // see: cans/15-operations.md#Subcommands
 // see: cans/02-plugin-model.md#Plugin-ownership
-// TODO (L3) [plugin_engine]: derive the trait stubs from the KelirPlugin trait AST instead of the static skeleton below; slop: stub drifts from the trait, new trait methods never appear in scaffolds
+// L3-GAP: [plugin_engine]: derive the trait stubs from the KelirPlugin trait AST instead of the static skeleton below; slop: stub drifts from the trait, new trait methods never appear in scaffolds
 use std::path::PathBuf;
 
 use crate::cli_error::CliError;
@@ -25,7 +25,7 @@ fn cargo_toml(name: &str) -> String {
 // see: cans/02-plugin-model.md#Plugin-ownership
 fn lib_rs(name: &str, struct_name: &str) -> String {
     format!(
-        "// see: cans/02-plugin-model.md#Plugin-ownership\n#![forbid(unsafe_code)]\n\nuse kelir_interface::plugin_model::{{KelirPlugin, NoDeps, PluginDeps}};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\n#[derive(Clone, Default)]\npub struct {struct_name};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl KelirPlugin for {struct_name} {{\n    type Context = ();\n    fn context(&self) -> Self::Context {{}}\n    fn name(&self) -> &str {{\n        \"{name}\"\n    }}\n}}\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl PluginDeps for {struct_name} {{\n    type Deps = NoDeps;\n}}\n"
+        "// see: cans/02-plugin-model.md#Plugin-ownership\n#![forbid(unsafe_code)]\n\nuse kelir_interface::plugin_model::{{KelirPlugin, PluginDeps}};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\n#[derive(Clone, Default, PluginDeps)]\npub struct {struct_name};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl KelirPlugin for {struct_name} {{\n    type Context = ();\n    fn context(&self) -> Self::Context {{}}\n    fn name(&self) -> &str {{\n        \"{name}\"\n    }}\n}}\n"
     )
 }
 
@@ -39,7 +39,7 @@ fn contract_test_rs(name: &str, struct_name: &str, crate_name: &str) -> String {
 // see: cans/02-plugin-model.md#Plugin-ownership
 fn example_rs(name: &str, struct_name: &str, crate_name: &str) -> String {
     format!(
-        "// see: cans/02-plugin-model.md#Unified-builder\n// see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_host\nuse {crate_name}::{struct_name};\nuse kelir::{{driver_interface::default_vm_config, KelirBuilder}};\n\n// see: cans/02-plugin-model.md#Unified-builder\nfn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {{\n    let _sealed = KelirBuilder::new(default_vm_config(None, None, None, None, None, None))\n        .plugin_instance({struct_name})\n        .seal()?;\n    let _ = \"{name}\";\n    Ok(())\n}}\n"
+        "// see: cans/02-plugin-model.md#Unified-builder\n// see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_host\nuse {crate_name}::{struct_name};\nuse kelir::{{driver_interface::VmConfig, KelirBuilder}};\n\n// see: cans/02-plugin-model.md#Unified-builder\nfn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {{\n    let _sealed = KelirBuilder::new(VmConfig::default())\n        .plugin_instance({struct_name})\n        .seal()?;\n    let _ = \"{name}\";\n    Ok(())\n}}\n"
     )
 }
 

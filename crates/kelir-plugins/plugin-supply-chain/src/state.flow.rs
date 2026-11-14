@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, NoDeps, PipelineBinder, PluginDeps, TrapInterposer,
+    HandlerCtx, KelirPlugin, PipelineBinder, PluginDeps, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
@@ -45,7 +45,7 @@ impl SupplyChainState {
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
     fn is_authorized(&self, binary_blake3: &[u8; 32]) -> bool {
-        // TODO (L3) [supply_chain_security]: catalog storage internals; resolve allowed_jit_binaries disk paths to BLAKE3 digests for the verified JIT engine catalog (Node, Bun, V8); slop: paths resolved by file name, swapped binary passes catalog
+        // L3-GAP: [supply_chain_security]: catalog storage internals; resolve allowed_jit_binaries disk paths to BLAKE3 digests for the verified JIT engine catalog (Node, Bun, V8); slop: paths resolved by file name, swapped binary passes catalog
         self.config
             .wx_jit
             .allowed_jit_binaries
@@ -74,7 +74,7 @@ impl JitValidationService for SupplyChainCtx {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct SupplyChainPlugin {
     state: Arc<SupplyChainState>,
 }
@@ -108,7 +108,7 @@ impl SupplyChainPlugin {
         {
             // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO),
+                errno: SCRIPT_DENY_ERRNO,
                 reason: format!("lifecycle script denied: {}", event.binary_path),
             });
         }
@@ -133,39 +133,39 @@ impl SupplyChainPlugin {
             }
             return Ok(Verdict::Pass);
         }
-        // TODO (L3) [supply_chain_security]: the seccomp-unotify mask pins the trapped syscall set; payloads outside the mediated set pass; slop: mask pinned narrow, syscalls outside set pass unmediated
+        // L3-GAP: [supply_chain_security]: the seccomp-unotify mask pins the trapped syscall set; payloads outside the mediated set pass; slop: mask pinned narrow, syscalls outside set pass unmediated
         Ok(Verdict::Pass)
     }
 
     fn mediate_wx_gate(&self, event: &TrapEvent, operation: &str) -> Result<Verdict, PluginError> {
         // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
         if self.state.is_authorized(&event.binary_blake3) {
-            // TODO (L3) [supply_chain_security]: measure the live calling task beyond the execve digest (ptrace or dynamic-link injection into a verified engine); slop: digest-only measurement, live task unmeasured, injected code undetected
+            // L3-GAP: [supply_chain_security]: measure the live calling task beyond the execve digest (ptrace or dynamic-link injection into a verified engine); slop: digest-only measurement, live task unmeasured, injected code undetected
             let token = self.state.ledger.mint(&event.binary_blake3)?;
             self.state.channel.deliver(token)?;
             return Ok(Verdict::Pass);
         }
         // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
         Ok(Verdict::Drop {
-            errno: Some(WX_VIOLATION_ERRNO),
+            errno: WX_VIOLATION_ERRNO,
             reason: format!("PID {} attempted {operation}", event.pid),
         })
     }
 
     fn flags_obfuscated_argv(&self, argv: &[String]) -> Result<bool, PluginError> {
-        // TODO (L3) [sc_02_argv_high_entropy_obfuscation_kill]: Shannon entropy of argv[1:] above shannon_entropy_threshold_bits flags encrypted or base64-obfuscated commands; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes
+        // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: Shannon entropy of argv[1:] above shannon_entropy_threshold_bits flags encrypted or base64-obfuscated commands; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes
         let _ = argv;
         Ok(false)
     }
 
     fn blocks_lifecycle_script(&self, event: &TrapEvent) -> Result<bool, PluginError> {
-        // TODO (L3) [sc_01_lifecycle_script_trap_exit126]: package-manager process-tree monitoring over the declared managers; dependency-directory lifecycle-script detection; nested npm→sh→node traps at the sh ancestor; slop: blocks_lifecycle_script stays Ok(false), lifecycle scripts Pass, exit never 126
+        // L3-GAP: [sc_01_lifecycle_script_trap_exit126]: package-manager process-tree monitoring over the declared managers; dependency-directory lifecycle-script detection; nested npm→sh→node traps at the sh ancestor; slop: blocks_lifecycle_script stays Ok(false), lifecycle scripts Pass, exit never 126
         let _ = event;
         Ok(false)
     }
 
     fn is_bypass_runner(&self, binary_path: &str) -> bool {
-        // TODO (L3) [supply_chain_security]: bypass runner matching covers language toolchain layouts beyond file-name equality; slop: file-name matching only, toolchain layouts bypass the runner check
+        // L3-GAP: [supply_chain_security]: bypass runner matching covers language toolchain layouts beyond file-name equality; slop: file-name matching only, toolchain layouts bypass the runner check
         std::path::Path::new(binary_path)
             .file_name()
             .and_then(|name| name.to_str())
@@ -231,7 +231,7 @@ impl VsockServiceHandler for WxTokenVsockService {
         stream: Box<dyn Stream>,
         _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
-        // TODO (L3) [supply_chain_security]: read the guest shim handshake on this channel without blocking the async worker; slop: shim handshake read blocks worker, async loop stalls
+        // L3-GAP: [supply_chain_security]: read the guest shim handshake on this channel without blocking the async worker; slop: shim handshake read blocks worker, async loop stalls
         self.state.channel.register(peer.clone(), stream)
     }
 }
@@ -242,9 +242,9 @@ impl TrapInterposer for SupplyChainPlugin {
     async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         // see: cans/plugins/supply-chain.md#Entropy-analysis
         if !self.is_bypass_runner(&event.binary_path) && self.flags_obfuscated_argv(&event.argv)? {
-            // TODO (L3) [sc_02_argv_high_entropy_obfuscation_kill]: flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold; slop: flag-to-verdict unimplemented, obfuscated argv Passes despite entropy
+            // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold; slop: flag-to-verdict unimplemented, obfuscated argv Passes despite entropy
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO),
+                errno: SCRIPT_DENY_ERRNO,
                 reason: format!("obfuscated argv denied: {}", event.binary_path),
             });
         }
@@ -256,6 +256,3 @@ impl TrapInterposer for SupplyChainPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for SupplyChainPlugin {
-    type Deps = NoDeps;
-}

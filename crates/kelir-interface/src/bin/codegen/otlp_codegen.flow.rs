@@ -70,6 +70,18 @@ const OTLP_SPECS: &[OtlpRecordSpec] = &[
                 target_type: Some("Vec<crate::OtlpSpan>"),
                 init: Some("crate::phase_spans(receipt.phase_timings.as_ref())"),
             },
+            OtlpFieldSpec {
+                target: "hook_spans",
+                source: None,
+                target_type: Some("Vec<crate::OtlpSpan>"),
+                init: Some("crate::hook_spans(&receipt.hook_trace)"),
+            },
+            OtlpFieldSpec {
+                target: "ext_raw",
+                source: None,
+                target_type: Some("Vec<(String, Vec<u8>)>"),
+                init: Some("receipt.ext_raw()"),
+            },
         ],
         ignored: &[
             "exit_kind",
@@ -80,6 +92,9 @@ const OTLP_SPECS: &[OtlpRecordSpec] = &[
             "egress_bytes",
             "egress_dropped_bytes",
             "extensions",
+            "hook_trace",
+            "fs_vfs_ext",
+            "net_l7_sql_ext",
         ],
     },
     OtlpRecordSpec {

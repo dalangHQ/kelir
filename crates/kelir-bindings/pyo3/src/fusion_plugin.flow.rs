@@ -42,7 +42,7 @@ impl FusedTrampolineCallback for PyFusedCallback {
             ))
         })?;
         // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
-        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; Py write hooks receive a writable bytearray and return a bytes snapshot; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+        // L3-GAP: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; Py write hooks receive a writable bytearray and return a bytes snapshot; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         Ok(Verdict::Pass)
     }
 }
@@ -190,6 +190,10 @@ pub fn convert_descriptor(descriptor: &Bound<'_, PyDict>) -> PyResult<FusedTramp
                             _ => Vec::new(),
                         },
                         pattern: optional_str(filter, "pattern")?,
+                        cwd: None,
+                        env: Vec::new(),
+                        uid: None,
+                        argv: None,
                     })
                 }
                 _ => None,
@@ -202,6 +206,7 @@ pub fn convert_descriptor(descriptor: &Bound<'_, PyDict>) -> PyResult<FusedTramp
                 lifecycle_tag,
                 custom_action_name,
                 vsock_kind,
+                priority: 0,
                 run: None,
             };
             validate_hook(ring_kind, &entry).map_err(PyValueError::new_err)?;

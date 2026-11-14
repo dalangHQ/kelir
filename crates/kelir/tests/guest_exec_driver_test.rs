@@ -1,18 +1,15 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_02_wx_mmu_prot_exec_trap.yaml#case_id
 use kelir::builder_sdk::KelirBuilder;
-use kelir::interface::driver_interface::{VmConfig, WxPolicy, default_vm_config};
+use kelir::interface::driver_interface::{VmConfig, WxPolicy};
 use kelir::plugin_model::PluginError;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_02_wx_mmu_prot_exec_trap.yaml#case_id
 fn wx_config(driver: Option<&str>, allow_emulated: bool) -> VmConfig {
-    let mut config = default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    );
+    let mut config = VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    };
     config.driver_policy.driver = driver.map(str::to_string);
     config.driver_policy.allow_emulated_fallback = allow_emulated;
     config.driver_policy.wx_enforcement = WxPolicy::Strict;

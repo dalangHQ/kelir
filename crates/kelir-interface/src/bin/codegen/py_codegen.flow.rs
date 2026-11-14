@@ -49,6 +49,7 @@ fn py_type(ty: &Ty) -> String {
             other => format!("list[{}]", py_type(other)),
         },
         Ty::ByteArray(_) => "str".to_string(),
+        Ty::Custom(name) if name == "TrampolineRing" => "RingEvent".to_string(),
         Ty::Custom(name) => name.clone(),
     }
 }
@@ -82,17 +83,21 @@ fn py_default(ty: &Ty) -> String {
         Ty::Custom(name) if name == "ExitKind" => {
             "Field(default_factory=ExitKindNormal)".to_string()
         }
+        Ty::Custom(name) if name == "VerdictKind" => {
+            "Field(default_factory=VerdictKindPass)".to_string()
+        }
+        Ty::Custom(name) if name == "TrampolineRing" => "RingEvent.TRAP".to_string(),
         Ty::Custom(name) => format!("Field(default_factory={})", name),
     }
 }
 
 // see: cans/10-attestation.md#Execution-receipts
-fn emit_exit_kind_union(def: &EnumDef) -> Result<String, String> {
+fn emit_exit_kind_union(def: &EnumDef, name: &str) -> Result<String, String> {
     let mut out = String::new();
     let mut union = Vec::new();
     for variant in &def.variants {
         let tag = kebab(&variant.name);
-        let class = format!("ExitKind{}", variant.name);
+        let class = format!("{name}{}", variant.name);
         let _ = writeln!(out, "class {class}(BaseModel):");
         let _ = writeln!(out, "    kind: Literal[\"{tag}\"] = \"{tag}\"");
         match &variant.payload {
@@ -100,13 +105,13 @@ fn emit_exit_kind_union(def: &EnumDef) -> Result<String, String> {
             Some(Ty::U32) => out.push_str("    signal: int = 0\n"),
             Some(Ty::Str) => out.push_str("    message: str = \"\"\n"),
             Some(other) => {
-                return Err(format!("ExitKind::{}: {other:?}", variant.name));
+                return Err(format!("{name}::{}: {other:?}", variant.name));
             }
         }
         out.push_str("\n\n");
         union.push(class);
     }
-    out.push_str("ExitKind = (\n");
+    let _ = writeln!(out, "{name} = (");
     for (index, class) in union.iter().enumerate() {
         if index == 0 {
             let _ = writeln!(out, "    {class}");
@@ -202,16 +207,19 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
     out.push_str("from __future__ import annotations\n\n");
     out.push_str("from typing import Literal, TypeGuard, TypedDict\n\n");
     out.push_str("from pydantic import BaseModel, Field\n\n");
+    out.push_str("from kelir.generated.fusion_tables import RingEvent\n\n");
     for name in order {
-        if *name == "ExitKind" {
+        if model.enums.iter().any(|e| e.name == *name) {
             let def = model.enum_def(name)?;
-            out.push_str(&emit_exit_kind_union(def)?);
-            out.push_str(&emit_native_exit_kind(def)?);
+            out.push_str(&emit_exit_kind_union(def, name)?);
+            if *name == "ExitKind" {
+                out.push_str(&emit_native_exit_kind(def)?);
+            }
             continue;
         }
         let def = model.struct_def(name)?;
         if *name == "ExecutionReceipt" {
-            out.push_str("# TODO (L3) [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK\n");
+            out.push_str("# L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK\n");
         }
         let _ = writeln!(out, "class {}(BaseModel):", name);
         for field in &def.fields {

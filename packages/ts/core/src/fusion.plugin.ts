@@ -23,6 +23,10 @@ export interface TrapFilterSnapshot {
   readonly binary?: string;
   readonly args: readonly string[];
   readonly pattern?: string;
+  readonly cwd?: string;
+  readonly env: readonly (readonly [string, string])[];
+  readonly uid?: number;
+  readonly argv?: string;
 }
 
 export interface HookDescriptor {
@@ -102,7 +106,7 @@ export class FusedTrampoline {
     return this.chains.find((chain) => chain.ring === ring)?.hooks.length ?? 0;
   }
 
-  // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
+  // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
   describe(): FusedTrampolineDescriptor {
     return {
       rings: this.chains.map((chain) => ({
@@ -212,8 +216,17 @@ export interface NativeStorageConfigBinding {
   readonly carryoverBytes?: number;
 }
 
+// see: cans/07-wire-plane.md#Sinkhole-rules
+export interface NativeSinkholeRuleBinding {
+  readonly host: string;
+  readonly methods?: string[];
+  readonly paths?: string[];
+  readonly allow?: boolean;
+}
+
 // see: cans/07-wire-plane.md#DNS-policy-filter
 export interface NativeWireConfigBinding {
+  readonly sinkhole?: { readonly rules?: readonly NativeSinkholeRuleBinding[] };
   readonly sinkholeDnsExcept?: string[];
   readonly sinkholeDropAll?: boolean;
   readonly sshAgentBridge?: boolean;
@@ -324,7 +337,7 @@ export async function loadNativeAddon(): Promise<NativeAddonBinding> {
     verifyNativeAddonAbi(binding);
     return binding;
   }
-  // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle.; slop: dist ships without native addon, boot fails closed with NativeAddonMissingError
+  // L3-GAP: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: ship the precompiled NAPI addon next to the dist bundle.; slop: dist ships without native addon, boot fails closed with NativeAddonMissingError
   throw new NativeAddonMissingError(
     "kelir native NAPI addon is missing: install the precompiled @kelir/core native build (L3)",
   );

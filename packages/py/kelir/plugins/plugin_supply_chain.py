@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "AuthorizedJitEngine",
@@ -11,6 +11,8 @@ __all__ = [
     "SupplyChainConfig",
     "SupplyChainPlugin",
     "WxJitConfig",
+    "supply_chain",
+    "supply_chain_builder",
 ]
 
 

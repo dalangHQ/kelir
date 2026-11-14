@@ -7,6 +7,8 @@ from typing import Literal, TypeGuard, TypedDict
 
 from pydantic import BaseModel, Field
 
+from kelir.generated.fusion_tables import RingEvent
+
 class GuestClock(BaseModel):
     absolute_wall_clock_ns: int = 0
     monotonic_offset_ns: int = 0
@@ -120,7 +122,58 @@ def from_native_exit_kind(raw: NativeExitKindRecord) -> ExitKind:
     raise ValueError(f"unknown native exit kind record: {raw}")
 
 
-# TODO (L3) [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
+class VerdictKindPass(BaseModel):
+    kind: Literal["pass"] = "pass"
+
+
+class VerdictKindForward(BaseModel):
+    kind: Literal["forward"] = "forward"
+
+
+class VerdictKindDrop(BaseModel):
+    kind: Literal["drop"] = "drop"
+
+
+class VerdictKindSuspend(BaseModel):
+    kind: Literal["suspend"] = "suspend"
+
+
+class VerdictKindAbort(BaseModel):
+    kind: Literal["abort"] = "abort"
+
+
+class VerdictKindPatch(BaseModel):
+    kind: Literal["patch"] = "patch"
+
+
+VerdictKind = (
+    VerdictKindPass
+    | VerdictKindForward
+    | VerdictKindDrop
+    | VerdictKindSuspend
+    | VerdictKindAbort
+    | VerdictKindPatch
+)
+
+class HookSpan(BaseModel):
+    plugin: str = ""
+    ring: RingEvent = RingEvent.TRAP
+    verdict_kind: VerdictKind = Field(default_factory=VerdictKindPass)
+    duration_ns: int = 0
+    ordinal: int = 0
+
+
+class FsVfsExt(BaseModel):
+    served_inodes: int = 0
+    roots: list[str] = Field(default_factory=list)
+
+
+class NetL7SqlExt(BaseModel):
+    statements: int = 0
+    distinct_shapes: int = 0
+
+
+# L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
 class ExecutionReceipt(BaseModel):
     pid: int = 0
     binary_path: str = ""
@@ -135,6 +188,9 @@ class ExecutionReceipt(BaseModel):
     egress_bytes: int = 0
     egress_dropped_bytes: int = 0
     extensions: list[ReceiptExtension] = Field(default_factory=list)
+    hook_trace: list[HookSpan] = Field(default_factory=list)
+    fs_vfs_ext: FsVfsExt | None = None
+    net_l7_sql_ext: NetL7SqlExt | None = None
 
 
 class CausalDelta(BaseModel):

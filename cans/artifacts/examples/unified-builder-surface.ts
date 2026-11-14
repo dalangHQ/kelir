@@ -145,7 +145,7 @@ export function buildSurfaceHost() {
         .withCwd("/workspace/**")
         .withEnv("CI", "1")
         .withUid(0)
-        .argvMatches(/^--fast$/),
+        .argvMatches("^--fast$"),
       (c) => c.pass(),
     )
     .trap((scope) =>

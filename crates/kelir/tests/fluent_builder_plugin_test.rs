@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use kelir::interface::driver_interface::{Stream, WatchdogVerdict, default_vm_config};
+use kelir::interface::driver_interface::{Stream, VmConfig, WatchdogVerdict};
+use kelir::interface::errno_types::Errno;
 use kelir::interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin, LifecycleParticipant,
     MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder, PluginError, PostExecGate,
@@ -110,14 +111,11 @@ fn error_text<T>(result: Result<T, PluginError>) -> String {
 }
 
 fn test_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
-    KelirBuilder::new(default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    ))
+    KelirBuilder::new(VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    })
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
@@ -127,41 +125,70 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
         .require::<ProfilePlugin>()
         .context(|| ())
         .scope(MountScope::default())
-        .fork_with(|_child| Box::new(ProfilePlugin::new()))
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .on_process_exit(|_event, _ctx| Ok(()))
-        .on_fs_lookup(|_path| Ok(Verdict::Pass))
-        .on_fs_read(|_path, buffer| Ok(buffer.to_vec()))
-        .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
-        .on_fs_lock(|_path, _cmd, _kind, _pid| Ok(Verdict::Pass))
-        .on_net_outbound(|_frame| Ok(FilterAction::Forward))
-        .on_net_inbound(|_frame| Ok(FilterAction::Forward))
-        .on_console_input(|_port, bytes| Ok(bytes.to_vec()))
-        .on_console_output(|_port, chunk| Ok(chunk.to_vec()))
-        .on_exec_stdout(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
-        .on_exec_stderr(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
-        .on_host_lsm_exec(|_path, _pid| Ok(Verdict::Pass))
-        .on_host_pressure(|_level| Ok(Verdict::Pass))
-        .on_host_keyring_access(|_key| Ok(Verdict::Pass))
-        .on_vm_init(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_ready(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_pre_commit(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_post_commit(|_ctx, _committed| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_host_preempt(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
-        .on_heartbeat(|_uptime| async move { Ok::<(), PluginError>(()) })
-        .on_watchdog(|_event| async move {
-            Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
+        .trap_scope(|t| {
+            t.fork_with(|_child| Box::new(ProfilePlugin::new()))
+                .on_trap(|_event, _ctx| Ok(Verdict::Pass))
+                .on_process_exit(|_event, _ctx| Ok(()))
+                .end()
         })
-        .vsock_service(
-            VsockServiceSpec {
-                port: 5252,
-                service: "plain".to_string(),
-                schema: None,
-            },
-            _NullVsock,
-        );
+        .fs(|f| {
+            f.on_fs_lookup(|_path| Ok(Verdict::Pass))
+                .on_fs_read(|_path, buffer| Ok(buffer.to_vec()))
+                .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+                .on_fs_lock(|_path, _cmd, _kind, _pid| Ok(Verdict::Pass))
+                .end()
+        })
+        .net(|n| {
+            n.on_net_outbound(|_frame| Ok(FilterAction::Forward))
+                .on_net_inbound(|_frame| Ok(FilterAction::Forward))
+                .end()
+        })
+        .console(|c| {
+            c.on_console_input(|_port, bytes| Ok(bytes.to_vec()))
+                .on_console_output(|_port, chunk| Ok(chunk.to_vec()))
+                .end()
+        })
+        .exec(|e| {
+            e.on_exec_stdout(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
+                .on_exec_stderr(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
+                .end()
+        })
+        .host(|h| {
+            h.on_host_lsm_exec(|_path, _pid| Ok(Verdict::Pass))
+                .on_host_pressure(|_level| Ok(Verdict::Pass))
+                .on_host_keyring_access(|_key| Ok(Verdict::Pass))
+                .on_host_preempt(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .end()
+        })
+        .lifecycle(|l| {
+            l.on_vm_init(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_vm_ready(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_pre_commit(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_post_commit(|_ctx, _committed| {
+                    Box::pin(async move { Ok::<(), PluginError>(()) })
+                })
+                .end()
+        })
+        .telemetry(|t| {
+            t.on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
+                .on_heartbeat(|_uptime| async move { Ok::<(), PluginError>(()) })
+                .on_watchdog(|_event| async move {
+                    Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
+                })
+                .end()
+        })
+        .vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 5252,
+                    service: "plain".to_string(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        });
     let mut binder = RecordingBinder::default();
     plain.register_interceptors(&mut binder);
     assert_eq!(
@@ -202,33 +229,59 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
-fn nested_scopes_match_flat_descriptors() {
+fn nested_scopes_bind_identically() {
     let flat = KelirBuilder::named("flat")
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .on_process_exit(|_event, _ctx| Ok(()))
-        .on_fs_lookup(|_path| Ok(Verdict::Pass))
-        .on_fs_read(|_path, buffer| Ok(buffer.to_vec()))
-        .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
-        .on_fs_lock(|_path, _cmd, _kind, _pid| Ok(Verdict::Pass))
-        .on_net_outbound(|_frame| Ok(FilterAction::Forward))
-        .on_net_inbound(|_frame| Ok(FilterAction::Forward))
-        .on_console_input(|_port, bytes| Ok(bytes.to_vec()))
-        .on_console_output(|_port, chunk| Ok(chunk.to_vec()))
-        .on_exec_stdout(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
-        .on_exec_stderr(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
-        .on_host_lsm_exec(|_path, _pid| Ok(Verdict::Pass))
-        .on_host_pressure(|_level| Ok(Verdict::Pass))
-        .on_host_keyring_access(|_key| Ok(Verdict::Pass))
-        .on_host_preempt(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_init(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_ready(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_pre_commit(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_post_commit(|_ctx, _committed| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
-        .on_heartbeat(|_uptime| async move { Ok::<(), PluginError>(()) })
-        .on_watchdog(|_event| async move {
-            Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
+        .trap_scope(|t| {
+            t.on_trap(|_event, _ctx| Ok(Verdict::Pass))
+                .on_process_exit(|_event, _ctx| Ok(()))
+                .end()
+        })
+        .fs(|f| {
+            f.on_fs_lookup(|_path| Ok(Verdict::Pass))
+                .on_fs_read(|_path, buffer| Ok(buffer.to_vec()))
+                .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+                .on_fs_lock(|_path, _cmd, _kind, _pid| Ok(Verdict::Pass))
+                .end()
+        })
+        .net(|n| {
+            n.on_net_outbound(|_frame| Ok(FilterAction::Forward))
+                .on_net_inbound(|_frame| Ok(FilterAction::Forward))
+                .end()
+        })
+        .console(|c| {
+            c.on_console_input(|_port, bytes| Ok(bytes.to_vec()))
+                .on_console_output(|_port, chunk| Ok(chunk.to_vec()))
+                .end()
+        })
+        .exec(|e| {
+            e.on_exec_stdout(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
+                .on_exec_stderr(|_pid, _exec_id, chunk| Ok(chunk.to_vec()))
+                .end()
+        })
+        .host(|h| {
+            h.on_host_lsm_exec(|_path, _pid| Ok(Verdict::Pass))
+                .on_host_pressure(|_level| Ok(Verdict::Pass))
+                .on_host_keyring_access(|_key| Ok(Verdict::Pass))
+                .on_host_preempt(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .end()
+        })
+        .lifecycle(|l| {
+            l.on_vm_init(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_vm_ready(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_pre_commit(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .on_post_commit(|_ctx, _committed| {
+                    Box::pin(async move { Ok::<(), PluginError>(()) })
+                })
+                .end()
+        })
+        .telemetry(|t| {
+            t.on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
+                .on_heartbeat(|_uptime| async move { Ok::<(), PluginError>(()) })
+                .on_watchdog(|_event| async move {
+                    Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
+                })
+                .end()
         });
     let nested = KelirBuilder::named("nested")
         .trap_scope(|t| {
@@ -289,9 +342,9 @@ fn nested_scopes_match_flat_descriptors() {
     nested.register_interceptors(&mut nested_binder);
     assert_eq!(nested_binder.binds, flat_binder.binds);
     let mixed = KelirBuilder::named("mixed")
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
+        .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end())
         .trap_scope(|t| t.on_process_exit(|_event, _ctx| Ok(())).end())
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass));
+        .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end());
     let mut mixed_binder = RecordingBinder::default();
     mixed.register_interceptors(&mut mixed_binder);
     assert_eq!(
@@ -304,14 +357,17 @@ fn nested_scopes_match_flat_descriptors() {
 #[test]
 fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
     let port_zero = test_builder()
-        .plugin(KelirBuilder::named("bad-port").vsock_service(
-            VsockServiceSpec {
-                port: 0,
-                service: "plain".to_string(),
-                schema: None,
-            },
-            _NullVsock,
-        ))
+        .plugin(KelirBuilder::named("bad-port").vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 0,
+                    service: "plain".to_string(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        }))
         .seal();
     let text = error_text(port_zero);
     assert!(
@@ -321,14 +377,17 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let port_high = test_builder()
-        .plugin(KelirBuilder::named("bad-port").vsock_service(
-            VsockServiceSpec {
-                port: 65_536,
-                service: "plain".to_string(),
-                schema: None,
-            },
-            _NullVsock,
-        ))
+        .plugin(KelirBuilder::named("bad-port").vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 65_536,
+                    service: "plain".to_string(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        }))
         .seal();
     let text = error_text(port_high);
     assert!(
@@ -338,14 +397,17 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let empty_service = test_builder()
-        .plugin(KelirBuilder::named("bad-service").vsock_service(
-            VsockServiceSpec {
-                port: 5252,
-                service: String::new(),
-                schema: None,
-            },
-            _NullVsock,
-        ))
+        .plugin(KelirBuilder::named("bad-service").vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 5252,
+                    service: String::new(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        }))
         .seal();
     let text = error_text(empty_service);
     assert!(
@@ -355,14 +417,17 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let host_bad = test_builder()
-        .vsock_service(
-            VsockServiceSpec {
-                port: 0,
-                service: "plain".to_string(),
-                schema: None,
-            },
-            _NullVsock,
-        )
+        .vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 0,
+                    service: "plain".to_string(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        })
         .seal();
     let text = error_text(host_bad);
     assert!(
@@ -372,14 +437,17 @@ fn seal_rejects_bad_vsock_spec() -> Result<(), PluginError> {
         "unexpected error: {text}"
     );
     let ok = test_builder()
-        .plugin(KelirBuilder::named("ok").vsock_service(
-            VsockServiceSpec {
-                port: 65_535,
-                service: "plain".to_string(),
-                schema: None,
-            },
-            _NullVsock,
-        ))
+        .plugin(KelirBuilder::named("ok").vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 65_535,
+                    service: "plain".to_string(),
+                    schema: None,
+                },
+                _NullVsock,
+            )
+            .end()
+        }))
         .seal();
     assert!(ok.is_ok());
     Ok(())
@@ -419,15 +487,21 @@ fn seal_rejects_ill_formed_scope() -> Result<(), PluginError> {
 #[test]
 fn duplicate_handlers_append_in_order() {
     let plugin = KelirBuilder::named("dup")
-        .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
-        .on_fs_write(|_path, _data, _pid, _ctx| {
-            Ok(FilterAction::Drop {
-                errno: None,
-                reason: "second".to_string(),
-            })
+        .fs(|f| {
+            f.on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+                .on_fs_write(|_path, _data, _pid, _ctx| {
+                    Ok(FilterAction::Drop {
+                        errno: Errno::Eperm,
+                        reason: "second".to_string(),
+                    })
+                })
+                .end()
         })
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass))
-        .on_trap(|_event, _ctx| Ok(Verdict::Pass));
+        .trap_scope(|t| {
+            t.on_trap(|_event, _ctx| Ok(Verdict::Pass))
+                .on_trap(|_event, _ctx| Ok(Verdict::Pass))
+                .end()
+        });
     let mut binder = RecordingBinder::default();
     plugin.register_interceptors(&mut binder);
     assert_eq!(
@@ -451,8 +525,8 @@ fn duplicate_handlers_append_in_order() {
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 #[test]
 fn multi_vsock_registers_in_order() {
-    let plugin = KelirBuilder::named("multi-vsock")
-        .vsock_service(
+    let plugin = KelirBuilder::named("multi-vsock").vsock(|v| {
+        v.service(
             VsockServiceSpec {
                 port: 1111,
                 service: "one".to_string(),
@@ -460,7 +534,7 @@ fn multi_vsock_registers_in_order() {
             },
             _NullVsock,
         )
-        .vsock_service(
+        .service(
             VsockServiceSpec {
                 port: 2222,
                 service: "two".to_string(),
@@ -468,14 +542,16 @@ fn multi_vsock_registers_in_order() {
             },
             _NullVsock,
         )
-        .vsock_service(
+        .service(
             VsockServiceSpec {
                 port: 3333,
                 service: "three".to_string(),
                 schema: None,
             },
             _NullVsock,
-        );
+        )
+        .end()
+    });
     let mut binder = RecordingBinder::default();
     plugin.register_interceptors(&mut binder);
     assert_eq!(
@@ -522,8 +598,14 @@ fn chaos_plugin_wraps_into_builder() {
     let chaos = KelirBuilder::named("chaos")
         .context(move || context_plugin.context())
         .scope(MountScope::default())
-        .on_net_outbound(move |frame| net_plugin.on_net_outbound(frame))
-        .on_fs_write(move |path, data, pid, ctx| fs_plugin.on_fs_write(path, data, pid, ctx));
+        .net(|n| {
+            n.on_net_outbound(move |frame| net_plugin.on_net_outbound(frame))
+                .end()
+        })
+        .fs(|f| {
+            f.on_fs_write(move |path, data, pid, ctx| fs_plugin.on_fs_write(path, data, pid, ctx))
+                .end()
+        });
     let mut binder = RecordingBinder::default();
     chaos.register_interceptors(&mut binder);
     assert_eq!(binder.binds, vec!["fs".to_string(), "net".to_string()]);
@@ -532,11 +614,17 @@ fn chaos_plugin_wraps_into_builder() {
 // see: cans/02-plugin-model.md#Unified-builder
 #[test]
 fn host_ring_verbs_bind_before_mounted() -> Result<(), PluginError> {
-    let plugin =
-        KelirBuilder::named("net-plugin").on_net_outbound(|_frame| Ok(FilterAction::Forward));
+    let plugin = KelirBuilder::named("net-plugin")
+        .net(|n| n.on_net_outbound(|_frame| Ok(FilterAction::Forward)).end());
     let host = test_builder()
-        .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
-        .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+        .fs(|f| {
+            f.on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
+                .end()
+        })
+        .lifecycle(|l| {
+            l.on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+                .end()
+        })
         .plugin(plugin);
     let mut binder = RecordingBinder::default();
     host.bind_registry(&mut binder);

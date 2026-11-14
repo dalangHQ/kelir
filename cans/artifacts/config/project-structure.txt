@@ -57,6 +57,8 @@ kelir/
 │   │   │   ├── builder_plugin.flow.rs          # Plugin-mode chain (KelirPlugin trait + ring traits)
 │   │   │   ├── builder_scopes.flow.rs          # Scope builders for the fluent plugin-creation builder
 │   │   │   ├── builder_sdk.flow.rs             # KelirBuilder typestate (Unsealed/Sealed), plugin/terminal/storage/wire registration
+│   │   │   ├── builder_typestate.flow.rs       # KelirBuilder typestate setters (VmConfig fields)
+│   │   │   ├── trap_filter.flow.rs             # TrapFilter predicates + FilterSnapshot matching
 │   │   │   ├── hlist_sdk.flow.rs               # Heterogeneous plugin-context list
 │   │   │   ├── lib.rs                 # Composition root: binds all nine Real*Ops; re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
 │   │   │   ├── plugin_model.rs              # Facade plugin re-exports
@@ -402,6 +404,7 @@ kelir/
 │   │   │   ├── lib.rs
 │   │   │   ├── vectors_chain_testkit.rs
 │   │   │   ├── vectors_parse.flow.rs
+│   │   │   ├── vectors_scope_cases.flow.rs       # Unified-builder scope vector cases
 │   │   │   └── vectors_testkit.flow.rs             # vectors.json fixture loading
 │   │   └── tests/
 │   │       └── wire_frame_decode_test.rs

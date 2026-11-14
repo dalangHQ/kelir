@@ -25,7 +25,7 @@ pub(crate) async fn inflate_balloon(
 }
 
 pub(crate) fn reclaim(request: ReclaimRequest) -> Result<u64, PluginError> {
-    // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS; slop: pressure ignored, no madvise reclaim, balloon unadjusted
+    // L3-GAP: [hd_16_virtio_balloon_pressure_reclaim]: reclaim request.bytes of host frames via madvise(MADV_DONTNEED) on Linux, hv_vm_unmap + mach_vm_deallocate on macOS; slop: pressure ignored, no madvise reclaim, balloon unadjusted
     let _ = request;
     Err(PluginError::Halt(
         "TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::reclaim; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),

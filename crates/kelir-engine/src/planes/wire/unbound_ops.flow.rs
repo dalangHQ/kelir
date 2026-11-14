@@ -75,7 +75,7 @@ impl UdpNatOps for UnboundUdpNatOps {
     }
 }
 
-// TODO (L3) [wire_plane]: WirePlane::new binds fail-closed Unbound*Ops; Agent 5b replaces construction with the kelir-wire ops; slop: unbound ops Halt every frame/DNS/NAT/L4 call until the composition root binds them
+// L3-GAP: [wire_plane]: WirePlane::new binds fail-closed Unbound*Ops; Agent 5b replaces construction with the kelir-wire ops; slop: unbound ops Halt every frame/DNS/NAT/L4 call until the composition root binds them
 pub(super) struct UnboundL4DivertOps;
 
 impl L4DivertOps for UnboundL4DivertOps {

@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::LockBrokerCoordination;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -115,19 +114,15 @@ impl PeerCoordination {
         handle: &TransactionHandle,
     ) -> Result<ActiveTransaction, PluginError> {
         let active = self.active()?.ok_or_else(|| {
-            PluginError::reject(
-                Errno::Einval,
-                "no transaction scope is active on the coordinator",
+            PluginError::Halt(
+                "EINVAL: no transaction scope is active on the coordinator".to_string(),
             )
         })?;
         if active.handle.id != handle.id {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                format!(
-                    "handle {} does not match the active transaction {}",
-                    handle.id, active.handle.id
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EINVAL: handle {} does not match the active transaction {}",
+                handle.id, active.handle.id
+            )));
         }
         Ok(active)
     }
@@ -140,9 +135,9 @@ impl PeerCoordination {
                 .active()?
                 .is_some_and(|active| !active.scope.schemas.is_empty())
         {
-            return Err(PluginError::reject(
-                Errno::Epolicy,
-                "transaction declares SQL schemas but no SqlProxyCtx peer is bound",
+            return Err(PluginError::Halt(
+                "EPOLICY: transaction declares SQL schemas but no SqlProxyCtx peer is bound"
+                    .to_string(),
             ));
         }
         Ok(peer)
@@ -154,18 +149,15 @@ impl PeerCoordination {
         scope: TransactionScope,
     ) -> Result<TransactionHandle, PluginError> {
         if let Some(active) = self.active()? {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                format!(
-                    "transaction {} is still active; commit or abort it before opening a new scope",
-                    active.handle.id
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EINVAL: transaction {} is still active; commit or abort it before opening a new scope",
+                active.handle.id
+            )));
         }
         let handle = TransactionHandle {
             id: self.next_handle.fetch_add(1, Ordering::AcqRel),
         };
-        // TODO (L3) [relational_transaction]: mint the transaction UUID namespace from the session's seeded entropy source; slop: UUID namespace hardcoded, ids collide across sessions
+        // L3-GAP: [relational_transaction]: mint the transaction UUID namespace from the session's seeded entropy source; slop: UUID namespace hardcoded, ids collide across sessions
         let namespace = u128::from(self.next_nonce.fetch_add(1, Ordering::AcqRel)).to_le_bytes();
         Self::store_slot(
             &self.active,
@@ -175,7 +167,7 @@ impl PeerCoordination {
                 scope,
             },
         )?;
-        // TODO (L3) [rt_06_spatial_blast_radius_schema_scope]: open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation; slop: scope never opened, out-of-scope mutations pass, private schemas queried
+        // L3-GAP: [rt_06_spatial_blast_radius_schema_scope]: open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation; slop: scope never opened, out-of-scope mutations pass, private schemas queried
         Ok(handle)
     }
 
@@ -184,9 +176,9 @@ impl PeerCoordination {
         if self.active()?.is_none() {
             return Ok(());
         }
-        // TODO (L3) [rt_03_2pc_pre_commit_vcpu_pause_drain]: issue SQL pre-commit on the coordinated SqlProxy connections; participant failure here triggers global rollback with EPOLICY; slop: pre-commit without vCPU pause, writes land mid-2PC, split-brain
+        // L3-GAP: [rt_03_2pc_pre_commit_vcpu_pause_drain]: issue SQL pre-commit on the coordinated SqlProxy connections; participant failure here triggers global rollback with EPOLICY; slop: pre-commit without vCPU pause, writes land mid-2PC, split-brain
         let _ = self.require_sql_peer()?;
-        // TODO (L3) [relational_transaction]: pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker; slop: locks unpinned to host inodes, broker lock floats across files
+        // L3-GAP: [relational_transaction]: pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker; slop: locks unpinned to host inodes, broker lock floats across files
         let _ = self.lock_broker()?;
         Ok(())
     }
@@ -224,7 +216,7 @@ impl PeerCoordination {
         savepoint: Savepoint,
         transaction: TransactionHandle,
     ) -> Result<(), PluginError> {
-        // TODO (L3) [relational_transaction]: snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints; slop: savepoint blob empty, rollback restores nothing, state lost
+        // L3-GAP: [relational_transaction]: snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints; slop: savepoint blob empty, rollback restores nothing, state lost
         match self.savepoints.write() {
             Ok(mut guard) => {
                 guard.push(RecordedSavepoint {
@@ -243,7 +235,7 @@ impl PeerCoordination {
         transaction: &TransactionHandle,
         savepoint: Savepoint,
     ) -> Result<(), PluginError> {
-        // TODO (L3) [relational_transaction]: restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet; slop: restore unimplemented, ROLLBACK TO never issued, savepoint useless
+        // L3-GAP: [relational_transaction]: restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet; slop: restore unimplemented, ROLLBACK TO never issued, savepoint useless
         let mut savepoints = match self.savepoints.write() {
             Ok(guard) => guard,
             Err(_) => return Err(PluginError::Halt("savepoint ledger poisoned".into())),
@@ -254,13 +246,10 @@ impl PeerCoordination {
                 recorded.savepoint == savepoint && recorded.transaction == *transaction
             })
             .ok_or_else(|| {
-                PluginError::reject(
-                    Errno::Einval,
-                    format!(
-                        "savepoint {} is not registered on transaction {}",
-                        savepoint.id, transaction.id
-                    ),
-                )
+                PluginError::Halt(format!(
+                    "EINVAL: savepoint {} is not registered on transaction {}",
+                    savepoint.id, transaction.id
+                ))
             })?;
         savepoints.truncate(index + 1);
         Ok(())
@@ -293,7 +282,7 @@ impl PeerCoordination {
 
     // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     pub(crate) async fn abort_active(&self) -> Result<(), PluginError> {
-        // TODO (L3) [relational_transaction]: discard the broker upper file and tombstones through the driver-side session path; slop: upper file and tombstones never discarded, storage leaks after commit
+        // L3-GAP: [relational_transaction]: discard the broker upper file and tombstones through the driver-side session path; slop: upper file and tombstones never discarded, storage leaks after commit
         self.issue_sql_rollback().await?;
         self.release_transaction_locks_scoped().await?;
         self.clear_active()
@@ -402,10 +391,7 @@ impl LifecycleParticipant for TransactionPlugin {
     async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
         if !self.config.flush_fuse_before_commit {
-            return Err(PluginError::reject(
-                Errno::Esecurityviolation,
-                "flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity",
-            ));
+            return Err(PluginError::Halt("ESecurityViolation: flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity".to_string()));
         }
         // see: cans/08-lifecycle.md#Hypervisor-primitives
         ctx.freeze_vcpus().await?;

@@ -23,7 +23,7 @@ impl<F: Future> Future for Quarantined<F> {
                 "quarantined future polled after completion".into(),
             )));
         };
-        // TODO (L3) [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
+        // L3-GAP: [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             Future::poll(inner.as_mut(), cx)
         })) {
@@ -47,7 +47,7 @@ where
     match Quarantined::new(future).await {
         Ok(output) => output,
         Err(_) => Ok(Verdict::Drop {
-            errno: Some(Errno::Efault),
+            errno: Errno::Efault,
             reason: "Plugin panicked".into(),
         }),
     }
@@ -66,29 +66,15 @@ pub(crate) fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce(
         Err(_) => on_panic(),
     }
 }
-
-// see: cans/02-plugin-model.md#Unified-verdict
-pub(crate) fn map_reject_to_verdict(
-    result: Result<Verdict, PluginError>,
-) -> Result<Verdict, PluginError> {
-    match result {
-        Err(PluginError::Reject { errno, reason }) => Ok(Verdict::Drop {
-            errno: Some(errno),
-            reason,
-        }),
-        other => other,
-    }
-}
-
-// see: cans/02-plugin-model.md#Unified-verdict
-pub(crate) fn map_reject_to_filter_action(
-    result: Result<FilterAction, PluginError>,
-) -> Result<FilterAction, PluginError> {
-    match result {
-        Err(PluginError::Reject { errno, reason }) => Ok(FilterAction::Drop {
-            errno: Some(errno),
-            reason,
-        }),
-        other => other,
+// see: cans/10-attestation.md#Hook-trace
+pub(crate) fn verdict_kind_of(verdict: &Verdict) -> VerdictKind {
+    match verdict {
+        Verdict::Pass => VerdictKind::Pass,
+        Verdict::Patch(_) => VerdictKind::Patch,
+        Verdict::Drop { .. } => VerdictKind::Drop,
+        Verdict::Suspend { .. } => VerdictKind::Suspend,
+        Verdict::Abort { .. } => VerdictKind::Abort,
+        // TODO (L3) [plugin_engine]: Verdict is non_exhaustive for forward compat; unknown kinds degrade to Abort.; slop: forward-compat verdict aborts the trap instead of passing through.
+        _ => VerdictKind::Abort,
     }
 }

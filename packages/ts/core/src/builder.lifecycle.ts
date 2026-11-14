@@ -12,6 +12,11 @@ import type {
   MountScope,
   PluginContext,
   VsockServiceEntry,
+  ActionsScope,
+  StreamsScope,
+  VsockScope,
+  ParamsScope,
+  DenyScope,
   TrapScope,
   FsScope,
   NetScope,
@@ -165,7 +170,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this.registry.contextFns;
   }
 
-  // TODO (L3) [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
+  // L3-GAP: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
   get vsockServices(): readonly VsockServiceEntry[] {
     return [
       ...this.registry.vsockEntries,
@@ -219,11 +224,34 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>> {
+  params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>>;
+  params(fn: (scope: ParamsScope<Ctx, this>) => ParamsScope<Ctx, this> | void): this;
+  params(
+    schemaOrFn:
+      | Schema<any>
+      | ((
+          scope: ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>>,
+        ) =>
+          | ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>>
+          | void),
+  ): KelirBuilder<Name, Ctx, Deps, unknown> {
     this.checkVerb(".params");
     if (this.mode === "plugin") this.rejectHostOnly(".params");
-    this.paramsSchema = schema;
-    return this as unknown as KelirBuilder<Name, Ctx, Deps, Infer<S>>;
+    if (typeof schemaOrFn === "function") {
+      const builder = this;
+      const scope: ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>> = {
+        model<S extends Schema<any>>(
+          schema: S,
+        ): ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>> {
+          builder.paramsSchema = schema;
+          return scope;
+        },
+      };
+      schemaOrFn(scope);
+      return this as unknown as KelirBuilder<Name, Ctx, Deps, unknown>;
+    }
+    this.paramsSchema = schemaOrFn;
+    return this as unknown as KelirBuilder<Name, Ctx, Deps, unknown>;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
@@ -330,6 +358,14 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     plugin: P & ValidateDeps<Ctx, P>,
   ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkVerb(".plugin");
+    return this.use(plugin);
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  pluginInstance<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+    plugin: P & ValidateDeps<Ctx, P>,
+  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+    this.checkVerb(".pluginInstance");
     return this.use(plugin);
   }
 
@@ -461,13 +497,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     handler: (payload: P) => Promise<void> | void,
   ): this {
     this.checkVerb(".registerCustomAction");
-    this.registry.addHook({
-      ring: RingEvent.CustomAction,
-      stage: "single",
-      customActionName: name,
-      run: (payload: unknown): unknown =>
-        handler(validateSchema(schema, payload)),
-    });
+    this.registry.registerCustomAction(name, schema, handler);
     return this;
   }
 
@@ -478,13 +508,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
     this.checkVerb(".registerStreamKind");
-    this.registry.addHook({
-      ring: RingEvent.VsockService,
-      stage: "single",
-      vsockKind: kind,
-      run: (payload: unknown): unknown =>
-        handler(validateSchema(schema, payload)),
-    });
+    this.registry.registerStreamKind(kind, schema, handler);
     return this;
   }
 
@@ -534,6 +558,34 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   telemetry(fn: (scope: TelemetryScope<Ctx, this>) => TelemetryScope<Ctx, this> | void): this {
     this.checkVerb(".telemetry");
     this.registry.telemetry(fn, () => this);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  actions(fn: (scope: ActionsScope<Ctx, this>) => ActionsScope<Ctx, this> | void): this {
+    this.checkVerb(".actions");
+    this.registry.actions(fn);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  streams(fn: (scope: StreamsScope<Ctx, this>) => StreamsScope<Ctx, this> | void): this {
+    this.checkVerb(".streams");
+    this.registry.streams(fn);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  vsock(fn: (scope: VsockScope<Ctx, this>) => VsockScope<Ctx, this> | void): this {
+    this.checkVerb(".vsock");
+    this.registry.vsock(fn);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  deny(fn: (scope: DenyScope<Ctx, this>) => DenyScope<Ctx, this> | void): this {
+    this.checkVerb(".deny");
+    this.registry.deny(fn);
     return this;
   }
 
@@ -763,17 +815,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     schema: Schema<Req>,
     handler: (request: Req) => Promise<Resp> | Resp,
   ): this {
-    if (!Number.isInteger(port) || port < 0 || port > 0xffffffff) {
-      throw new EConfig(`vsock service port ${String(port)} outside u32`);
-    }
     this.checkVerb(".vsockService");
-    this.registry.vsockEntries.push({
-      port,
-      service,
-      schema,
-      handler: (request: unknown): Promise<unknown> | unknown =>
-        handler(validateSchema(schema, request)),
-    });
+    this.registry.vsockService(port, service, schema, handler);
     return this;
   }
 
@@ -846,9 +889,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       enableWatchdog: this.kelirConfig.enableWatchdog,
       driver: this.kelirConfig.driver,
     });
-    // TODO (L3) [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
+    // L3-GAP: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
     if (this.terminalCfg) {
-      // TODO (L3) [bindings_ts]: tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.; slop: tokenShield/prompt actions never cross to native
+      // L3-GAP: [bindings_ts]: tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.; slop: tokenShield/prompt actions never cross to native
       nativeBuilder.setTerminalConfig({
         cols: this.terminalCfg.cols,
         rows: this.terminalCfg.rows,
@@ -861,8 +904,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       });
     }
     if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
-      // TODO (L3) [bindings_ts]: snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop onWrite never fires on guest writes
-      // TODO (L3) [bindings_ts]: forward lockBroker globs/nonBlocking once the native setter exists.; slop: lockBroker globs/nonBlocking silently dropped, lock broker never enforced
+      // L3-GAP: [bindings_ts]: snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop onWrite never fires on guest writes
+      // L3-GAP: [bindings_ts]: forward lockBroker globs/nonBlocking once the native setter exists.; slop: lockBroker globs/nonBlocking silently dropped, lock broker never enforced
       nativeBuilder.setStorageConfig({
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
@@ -884,9 +927,30 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       });
     }
     if (this.wireCfg) {
+      // see: cans/07-wire-plane.md#Sinkhole-rules
+      const explicitRules = this.wireCfg.sinkhole?.rules?.map((rule) => ({
+        host: rule.host,
+        methods: rule.methods as string[] | undefined,
+        paths: rule.paths as string[] | undefined,
+        allow: rule.allow,
+      }));
       nativeBuilder.setWireConfig({
-        sinkholeDnsExcept: this.wireCfg.sinkhole?.dnsExcept as string[] | undefined,
-        sinkholeDropAll: this.wireCfg.sinkhole !== undefined ? true : undefined,
+        sinkhole:
+          explicitRules !== undefined
+            ? { rules: explicitRules }
+            : this.wireCfg.sinkhole !== undefined
+              ? {
+                  rules: [
+                    ...(this.wireCfg.sinkhole.dnsExcept ?? []).map((host) => ({
+                      host,
+                      allow: true,
+                    })),
+                    ...(this.wireCfg.sinkhole.dropAll === false
+                      ? []
+                      : [{ host: "*", allow: false }]),
+                  ],
+                }
+              : undefined,
         sshAgentBridge: this.wireCfg.sshAgentBridge,
         vaults: this.wireCfg.vaults,
         l4Proxies: this.wireCfg.l4Proxies?.map((proxy) => ({
@@ -898,9 +962,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         tapFilter: this.wireCfg.tapFilter,
       });
     }
-    // TODO (L3) [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
+    // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
     if (this.paramsSchema) {
-      // TODO (L3) [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
+      // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
     }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
@@ -911,7 +975,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         "kelir native NAPI trampoline table is not one entry per ring event",
       );
     }
-    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+    // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
     const nativeSession = await nativeBuilder.boot();
     const session = new Session(nativeSession);
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use kelir_engine::Session;
 use kelir_engine::planes::wire::WirePlane;
 use kelir_interface::driver_interface::SnapshotDescriptor;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::protocol_wire::StreamKind;
 use kelir_interface::wire::dns::DnsOps;
@@ -191,14 +191,11 @@ fn wp_15_port_forward_collision_abort() -> Result<(), String> {
 }
 
 fn rollback_vm_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_03_rollback_socket_termination_econnreset.yaml#case_id

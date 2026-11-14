@@ -1,18 +1,14 @@
 // see: cans/artifacts/test-plan/cases/virtio_rings/vr_09_virtio_console_port0_pty_dedication.yaml#case_id
 use kelir::builder_sdk::KelirBuilder;
 use kelir::interface::driver_interface::VmConfig;
-use kelir::interface::driver_interface::default_vm_config;
 use kelir::interface::protocol_wire::StreamKind;
 
 fn builder_config() -> VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 // see: cans/artifacts/test-plan/cases/virtio_rings/vr_09_virtio_console_port0_pty_dedication.yaml#case_id

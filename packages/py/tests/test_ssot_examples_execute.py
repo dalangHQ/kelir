@@ -31,7 +31,7 @@ def _load_example(name: str) -> Any:
     return module
 
 
-# TODO (L3) [bindings_py]: the stub below stands in for the guest boot only; the builder chain and main() logic run for real, the microVM does not boot on this host.; slop: stubbed boot hides real boot failures
+# L3-GAP: [bindings_py]: the stub below stands in for the guest boot only; the builder chain and main() logic run for real, the microVM does not boot on this host.; slop: stubbed boot hides real boot failures
 class _StubChannel:
     async def write(self, data: bytes) -> None:
         return None

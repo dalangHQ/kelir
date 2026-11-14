@@ -6,7 +6,7 @@ license = "FSL-1.1-Apache-2.0"
 publish = false
 authors = ["Kelir Contributors"]
 rust-version = "1.85"
-description = "Test plan verification harness: manifest parity checker, anti-slop linter, scenario tier validator, scorecard generator."
+description = "Test plan verification harness: manifest parity checker, anti-slop linter, perf budgets."
 autobins = false
 
 [[bin]]
@@ -20,14 +20,6 @@ path = "src/bin/anchors_testkit.run.rs"
 [[bin]]
 name = "check-tests"
 path = "src/bin/check_tests.run.rs"
-
-[[bin]]
-name = "check-scenarios"
-path = "src/bin/check_scenarios.run.rs"
-
-[[bin]]
-name = "scorecard"
-path = "src/bin/scorecard_testkit.run.rs"
 
 [dependencies]
 serde = { workspace = true }

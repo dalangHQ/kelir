@@ -14,7 +14,7 @@ pub(crate) fn create_step(
     lineage: PidLineage,
     base: SnapshotDescriptor,
 ) -> Result<u64, PluginError> {
-    // TODO (L3) [lc_03_step_evaluation_taint_rollback]: invoke this create from the trap-match pre-hook so active_step() has a live slot per trap event; slop: trap without live step slot, evaluation unattributed
+    // L3-GAP: [lc_03_step_evaluation_taint_rollback]: invoke this create from the trap-match pre-hook so active_step() has a live slot per trap event; slop: trap without live step slot, evaluation unattributed
     if steps.contains_key(&lineage) {
         return Err(PluginError::Halt(
             "step slot already active for PID lineage".into(),
@@ -56,7 +56,7 @@ pub(crate) fn commit_step(
         delta: step.pending_delta().cloned(),
     });
     graph.set_head(lineage, step.slot_id());
-    // TODO (L3) [lifecycle_checkpoint]: flush the staging delta into the Base sparse extents on the checkpoint slot; slop: staging delta never flushed, base extents stale
+    // L3-GAP: [lifecycle_checkpoint]: flush the staging delta into the Base sparse extents on the checkpoint slot; slop: staging delta never flushed, base extents stale
     Ok(step.slot_id())
 }
 
@@ -66,7 +66,7 @@ pub(crate) fn rollback_step(
 ) -> Result<SnapshotDescriptor, PluginError> {
     match steps.remove(&lineage) {
         Some(step) => {
-            // TODO (L3) [lc_03_step_evaluation_taint_rollback]: discard the working delta from the checkpoint slot in <8ms; slop: delta kept past 8ms, rollback leaves dirty pages
+            // L3-GAP: [lc_03_step_evaluation_taint_rollback]: discard the working delta from the checkpoint slot in <8ms; slop: delta kept past 8ms, rollback leaves dirty pages
             Ok(step.base_descriptor().clone())
         }
         None => Err(PluginError::Halt(

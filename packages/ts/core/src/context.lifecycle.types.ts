@@ -96,7 +96,7 @@ export interface PolicyHandle {
 
 export interface MeshHandle {
   readonly peers?: readonly string[];
-  // TODO (L3) [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
+  // L3-GAP: [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
   awaitWinner(timeoutMs: number): Promise<number>;
 }
 
@@ -122,9 +122,13 @@ export interface TrapContext {
   patch(mutation: ExecveMutation | CustomActionPayload): Verdict;
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
+  cap<T>(name: string): T | undefined;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type HandlerContext<Ctx, Params> = TrapContext & Ctx & {
-  readonly params: Params;
-};
+export type HandlerContext<Ctx, Params> = TrapContext &
+  Ctx & {
+    readonly params: Params;
+    cap<K extends keyof Ctx & string>(name: K): Ctx[K] | undefined;
+    cap<T>(name: string): T | undefined;
+  };

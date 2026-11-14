@@ -23,7 +23,13 @@ struct DomainLeafSpec {
 const DOMAIN_LEAVES: &[DomainLeafSpec] = &[DomainLeafSpec {
     struct_name: "ExecutionReceipt",
     domain: "kelir-receipt-leaf-v1",
-    skip: &["wall_clock_ns", "phase_timings"],
+    skip: &[
+        "wall_clock_ns",
+        "phase_timings",
+        "hook_trace",
+        "fs_vfs_ext",
+        "net_l7_sql_ext",
+    ],
 }];
 
 // see: cans/plugins/ledger.md#Merkle-WAL-specification

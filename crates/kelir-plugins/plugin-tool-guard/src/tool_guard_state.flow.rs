@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
     PipelineBinder, PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{Errno, StreamKind, Verdict};
+use kelir_interface::protocol_wire::{StreamKind, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
@@ -96,7 +97,7 @@ impl ToolGuardPlugin {
         if quota.invocations >= self.config.max_invocations_per_trace {
             return Ok(false);
         }
-        // TODO (L3) [gt_04_token_bucket_call_quota_etoolquota]: token-bucket cadence clamp per tool per cans/plugins/tool-guard.md; slop: bucket never charged, burst passes, ETOOLQUOTA never fires
+        // L3-GAP: [gt_04_token_bucket_call_quota_etoolquota]: token-bucket cadence clamp per tool per cans/plugins/tool-guard.md; slop: bucket never charged, burst passes, ETOOLQUOTA never fires
         quota.invocations = quota.invocations.saturating_add(1);
         Ok(true)
     }
@@ -118,7 +119,7 @@ impl ToolGuardPlugin {
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if frame.method == McpMethod::Unparsed {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eperm),
+                errno: Errno::Eperm,
                 reason: "unparsed MCP frame fails closed pending JSON-RPC 2.0 decode".into(),
             });
         }
@@ -127,13 +128,13 @@ impl ToolGuardPlugin {
         }
         let Some(tool) = frame.tool_name.clone() else {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eperm),
+                errno: Errno::Eperm,
                 reason: "tools/call frame carries no tool name".into(),
             });
         };
         if !self.charge_quota(trace)? {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Etoolquota),
+                errno: Errno::Etoolquota,
                 reason: format!("tool {tool} exceeded max_invocations_per_trace"),
             });
         }
@@ -141,7 +142,7 @@ impl ToolGuardPlugin {
             Ok(Some(schema)) => schema,
             Ok(None) => {
                 return Ok(Verdict::Drop {
-                    errno: Some(Errno::Eperm),
+                    errno: Errno::Eperm,
                     reason: format!("tool {tool} is not pinned in the locked catalog"),
                 });
             }
@@ -156,13 +157,13 @@ impl ToolGuardPlugin {
         schema: &ToolSchema,
     ) -> Result<Verdict, PluginError> {
         let _ = (frame, schema);
-        // TODO (L3) [gt_03_taint_tracking_mutation_suspend]: taint-gated approval (Suspend until Approval), secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch) per cans/plugins/tool-guard.md; slop: evaluate returns Pass unconditionally, tainted mutation executes, secrets leak
+        // L3-GAP: [gt_03_taint_tracking_mutation_suspend]: taint-gated approval (Suspend until Approval), secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch) per cans/plugins/tool-guard.md; slop: evaluate returns Pass unconditionally, tainted mutation executes, secrets leak
         Ok(Verdict::Pass)
     }
 
     async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
         let _ = payload;
-        // TODO (L3) [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context
+        // L3-GAP: [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context
         Ok(())
     }
 }
@@ -234,7 +235,7 @@ impl PluginDeps for ToolGuardPlugin {
 impl LifecycleParticipant for ToolGuardPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-        // TODO (L3) [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
+        // L3-GAP: [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
         let response = self.mcp.route_request(TOOLS_LIST_QUERY).await?;
         let mut advertisement = decode_tools_list(&response)?;
         // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
@@ -259,16 +260,16 @@ impl LifecycleParticipant for ToolGuardPlugin {
 #[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
     async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
-        // TODO (L3) [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace
+        // L3-GAP: [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace
         if !self.interposes_port(port) {
             return Ok(bytes.to_vec());
         }
         match self.guard_tool_call(port, bytes).await? {
             Verdict::Pass | Verdict::Patch(_) => Ok(bytes.to_vec()),
             Verdict::Drop { errno, reason } => {
-                Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
+                Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
             }
-            // TODO (L3) [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
+            // L3-GAP: [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
             Verdict::Suspend { .. } => Err(PluginError::Halt(
                 "tool-guard approval suspend pending (L3)".into(),
             )),

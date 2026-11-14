@@ -102,7 +102,7 @@ impl CatalogDb {
         runner_pid: i64,
         ttl_seconds: u32,
     ) -> Result<bool, CatalogError> {
-        // TODO (L3) [storage_plane]: no pending/owned lock-state column exists in SCHEMA_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.; slop: claim accepted on runner_pid alone, CAS mismatch unproven
+        // L3-GAP: [storage_plane]: no pending/owned lock-state column exists in SCHEMA_SQL or cans/06; claim is runner_pid plus lease refresh until the schema gains one.; slop: claim accepted on runner_pid alone, CAS mismatch unproven
         let now = now_unix();
         let expires = now.saturating_add(i64::from(ttl_seconds));
         let claimed = self.pool.execute(

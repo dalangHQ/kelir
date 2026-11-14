@@ -195,7 +195,7 @@ const runtime = kelir({
       .withCwd("/workspace/**")
       .withEnv("CI", "1")
       .withUid(0)
-      .argvMatches(/^--force$/),
+      .argvMatches("^--force$"),
     () => Verdict.Drop(Errno.EPOLICY, "forced push denied by policy"),
   )
   // see: cans/02-plugin-model.md#Chain-decisions

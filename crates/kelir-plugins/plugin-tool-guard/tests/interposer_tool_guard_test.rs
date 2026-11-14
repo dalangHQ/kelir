@@ -2,7 +2,6 @@
 use kelir_interface::plugin_model::ConsoleInterposer;
 use kelir_interface::plugin_model::KelirPlugin;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::protocol_wire::Errno;
 use kelir_plugin_testkit::block_on;
 use plugin_tool_guard::ToolGuardPlugin;
 use plugin_tool_guard::service_tool_guard::{
@@ -41,10 +40,7 @@ fn gt_02_immutable_schema_locking_esecurity() -> Result<(), String> {
         tools: vec![drifted],
     };
     match block_on(registry.ingest_tools_list(&drifted_list)) {
-        Err(PluginError::Reject {
-            errno: Errno::Esecurityviolation,
-            ..
-        }) => (),
+        Err(PluginError::Halt(msg)) if msg.starts_with("ESecurityViolation:") => (),
         Err(err) => {
             return Err(format!(
                 "post-lock drift must halt with ESecurityViolation, got {err:?}"
@@ -64,16 +60,9 @@ fn tool_guard_unparsed_frame_fails_closed() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     let bytes = b"\x00not-a-json-rpc-frame".to_vec();
     match block_on(plugin.on_console_input(0x0012, &bytes)) {
-        Err(PluginError::Reject { errno, reason }) => {
-            if errno != Errno::Eperm {
-                return Err(format!(
-                    "unparsed frame must reject with EPERM, got {errno}"
-                ));
-            }
-            if !reason.contains("unparsed MCP frame fails closed") {
-                return Err(format!(
-                    "rejection must carry a concrete reason, got {reason}"
-                ));
+        Err(PluginError::Halt(msg)) => {
+            if !msg.contains("EPERM: unparsed MCP frame fails closed") {
+                return Err(format!("unparsed frame must deny with EPERM, got {msg}"));
             }
         }
         Err(err) => {
@@ -152,10 +141,7 @@ fn tool_guard_locks_after_first_advertisement() -> Result<(), String> {
         tools: vec![drifted],
     };
     match block_on(plugin.ingest_advertisement(&drifted_list)) {
-        Err(PluginError::Reject {
-            errno: Errno::Esecurityviolation,
-            ..
-        }) => (),
+        Err(PluginError::Halt(msg)) if msg.starts_with("ESecurityViolation:") => (),
         Err(err) => {
             return Err(format!(
                 "post-lock drift must halt with ESecurityViolation, got {err:?}"

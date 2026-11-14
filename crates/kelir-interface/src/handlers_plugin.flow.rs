@@ -1,23 +1,74 @@
 // see: cans/artifacts/code/plugin-trait.rs#KelirPlugin
 // see: cans/03-sdk-architecture.md#Rust-SDK
 // see: cans/02-plugin-model.md#Core-context-keys
+use std::collections::HashMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{OnceLock, RwLock};
 
 use serde::de::DeserializeOwned;
 
 use crate::errno_types::Errno;
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
-use crate::protocol_wire::{
-    FilterAction, PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
-};
+use crate::protocol_wire::{PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict};
 use crate::telemetry::ExecutionReceipt;
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
-pub trait Has<T, Index> {
+pub trait Has<T, Index = ()> {
     fn get(&self) -> &T;
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub trait Capability<P, Index = ()> {
+    fn capability(&self) -> Option<&P>;
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl<P: 'static> Capability<P> for () {
+    fn capability(&self) -> Option<&P> {
+        None
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Session-surfaces
+// TODO (L3) [plugin_engine]: surface real session state into SessionContext at the dispatch boundary.; slop: SessionContext carries no live session state, predicates decide blind.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionContext {
+    pub session_id: [u8; 16],
+    pub name: String,
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+type ConditionPredicate = Arc<dyn Fn(&SessionContext) -> bool + Send + Sync>;
+
+// see: cans/02-plugin-model.md#Unified-verdict
+// TODO (L2): the condition registry is process-global until the engine owns it per-session.
+static CONDITION_PREDICATES: OnceLock<RwLock<HashMap<u64, ConditionPredicate>>> = OnceLock::new();
+
+// see: cans/02-plugin-model.md#Unified-verdict
+static NEXT_CONDITION_HANDLE: AtomicU64 = AtomicU64::new(1);
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn register_condition_predicate(predicate: ConditionPredicate) -> u64 {
+    let handle = NEXT_CONDITION_HANDLE.fetch_add(1, Ordering::Relaxed);
+    let registry = CONDITION_PREDICATES.get_or_init(|| RwLock::new(HashMap::new()));
+    if let Ok(mut guard) = registry.write() {
+        guard.insert(handle, predicate);
+    }
+    handle
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub fn condition_predicate(handle: u64) -> Option<ConditionPredicate> {
+    let registry = CONDITION_PREDICATES.get_or_init(|| RwLock::new(HashMap::new()));
+    registry
+        .read()
+        .ok()
+        .and_then(|guard| guard.get(&handle).cloned())
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -85,7 +136,7 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
 }
 
 impl<Plugins, Params> HandlerCtx<Plugins, Params> {
-    // TODO (L3) [plugin_engine]: wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.; slop: empty dispatch view, live handles never wired
+    // L3-GAP: [plugin_engine]: wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.; slop: empty dispatch view, live handles never wired
     pub fn new(session_id: [u8; 16], pid: u32, plugins: Plugins, params_buffer: Vec<u8>) -> Self {
         Self {
             session_id,
@@ -193,11 +244,11 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         }
     }
 
-    pub fn ctx<T, Index>(&self) -> &T
+    pub fn cap<P: 'static>(&self) -> Option<&P>
     where
-        Plugins: Has<T, Index>,
+        Plugins: Capability<P>,
     {
-        self.plugins.get()
+        self.plugins.capability()
     }
 
     // see: cans/02-plugin-model.md#Static-dispatch
@@ -249,7 +300,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Verdict::Patch(payload)
     }
 
-    pub fn drop(&self, errno: Option<Errno>, reason: String) -> Verdict {
+    pub fn drop(&self, errno: Errno, reason: String) -> Verdict {
         Verdict::Drop { errno, reason }
     }
 
@@ -257,25 +308,27 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Verdict::Suspend { until }
     }
 
+    // see: cans/02-plugin-model.md#Unified-verdict
+    pub fn suspend_until_condition(
+        &self,
+        poll_interval_ms: u64,
+        predicate: impl Fn(&SessionContext) -> bool + Send + Sync + 'static,
+    ) -> Verdict {
+        let handle = register_condition_predicate(Arc::new(predicate));
+        Verdict::Suspend {
+            until: SuspendUntil::Condition {
+                poll_interval_ms,
+                handle,
+            },
+        }
+    }
+
     pub fn abort(&self, reason: String) -> Verdict {
         Verdict::Abort { reason }
     }
 
-    // see: cans/11-protocol.md#Verdict-method-mapping
-    pub fn forward(&self) -> FilterAction {
-        FilterAction::Forward
-    }
-
-    pub fn filter_drop(&self, errno: Option<Errno>, reason: String) -> FilterAction {
-        FilterAction::Drop { errno, reason }
-    }
-
-    pub fn filter_suspend(&self, until: SuspendUntil) -> FilterAction {
-        FilterAction::Suspend { until }
-    }
-
     // see: cans/10-attestation.md#Execution-receipts
-    // TODO (L3) [ar_01_execution_receipt_blake3_binding]: no live producer mints receipts into the store yet; dispatch hydrates once the trap/exit boundary stores one; slop: receipt() Err, stored receipt never minted.
+    // L3-GAP: [ar_01_execution_receipt_blake3_binding]: no live producer mints receipts into the store yet; dispatch hydrates once the trap/exit boundary stores one; slop: receipt() Err, stored receipt never minted.
     pub async fn receipt(&self) -> Result<ExecutionReceipt, PluginError> {
         match &self.receipt {
             Some(receipt) => Ok(receipt.clone()),

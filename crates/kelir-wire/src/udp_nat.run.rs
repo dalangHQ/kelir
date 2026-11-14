@@ -44,7 +44,7 @@ impl UdpNatOps for RealUdpNatOps {
             slot.touch(now_unix);
             return Ok(());
         }
-        // TODO (L3) [wire_plane]: open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence); slop: slab entry without host socket, endpoint independence broken
+        // L3-GAP: [wire_plane]: open the per-source-port host UDP socket and store its descriptor in the slab entry (Full Cone endpoint independence); slop: slab entry without host socket, endpoint independence broken
         let entry = UdpNatEntry::new(guest_source_port, now_unix);
         if let Some(free) = slab.iter().position(Option::is_none) {
             slab[free] = Some(entry);
@@ -86,7 +86,7 @@ impl UdpNatOps for RealUdpNatOps {
                 continue;
             };
             if now_unix.saturating_sub(entry.last_active_unix()) > UDP_NAT_IDLE_TIMEOUT_SECS {
-                // TODO (L3) [wire_plane]: close(2) the host UDP socket descriptor before releasing the slab slot; slop: slab released with host fd open, descriptor leaks
+                // L3-GAP: [wire_plane]: close(2) the host UDP socket descriptor before releasing the slab slot; slop: slab released with host fd open, descriptor leaks
                 *slot = None;
                 reaped += 1;
             }

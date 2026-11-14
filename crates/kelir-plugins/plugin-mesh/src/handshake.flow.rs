@@ -17,7 +17,7 @@ impl HandshakeDriver {
     // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
     pub(crate) fn run(&mut self) {
         if let Err(error) = self.handshake() {
-            // TODO (L3) [protocol_mux]: forward the peer fingerprint to plugin-ledger on mTLS rejection per cans/plugins/mesh.md; slop: rejection never forwarded to ledger, audit misses the foreign peer
+            // L3-GAP: [protocol_mux]: forward the peer fingerprint to plugin-ledger on mTLS rejection per cans/plugins/mesh.md; slop: rejection never forwarded to ledger, audit misses the foreign peer
             self.plugin.state.record_rejection(PeerRejection {
                 cid: self.peer.cid,
                 port: self.peer.port,
@@ -36,7 +36,7 @@ impl HandshakeDriver {
     }
 
     // see: cans/11-protocol.md#Wire-framing
-    // TODO (L3) [protocol_mux]: the peer handshake encoder must emit the u32 LE length prefix this reader expects; slop: encoder omits u32 LE prefix, reader misframes handshake, peers never join
+    // L3-GAP: [protocol_mux]: the peer handshake encoder must emit the u32 LE length prefix this reader expects; slop: encoder omits u32 LE prefix, reader misframes handshake, peers never join
     fn read_handshake_frame(&mut self) -> Result<Vec<u8>, PluginError> {
         let mut prefix = [0u8; 4];
         self.read_exact(&mut prefix)?;
@@ -75,7 +75,7 @@ impl HandshakeDriver {
 
 // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
 fn decode_peer_handshake(buf: &[u8]) -> Result<PeerSessionHandshake, PluginError> {
-    // TODO (L3) [pm_14_mesh_rejects_foreign_trust_domain_peer]: decode the Channel 0 PeerSessionHandshake per cans/11-protocol.md#Wire-framing; slop: handshake decode stays Err Halt, identity never checked, foreign peer unchallenged
+    // L3-GAP: [pm_14_mesh_rejects_foreign_trust_domain_peer]: decode the Channel 0 PeerSessionHandshake per cans/11-protocol.md#Wire-framing; slop: handshake decode stays Err Halt, identity never checked, foreign peer unchallenged
     Err(PluginError::Halt(format!(
         "peer handshake decode pending (L3): {} bytes",
         buf.len()

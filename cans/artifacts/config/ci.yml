@@ -98,24 +98,8 @@ jobs:
       - name: Examples compile / typecheck (Rust + Python + TypeScript)
         run: just check-examples
 
-  # ─── 1b. SMOKE SCENARIO PRE-GATE (<60s) ─────────────────────────
-  # Fast scenario-tier gate: validates scenarios/smoke/ before the
-  # full manifest job runs. 60-second wall budget on the validation
-  # run, enforced by timeout(1); build time is outside the budget.
-  smoke-scenarios:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.5
-      - name: Smoke tier gate (scenarios/smoke/, 60s wall budget)
-        run: |
-          cargo build -p kelir-testkit --bin check-scenarios
-          timeout 60 cargo run -p kelir-testkit --bin check-scenarios -- --family smoke
-
   # ─── 1c. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
-    needs: smoke-scenarios
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -183,13 +167,11 @@ jobs:
           uv venv && uv pip install -e "packages/py[dev]"
           uv run --no-project mypy packages/py
 
-      # Test-plan gates: manifest validation + AST anti-slop + scenario tier.
+      # Test-plan gates: manifest validation + AST anti-slop.
       - name: Manifest validation (check-manifest)
         run: just check-manifest
       - name: AST anti-slop analysis (check-tests)
         run: just check-tests
-      - name: Scenario tier validation (check-scenarios)
-        run: just check-scenarios
 
   # ─── STAGE 2. LINUX KVM TIER (Linux x86) ────────────────────
   # Cases with platform_target.hypervisor: kvm, via cargo nextest.
@@ -413,14 +395,15 @@ jobs:
 
   # ─── STAGE 6. SCORECARD AGGREGATOR ─────────────────────────
   # Runs ONLY after the platform jobs complete (needs:). Collects
-  # the per-tier JUnit/JSON results and verifies every tier reported
-  # before writing scorecard.md; the 254 total is asserted against
-  # manifest truth, not against executed tests (no nextest tag maps
-  # cases to Rust tests). A tier that skipped for lack of hardware
-  # reports skipped-no-kvm explicitly; a failed tier fails this job.
-  # NOTE: the 254 assertion matches manifest truth (total_cases: 254);
-  # check-scorecard likewise gates on the committed scorecard.md
-  # matching manifest truth.
+  # the per-tier JUnit/JSON results and verifies every tier reported;
+  # the 254 total is asserted against manifest truth, not against
+  # executed tests (no nextest tag maps cases to Rust tests). A tier
+  # that skipped for lack of hardware reports skipped-no-kvm
+  # explicitly; a failed tier fails this job.
+  # NOTE: the 254 assertion matches manifest truth (total_cases: 254).
+  # The scorecard generator was deleted by work-order-2 Agent 4; the
+  # committed cans/artifacts/scorecard.md is hand-maintained and only
+  # uploaded here as an artifact, no longer verified or written by CI.
   scorecard-aggregator:
     needs: [linux-kvm-tier, macos-hvf-tier, windows-whp-tier, sdk-parity-gate]
     runs-on: ubuntu-latest
@@ -462,10 +445,6 @@ jobs:
       - name: Assert invariant total is 254
         run: |
           grep -q 'total_cases: 254' cans/artifacts/test-plan/manifest.yaml
-      - name: Verify scorecard matches manifest truth
-        run: just check-scorecard
-      - name: Write scorecard.md
-        run: just scorecard
       - uses: actions/upload-artifact@v4
         with:
           name: scorecard

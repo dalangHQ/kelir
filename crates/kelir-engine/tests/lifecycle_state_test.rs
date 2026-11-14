@@ -5,10 +5,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use kelir_engine::Session;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::driver_interface::{
     DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition, ExternalSuspendKind,
-    SuspendReason, VmConfig, VmmDriver, WatchdogAction,
+    SuspendReason, VmmDriver, WatchdogAction,
 };
 use kelir_interface::lifecycle_state::{LifecycleError, LifecycleState};
 use kelir_interface::plugin_model::{LifecycleCtx, PluginError, VetoList};
@@ -30,14 +30,11 @@ fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
 }
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 fn parked() -> LifecycleState {
@@ -190,7 +187,7 @@ fn lifecycle_boot_mounts_wire_plane_drop_all_when_network_off() -> Result<(), St
         .wiring()
         .ok_or_else(|| "network_off boot left the wire plane unwired".to_string())?;
     assert!(
-        wiring.sinkhole_drop_all,
+        wiring.sinkhole.rules.iter().any(|r| !r.allow),
         "network_off=true did not mount the wire plane in drop-all mode"
     );
     Ok(())
@@ -217,7 +214,7 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         .wiring()
         .ok_or_else(|| "network_off boot left the wire plane unwired".to_string())?;
     assert!(
-        forced_wiring.sinkhole_drop_all,
+        forced_wiring.sinkhole.rules.iter().any(|r| !r.allow),
         "network_off=true did not force drop-all over explicit wiring"
     );
     let mut offline = boot_config();
@@ -238,7 +235,7 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         .wiring()
         .ok_or_else(|| "boot left the wire plane unwired".to_string())?;
     assert!(
-        !preserved_wiring.sinkhole_drop_all,
+        !preserved_wiring.sinkhole.rules.iter().any(|r| !r.allow),
         "network_off=false clobbered the caller's explicit wiring"
     );
     Ok(())

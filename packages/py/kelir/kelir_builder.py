@@ -22,7 +22,7 @@ from kelir.plugin_fusion import (
 from kelir.sdk_errors import EConfig
 
 if TYPE_CHECKING:
-    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_model import BasePlugin
 
 from kelir import Session, TrapFilter
 
@@ -61,6 +61,11 @@ _SCOPE_VERBS: dict[str, tuple[str, ...]] = {
         "on_post_commit",
     ),
     "telemetry": ("on_memory_pressure", "on_heartbeat", "on_watchdog"),
+    "actions": ("register_custom_action",),
+    "streams": ("register_stream_kind",),
+    "vsock": ("vsock_service",),
+    "params": ("params",),
+    "deny": ("on_trap_deny",),
 }
 
 
@@ -135,10 +140,37 @@ class _Scope:
         self._builder._on(verb, handler)
         return self
 
-    def on_trap_deny(self, handler: Handler) -> Self:
+    def on_trap_deny(
+        self,
+        handler: Handler,
+    ) -> Self:
         if "on_trap_deny" not in self._verbs:
             raise EConfig(".on_trap_deny is not in this scope")
-        self._builder.on_trap_deny(handler)
+        # see: cans/02-plugin-model.md#Unified-verdict
+        self._builder.on_trap_deny(_wrap_trap_deny(handler))
+        return self
+
+    def register(
+        self, name_or_kind: str | int, schema: dict[str, Any], handler: Handler
+    ) -> Self:
+        if "register_custom_action" in self._verbs and isinstance(name_or_kind, str):
+            self._builder.register_custom_action(name_or_kind, schema, handler)
+        elif "register_stream_kind" in self._verbs and isinstance(name_or_kind, int):
+            self._builder.register_stream_kind(name_or_kind, schema, handler)
+        else:
+            raise EConfig(".register is not in this scope")
+        return self
+
+    def service(self, port: int, service: str, handler: Handler) -> Self:
+        if "vsock_service" not in self._verbs:
+            raise EConfig(".service is not in this scope")
+        self._builder.vsock_service({"port": port, "service": service}, handler)
+        return self
+
+    def model(self, model: type) -> Self:
+        if "params" not in self._verbs:
+            raise EConfig(".model is not in this scope")
+        self._builder.params(model)
         return self
 
     def end(self) -> KelirBuilder:
@@ -316,7 +348,7 @@ class KelirBuilder:
         self._context_fn: Handler | None = None
         self._fork_fn: Callable[[KelirBuilder], KelirBuilder] | None = None
         self._handlers: list[tuple[str, Handler, int]] = []
-        # TODO (L3) [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
+        # L3-GAP: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
         self._vsock: list[tuple[Any, Handler]] = []
         self._mounted: bool = False
         self._mounted_on: list[KelirBuilder] = []
@@ -374,17 +406,21 @@ class KelirBuilder:
         return self
 
     # see: cans/03-sdk-architecture.md#Python-SDK
-    def params(self, model: type) -> Self:
+    def params(self, model: type | Callable[[_Scope], Any]) -> Self:
         if self._mode == "plugin":
             self._raise_host_only("params")
-        # TODO (L3) [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
-        self._params_model = model
-        return self
+        if isinstance(model, type):
+            # L3-GAP: [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
+            self._params_model = model
+            return self
+        if callable(model):
+            return self._scope_entry("params", model)
+        raise EConfig(".params() expects a model type or a scope closure")
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     def use(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
-        from kelir.model_plugin import BasePlugin as _BasePlugin
-        from kelir.model_plugin import hook_descriptors
+        from kelir.plugin_model import BasePlugin as _BasePlugin
+        from kelir.plugin_model import hook_descriptors
 
         if isinstance(plugin, KelirBuilder):
             if plugin._mode != "plugin":
@@ -605,6 +641,18 @@ class KelirBuilder:
 
     def telemetry(self, fn: Callable[[_Scope], Any]) -> Self:
         return self._scope_entry("telemetry", fn)
+
+    def actions(self, fn: Callable[[_Scope], Any]) -> Self:
+        return self._scope_entry("actions", fn)
+
+    def streams(self, fn: Callable[[_Scope], Any]) -> Self:
+        return self._scope_entry("streams", fn)
+
+    def vsock(self, fn: Callable[[_Scope], Any]) -> Self:
+        return self._scope_entry("vsock", fn)
+
+    def deny(self, fn: Callable[[_Scope], Any]) -> Self:
+        return self._scope_entry("deny", fn)
 
     # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
     def group(self, fn: Callable[[KelirBuilder], KelirBuilder | None]) -> Self:
@@ -888,14 +936,14 @@ class KelirBuilder:
             enable_watchdog=self._config["enable_watchdog"],
             driver=self._config["driver"],
         )
-        # TODO (L3) [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
+        # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
         if "terminal" in self._config:
-            # TODO (L3) [bindings_py]: token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.; slop: token shield/prompt callbacks never cross to native
+            # L3-GAP: [bindings_py]: token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.; slop: token shield/prompt callbacks never cross to native
             native.set_terminal_config(
                 _bridge_safe_config("terminal", self._config["terminal"])
             )
         if "storage" in self._config:
-            # TODO (L3) [bindings_py]: snoop on_write callbacks stay Python-side until the FFI callback bridge lands.; slop: snoop on_write never fires on guest writes
+            # L3-GAP: [bindings_py]: snoop on_write callbacks stay Python-side until the FFI callback bridge lands.; slop: snoop on_write never fires on guest writes
             native.set_storage_config(
                 _bridge_safe_config("storage", self._config["storage"])
             )

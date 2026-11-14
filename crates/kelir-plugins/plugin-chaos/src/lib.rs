@@ -1,7 +1,7 @@
 // see: cans/plugins/chaos.md#Plugin-chaos
 #![forbid(unsafe_code)]
 
-// TODO (L3) [plugin_engine]: tests/test_chaos.rs per cans/artifacts/config/project-structure.txt; slop: tests/test_chaos.rs missing; chaos faults untested, drills pass vacuously
+// L3-GAP: [plugin_engine]: tests/test_chaos.rs per cans/artifacts/config/project-structure.txt; slop: tests/test_chaos.rs missing; chaos faults untested, drills pass vacuously
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::Errno;
 

@@ -119,7 +119,7 @@ impl PipelineEngine {
     }
 
     // see: cans/10-attestation.md#Step-evaluation-loop
-    // TODO (L3) [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked
+    // L3-GAP: [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked
     pub async fn dispatch_post_exec(
         &self,
         event: &TrapEvent,

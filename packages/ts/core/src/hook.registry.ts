@@ -13,6 +13,7 @@ import {
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 import type { Schema } from "./schema.config.js";
+import { unknownSchema, validateSchema } from "./schema.config.js";
 import type {
   FilterAction,
   Verdict,
@@ -20,6 +21,7 @@ import type {
 import type {
   HeartbeatEvent,
   ProcessExitEvent,
+  TrapDenyEvent,
   TrapInfo,
   WatchdogEvent,
   WatchdogVerdict,
@@ -184,6 +186,49 @@ export interface TelemetryScope<Ctx, Owner = unknown> {
     ) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): TelemetryScope<Ctx, Owner>;
   end(): Owner;
+}
+
+// see: cans/artifacts/code/typescript-scope-interface.ts#ActionsScope
+export interface ActionsScope<Ctx = never, Owner = unknown> {
+  register<P>(
+    name: string,
+    schema: Schema<P>,
+    handler: (payload: P) => Promise<void> | void,
+  ): ActionsScope<Ctx, Owner>;
+}
+
+// see: cans/artifacts/code/typescript-scope-interface.ts#StreamsScope
+export interface StreamsScope<Ctx = never, Owner = unknown> {
+  register(
+    kind: number,
+    schema: Schema<unknown>,
+    handler: (request: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+  ): StreamsScope<Ctx, Owner>;
+}
+
+// see: cans/artifacts/code/typescript-scope-interface.ts#VsockScope
+export interface VsockScope<Ctx = never, Owner = unknown> {
+  service(
+    port: number,
+    service: string,
+    handler: (request: unknown) => Promise<unknown> | unknown,
+  ): VsockScope<Ctx, Owner>;
+}
+
+// see: cans/artifacts/code/typescript-scope-interface.ts#ParamsScope
+export interface ParamsScope<Ctx = never, Owner = unknown> {
+  model<S extends Schema<any>>(schema: S): ParamsScope<Ctx, Owner>;
+}
+
+// see: cans/artifacts/code/typescript-scope-interface.ts#DenyScope
+export interface DenyScope<Ctx = never, Owner = unknown> {
+  onTrapDeny(
+    handler: (
+      event: TrapDenyEvent,
+      verdict: Verdict,
+      session: unknown,
+    ) => Promise<void> | void,
+  ): DenyScope<Ctx, Owner>;
 }
 
 function unpack(event: unknown): readonly unknown[] {
@@ -911,6 +956,181 @@ export class HookRegistry<Ctx = unknown> {
         return handler(args[0] as number, args[1] as number);
       },
     });
+    return this;
+  }
+
+  // see: cans/artifacts/code/typescript-scope-interface.ts#ActionsScope
+  registerCustomAction<P>(
+    name: string,
+    schema: Schema<P>,
+    handler: (payload: P) => Promise<void> | void,
+  ): this {
+    this.addHook({
+      ring: RingEvent.CustomAction,
+      stage: "single",
+      customActionName: name,
+      run: (payload: unknown): unknown =>
+        handler(validateSchema(schema, payload)),
+    });
+    return this;
+  }
+
+  // see: cans/11-protocol.md#Control-channel
+  registerStreamKind<Req, Resp = unknown>(
+    kind: number,
+    schema: Schema<Req>,
+    handler: (request: Req) => Promise<Resp> | Resp,
+  ): this {
+    this.addHook({
+      ring: RingEvent.VsockService,
+      stage: "single",
+      vsockKind: kind,
+      run: (payload: unknown): unknown =>
+        handler(validateSchema(schema, payload)),
+    });
+    return this;
+  }
+
+  // see: cans/artifacts/code/typescript-scope-interface.ts#StreamsScope
+  registerStreamKindBytes(
+    kind: number,
+    schema: Schema<unknown>,
+    handler: (request: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+  ): this {
+    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: validate the request bytes against schema once the stream dispatch decodes them; slop: unvalidated request bytes reach the stream handler.
+    void schema;
+    this.addHook({
+      ring: RingEvent.VsockService,
+      stage: "single",
+      vsockKind: kind,
+      run: (payload: unknown): unknown => handler(payload as Uint8Array),
+    });
+    return this;
+  }
+
+  // see: cans/11-protocol.md#Control-channel
+  vsockService<Req, Resp = unknown>(
+    port: number,
+    service: string,
+    schema: Schema<Req>,
+    handler: (request: Req) => Promise<Resp> | Resp,
+  ): this {
+    if (!Number.isInteger(port) || port < 0 || port > 0xffffffff) {
+      throw new EConfig(`vsock service port ${String(port)} outside u32`);
+    }
+    this.vsockEntries.push({
+      port,
+      service,
+      schema,
+      handler: (request: unknown): Promise<unknown> | unknown =>
+        handler(validateSchema(schema, request)),
+    });
+    return this;
+  }
+
+  // see: cans/artifacts/code/typescript-scope-interface.ts#DenyScope
+  onTrapDeny(
+    handler: (
+      event: TrapDenyEvent,
+      verdict: Verdict,
+      session: unknown,
+    ) => Promise<void> | void,
+  ): this {
+    this.addHook({
+      ring: RingEvent.Lifecycle,
+      stage: "single",
+      lifecycleTag: "trap-deny",
+      run: (payload: unknown): unknown => {
+        const args = unpack(payload);
+        return Promise.resolve(
+          handler(
+            args[0] as TrapDenyEvent,
+            args[1] as Verdict,
+            args[2] as unknown,
+          ),
+        ).catch((error: unknown): never => {
+          throw EConfig.fromNative(error);
+        });
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  actions<Owner>(
+    fn: (scope: ActionsScope<Ctx, Owner>) => ActionsScope<Ctx, Owner> | void,
+  ): this {
+    const registry = this;
+    const scope: ActionsScope<Ctx, Owner> = {
+      register<P>(
+        name: string,
+        schema: Schema<P>,
+        handler: (payload: P) => Promise<void> | void,
+      ): ActionsScope<Ctx, Owner> {
+        registry.registerCustomAction(name, schema, handler);
+        return scope;
+      },
+    };
+    fn(scope);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  streams<Owner>(
+    fn: (scope: StreamsScope<Ctx, Owner>) => StreamsScope<Ctx, Owner> | void,
+  ): this {
+    const registry = this;
+    const scope: StreamsScope<Ctx, Owner> = {
+      register(
+        kind: number,
+        schema: Schema<unknown>,
+        handler: (request: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+      ): StreamsScope<Ctx, Owner> {
+        registry.registerStreamKindBytes(kind, schema, handler);
+        return scope;
+      },
+    };
+    fn(scope);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  vsock<Owner>(
+    fn: (scope: VsockScope<Ctx, Owner>) => VsockScope<Ctx, Owner> | void,
+  ): this {
+    const registry = this;
+    const scope: VsockScope<Ctx, Owner> = {
+      service(
+        port: number,
+        service: string,
+        handler: (request: unknown) => Promise<unknown> | unknown,
+      ): VsockScope<Ctx, Owner> {
+        registry.vsockService(port, service, unknownSchema, handler);
+        return scope;
+      },
+    };
+    fn(scope);
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  deny<Owner>(
+    fn: (scope: DenyScope<Ctx, Owner>) => DenyScope<Ctx, Owner> | void,
+  ): this {
+    const registry = this;
+    const scope: DenyScope<Ctx, Owner> = {
+      onTrapDeny(
+        handler: (
+          event: TrapDenyEvent,
+          verdict: Verdict,
+          session: unknown,
+        ) => Promise<void> | void,
+      ): DenyScope<Ctx, Owner> {
+        registry.onTrapDeny(handler);
+        return scope;
+      },
+    };
+    fn(scope);
     return this;
   }
 }

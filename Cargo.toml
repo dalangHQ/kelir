@@ -50,6 +50,7 @@ members = [
     "crates/kelir-drivers/driver-rustvmm",
     "crates/kelir-integration",
     "crates/kelir-interface",
+    "crates/kelir-interface-macros",
     "crates/kelir-maturity",
     "crates/kelir-otlp",
     "crates/kelir-plugin-cli",

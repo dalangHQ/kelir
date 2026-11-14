@@ -16,7 +16,7 @@ from kelir.generated.fusion_tables import (
 
 if TYPE_CHECKING:
     from kelir import KelirBuilder
-    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_model import BasePlugin
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,10 @@ class TrapFilterSnapshot:
     binary: str | None = None
     args: tuple[str, ...] = ()
     pattern: str | None = None
+    cwd: str | None = None
+    env: tuple[tuple[str, str], ...] = ()
+    uid: int | None = None
+    argv: str | None = None
 
 
 @dataclass
@@ -85,7 +89,7 @@ class FusedTrampoline:
         if isinstance(hooks, list):
             descriptors: list[HookDescriptor] = hooks
         else:
-            from kelir.model_plugin import hook_descriptors
+            from kelir.plugin_model import hook_descriptors
 
             descriptors = hook_descriptors(hooks)
         by_ring: dict[RingEvent, list[HookDescriptor]] = {}
@@ -127,7 +131,7 @@ class FusedTrampoline:
             for hook in chain.hooks
         ]
 
-    # TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
+    # L3-GAP: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
     def describe(self) -> dict[str, Any]:
         return {
             "rings": [

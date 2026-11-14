@@ -1,7 +1,7 @@
 $schema: kelir-test-plan/l3-slop-register/v1
-generated: 181 red/gap entries + 18 code_only groups; 542 TODO (L3) markers at base 745c219; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
+generated: 179 red/gap entries + 18 code_only groups; 542 TODO (L3) markers at base 745c219; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
 total_cases: 254
-covered_red_gap: 181
+covered_red_gap: 179
 entries:
 - case_id: ad_01_radix_layer_unpack_whiteout_merge
   status: red
@@ -1669,39 +1669,6 @@ entries:
   code_todos:
   - crates/kelir-bindings/napi/src/lib.rs
   - crates/kelir-bindings/pyo3/src/lib.rs
-- case_id: pm_03_core_stream_kind_reregistration_abort
-  status: red
-  domain: protocol_mux
-  target_crate: crates/kelir-engine
-  slop_risks:
-  - plugin re-registers core kind 0x0001 and the handler is silently overwritten
-  - bootstrap seals while a frozen core kind was replaced
-  - register_stream_kind Ok asserted without the EKindReserved abort
-  must_not:
-  - overwrite a handler in the kind map without checking the 0x0001-0x000F reserved range
-  - seal bootstrap after a core-kind re-registration
-  acceptance:
-  - re-registering kind 0x0001 aborts with EKindReserved
-  - exit code is 1
-  code_todos:
-  - crates/kelir-engine/src/dispatch_plugin/mod.rs
-  - crates/kelir/src/builder_sdk.flow.rs
-- case_id: pm_05_stream_kind_conflict_ekindconflict
-  status: red
-  domain: protocol_mux
-  target_crate: crates/kelir-engine
-  slop_risks:
-  - second plugin overwrites the first kind registration without error
-  - boot seals with two plugins on the same stream kind
-  - collision asserted from log output instead of the boot error
-  must_not:
-  - allow a second registration to overwrite the first
-  - seal bootstrap with a kind collision present
-  acceptance:
-  - second registration fails with EKindConflict
-  - boot() fails and exit code is 1
-  code_todos:
-  - crates/kelir-engine/src/dispatch_plugin/mod.rs
 - case_id: pm_06_exec_slot_slab_saturation_reject
   status: gap
   domain: protocol_mux

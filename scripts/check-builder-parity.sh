@@ -47,7 +47,22 @@ scope_type() {
         host) printf '%s' "HostScope" ;;
         lifecycle) printf '%s' "LifecycleScope" ;;
         telemetry) printf '%s' "TelemetryScope" ;;
+        actions) printf '%s' "ActionsScope" ;;
+        streams) printf '%s' "StreamsScope" ;;
+        vsock) printf '%s' "VsockScope" ;;
+        params) printf '%s' "ParamsScope" ;;
+        deny) printf '%s' "DenyScope" ;;
         *) printf '%s' "" ;;
+    esac
+}
+
+# see: cans/02-plugin-model.md#Unified-builder
+scope_method() {
+    case "$1" in
+        register_custom_action|register_stream_kind) printf '%s' "register" ;;
+        vsock_service) printf '%s' "service" ;;
+        params) printf '%s' "model" ;;
+        *) printf '%s' "$1" ;;
     esac
 }
 
@@ -84,7 +99,7 @@ for verb in "${VERBS[@]}"; do
     if [ -z "${PLACEMENT[$verb]:-}" ] || [ -z "${RET[$verb]:-}" ] || [ -z "${SDKS[$verb]:-}" ]; then
         fail "yaml: verb $verb is missing placement/return/sdks"
     fi
-    case "${PLACEMENT[$verb]:-}" in flat|both|registry) ;; *) fail "yaml: verb $verb has bad placement ${PLACEMENT[$verb]:-}" ;; esac
+    case "${PLACEMENT[$verb]:-}" in flat|both|scoped|registry) ;; *) fail "yaml: verb $verb has bad placement ${PLACEMENT[$verb]:-}" ;; esac
     case "${RET[$verb]:-}" in builder|sealed|terminal|scope|registry) ;; *) fail "yaml: verb $verb has bad return ${RET[$verb]:-}" ;; esac
 done
 
@@ -123,7 +138,7 @@ ts_scoped_present() {
     [ "$(awk -v scope="$2" -v verb="$1" '
         /^export interface [A-Za-z]+Scope/ { s=$3; sub(/<.*/,"",s); cur=s; next }
         cur != "" && /^}/ { cur=""; next }
-        cur == scope && $0 ~ "^[[:space:]]+" verb "\\(" { found=1 }
+        cur == scope && $0 ~ "^[[:space:]]+" verb "(<|\\()" { found=1 }
         END { print found+0 }
     ' "$TS_SCOPES")" = "1" ]
 }
@@ -300,8 +315,8 @@ for verb in "${VERBS[@]}"; do
                 fi
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
                     check
-                    if rust_scoped_present "$verb" "$stype"; then
-                        check_rust_return "$verb" "scope" "$RS_SCOPES" "scoped in $stype"
+                    if rust_scoped_present "$(scope_method "$verb")" "$stype"; then
+                        check_rust_return "$(scope_method "$verb")" "scope" "$RS_SCOPES" "scoped in $stype"
                     else
                         fail "rust: .$verb missing from $stype (scoped)"
                     fi
@@ -330,8 +345,8 @@ for verb in "${VERBS[@]}"; do
                 fi
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
                     check
-                    if ts_scoped_present "$tname" "$stype"; then
-                        check_ts_scoped_return "$verb" "$tname" "$stype"
+                    if ts_scoped_present "$(ts_name "$(scope_method "$verb")")" "$stype"; then
+                        check_ts_scoped_return "$verb" "$(ts_name "$(scope_method "$verb")")" "$stype"
                     else
                         fail "ts: .$verb missing from $stype interface (scoped)"
                     fi
@@ -357,7 +372,7 @@ for verb in "${VERBS[@]}"; do
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
                     check
                     if py_scoped_present "$verb" "$scope"; then
-                        check_py_return "$verb" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END"
+                        check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END"
                     else
                         fail "py: .$verb missing from _SCOPE_VERBS[$scope] (scoped)"
                     fi
@@ -403,19 +418,19 @@ ts_scope_methods="$(awk '
     cur != "" && $0 ~ /^[[:space:]]+on[A-Z][A-Za-z]*\(/ { m=$0; sub(/^[[:space:]]+/,"",m); sub(/\(.*/,"",m); print m }
     cur != "" && $0 ~ /^[[:space:]]+[a-z][A-Za-z]*\(/ { m=$0; sub(/^[[:space:]]+/,"",m); sub(/\(.*/,"",m); print m }
 ' "$TS_SCOPES")"
-bad_ts_scope="$(printf '%s\n' "$ts_scope_methods" | grep -vE '^on[A-Z]|^end$' || true)"
+bad_ts_scope="$(printf '%s\n' "$ts_scope_methods" | grep -vE '^on[A-Z]|^end$|^register$|^service$|^model$' || true)"
 if [ -n "$bad_ts_scope" ]; then fail "ts: non-leaf method inside a scope interface (nesting depth > 1): $bad_ts_scope"; fi
 check
 py_scope_defs="$(awk -v from="$PY_SCOPE_START" -v to="$PY_SCOPE_END" '
     NR >= from && NR < to && $0 ~ /^    def [a-z_]+/ { m=$0; sub(/^    def /,"",m); sub(/\(.*/,"",m); print m }
 ' "$PY_FILE")"
-bad_py_scope="$(printf '%s\n' "$py_scope_defs" | grep -vE '^(on_[a-z_]+|__init__|_scoped_on|end)$' || true)"
+bad_py_scope="$(printf '%s\n' "$py_scope_defs" | grep -vE '^(on_[a-z_]+|__init__|_scoped_on|end|register|service|model)$' || true)"
 if [ -n "$bad_py_scope" ]; then fail "py: non-leaf method inside _Scope (nesting depth > 1): $bad_py_scope"; fi
 
 # see: cans/artifacts/config/builder-verbs.yaml
 check
 rust_end_count="$(grep -cE '^    pub fn end\(self\) -> KelirBuilder<' "$RS_SCOPES" || true)"
-if [ "$rust_end_count" != "8" ]; then fail "rust: scope .end() defined $rust_end_count times, want 8 (one per scope)"; fi
+if [ "$rust_end_count" != "13" ]; then fail "rust: scope .end() defined $rust_end_count times, want 13 (one per scope)"; fi
 check
 ts_end_count="$(grep -cE '^  end\(\): Owner;$' "$TS_SCOPES" || true)"
 if [ "$ts_end_count" != "8" ]; then fail "ts: scope .end() declared $ts_end_count times, want 8 (one per scope)"; fi

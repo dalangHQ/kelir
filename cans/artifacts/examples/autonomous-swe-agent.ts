@@ -153,7 +153,7 @@ const runtime = kelir({
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-    const repoPolicy = c.cap("repo-policy");
+    const repoPolicy = c.cap<RepoPolicyCtx>("repo-policy");
     if (repoPolicy && repoPolicy.policy.isProtected()) {
       repoPolicy.policy.recordViolation();
       return c.drop("EPERM", `EPOLICY: '${repoPolicy.policy.currentBranch}' protected.`);
@@ -172,7 +172,7 @@ const runtime = kelir({
   .trap(TrapFilter.binary("git").withArg("commit"), {
     pre: async (c) => {
       // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-      const repoPolicy = c.cap("repo-policy");
+      const repoPolicy = c.cap<RepoPolicyCtx>("repo-policy");
       return repoPolicy && repoPolicy.policy.violations > 0
         ? c.drop("EPERM", `EPOLICY: ${repoPolicy.policy.violations} prior violation(s).`)
         : c.pass();
@@ -193,7 +193,7 @@ const runtime = kelir({
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   // see: cans/08-lifecycle.md#Break-glass
   .onTrapDeny(async (e, s) => {
-    if (await s.cap("ledger")!.countDenials(e.ppid) > 5) {
+    if (await s.cap<LedgerHandle>("ledger")!.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       await s.console();
     }

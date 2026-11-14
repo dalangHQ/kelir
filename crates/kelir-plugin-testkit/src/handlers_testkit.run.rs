@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{
     BalloonConvergence, DriverCapabilities, DriverError, EntropyBackend, EntropyStreamPosition,
     PmuSampler, SharedMemoryHandle, SnapshotDescriptor, SuspendReason, VmConfig, VmmDriver,
-    WatchdogAction, default_vm_config,
+    WatchdogAction,
 };
 use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, VetoList};
 use kelir_interface::protocol_wire::TrapEvent;
@@ -508,7 +508,7 @@ impl Default for LifecycleCtxFixture {
 impl LifecycleCtxFixture {
     pub fn new() -> Self {
         Self {
-            config: default_vm_config(None, None, None, None, None, None),
+            config: VmConfig::default(),
             session_id: String::new(),
             driver: FixtureVmmDriver::new(),
             vetoes: Vec::new(),

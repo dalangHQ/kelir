@@ -110,7 +110,7 @@ impl TerminalOps for RealTerminalOps {
         ))
     }
 
-    // TODO (L3) [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
+    // L3-GAP: [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
     fn read_from(&self, port: u32, cursor: u64) -> Result<(Vec<u8>, u64), PluginError> {
         let segments = self.lock_segments()?;
         let segment = segments

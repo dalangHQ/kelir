@@ -1,6 +1,6 @@
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_23_replay_deterministic_seed_reproduces_step_windows.yaml#case_id
 use driver_rustvmm::RustVmmDriver;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::plugin_model::{LifecycleCtx, LifecycleParticipant, VetoList};
 use plugin_replay::{ReplayConfig, ReplayPlugin};
 
@@ -18,14 +18,11 @@ fn replay_config() -> ReplayConfig {
 }
 
 fn vm_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 // see: cans/artifacts/test-plan/cases/lifecycle_checkpoint/lc_23_replay_deterministic_seed_reproduces_step_windows.yaml#case_id

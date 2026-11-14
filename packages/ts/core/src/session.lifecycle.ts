@@ -175,7 +175,7 @@ export class Session {
   private suspendedReasonValue: SuspendReason | undefined;
 
   constructor(native: NativeSessionHandle) {
-    // TODO (L3) [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
+    // L3-GAP: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
     this.native = native;
     this.driverName = native.driverName;
     this.bootMs = native.bootMs;
@@ -242,16 +242,34 @@ export class Session {
   }
 
   // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-  ctx<T>(plugin: string): T {
-    const found = this.native.pluginContexts?.find(
+  cap<T>(plugin: string): T | undefined {
+    return this.native.pluginContexts?.find(
       (entry) => entry.name === plugin,
-    )?.ctx;
-    if (found === undefined) {
-      throw new EConfig(
-        `kelir session has no registered plugin context '${plugin}'`,
-      );
+    )?.ctx as T | undefined;
+  }
+
+  // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+  plane<T>(name: string): T | undefined {
+    switch (name) {
+      case "vm":
+        return this.vm as T;
+      case "terminal":
+        return this.terminal as T;
+      case "storage":
+        return this.storage as T;
+      case "wire":
+        return this.wire as T;
+      case "checkpoint":
+        return this.checkpoint as T;
+      case "host":
+        return this.host as T;
+      case "vsock":
+        return this.vsock as T;
+      case "step":
+        return this.step as T;
+      default:
+        return undefined;
     }
-    return found as T;
   }
 
   // see: cans/08-lifecycle.md#CoW-fork
@@ -314,7 +332,7 @@ export class Session {
   static async attach(sessionId: string): Promise<Session> {
     const relay = await relaySocketPath(sessionId);
     void relay;
-    // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
+    // L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
     throw new EConfig("TODO: Session.attach (L3)");
   }
 

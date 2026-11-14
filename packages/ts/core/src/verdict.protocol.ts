@@ -1,9 +1,38 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
+// see: cans/02-plugin-model.md#Unified-verdict
+export enum Errno {
+  EPERM = "EPERM",
+  EACCES = "EACCES",
+  ENOENT = "ENOENT",
+  EINVAL = "EINVAL",
+  ENOSPC = "ENOSPC",
+  EROFS = "EROFS",
+  ECONNREFUSED = "ECONNREFUSED",
+  ENXIO = "ENXIO",
+  EWOULDBLOCK = "EWOULDBLOCK",
+  EFAULT = "EFAULT",
+  EBUSY = "EBUSY",
+  EXDEV = "EXDEV",
+  EPIPE = "EPIPE",
+  ENODATA = "ENODATA",
+  EPROTO = "EPROTO",
+  EPOLICY = "EPOLICY",
+  ETOOLQUOTA = "ETOOLQUOTA",
+  EWXVIOLATION = "EWXVIOLATION",
+  E_CONFIG = "EConfig",
+  E_SECURITY_VIOLATION = "ESecurityViolation",
+  E_UNKNOWN_KIND = "EUnknownKind",
+  E_CLOCK_REGRESS = "EClockRegress",
+  PATH_TRAVERSAL = "PathTraversal",
+  ETIMEDOUT = "ETIMEDOUT",
+}
+
 import type { PatchInput } from "./types.core.js";
 
 export type Verdict =
   | { readonly kind: "pass" }
+  | { readonly kind: "forward" }
   | { readonly kind: "drop"; readonly errno?: string; readonly reason: string }
   | { readonly kind: "patch"; readonly patch: PatchInput }
   | { readonly kind: "suspend"; readonly until: SuspendUntil }
@@ -11,12 +40,14 @@ export type Verdict =
 
 export const Verdict: {
   readonly Pass: Verdict;
+  readonly Forward: Verdict;
   Drop(errno: string, reason?: string): Verdict;
   Patch(attr: PatchInput): Verdict;
   Suspend({ until }: { until: SuspendUntil }): Verdict;
   Abort({ reason }: { reason?: string }): Verdict;
 } = {
   Pass: { kind: "pass" },
+  Forward: { kind: "forward" },
   Drop(errno: string, reason?: string): Verdict {
     return { kind: "drop", errno, reason: reason ?? errno };
   },
@@ -32,26 +63,22 @@ export const Verdict: {
 };
 
 // see: cans/02-plugin-model.md#Unified-verdict
-export type FilterAction =
-  | { readonly kind: "forward" }
-  | { readonly kind: "drop"; readonly errno?: string; readonly reason: string }
-  | { readonly kind: "suspend"; readonly until: SuspendUntil }
-  | { readonly kind: "abort"; readonly reason?: string };
+export type FilterAction = Verdict;
 
 export const FilterAction: {
-  readonly Forward: FilterAction;
-  Drop(errno?: string, reason?: string): FilterAction;
-  Suspend({ until }: { until: SuspendUntil }): FilterAction;
-  Abort({ reason }: { reason?: string }): FilterAction;
+  readonly Forward: Verdict;
+  Drop(errno?: string, reason?: string): Verdict;
+  Suspend({ until }: { until: SuspendUntil }): Verdict;
+  Abort({ reason }: { reason?: string }): Verdict;
 } = {
   Forward: { kind: "forward" },
-  Drop(errno?: string, reason?: string): FilterAction {
+  Drop(errno?: string, reason?: string): Verdict {
     return { kind: "drop", errno, reason: reason ?? errno ?? "drop" };
   },
-  Suspend({ until }: { until: SuspendUntil }): FilterAction {
+  Suspend({ until }: { until: SuspendUntil }): Verdict {
     return { kind: "suspend", until };
   },
-  Abort({ reason }: { reason?: string }): FilterAction {
+  Abort({ reason }: { reason?: string }): Verdict {
     return { kind: "abort", reason };
   },
 };
@@ -60,17 +87,36 @@ export const FilterAction: {
 export type SuspendUntil =
   | { readonly kind: "deadline"; readonly deadlineMs: number }
   | { readonly kind: "approval" }
-  | { readonly kind: "handshake" };
+  | { readonly kind: "handshake" }
+  | { readonly kind: "condition"; readonly pollIntervalMs: number; readonly handle: number };
 
+// see: cans/02-plugin-model.md#Per-ring-timeouts
+const conditionPredicates = new Map<number, (session: unknown) => boolean>();
+let nextConditionHandle = 1;
+
+// TODO (L3) [bindings_ts]: native bridge — condition predicates stay JS-side in a module map until the FFI bridge can carry callable predicates across the boundary.; slop: condition predicates never cross to the native bridge.
 export const SuspendUntil: {
   readonly approval: SuspendUntil;
   readonly handshake: SuspendUntil;
   deadline(ms: number): SuspendUntil;
+  condition(
+    pollIntervalMs: number,
+    predicate: (session: unknown) => boolean,
+  ): SuspendUntil;
 } = {
   approval: { kind: "approval" },
   handshake: { kind: "handshake" },
   deadline(ms: number): SuspendUntil {
     return { kind: "deadline", deadlineMs: ms };
+  },
+  condition(
+    pollIntervalMs: number,
+    predicate: (session: unknown) => boolean,
+  ): SuspendUntil {
+    const handle = nextConditionHandle;
+    nextConditionHandle += 1;
+    conditionPredicates.set(handle, predicate);
+    return { kind: "condition", pollIntervalMs, handle };
   },
 };
 

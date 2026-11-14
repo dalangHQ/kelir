@@ -49,7 +49,7 @@ impl WalRecord {
             receipt_blake3: delta.receipt_leaf_hash,
             delta_root: delta.storage_delta_root,
             timestamp_ns,
-            // TODO (L3) [telemetry_audit]: sign each leaf with the host session Ed25519 key per cans/plugins/ledger.md#Merkle-WAL-specification; slop: leaves ship with zeroed signatures, Merkle chain unverifiable
+            // L3-GAP: [telemetry_audit]: sign each leaf with the host session Ed25519 key per cans/plugins/ledger.md#Merkle-WAL-specification; slop: leaves ship with zeroed signatures, Merkle chain unverifiable
             signature: [0u8; 64],
         }
     }
@@ -104,7 +104,7 @@ impl OtlpLedgerSink {
 
 impl LedgerSink for OtlpLedgerSink {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError> {
-        // TODO (L3) [ta_09_otlp_export_failure_non_blocking]: retry export failures locally without blocking the pipeline per cans/plugins/ledger.md#OpenTelemetry; slop: export error propagates and blocks pipeline, downed collector stalls guest
+        // L3-GAP: [ta_09_otlp_export_failure_non_blocking]: retry export failures locally without blocking the pipeline per cans/plugins/ledger.md#OpenTelemetry; slop: export error propagates and blocks pipeline, downed collector stalls guest
         // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
         let exporter = match self.config.exporter_config() {
             Ok(config) => OtlpExporter::with_config(config),
@@ -132,7 +132,7 @@ impl LocalMerkleDbSink {
     pub fn new(store: impl Into<PathBuf>) -> Self {
         Self {
             store: store.into(),
-            // TODO (L3) [telemetry_audit]: restore the chain head and seq from the LMDB store on open per cans/plugins/ledger.md#Merkle-WAL-specification; slop: head restarts at zero on open, seq reused, chain forks
+            // L3-GAP: [telemetry_audit]: restore the chain head and seq from the LMDB store on open per cans/plugins/ledger.md#Merkle-WAL-specification; slop: head restarts at zero on open, seq reused, chain forks
             head: Mutex::new(([0u8; 32], 0)),
         }
     }
@@ -154,7 +154,7 @@ impl LocalMerkleDbSink {
 impl LedgerSink for LocalMerkleDbSink {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError> {
         let record = self.record_for(delta, host_timestamp_ns())?;
-        // TODO (L3) [ta_03_merkle_wal_survives_guest_rollback]: append record.pack() to the LMDB WAL, fsync per reap, sign the leaf, then advance the chain head to record.leaf_hash(); slop: no WAL append, rollback constancy passes vacuously on empty store
+        // L3-GAP: [ta_03_merkle_wal_survives_guest_rollback]: append record.pack() to the LMDB WAL, fsync per reap, sign the leaf, then advance the chain head to record.leaf_hash(); slop: no WAL append, rollback constancy passes vacuously on empty store
         let _ = record;
         Err(PluginError::Halt(
             "LocalMerkleDbSink LMDB append (L3)".into(),

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, TrapFilter, Verdict
-from kelir.model_plugin import (
+from kelir.plugin_model import (
     BasePlugin,
     WatchdogEvent,
     WatchdogVerdict,
@@ -35,7 +35,7 @@ def _boot_plugin(plugin: KelirBuilder) -> None:
 
 # see: cans/plugins/chaos.md#Network-chaos
 def _chaos_net_outbound(config: ChaosConfig, frame: bytearray) -> FilterAction:
-    # TODO (L3) [pe_16_chaos_rst_injection_drops_matching_frame]: apply config.network fault rules to the outbound frame.; slop: network fault rule never applied, RST drop never fires
+    # L3-GAP: [pe_16_chaos_rst_injection_drops_matching_frame]: apply config.network fault rules to the outbound frame.; slop: network fault rule never applied, RST drop never fires
     return FilterAction.forward()
 
 
@@ -47,7 +47,7 @@ def _chaos_fs_write(
     pid: int,
     ctx: HandlerContext[None, None],
 ) -> FilterAction:
-    # TODO (L3) [plugin_engine]: apply config.fs fault rules to the write.; slop: fs fault rule never applied, fault drill passes vacuously
+    # L3-GAP: [plugin_engine]: apply config.fs fault rules to the write.; slop: fs fault rule never applied, fault drill passes vacuously
     return FilterAction.forward()
 
 

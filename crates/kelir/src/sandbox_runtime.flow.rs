@@ -1,7 +1,7 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 use std::path::PathBuf;
 
-use kelir_interface::driver_interface::{VmConfig, default_vm_config};
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::plugin_model::PluginError;
 use serde::{Deserialize, Serialize};
 
@@ -204,21 +204,32 @@ pub struct StorageProfile {
 }
 
 impl SandboxProfile {
-    // TODO (L3) [hypervisor_driver]: consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
+    // L3-GAP: [hypervisor_driver]: consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
     pub fn to_vm_config(&self) -> VmConfig {
         let session = self.session.as_ref();
         let compute = session.and_then(|s| s.compute.as_ref());
         let artifacts = session.and_then(|s| s.artifacts.as_ref());
         let clock = session.and_then(|s| s.clock.as_ref());
         let watchdog = session.and_then(|s| s.watchdog.as_ref());
-        let mut config = default_vm_config(
-            compute.and_then(|c| c.vcpus),
-            compute.and_then(|c| c.memory_mb),
-            artifacts.and_then(|a| a.kernel_path.clone()),
-            artifacts.and_then(|a| a.rootfs_erofs_path.clone()),
-            clock.and_then(|c| c.tsc_locked),
-            watchdog.and_then(|w| w.enabled),
-        );
+        let mut config = VmConfig::default();
+        if let Some(vcpus) = compute.and_then(|c| c.vcpus) {
+            config.vcpus = vcpus;
+        }
+        if let Some(memory_mb) = compute.and_then(|c| c.memory_mb) {
+            config.memory_mb = memory_mb;
+        }
+        if let Some(kernel) = artifacts.and_then(|a| a.kernel_path.clone()) {
+            config.kernel_path = PathBuf::from(kernel);
+        }
+        if let Some(rootfs) = artifacts.and_then(|a| a.rootfs_erofs_path.clone()) {
+            config.rootfs_erofs_path = PathBuf::from(rootfs);
+        }
+        if let Some(tsc_locked) = clock.and_then(|c| c.tsc_locked) {
+            config.tsc_locked = tsc_locked;
+        }
+        if let Some(watchdog) = watchdog.and_then(|w| w.enabled) {
+            config.enable_watchdog = watchdog;
+        }
         if let Some(page_size_kb) = compute.and_then(|c| c.page_size_kb) {
             config.page_size_kb = page_size_kb;
         }
@@ -231,7 +242,7 @@ impl SandboxProfile {
         if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
             config.preemption_grace_ms = grace;
         }
-        // TODO (L3) [hd_fast_boot_backend_change]: route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
+        // L3-GAP: [hd_fast_boot_backend_change]: route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
         config
     }
 }

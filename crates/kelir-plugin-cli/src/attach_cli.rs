@@ -25,7 +25,7 @@ fn now_unix() -> i64 {
 }
 
 pub fn run(args: &[String]) -> Result<(), CliError> {
-    // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.; slop: attach returns Ok, lease check and relay stream skipped
+    // L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock and stream the detached session after the catalog lease check per cans/08-lifecycle.md#Detached-lifecycle.; slop: attach returns Ok, lease check and relay stream skipped
     let Some(id_arg) = args.first() else {
         return Err(CliError::usage(
             "attach requires a session id: kelir attach <session-id>",

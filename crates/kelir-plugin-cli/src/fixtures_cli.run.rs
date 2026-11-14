@@ -165,7 +165,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             let entries = parse_fixtures(&text)?;
             for entry in &entries {
                 if !Path::new(&entry.path).exists() {
-                    // TODO (L3) [supply_chain_security]: download the pinned fixture from its source registry, then verify its digest before mounting.; slop: fixture mounted unverified, digest never compared
+                    // L3-GAP: [supply_chain_security]: download the pinned fixture from its source registry, then verify its digest before mounting.; slop: fixture mounted unverified, digest never compared
                     return Err(FixtureError::HashUnavailable(format!(
                         "fixtures fetch (L3): `{}` is absent at {}; network fetch pending",
                         entry.name, entry.path

@@ -1,1 +1,3 @@
-pub use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, ReceiptExtension};
+pub use kelir_interface::telemetry::{
+    CausalDelta, ExecutionReceipt, HookSpan, ReceiptExtension, VerdictKind,
+};

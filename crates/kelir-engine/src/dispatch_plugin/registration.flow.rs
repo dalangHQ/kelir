@@ -2,9 +2,13 @@
 use super::*;
 
 // see: cans/03-sdk-architecture.md#Unified-builder-surface
-// TODO (L3) [plugin_engine]: Py and TS bridge the Result<(), PluginError> callback to raise/reject per cans/03-sdk-architecture.md#Unified-builder-surface.; slop: foreign deny hooks swallow failures
+// L3-GAP: [plugin_engine]: Py and TS bridge the Result<(), PluginError> callback to raise/reject per cans/03-sdk-architecture.md#Unified-builder-surface.; slop: foreign deny hooks swallow failures
 pub type TrapDenyCallback = Box<
-    dyn Fn(&TrapEvent, &Session) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
+    dyn Fn(
+            &TrapEvent,
+            &Verdict,
+            &Session,
+        ) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
         + Send
         + Sync,
 >;

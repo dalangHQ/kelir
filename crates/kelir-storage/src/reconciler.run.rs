@@ -87,7 +87,7 @@ impl Reconciler {
     }
 
     pub fn detect(&self) -> Result<Vec<PathBuf>, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: diff this walk against the broker's changed-entry state; slop: in-place write, no temp+rename, inode unchanged
+        // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: diff this walk against the broker's changed-entry state; slop: in-place write, no temp+rename, inode unchanged
         let mut entries = Vec::new();
         let upper = self.broker_dir.join("upper");
         if upper.is_dir() {
@@ -121,7 +121,7 @@ impl Reconciler {
         &self,
         paths: &[PathBuf],
     ) -> Result<StagingGuard, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: copy entries to .tmp.<nonce> staging files owned by StagingGuard behind StorageIo; slop: in-place write, no temp+rename, inode unchanged
+        // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: copy entries to .tmp.<nonce> staging files owned by StagingGuard behind StorageIo; slop: in-place write, no temp+rename, inode unchanged
         for path in paths {
             self.contain(path)?;
         }
@@ -133,7 +133,7 @@ impl Reconciler {
     }
 
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors; slop: in-place write, no temp+rename, inode unchanged
+        // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors; slop: in-place write, no temp+rename, inode unchanged
         let _ = self.detect()?;
         let _ = self.io.open_root(&self.host_target)?;
         let _ = (&self.broker_dir, self.guard);
@@ -148,29 +148,26 @@ impl Reconciler {
             .components()
             .any(|component| matches!(component, Component::ParentDir))
         {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("path traversal rejected: {target:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: path traversal rejected: {target:?}"
+            )));
         }
         if !target.starts_with(&self.host_target) {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("target escapes workspace root: {target:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: target escapes workspace root: {target:?}"
+            )));
         }
         for ancestor in target.ancestors() {
             if ancestor == self.host_target.as_path() {
                 break;
             }
             if fs::symlink_metadata(ancestor).is_ok_and(|meta| meta.is_symlink()) {
-                return Err(kelir_interface::plugin_model::PluginError::reject(
-                    kelir_interface::protocol_wire::Errno::Exdev,
-                    format!("symlink component rejected: {ancestor:?}"),
-                ));
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "EXDEV: symlink component rejected: {ancestor:?}"
+                )));
             }
         }
-        // TODO (L3) [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
+        // L3-GAP: [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
         let root = self.host_target.canonicalize()?;
         let mut prefix = target.to_path_buf();
         while prefix != self.host_target && !prefix.exists() {
@@ -180,10 +177,9 @@ impl Reconciler {
         }
         let resolved = prefix.canonicalize()?;
         if !resolved.starts_with(&root) {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("resolved target escapes workspace root: {resolved:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: resolved target escapes workspace root: {resolved:?}"
+            )));
         }
         Ok(())
     }
@@ -194,7 +190,7 @@ impl ReconcilerOps for Reconciler {
         &self,
         req: FsReconcileRequest,
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
-        // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay; slop: in-place write, no temp+rename, inode unchanged
+        // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay; slop: in-place write, no temp+rename, inode unchanged
         let entries = self.detect()?;
         let _ = (
             &self.broker_dir,

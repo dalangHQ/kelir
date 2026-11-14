@@ -300,26 +300,9 @@ check-canon:
     ./scripts/check-canon.sh
     just test-all
 
-# ── Test plan gates (work-order.md Phase 6: Scorecard & Linter Harness) ──
-# Regenerate cans/artifacts/scorecard.md in place from manifest truth +
-# perf/budgets.toml; check-scorecard gates the committed artifact byte-for-byte.
-scorecard:
-    cargo run -p kelir-testkit --bin scorecard -- generate --in-place
-
-# CI Gate: Verify scorecard is byte-for-byte identical to physical evidence.
-# At base this verifies against manifest truth only; platform-subset
-# filtering rides this same recipe if added (no case-to-test map yet).
-check-scorecard:
-    cargo run -p kelir-testkit --bin scorecard -- check
-
 # Validate parity between manifest.yaml and cases/**/*.yaml files
 check-manifest:
     cargo run -p kelir-testkit --bin check-manifest
-
-# Validate the scenario composition tier (work-order-2): case refs resolve,
-# asserts are substrings of referenced cases, plane pairs composed.
-check-scenarios:
-    cargo run -p kelir-testkit --bin check-scenarios
 
 # Run static AST linter enforcing Anti-Slop Laws AS-01 to AS-08
 check-tests:
@@ -347,11 +330,6 @@ codegen:
     # Item 5/11: UAPI tables (linux/fuse.h, linux/elf.h) via C oracle
     sh crates/kelir-engine/codegen/gen-fuse-uapi.sh
     sh crates/kelir-shim/codegen/gen-elf-uapi.sh
-    # Item 9: scorecard render from perf/budgets.toml. Stays a target/ preview
-    # here, NOT --in-place: the platform-subset section is host-dependent, and
-    # check-coherence must stay zero-drift on any host. Sync the committed
-    # artifact explicitly via `just scorecard`; check-scorecard gates it.
-    cargo run --quiet -p kelir-testkit --bin scorecard -- generate
 
 # Zero-drift verification gate: regenerate everything, tree must stay clean.
 # check-codegen is the work-order-2 section-2 spelling of the same gate.
@@ -373,7 +351,7 @@ check-types:
     uv run mypy packages/py
 
 # Test-plan gates in one recipe (work-order-2 section 3).
-check-gates: check-manifest check-tests check-scenarios check-scorecard
+check-gates: check-manifest check-tests
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
 check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon

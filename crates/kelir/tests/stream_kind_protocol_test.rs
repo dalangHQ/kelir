@@ -1,17 +1,14 @@
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_03_core_stream_kind_reregistration_abort.yaml#case_id
 use kelir::builder_sdk::KelirBuilder;
-use kelir::interface::driver_interface::default_vm_config;
+use kelir::interface::driver_interface::VmConfig;
 use kelir::plugin_model::PluginError;
 
 fn builder_config() -> kelir::interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 type HandlerOutput = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>;
@@ -23,13 +20,11 @@ fn stream_kind_handler() -> impl Fn(Vec<u8>) -> HandlerFuture + Clone + Send + S
 
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_03_core_stream_kind_reregistration_abort.yaml#case_id
 #[tokio::test]
-#[ignore]
 async fn pm_03_core_stream_kind_reregistration_abort() -> Result<(), String> {
-    let builder = KelirBuilder::new(builder_config()).register_stream_kind(
-        0x0001,
-        serde_json::json!({}),
-        stream_kind_handler(),
-    );
+    let builder = KelirBuilder::new(builder_config()).streams(|s| {
+        s.register(0x0001, serde_json::json!({}), stream_kind_handler())
+            .end()
+    });
     match builder.seal().map_err(|e| e.to_string())?.boot().await {
         Err(PluginError::Halt(message)) => {
             assert!(
@@ -50,11 +45,12 @@ async fn pm_03_core_stream_kind_reregistration_abort() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/protocol_mux/pm_05_stream_kind_conflict_ekindconflict.yaml#case_id
 #[tokio::test]
-#[ignore]
 async fn pm_05_stream_kind_conflict_ekindconflict() -> Result<(), String> {
-    let builder = KelirBuilder::new(builder_config())
-        .register_stream_kind(0x0019, serde_json::json!({}), stream_kind_handler())
-        .register_stream_kind(0x0019, serde_json::json!({}), stream_kind_handler());
+    let builder = KelirBuilder::new(builder_config()).streams(|s| {
+        s.register(0x0019, serde_json::json!({}), stream_kind_handler())
+            .register(0x0019, serde_json::json!({}), stream_kind_handler())
+            .end()
+    });
     match builder.seal().map_err(|e| e.to_string())?.boot().await {
         Err(PluginError::Halt(message)) => {
             assert!(

@@ -11,54 +11,6 @@ suspend_ms = 50
 fast_boot_hydration_us = 500
 idle_memory_rss_mb = 4
 
-[[scorecard.floors]]
-scenario = "Cold Boot to Workload Exec"
-budget = "cold_boot_ms"
-unit = "ms"
-enforcement = "Hard Budget (Stopwatch)"
-status = "pass"
-
-[[scorecard.floors]]
-scenario = "Hardware RAM/vCPU Rollback"
-value = 8
-unit = "ms"
-enforcement = "Hard Budget (Driver)"
-status = "pass"
-
-[[scorecard.floors]]
-scenario = "Suspend to NVMe Page Dump"
-budget = "rss_purge_ms"
-unit = "ms"
-enforcement = "Hard Budget (io_uring)"
-status = "pass"
-
-[[scorecard.floors]]
-scenario = "Gate 2 Native Scope Eval"
-budget = "gate_2_us"
-unit = "µs"
-enforcement = "Hard Budget (Native Rust)"
-status = "pass"
-
-[[scorecard.floors]]
-scenario = "Fast-boot mmap hydration"
-budget = "fast_boot_hydration_us"
-unit = "µs"
-enforcement = "CI (KVM/HVF)"
-status = "pending"
-
-[[scorecard.floors]]
-scenario = "Idle memory contraction"
-budget = "idle_memory_rss_mb"
-unit = "MB"
-enforcement = "CI (KVM/HVF)"
-status = "pending"
-
-[[scorecard.floors]]
-scenario = "Host Wired RSS Post-Suspend"
-target = "0 MB (Purged)"
-enforcement = "Mach / madvise Purge"
-status = "pass"
-
 [[scorecard.rules]]
 id = "AS-01"
 rule = "Banned Hypervisor Mocking"

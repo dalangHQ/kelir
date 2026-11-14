@@ -50,21 +50,28 @@ fn ts_type(ty: &Ty) -> String {
             other => format!("readonly {}[]", ts_type(other)),
         },
         Ty::ByteArray(_) => "string".to_string(),
+        Ty::Custom(name) if name == "TrampolineRing" => "RingEvent".to_string(),
         Ty::Custom(name) => name.clone(),
     }
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-fn ts_native_type(ty: &Ty) -> String {
+fn ts_native_type(ty: &Ty, native_skip: &[&str]) -> String {
     match ty {
+        Ty::Custom(name) if native_skip.contains(&name.as_str()) => name.clone(),
         Ty::Custom(name) => format!("Native{name}Record"),
-        Ty::Option(inner) => format!("{} | null", ts_native_type(inner)),
+        Ty::Option(inner) => format!("{} | null", ts_native_type(inner, native_skip)),
         other => ts_type(other),
     }
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-fn emit_struct_interface(def: &StructDef, name: &str, native: bool) -> String {
+fn emit_struct_interface(
+    def: &StructDef,
+    name: &str,
+    native: bool,
+    native_skip: &[&str],
+) -> String {
     let mut out = format!("export interface {name} {{\n");
     for field in &def.fields {
         let field_name = if native && !def.serde_camel {
@@ -73,13 +80,13 @@ fn emit_struct_interface(def: &StructDef, name: &str, native: bool) -> String {
             camel(&field.name)
         };
         let ty = if native {
-            ts_native_type(&field.ty)
+            ts_native_type(&field.ty, native_skip)
         } else {
             ts_type(&field.ty)
         };
         if let Ty::Option(inner) = &field.ty {
             let inner_ty = if native {
-                ts_native_type(inner)
+                ts_native_type(inner, native_skip)
             } else {
                 ts_type(inner)
             };
@@ -93,10 +100,12 @@ fn emit_struct_interface(def: &StructDef, name: &str, native: bool) -> String {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-fn ts_convert_expr(ty: &Ty, native_field: &str) -> String {
+fn ts_convert_expr(ty: &Ty, native_field: &str, native_skip: &[&str]) -> String {
     match ty {
         Ty::Option(inner) => match &**inner {
-            Ty::Custom(name) if name != "ReceiptExtension" => {
+            Ty::Custom(name)
+                if name != "ReceiptExtension" && !native_skip.contains(&name.as_str()) =>
+            {
                 format!("raw.{native_field} ? fromNative{name}(raw.{native_field}) : null")
             }
             _ => format!("raw.{native_field} ?? null"),
@@ -109,8 +118,8 @@ fn ts_convert_expr(ty: &Ty, native_field: &str) -> String {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-fn emit_exit_kind(def: &EnumDef) -> Result<String, String> {
-    let mut out = String::from("export type ExitKind =\n");
+fn emit_exit_kind(def: &EnumDef, name: &str) -> Result<String, String> {
+    let mut out = format!("export type {name} =\n");
     let mut lines = Vec::new();
     for variant in &def.variants {
         let tag = kebab(&variant.name);
@@ -123,7 +132,7 @@ fn emit_exit_kind(def: &EnumDef) -> Result<String, String> {
                 "  | {{ readonly kind: \"{tag}\"; readonly message: string }}"
             )),
             Some(other) => {
-                return Err(format!("ExitKind::{}: {other:?}", variant.name));
+                return Err(format!("{name}::{}: {other:?}", variant.name));
             }
         };
     }
@@ -211,14 +220,15 @@ pub fn emit_telemetry(
     let mut out = String::new();
     out.push_str(TS_SEE);
     out.push('\n');
+    out.push_str("import type { RingEvent } from \"./generated/fusion.tables.generated.js\";\n\n");
     for name in order {
-        if *name == "ExitKind" {
+        if model.enums.iter().any(|e| e.name == *name) {
             let def = model.enum_def(name)?;
-            out.push_str(&emit_exit_kind(def)?);
+            out.push_str(&emit_exit_kind(def, name)?);
             continue;
         }
         let def = model.struct_def(name)?;
-        out.push_str(&emit_struct_interface(def, name, false));
+        out.push_str(&emit_struct_interface(def, name, false, native_skip));
     }
     for name in order {
         if *name == "ExitKind" {
@@ -234,6 +244,7 @@ pub fn emit_telemetry(
             def,
             &format!("Native{name}Record"),
             true,
+            native_skip,
         ));
     }
     for name in order {
@@ -258,7 +269,7 @@ pub fn emit_telemetry(
                 out,
                 "    {}: {},",
                 camel(&field.name),
-                ts_convert_expr(&field.ty, &native_field)
+                ts_convert_expr(&field.ty, &native_field, native_skip)
             );
         }
         out.push_str("  };\n}\n\n");

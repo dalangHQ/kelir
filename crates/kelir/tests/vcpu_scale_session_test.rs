@@ -1,19 +1,17 @@
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_15_vcpu_scale_online_offline_dynamic.yaml#case_id
 use kelir::builder_sdk::KelirBuilder;
-use kelir::interface::driver_interface::default_vm_config;
+use kelir::interface::driver_interface::VmConfig;
 
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_15_vcpu_scale_online_offline_dynamic.yaml#case_id
 #[tokio::test]
 #[ignore]
 async fn hd_15_vcpu_scale_online_offline_dynamic() -> Result<(), String> {
-    let config = default_vm_config(
-        Some(2),
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    );
+    let config = VmConfig {
+        vcpus: 2,
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    };
     let session = KelirBuilder::new(config)
         .seal()
         .map_err(|e| e.to_string())?

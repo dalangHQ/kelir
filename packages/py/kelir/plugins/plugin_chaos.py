@@ -4,13 +4,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "ChaosConfig",
     "ChaosPlugin",
     "NetworkFaultRule",
     "StorageFaultRule",
+    "chaos",
+    "chaos_builder",
 ]
 
 
@@ -28,7 +30,7 @@ class NetworkFaultRule:
 @dataclass
 class StorageFaultRule:
     target_path: str = ""
-    simulate_error: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress"] = "eperm"
+    simulate_error: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress", "path-traversal", "etimeout"] = "eperm"
     error_probability: float = 0.0
 
 

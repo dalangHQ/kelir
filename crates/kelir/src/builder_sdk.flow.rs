@@ -3,18 +3,19 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
-use kelir_interface::errno_types::Errno;
-use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
     LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, PostExecGate,
-    StreamFrameSink, SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
+    StreamFrameSink, SystemTelemetryParticipant, TrapInterposer, Veto, VetoEvent, VetoList,
 };
-use kelir_interface::protocol_wire::TrapEvent;
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+
+use crate::builder_scopes::{FsScopeConfig, ScopeRules};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
 use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConfig};
@@ -22,6 +23,7 @@ use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
 use crate::session_lifecycle::Session;
+use crate::trap_filter::TrapFilter;
 
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
@@ -43,77 +45,6 @@ pub struct Host;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Plugin;
 
-// see: cans/02-plugin-model.md#Filter-before-FFI-gate
-#[derive(Debug, Clone, Default)]
-pub struct TrapFilter {
-    pub binary: Option<String>,
-    pub args: Vec<String>,
-    pub pattern: Option<String>,
-}
-
-// see: cans/02-plugin-model.md#Chainable-verbs
-impl From<&str> for TrapFilter {
-    fn from(value: &str) -> Self {
-        Self {
-            binary: if value == "*" {
-                None
-            } else {
-                Some(value.to_string())
-            },
-            args: Vec::new(),
-            pattern: None,
-        }
-    }
-}
-
-impl TrapFilter {
-    pub fn binary(binary: &str) -> Self {
-        Self {
-            binary: Some(binary.to_string()),
-            args: Vec::new(),
-            pattern: None,
-        }
-    }
-
-    // see: cans/02-plugin-model.md#Filter-before-FFI-gate
-    pub fn pattern(glob: &str) -> Self {
-        Self {
-            binary: None,
-            args: Vec::new(),
-            pattern: Some(glob.to_string()),
-        }
-    }
-
-    pub fn with_arg(mut self, arg: &str) -> Self {
-        self.args.push(arg.to_string());
-        self
-    }
-}
-
-// see: cans/02-plugin-model.md#Filter-before-FFI-gate
-impl From<&TrapFilter> for FilterSnapshot {
-    fn from(filter: &TrapFilter) -> Self {
-        Self {
-            binary: filter.binary.clone(),
-            args: filter.args.clone(),
-            pattern: filter.pattern.clone(),
-        }
-    }
-}
-
-// see: cans/02-plugin-model.md#Filter-before-FFI-gate
-// TODO (L3) [pe_06_filter_before_ffi_gate_latency]: pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.; slop: every event crosses FFI, scope checked in Python/JS
-pub(crate) fn filter_matches(filter: &FilterSnapshot, event: &TrapEvent) -> bool {
-    if filter
-        .binary
-        .as_ref()
-        .is_some_and(|binary| binary != &event.binary_path)
-    {
-        return false;
-    }
-    filter.args.iter().all(|arg| event.argv.contains(arg))
-}
-
 pub struct LifecycleMut<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList> {
     builder: &'a mut KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -124,7 +55,7 @@ impl<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList>
     pub fn register_veto(
         self,
         event: VetoEvent,
-        callback: Box<dyn Fn() -> bool + Send + Sync>,
+        callback: Box<dyn Fn() -> Veto + Send + Sync>,
     ) -> Self {
         self.builder.registration.vetoes.push((event, callback));
         self
@@ -139,7 +70,11 @@ type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Se
 
 // see: cans/03-sdk-architecture.md#Builder-consumption-model-across-languages
 type BoxedTrapDenyCallback =
-    Box<dyn Fn(&TrapEvent, &kelir_engine::Session) -> BoxFutureResult + Send + Sync>;
+    Box<dyn Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> BoxFutureResult + Send + Sync>;
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub(crate) type BoxedTrapDenyExCallback =
+    Box<dyn Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> BoxFutureResult + Send + Sync>;
 
 type CustomActionFuture =
     Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>;
@@ -157,14 +92,14 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// TODO (L3) [protocol_mux]: the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
+// L3-GAP: [protocol_mux]: the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
     pub(crate) handler: BoxedStreamService,
 }
 
-// TODO (L3) [protocol_mux]: the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
+// L3-GAP: [protocol_mux]: the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
 struct SdkStreamServiceSink {
     handler: BoxedStreamService,
 }
@@ -188,7 +123,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
 pub struct CompositeBundle;
 
 // see: cans/02-plugin-model.md#Composite-plugin-hierarchy
-// TODO (L3) [plugin_engine]: carries the nested plugin tree the profile facade flattens at boot.; slop: nested tree flattened by hand, profile boot unproven
+// L3-GAP: [plugin_engine]: carries the nested plugin tree the profile facade flattens at boot.; slop: nested tree flattened by hand, profile boot unproven
 impl CompositePlugin for CompositeBundle {
     fn unpack(
         self: Box<Self>,
@@ -287,35 +222,35 @@ fn triple_failure(name: &str, failure: String) -> String {
 
 fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
     if port == 0 || port > 65_535 {
-        return Err(PluginError::reject(
-            Errno::Econfig,
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
             triple_failure(
                 name,
                 format!("vsock service port {port} out of range 1..=65535"),
-            ),
-        ));
+            )
+        )));
     }
     if service.is_empty() {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "vsock service name must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "vsock service name must not be empty".to_string())
+        )));
     }
     Ok(())
 }
 
 fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     if has_empty(&scope.binaries) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "scope binary name must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "scope binary name must not be empty".to_string())
+        )));
     }
     if has_empty(&scope.paths) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "scope path must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "scope path must not be empty".to_string())
+        )));
     }
     Ok(())
 }
@@ -323,16 +258,28 @@ fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 pub(crate) fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
     if filter.binary.as_deref() == Some("") {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter binary must not be empty"),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter binary must not be empty"
+        )));
     }
     if filter.args.iter().any(|arg| arg.is_empty()) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter arg must not be empty"),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter arg must not be empty"
+        )));
+    }
+    if filter.cwd.as_deref() == Some("") {
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter cwd must not be empty"
+        )));
+    }
+    if filter
+        .env
+        .iter()
+        .any(|(key, value)| key.is_empty() || value.is_empty())
+    {
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter env pair must not be empty"
+        )));
     }
     Ok(())
 }
@@ -347,6 +294,12 @@ pub(crate) struct Registration {
     pub(crate) wire_cfg: Option<WireConfig>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
     pub(crate) on_trap_deny: Option<BoxedTrapDenyCallback>,
+    pub(crate) on_trap_deny_ex: Option<BoxedTrapDenyExCallback>,
+    pub(crate) fs_cfg: Option<FsScopeConfig>,
+    pub(crate) scope_requires: Vec<&'static str>,
+    pub(crate) scope_timeouts: Vec<(&'static str, Duration)>,
+    pub(crate) scope_priorities: Vec<(&'static str, i32)>,
+    pub(crate) scope_rules: Vec<(&'static str, ScopeRules)>,
     pub(crate) custom_actions: Vec<CustomActionEntry>,
     pub(crate) stream_kind_services: Vec<StreamKindServiceEntry>,
     pub(crate) vetoes: VetoList,
@@ -397,6 +350,11 @@ impl KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
             deps: PhantomData,
         }
     }
+
+    // see: cans/artifacts/code/vm-config-defaults.rs
+    pub fn new_default() -> Self {
+        Self::new(VmConfig::default())
+    }
 }
 
 impl KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
@@ -432,30 +390,24 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
             validate_trap_filter("host", filter)?;
         }
         if self.fast_boot != FastBootMode::Off {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                format!(
-                    "fast_boot {:?} rejected: only Off seals until the L3 driver backend lands",
-                    self.fast_boot
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EConfig: fast_boot {:?} rejected: only Off seals until the L3 driver backend lands",
+                self.fast_boot
+            )));
         }
         if self.dax_window != DaxWindowMode::Off {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                format!(
-                    "dax_window {:?} rejected: only Off seals until the L3 driver backend lands",
-                    self.dax_window
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EConfig: dax_window {:?} rejected: only Off seals until the L3 driver backend lands",
+                self.dax_window
+            )));
         }
         let mut seen: Vec<&'static str> = Vec::new();
         for mounted in &self.registration.mounted {
             if seen.contains(&mounted.name) {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    format!("plugin already mounted: {}", mounted.name),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EConfig: plugin already mounted: {}",
+                    mounted.name
+                )));
             }
             seen.push(mounted.name);
             mounted.registry.validate_vsock(mounted.name)?;
@@ -588,7 +540,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self.registration.detached
     }
 
-    pub fn params<T>(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T> {
+    pub(crate) fn params<T>(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T> {
         KelirBuilder {
             config: self.config,
             plugins: self.plugins,
@@ -605,21 +557,21 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         }
     }
 
-    pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
+    pub(crate) fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
     where
-        F: Fn(&TrapEvent, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
+        F: Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
     {
         self.registration.on_trap_deny = Some(Box::new(
-            move |event: &TrapEvent, session: &kelir_engine::Session| {
-                let fut = f.clone()(event, session);
+            move |event: &TrapEvent, verdict: &Verdict, session: &kelir_engine::Session| {
+                let fut = f.clone()(event, verdict, session);
                 Box::pin(async move { fut.await.map(drop) })
             },
         ));
         self
     }
 
-    pub fn register_custom_action<T, F, Fut>(
+    pub(crate) fn register_custom_action<T, F, Fut>(
         mut self,
         name: &str,
         schema: serde_json::Value,
@@ -654,9 +606,8 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    // TODO (L3) [pm_03_core_stream_kind_reregistration_abort]: core-kind re-registration aborts EKindReserved and unregistered kinds abort EUnknownKind on OPEN at dispatch/seal per cans/11-protocol.md#Control-channel.; slop: handler overwritten in map, reserved range unchecked
     // see: cans/11-protocol.md#Control-channel
-    pub fn register_stream_kind<F, Fut>(
+    pub(crate) fn register_stream_kind<F, Fut>(
         mut self,
         kind: u16,
         schema: serde_json::Value,
@@ -704,13 +655,12 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
 {
     async fn finish_boot(mut self) -> Result<Session<Plugins, Params>, PluginError> {
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-        // TODO (L3) [hd_fast_boot_backend_change]: plumb FastBootMode into DriverRouter::load_native_driver.; slop: cold boot asserted, driver_id change unchecked
+        // L3-GAP: [hd_fast_boot_backend_change]: plumb FastBootMode into DriverRouter::load_native_driver.; slop: cold boot asserted, driver_id change unchecked
         let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_config();
         let Some(config) = self.config.take() else {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                "host builder has no VmConfig",
+            return Err(PluginError::Halt(
+                "EConfig: host builder has no VmConfig".to_string(),
             ));
         };
         let mut engine = kelir_engine::dispatch_plugin::PipelineEngine::new();
@@ -759,15 +709,18 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
-        let snoops = registration
+        let mut snoops = registration
             .storage_cfg
             .as_ref()
             .map(|cfg| cfg.snoops.clone())
             .unwrap_or_default();
+        if let Some(fs) = registration.fs_cfg.as_ref() {
+            snoops.extend(fs.snoops.iter().cloned());
+        }
         // see: cans/01-architecture.md#Host-runtime
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
-        // TODO (L3) [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
-        // TODO (L3) [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
+        // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: registration.terminal_cfg.as_ref().map(|cfg| {
                 kelir_interface::terminal::TerminalWiring {
@@ -797,15 +750,17 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             }),
             wire: registration.wire_cfg.as_ref().map(|cfg| {
                 kelir_interface::wire::net::WireWiring {
-                    sinkhole_allowlist: cfg.sinkhole.allowlist.clone(),
-                    sinkhole_drop_all: cfg.sinkhole.drop_all,
+                    sinkhole: kelir_interface::wire::net::SinkholeConfig::from_allowlist_drop_all(
+                        cfg.sinkhole.allowlist.clone(),
+                        cfg.sinkhole.drop_all,
+                    ),
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
                     vault_placeholders: cfg
                         .vaults
                         .iter()
                         .map(|vault| vault.placeholder.clone())
                         .collect(),
-                    // TODO (L3) [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
+                    // L3-GAP: [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
                     l4_proxies: cfg
                         .l4_proxies
                         .iter()
@@ -844,10 +799,12 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // TODO (L3) [storage_plane]: snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: on_write closure dropped, hook never registered at seal
+    // L3-GAP: [storage_plane]: snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: on_write closure dropped, hook never registered at seal
     fn storage_config(&self) -> kelir_engine::planes::storage::StorageConfig {
         let Some(cfg) = self.registration.storage_cfg.as_ref() else {
-            return kelir_engine::planes::storage::StorageConfig::default();
+            let mut storage = kelir_engine::planes::storage::StorageConfig::default();
+            self.apply_fs_cfg(&mut storage);
+            return storage;
         };
         let lock_broker = self
             .registration
@@ -866,7 +823,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                         non_blocking: false,
                     })
             });
-        kelir_engine::planes::storage::StorageConfig {
+        let mut storage = kelir_engine::planes::storage::StorageConfig {
             shared_caches: cfg
                 .shared_caches
                 .iter()
@@ -883,6 +840,34 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 rules: cfg.mask_read.clone(),
             }),
             encapsulation: cfg.encapsulation,
+        };
+        self.apply_fs_cfg(&mut storage);
+        storage
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    fn apply_fs_cfg(&self, storage: &mut kelir_engine::planes::storage::StorageConfig) {
+        let Some(fs) = self.registration.fs_cfg.as_ref() else {
+            return;
+        };
+        if let Some(broker) = fs.lock_broker.as_ref() {
+            storage.lock_broker = Some(kelir_engine::planes::storage::LockBrokerWiring {
+                scope_globs: match &broker.scope {
+                    LockScope::Globs(globs) => globs.clone(),
+                },
+                non_blocking: broker.non_blocking,
+            });
+        }
+        if fs.carryover_bytes.is_some() || fs.scan_engine.is_some() {
+            let mask = storage
+                .mask_read
+                .get_or_insert_with(kelir_engine::planes::storage::MaskReadConfig::default);
+            if let Some(bytes) = fs.carryover_bytes {
+                mask.carryover_bytes = bytes as usize;
+            }
+            if let Some(engine) = fs.scan_engine {
+                mask.engine = engine;
+            }
         }
     }
 }

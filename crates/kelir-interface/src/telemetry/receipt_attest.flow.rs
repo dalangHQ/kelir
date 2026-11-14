@@ -30,6 +30,43 @@ pub enum ExitKind {
     HardKilled,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsVfsExt {
+    pub served_inodes: u32,
+    pub roots: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetL7SqlExt {
+    pub statements: u32,
+    pub distinct_shapes: u32,
+}
+
+// see: cans/10-attestation.md#Hook-trace
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum VerdictKind {
+    Pass,
+    Forward,
+    Drop,
+    Suspend,
+    Abort,
+    Patch,
+}
+
+// see: cans/10-attestation.md#Hook-trace
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HookSpan {
+    pub plugin: String,
+    pub ring: crate::fusion_plugin::TrampolineRing,
+    pub verdict_kind: VerdictKind,
+    pub duration_ns: u64,
+    pub ordinal: u32,
+}
+
 // see: cans/10-attestation.md#Execution-receipts
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +86,12 @@ pub struct ExecutionReceipt {
     pub egress_bytes: u64,
     pub egress_dropped_bytes: u64,
     pub extensions: Vec<ReceiptExtension>,
+    #[serde(default)]
+    pub hook_trace: Vec<HookSpan>,
+    #[serde(skip)]
+    pub fs_vfs_ext: Option<FsVfsExt>,
+    #[serde(skip)]
+    pub net_l7_sql_ext: Option<NetL7SqlExt>,
 }
 
 // see: cans/10-attestation.md#Execution-receipts
@@ -100,7 +143,7 @@ impl ReceiptStore {
     }
 }
 
-// TODO (L3) [ar_12_session_attestation_token_injection]: consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified
+// L3-GAP: [ar_12_session_attestation_token_injection]: consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttestationToken {
     pub session_token: String,
@@ -125,6 +168,9 @@ impl ExecutionReceipt {
             egress_bytes,
             egress_dropped_bytes,
             extensions,
+            hook_trace: _,
+            fs_vfs_ext: _,
+            net_l7_sql_ext: _,
         } = self;
         let Self {
             pid: other_pid,
@@ -140,6 +186,9 @@ impl ExecutionReceipt {
             egress_bytes: other_egress_bytes,
             egress_dropped_bytes: other_egressed_bytes,
             extensions: other_extensions,
+            hook_trace: _,
+            fs_vfs_ext: _,
+            net_l7_sql_ext: _,
         } = other;
         pid == other_pid
             && binary_path == other_binary_path
@@ -152,5 +201,28 @@ impl ExecutionReceipt {
             && egress_bytes == other_egress_bytes
             && egress_dropped_bytes == other_egressed_bytes
             && extensions == other_extensions
+    }
+
+    // see: cans/10-attestation.md#Hook-trace
+    pub fn hooks(&self) -> &[HookSpan] {
+        &self.hook_trace
+    }
+
+    // see: cans/10-attestation.md#Typed-extensions
+    pub fn fs_vfs(&self) -> Option<&FsVfsExt> {
+        self.fs_vfs_ext.as_ref()
+    }
+
+    // see: cans/10-attestation.md#Typed-extensions
+    pub fn net_l7_sql(&self) -> Option<&NetL7SqlExt> {
+        self.net_l7_sql_ext.as_ref()
+    }
+
+    // see: cans/10-attestation.md#Typed-extensions
+    pub fn ext_raw(&self) -> Vec<(String, Vec<u8>)> {
+        self.extensions
+            .iter()
+            .map(|ext| (ext.namespace.clone(), ext.payload.clone()))
+            .collect()
     }
 }

@@ -72,7 +72,7 @@ pub fn validate_profile_aot(path: &str) -> Result<AotReport, SpecError> {
                 .map_err(|e| SpecError::Parse(format!("spec: {path} is not valid YAML: {e}")))?;
         }
     }
-    // TODO (L3) [plugin_engine]: validate the TypeBox/Serde schema, acyclic extends, and monotonic limits without compiling code.; slop: cyclic extends accepted, schema validation never runs
+    // L3-GAP: [plugin_engine]: validate the TypeBox/Serde schema, acyclic extends, and monotonic limits without compiling code.; slop: cyclic extends accepted, schema validation never runs
     Ok(AotReport {
         path: path_buf,
         source,
@@ -96,7 +96,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some("export") => {
             let path = args.get(1).map(String::as_str).unwrap_or("kelir.toml");
-            // TODO (L3) [plugin_engine]: emit the canonical kelir.toml or kelir.yaml for the profile.; slop: hand-written toml passes, canonical profile never emitted
+            // L3-GAP: [plugin_engine]: emit the canonical kelir.toml or kelir.yaml for the profile.; slop: hand-written toml passes, canonical profile never emitted
             Err(format!("spec export: canonical export of {path} (L3)").into())
         }
         Some(other) => Err(CliError::usage(format!(

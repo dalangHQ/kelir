@@ -48,7 +48,7 @@ impl FusedTrampolineCallback for NapiFusedCallback {
             )));
         }
         // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
-        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; TS write hooks receive a mutable Uint8Array Buffer copied back on return; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+        // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; TS write hooks receive a mutable Uint8Array Buffer copied back on return; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
         Ok(Verdict::Pass)
     }
 }
@@ -179,6 +179,10 @@ pub fn convert_descriptor(rings: Vec<Object>) -> Result<FusedTrampolineDescripto
                         binary,
                         args,
                         pattern,
+                        cwd: None,
+                        env: Vec::new(),
+                        uid: None,
+                        argv: None,
                     })
                 }
                 None => None,
@@ -191,6 +195,7 @@ pub fn convert_descriptor(rings: Vec<Object>) -> Result<FusedTrampolineDescripto
                 lifecycle_tag,
                 custom_action_name,
                 vsock_kind,
+                priority: 0,
                 run: None,
             };
             validate_hook(ring_kind, &entry).map_err(Error::from_reason)?;

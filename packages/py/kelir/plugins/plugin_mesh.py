@@ -4,13 +4,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "MeshConfig",
     "MeshPlugin",
     "PeerIdentity",
     "PeerListener",
+    "mesh",
+    "mesh_builder",
 ]
 
 

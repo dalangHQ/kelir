@@ -14,7 +14,7 @@ fn log_file_name(stream: LogStream) -> String {
 }
 
 // see: cans/01-architecture.md#Host-state-root
-// TODO (L3) [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written
+// L3-GAP: [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written
 pub(crate) fn session_log_path(
     session_id: &[u8; 16],
     stream: LogStream,

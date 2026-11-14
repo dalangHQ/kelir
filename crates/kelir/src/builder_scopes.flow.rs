@@ -1,16 +1,23 @@
+// see: cans/02-plugin-model.md#Nested-scopes
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 use std::future::Future;
+use std::marker::PhantomData;
 use std::path::Path;
 use std::pin::Pin;
+use std::time::Duration;
 
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
-use kelir_interface::plugin_model::{HandlerCtx, LifecycleCtx, PluginError, VetoEvent};
+use kelir_interface::plugin_model::{
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, PluginError, Veto, VetoEvent,
+};
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
-use crate::builder_sdk::{KelirBuilder, Unsealed};
+use crate::builder_sdk::{Host, KelirBuilder, Plugin, Unsealed};
 use crate::hlist_sdk::HList;
+use crate::planes::storage_plane::{LockBrokerConfig, ReadMaskEngine, SnoopRule};
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct TrapScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -34,12 +41,38 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn fork_with<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.fork_with(f);
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("trap", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("trap", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct FsScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -82,12 +115,117 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn config(mut self, cfg: FsScopeConfig) -> Self {
+        self.builder = self.builder.fs_config(cfg);
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn fork_with<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.fork_with(f);
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("fs", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("fs", i);
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub fn rules<F>(mut self, f: F) -> Self
+    where
+        F: FnOnce(&mut RuleScope),
+    {
+        let mut scope = RuleScope::default();
+        f(&mut scope);
+        self.builder = self.builder.scope_rules("fs", scope.rules);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
+#[derive(Debug, Clone, Default)]
+pub struct FsScopeConfig {
+    pub lock_broker: Option<LockBrokerConfig>,
+    pub carryover_bytes: Option<u32>,
+    pub scan_engine: Option<ReadMaskEngine>,
+    pub snoops: Vec<SnoopRule>,
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+#[derive(Debug, Clone, Default)]
+pub struct ReadRules {
+    pub allow: Vec<String>,
+    pub deny: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WriteRules {
+    pub mask: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScopeRules {
+    pub read: ReadRules,
+    pub write: WriteRules,
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+#[derive(Default)]
+pub struct RuleScope {
+    pub(crate) rules: ScopeRules,
+}
+
+impl RuleScope {
+    pub fn read(&mut self) -> &mut ReadRules {
+        &mut self.rules.read
+    }
+
+    pub fn write(&mut self) -> &mut WriteRules {
+        &mut self.rules.write
+    }
+}
+
+impl ReadRules {
+    pub fn allow(&mut self, glob: &str) -> &mut Self {
+        self.allow.push(glob.to_string());
+        self
+    }
+
+    pub fn deny(&mut self, glob: &str) -> &mut Self {
+        self.deny.push(glob.to_string());
+        self
+    }
+}
+
+impl WriteRules {
+    pub fn mask(&mut self, regex: &str) -> &mut Self {
+        self.mask.push(regex.to_string());
+        self
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct NetScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -111,12 +249,30 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("net", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("net", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct ConsoleScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -140,12 +296,30 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("console", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("console", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct ExecScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -169,12 +343,30 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("exec", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("exec", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct HostScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -220,12 +412,30 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("host", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("host", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct LifecycleScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -309,7 +519,40 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         event: VetoEvent,
         callback: Box<dyn Fn() -> bool + Send + Sync>,
     ) -> Self {
-        self.builder.registration.vetoes.push((event, callback));
+        // see: cans/08-lifecycle.md#Lifecycle-vetoes
+        let desugared = Box::new(move || Veto {
+            allowed: callback(),
+            by: String::new(),
+            reason: String::new(),
+            recovery: None,
+        });
+        self.builder.registration.vetoes.push((event, desugared));
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn fork_with<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.fork_with(f);
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("lifecycle", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("lifecycle", i);
         self
     }
 
@@ -318,7 +561,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     }
 }
 
-// see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 pub struct TelemetryScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
     pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
 }
@@ -353,7 +596,300 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("telemetry", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("telemetry", i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
         self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub struct ActionsScope<Plugins: HList, Params: 'static, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>,
+}
+
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList> ActionsScope<Plugins, Params, Ctx, Deps> {
+    pub fn register<T, F, Fut>(mut self, name: &str, schema: serde_json::Value, f: F) -> Self
+    where
+        T: serde::de::DeserializeOwned + Send + 'static,
+        F: Fn(T) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+    {
+        self.builder = self
+            .builder
+            .register_custom_action::<T, F, Fut>(name, schema, f);
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("actions", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("actions", i);
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub struct StreamsScope<Plugins: HList, Params: 'static, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>,
+}
+
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList> StreamsScope<Plugins, Params, Ctx, Deps> {
+    pub fn register<F, Fut>(mut self, kind: u16, schema: serde_json::Value, f: F) -> Self
+    where
+        F: Fn(Vec<u8>) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>>
+            + Send
+            + 'static,
+    {
+        self.builder = self.builder.register_stream_kind(kind, schema, f);
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("streams", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("streams", i);
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub struct VsockScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
+}
+
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    VsockScope<Plugins, Params, Mode, Ctx, Deps>
+{
+    pub fn service<H>(mut self, spec: VsockServiceSpec, handler: H) -> Self
+    where
+        H: VsockServiceHandler + 'static,
+    {
+        self.builder = self.builder.vsock_service(spec, handler);
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("vsock", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("vsock", i);
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub struct ParamsScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
+}
+
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    ParamsScope<Plugins, Params, Mode, Ctx, Deps>
+{
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub fn model<M>(self) -> Self
+    where
+        M: Default + Send + Sync + 'static,
+    {
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("params", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("params", i);
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+pub struct DenyScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
+    pub(crate) builder: KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
+}
+
+impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
+    DenyScope<Plugins, Params, Mode, Ctx, Deps>
+{
+    pub fn on_trap_deny<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
+    {
+        self.builder = self.builder.on_trap_deny_ex(f);
+        self
+    }
+
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.scope_require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout("deny", d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority("deny", i);
+        self
+    }
+
+    pub fn end(self) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params> {
+        self.builder
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
+{
+    pub fn actions<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(ActionsScope<Plugins, Params, Ctx, Deps>) -> Self,
+    {
+        configure(ActionsScope { builder: self })
+    }
+
+    pub fn streams<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(StreamsScope<Plugins, Params, Ctx, Deps>) -> Self,
+    {
+        configure(StreamsScope { builder: self })
+    }
+
+    pub fn vsock<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(VsockScope<Plugins, Params, Host, Ctx, Deps>) -> Self,
+    {
+        configure(VsockScope { builder: self })
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    pub fn retyped_params<T, F>(
+        self,
+        configure: F,
+    ) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T>
+    where
+        T: Default + Send + Sync + 'static,
+        F: FnOnce(
+            ParamsScope<Plugins, T, Host, Ctx, Deps>,
+        ) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T>,
+    {
+        let retyped = KelirBuilder {
+            config: self.config,
+            plugins: self.plugins,
+            registration: self.registration,
+            fast_boot: self.fast_boot,
+            dax_window: self.dax_window,
+            name: self.name,
+            context_factory: self.context_factory,
+            scope: self.scope,
+            fork: self.fork,
+            registry: self.registry,
+            seal: PhantomData,
+            deps: PhantomData,
+        };
+        configure(ParamsScope { builder: retyped })
+    }
+
+    pub fn deny<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(DenyScope<Plugins, Params, Host, Ctx, Deps>) -> Self,
+    {
+        configure(DenyScope { builder: self })
+    }
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+// see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+// Plugin-mode builders expose vsock() only: seal validates a mounted
+// plugin's vsock spec, so the spec must be reachable on the plugin.
+impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+    KelirBuilder<Plugin, Unsealed, Ctx, Deps, Plugins, Params>
+{
+    pub fn vsock<F>(self, configure: F) -> Self
+    where
+        F: FnOnce(VsockScope<Plugins, Params, Plugin, Ctx, Deps>) -> Self,
+    {
+        configure(VsockScope { builder: self })
     }
 }

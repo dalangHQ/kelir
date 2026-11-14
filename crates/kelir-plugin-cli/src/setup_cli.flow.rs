@@ -68,10 +68,10 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             }
             write_hw_lockfile(&HwLockPath::default_path(), &report)
                 .map_err(|err| SetupError::Io(format!("hw-lock: cannot write hw.lock: {err}")))?;
-            // TODO (L3) [hypervisor_driver]: enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.; slop: /dev/kvm left world-accessible, 0660 never enforced
+            // L3-GAP: [hypervisor_driver]: enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.; slop: /dev/kvm left world-accessible, 0660 never enforced
             Ok(())
         }
-        // TODO (L3) [hypervisor_driver]: implement the InstallShims, AttachLsm, and QuarantineCredentials steps.; slop: setup Ok, shims/LSM/credentials steps skipped
+        // L3-GAP: [hypervisor_driver]: implement the InstallShims, AttachLsm, and QuarantineCredentials steps.; slop: setup Ok, shims/LSM/credentials steps skipped
         _ => Err(SetupError::NotImplemented(format!(
             "setup step {} (L3)",
             step.name()

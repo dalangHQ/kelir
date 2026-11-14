@@ -7,15 +7,9 @@ use kelir_interface::driver_interface::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
-};
-use kelir_interface::protocol_wire::Errno;
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant, PluginDeps};
 
 use crate::ReplayConfig;
-
-// see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
-const ECLOCKREGRESS: Errno = Errno::Eclockregress;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.replay
 impl Default for ReplayConfig {
@@ -100,6 +94,7 @@ impl ReplayState {
         if self.enforce_sample_floor(sample.sampled_at_ns).is_err() {
             return;
         }
+        // TODO (L3) [lc_23_replay_deterministic_seed_reproduces_step_windows]: Condition polling also drives window accrual; wiring lands when Condition predicates register.; slop: Condition-suspended windows never accrue.
         let _ = self.accrue_step_windows();
     }
 
@@ -111,9 +106,9 @@ impl ReplayState {
             *regress = Some(format!(
                 "PMU sample timestamp regressed: {sampled_at_ns}ns behind floor {floor}ns"
             ));
-            return Err(PluginError::reject(
-                ECLOCKREGRESS,
-                "PMU sample timestamp regressed behind the monotonic floor",
+            return Err(PluginError::Halt(
+                "EClockRegress: PMU sample timestamp regressed behind the monotonic floor"
+                    .to_string(),
             ));
         }
         *floor = sampled_at_ns;
@@ -224,7 +219,7 @@ impl ReplayCtx {
 }
 
 // see: cans/plugins/replay.md#Plugin-replay
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct ReplayPlugin {
     config: ReplayConfig,
     state: Arc<ReplayState>,
@@ -309,7 +304,7 @@ impl LifecycleParticipant for ReplayPlugin {
             }
             self.state.mark_pmu_degraded();
         }
-        // TODO (L3) [lc_23_replay_deterministic_seed_reproduces_step_windows]: capture the deterministic RNG seed in the snapshot manifest at replay start; slop: seed never captured, unseeded randomness, replays diverge run to run
+        // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: capture the deterministic RNG seed in the snapshot manifest at replay start; slop: seed never captured, unseeded randomness, replays diverge run to run
         Ok(())
     }
 
@@ -378,6 +373,3 @@ fn is_capability_unsupported(err: &PluginError) -> bool {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for ReplayPlugin {
-    type Deps = NoDeps;
-}

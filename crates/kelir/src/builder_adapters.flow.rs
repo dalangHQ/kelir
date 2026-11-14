@@ -16,7 +16,7 @@ use kelir_interface::protocol_wire::{
     FilterAction, Heartbeat, PostExecAction, ProcessExit, TrapEvent, Verdict,
 };
 
-use crate::builder_sdk::filter_matches;
+use crate::trap_filter::filter_matches;
 
 pub(crate) struct OnTrap;
 pub(crate) struct OnProcessExit;

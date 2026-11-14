@@ -26,6 +26,21 @@ from kelir.plugins.plugin_vault import VaultPlugin as VaultPlugin
 from kelir.plugins.plugin_wire_ingress import WireIngressConfig as WireIngressConfig
 from kelir.plugins.plugin_wire_ingress import WireIngressPlugin as WireIngressPlugin
 
+# see: cans/03-sdk-architecture.md#Python-SDK
+from . import plugin_chaos as chaos
+from . import plugin_container as container
+from . import plugin_db_proxy as db_proxy
+from . import plugin_ledger as ledger
+from . import plugin_mcp as mcp
+from . import plugin_mesh as mesh
+from . import plugin_profile as profile
+from . import plugin_replay as replay
+from . import plugin_supply_chain as supply_chain
+from . import plugin_tool_guard as tool_guard
+from . import plugin_transaction as transaction
+from . import plugin_vault as vault
+from . import plugin_wire_ingress as wire_ingress
+
 __all__ = [
     "ChaosConfig",
     "ChaosPlugin",

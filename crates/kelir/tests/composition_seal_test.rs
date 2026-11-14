@@ -5,19 +5,16 @@ use std::sync::Arc;
 use kelir_engine::Session;
 use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_engine::session_lifecycle::PlaneWiring;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
 use kelir_interface::storage::{FuseOpcode, FuseReply, FuseRequest, SyntheticFile};
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 fn full_wiring() -> PlaneWiring {

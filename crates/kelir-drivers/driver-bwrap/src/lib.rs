@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-// TODO (L3) [lc_12_host_reaper_pdeathsig_enforcement]: read BwrapDriver.child_pid once the supervisor reaps the bwrap child; slop: child pid stored but never read
+// L3-GAP: [lc_12_host_reaper_pdeathsig_enforcement]: read BwrapDriver.child_pid once the supervisor reaps the bwrap child; slop: child pid stored but never read
 #![allow(dead_code)]
 // see: cans/01-architecture.md#Driver-backends
 // see: cans/artifacts/diagrams/host-runtime.txt#driver-bwrap
@@ -33,7 +33,7 @@ impl BwrapDriver {
     }
 
     fn spawn_namespace(&mut self) -> Result<(), VmmError> {
-        // TODO (L3) [hd_09_bwrap_emulated_fallback_opt_in]: spawn bubblewrap/unshare user namespace via raw libc; slop: namespace spawns without opt-in check, silent emulated boot
+        // L3-GAP: [hd_09_bwrap_emulated_fallback_opt_in]: spawn bubblewrap/unshare user namespace via raw libc; slop: namespace spawns without opt-in check, silent emulated boot
         Err(VmmError::Unsupported(
             "bwrap boot: bubblewrap namespace spawn (L3)".into(),
         ))
@@ -61,7 +61,7 @@ impl VmmDriver for BwrapDriver {
                 "emulated fallback not allowed".to_string(),
             ));
         }
-        // TODO (L3) [hypervisor_driver]: deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a namespace wrapper cannot provide it; slop: emulated clock faked as kvm-clock, replay timestamps diverge
+        // L3-GAP: [hypervisor_driver]: deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a namespace wrapper cannot provide it; slop: emulated clock faked as kvm-clock, replay timestamps diverge
         reject_emulated_deterministic_clock("bwrap", config.deterministic_clock)?;
         self.config = Some(config);
         self.spawn_namespace()
@@ -69,7 +69,7 @@ impl VmmDriver for BwrapDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
-        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: swap the workload entropy source for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy
+        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: swap the workload entropy source for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy
         self.entropy_backend = Some(backend);
         self.entropy_offset = 0;
         Ok(())
@@ -77,7 +77,7 @@ impl VmmDriver for BwrapDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
-        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently
+        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
                 offset_bytes: self.entropy_offset,
@@ -93,7 +93,7 @@ impl VmmDriver for BwrapDriver {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
-        // TODO (L3) [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position
+        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
                 self.entropy_offset = position.offset_bytes;

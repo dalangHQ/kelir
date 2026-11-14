@@ -80,9 +80,22 @@ export interface StorageConfig<Ctx = unknown> {
   readonly carryoverBytes?: number;
 }
 
+// see: cans/07-wire-plane.md#Sinkhole-rules
+export interface SinkholeRule {
+  readonly host: string;
+  readonly methods?: readonly string[];
+  readonly paths?: readonly string[];
+  readonly allow?: boolean;
+}
+
 // see: cans/07-wire-plane.md#DNS-policy-filter
 export interface WireConfig {
-  readonly sinkhole?: { readonly dnsExcept: readonly string[] };
+  readonly sinkhole?: {
+    readonly rules?: readonly SinkholeRule[];
+    // see: cans/07-wire-plane.md#Sinkhole-rules
+    readonly dnsExcept?: readonly string[];
+    readonly dropAll?: boolean;
+  };
   readonly sshAgentBridge?: boolean;
   readonly vaults?: readonly {
     readonly name: string;

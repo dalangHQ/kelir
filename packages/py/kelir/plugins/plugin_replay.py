@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "ReplayConfig",
     "ReplayPlugin",
+    "replay",
+    "replay_builder",
 ]
 
 

@@ -262,6 +262,10 @@ fn builder_from_json(value: &Value, name: &str) -> Result<UnifiedBuilderCase, Ve
             expected_outcomes.push(outcome_from_json(entry, name)?);
         }
     }
+    let filter = match value.get("filter") {
+        None | Some(Value::Null) => None,
+        Some(table) => Some(table.clone()),
+    };
     Ok(UnifiedBuilderCase {
         name: builder_name,
         requires,
@@ -270,6 +274,7 @@ fn builder_from_json(value: &Value, name: &str) -> Result<UnifiedBuilderCase, Ve
         scope,
         events,
         expected_outcomes,
+        filter,
     })
 }
 

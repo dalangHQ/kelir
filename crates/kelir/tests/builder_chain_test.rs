@@ -1,19 +1,16 @@
 // see: cans/02-plugin-model.md#Unified-builder
-use kelir::interface::driver_interface::default_vm_config;
-use kelir::interface::plugin_model::{KelirPlugin, PluginError, VetoEvent};
+use kelir::interface::driver_interface::VmConfig;
+use kelir::interface::plugin_model::{KelirPlugin, PluginError, Veto, VetoEvent};
 use kelir::interface::protocol_wire::{PostExecAction, Verdict};
 use kelir::plugin_model::FilterAction;
 use kelir::{HNil, Host, KelirBuilder, NoParams, TrapFilter, Unsealed};
 
 fn test_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
-    KelirBuilder::new(default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    ))
+    KelirBuilder::new(VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    })
 }
 
 fn error_text<T>(result: Result<T, PluginError>) -> String {
@@ -27,7 +24,10 @@ fn error_text<T>(result: Result<T, PluginError>) -> String {
 #[test]
 fn unbreakable_host_chain_seals() {
     let sealed = test_builder()
-        .plugin(KelirBuilder::named("plain").on_trap(|_event, _ctx| Ok(Verdict::Pass)))
+        .plugin(
+            KelirBuilder::named("plain")
+                .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end()),
+        )
         .r#use(
             KelirBuilder::named("second")
                 .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end()),
@@ -57,9 +57,9 @@ fn unbreakable_host_chain_seals() {
             t.on_memory_pressure(|_available, _total| async move { Ok::<(), PluginError>(()) })
                 .end()
         })
-        .group(|b| b.on_net_inbound(|_frame| Ok(FilterAction::Forward)))
+        .group(|b| b.net(|n| n.on_net_inbound(|_frame| Ok(FilterAction::Forward)).end()))
         .guard(true, |b| {
-            b.on_console_output(|_port, chunk| Ok(chunk.to_vec()))
+            b.console(|c| c.on_console_output(|_port, chunk| Ok(chunk.to_vec())).end())
         })
         .seal();
     assert!(sealed.is_ok());
@@ -71,10 +71,28 @@ fn lifecycle_mut_chains_and_returns_builder() {
     let mut builder = test_builder();
     builder
         .lifecycle_mut()
-        .register_veto(VetoEvent::Fork, Box::new(|| true))
-        .register_veto(VetoEvent::Suspend, Box::new(|| false))
+        .register_veto(
+            VetoEvent::Fork,
+            Box::new(|| Veto {
+                allowed: true,
+                by: String::new(),
+                reason: String::new(),
+                recovery: None,
+            }),
+        )
+        .register_veto(
+            VetoEvent::Suspend,
+            Box::new(|| Veto {
+                allowed: false,
+                by: String::new(),
+                reason: String::new(),
+                recovery: None,
+            }),
+        )
         .end();
-    let sealed = builder.on_trap(|_event, _ctx| Ok(Verdict::Pass)).seal();
+    let sealed = builder
+        .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end())
+        .seal();
     assert!(sealed.is_ok());
 }
 
@@ -155,8 +173,10 @@ fn plugin_mode_fork_state_clones_and_fork_with_wins() {
     let plugin = KelirBuilder::named("forked");
     let cloned = plugin.fork_state("child");
     assert_eq!(cloned.name(), "forked");
-    let custom = KelirBuilder::named("parent")
-        .fork_with(|_child| Box::new(KelirBuilder::named("child-plugin")));
+    let custom = KelirBuilder::named("parent").trap_scope(|t| {
+        t.fork_with(|_child| Box::new(KelirBuilder::named("child-plugin")))
+            .end()
+    });
     let forked = custom.fork_state("child");
     assert_eq!(forked.name(), "child-plugin");
 }

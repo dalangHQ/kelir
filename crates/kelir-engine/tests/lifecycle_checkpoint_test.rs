@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use kelir_engine::planes::checkpoint::CheckpointPlane;
 use kelir_interface::checkpoint::PidLineage;
-use kelir_interface::driver_interface::default_vm_config;
+use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::driver_interface::{GuestClock, SnapshotDescriptor};
 use kelir_interface::plugin_model::PluginError;
 
@@ -14,14 +14,11 @@ fn checkpoint_plane() -> CheckpointPlane {
 }
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
-    default_vm_config(
-        None,
-        None,
-        Some("kernel/vmlinux".to_string()),
-        Some("rootfs.erofs".to_string()),
-        None,
-        None,
-    )
+    VmConfig {
+        kernel_path: "kernel/vmlinux".into(),
+        rootfs_erofs_path: "rootfs.erofs".into(),
+        ..VmConfig::default()
+    }
 }
 
 fn descriptor(offset_ns: u64) -> SnapshotDescriptor {
