@@ -24,12 +24,12 @@ impl PipelineEngine {
     }
 
     // see: cans/11-protocol.md#Kind-registration
-    pub fn register_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+    pub fn register_stream_kind(&mut self, kind: u16, sink: Arc<dyn StreamFrameSink>) {
         self.stream_sinks.push((kind, sink, MountScope::default()));
     }
 
     // see: cans/11-protocol.md#Kind-registration
-    pub fn stream_kind_services(&self) -> Vec<(StreamKind, Arc<dyn StreamFrameSink>)> {
+    pub fn stream_kind_services(&self) -> Vec<(u16, Arc<dyn StreamFrameSink>)> {
         self.stream_sinks
             .iter()
             .map(|(kind, sink, _)| (*kind, Arc::clone(sink)))

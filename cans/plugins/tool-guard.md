@@ -45,6 +45,7 @@
         - new_argv: Option<Vec<String>> (replaces execution arguments)
         - set_env: Vec<(String, String)> (ordered injected environment pairs)
         - unset_env: Vec<String> (stripped environment variables)
+        - envp stays a map (observed snapshot); set_env is the ordered mutation delta
       - Guest shim decodes and applies atomically before trapped execve releases
       - Verdict::Drop { errno, reason }: JSON-RPC error response synthesized
       - Verdict::Suspend { until: Approval }: hypervisor external suspend

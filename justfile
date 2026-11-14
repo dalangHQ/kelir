@@ -55,10 +55,10 @@ check-spec:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'
 
-# Pull-request tier: same flags as check-spec, restricted to the touched
-# file list CI writes to /tmp/touched.
+# Pull-request tier: cans 0.21.0 has no --touched-files flag, so the PR tier
+# runs the same refs-only check as check-spec over the whole corpus.
 check-spec-touched:
-    @cans check --touched-files /tmp/touched --json | jq -e '.ok and .exitCode == 0'
+    @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
 
 # --plugin-coverage: every community plugin names a demonstrating example.
 check-plugin-coverage:

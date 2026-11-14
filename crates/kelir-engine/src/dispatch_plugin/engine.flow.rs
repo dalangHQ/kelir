@@ -40,7 +40,7 @@ pub struct PipelineEngine {
     pub(super) telemetry_scopes: Vec<MountScope>,
     pub(super) post_exec_gates: Vec<Arc<dyn PostExecGate>>,
     pub(super) post_exec_scopes: Vec<MountScope>,
-    pub(super) stream_sinks: Vec<(StreamKind, Arc<dyn StreamFrameSink>, MountScope)>,
+    pub(super) stream_sinks: Vec<(u16, Arc<dyn StreamFrameSink>, MountScope)>,
     pub(super) lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     pub(super) parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     pub(super) token_revoker: Option<Arc<dyn TokenRevocation>>,
@@ -126,7 +126,7 @@ impl PipelineBinder for PipelineEngine {
     // see: cans/11-protocol.md#Kind-registration
     fn bind_stream_kind_scoped(
         &mut self,
-        kind: StreamKind,
+        kind: u16,
         sink: Arc<dyn StreamFrameSink>,
         scope: MountScope,
     ) {
@@ -367,7 +367,7 @@ impl PipelineEngine {
     }
 
     // see: cans/11-protocol.md#Kind-registration
-    pub fn stream_sink(&self, kind: StreamKind) -> Option<Arc<dyn StreamFrameSink>> {
+    pub fn stream_sink(&self, kind: u16) -> Option<Arc<dyn StreamFrameSink>> {
         self.stream_sinks
             .iter()
             .find(|(bound, _, _)| *bound == kind)

@@ -64,7 +64,6 @@ export interface NativeHostHandle {
 export interface NativeVmHandle {
   checkpoint(name: string): Promise<NativeSnapshotDescriptorRecord>;
   rollback(snapshot: SnapshotDescriptor): Promise<void>;
-  fork(): Promise<NativeSessionHandle>;
   suspend(path: string): Promise<void>;
   resume(path: string): Promise<void>;
   readonly clock: {
@@ -201,7 +200,6 @@ export class Session {
         fromNativeSnapshotDescriptor(await vm.checkpoint(name)),
       rollback: (snapshot: SnapshotDescriptor): Promise<void> =>
         vm.rollback(snapshot),
-      fork: async (): Promise<Session> => new Session(await vm.fork()),
       suspend: (path: string): Promise<void> => vm.suspend(path),
       resume: (path: string): Promise<void> => vm.resume(path),
       clock: {
@@ -259,6 +257,15 @@ export class Session {
   // see: cans/08-lifecycle.md#CoW-fork
   async fork(): Promise<Session> {
     return new Session(await this.native.fork());
+  }
+
+  // see: cans/08-lifecycle.md#Clock-skew
+  async skewClock(options: {
+    days?: number;
+    hours?: number;
+    ms?: number;
+  }): Promise<void> {
+    return this.vm.clock.skew(options);
   }
 
   async execInGuest(

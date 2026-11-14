@@ -403,7 +403,7 @@
       - `plugin rings --show`
       - `kelir-plugin-cli bump-core --channel <released|main>`: pins the core channel
         - External plugin repos pin released or main before running vectors
-      - `kelir-plugin-cli attest --sign`: signs attestation.json for a plugin repo
+      - `kelir-plugin-cli attest --sign --plugin-path <repo>`: signs attestation
       - `kelir-plugin-cli fixtures --verify`: verifies pinned test oracles against fixtures.toml
       - `kelir-pack`: CLI invocation for single-pass ingestion compiler;
         - see: 12-adapters.md#Ingestion-matrix

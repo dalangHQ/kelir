@@ -40,7 +40,7 @@ use kelir_interface::plugin_model::{
 };
 use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
-    StepVerdict, StreamKind, TrapEvent, Verdict,
+    StepVerdict, TrapEvent, Verdict,
 };
 use kelir_interface::telemetry::{ExecutionReceipt, ReceiptStore};
 use kelir_interface::terminal::LogStream;

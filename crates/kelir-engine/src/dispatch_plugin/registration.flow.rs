@@ -28,7 +28,7 @@ pub struct CustomActionBinding {
 pub struct HostRegistrationState {
     pub on_trap_deny: Option<Arc<TrapDenyCallback>>,
     pub custom_actions: Vec<Arc<CustomActionBinding>>,
-    pub stream_kind_services: Vec<(StreamKind, Arc<dyn StreamFrameSink>)>,
+    pub stream_kind_services: Vec<(u16, Arc<dyn StreamFrameSink>)>,
     pub lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     pub token_revoker: Option<Arc<dyn TokenRevocation>>,
 }

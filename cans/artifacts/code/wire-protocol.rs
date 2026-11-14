@@ -33,6 +33,8 @@ pub const FLAG_DATA: u8 = 0x02;
 pub const FLAG_CLOSE: u8 = 0x04;
 pub const FLAG_RST: u8 = 0x08;
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
+// Continuation bit is reserved; split semantics TBD (see: cans/plugins/mcp.md#MCP-contract).
+pub const FLAG_CONTINUATION_RESERVED: u8 = 0x20;
 
 // Per-stream credit windows: a sender parks when its stream's credit
 // is exhausted, and resumes on FLAG_WINDOW_UPDATE.

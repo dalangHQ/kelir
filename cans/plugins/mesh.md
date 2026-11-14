@@ -3,7 +3,7 @@
     - Plugin identifier: plugin-mesh
     - Owner crate: crates/kelir-plugins/plugin-mesh
     - name() = "mesh"
-    - Tier 1-adjacent base transport (mesh)
+    - Tier 1 base transport (mesh)
     - Depends on (mesh): kelir-interface
     - VirtIO device attachment (mesh): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (mesh): see: 08-lifecycle.md#Lifecycle-vetoes

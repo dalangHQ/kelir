@@ -39,7 +39,7 @@
       - Snapshot and rollback scope
         - Snapshots capture compute + disk, not distributed network state
         - Rollback boundary: see: 08-lifecycle.md#Rollback
-        - Base snapshots: see: 09-snapshots.md#Snapshot-taxonomy
+        - Base snapshots: see: 09-snapshots.md#Base-snapshot
         - Fast-boot cache: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
       - Strict hardware/kernel abstraction layer
         - Zero knowledge of prompts, evaluation loops, or orchestration logic

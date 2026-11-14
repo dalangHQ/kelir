@@ -360,11 +360,11 @@ impl StreamFrameSink for ProfileCtxStreamSink {
     fn on_stream_frame(
         &self,
         _stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         _flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError> {
-        if kind != StreamKind::ProfileSync {
+        if kind != StreamKind::ProfileSync as u16 {
             return Ok(());
         }
         self.ctx.dispatch_profile_sync(payload)?;
@@ -388,7 +388,7 @@ impl KelirPlugin for ProfilePlugin {
             ctx: self.context(),
         });
         pipeline.bind_stream_kind_scoped(
-            StreamKind::ProfileSync,
+            StreamKind::ProfileSync as u16,
             sink,
             MountScope::default().with_stream_kinds([StreamKind::ProfileSync]),
         );

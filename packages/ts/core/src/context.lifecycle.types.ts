@@ -14,7 +14,6 @@ import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.js";
 export interface VmHandle {
   checkpoint(name: string): Promise<SnapshotDescriptor>;
   rollback(snapshot: SnapshotDescriptor): Promise<void>;
-  fork(): Promise<Session>;
   suspend(path: string): Promise<void>;
   resume(path: string): Promise<void>;
   readonly clock: {

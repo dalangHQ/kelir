@@ -9,7 +9,7 @@
         - Ancestors remain shareable by later restores; CoW page sharing
           - applies across all concurrent children of the same ancestor
         - Depth is unbounded
-    - Base snapshot (engine-internal)
+    - Base snapshot
       - Format: parent_digest: None
       - Cache path and lease row: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
       - Not visible in session.lineage(root_pid); not exported by session.vm.export_snapshot

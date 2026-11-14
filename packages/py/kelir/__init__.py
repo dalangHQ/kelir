@@ -464,9 +464,6 @@ class VmHandle:
         native = _require_native(self._native, "vm rollback")
         native.rollback(_snapshot_to_dict(snapshot))
 
-    async def fork(self) -> Session:
-        return await self._session.fork()
-
     async def suspend(self, path: str) -> None:
         native = _require_native(self._native, "vm suspend")
         native.suspend(path)

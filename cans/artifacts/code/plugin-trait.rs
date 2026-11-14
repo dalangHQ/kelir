@@ -216,22 +216,22 @@ pub trait PipelineBinder {
         self.bind_telemetry_scoped(stage, MountScope::default());
     }
     fn bind_telemetry_scoped(&mut self, stage: Arc<dyn SystemTelemetryParticipant>, scope: MountScope);
-    /// Binds a sink to one stream kind on the generic stream mux
+    /// Binds a sink to one stream kind (u16) on the generic stream mux
     /// (channel 0x0001); the sink receives every mux frame of that kind.
-    fn bind_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+    fn bind_stream_kind(&mut self, kind: u16, sink: Arc<dyn StreamFrameSink>) {
         self.bind_stream_kind_scoped(kind, sink, MountScope::default());
     }
-    fn bind_stream_kind_scoped(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>, scope: MountScope);
+    fn bind_stream_kind_scoped(&mut self, kind: u16, sink: Arc<dyn StreamFrameSink>, scope: MountScope);
 }
 
-/// Stream-mux frame sink: one bound sink per StreamKind receives every
+/// Stream-mux frame sink: one bound sink per stream kind (u16) receives every
 /// mux frame (stream_id-keyed) of that kind. Synchronous like the other
 /// hot-path hooks; slow work yields through the ring trampolines.
 pub trait StreamFrameSink: Send + Sync {
     fn on_stream_frame(
         &self,
         stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError>;

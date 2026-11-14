@@ -84,11 +84,11 @@ impl StreamFrameSink for McpCtxStreamSink {
     fn on_stream_frame(
         &self,
         _stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         _flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError> {
-        if kind != StreamKind::McpConsole {
+        if kind != StreamKind::McpConsole as u16 {
             return Ok(());
         }
         block_on(self.service.route_request(payload))?;
@@ -147,7 +147,7 @@ impl KelirPlugin for McpPlugin {
             service: self.service.clone(),
         });
         pipeline.bind_stream_kind_scoped(
-            StreamKind::McpConsole,
+            StreamKind::McpConsole as u16,
             sink,
             MountScope::default().with_stream_kinds([StreamKind::McpConsole]),
         );

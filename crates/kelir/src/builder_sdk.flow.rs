@@ -13,7 +13,7 @@ use kelir_interface::plugin_model::{
     LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, PostExecGate,
     StreamFrameSink, SystemTelemetryParticipant, TrapInterposer, VetoEvent, VetoList,
 };
-use kelir_interface::protocol_wire::{StreamKind, TrapEvent};
+use kelir_interface::protocol_wire::TrapEvent;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
@@ -173,7 +173,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
     fn on_stream_frame(
         &self,
         _stream_id: u32,
-        _kind: StreamKind,
+        _kind: u16,
         _flags: u8,
         _payload: &[u8],
     ) -> Result<(), PluginError> {
@@ -739,14 +739,8 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             engine.register_custom_action(entry.name, entry.handler);
         }
         for entry in std::mem::take(&mut registration.stream_kind_services) {
-            let Some(kind) = StreamKind::from_u16(entry.kind) else {
-                return Err(PluginError::reject(
-                    Errno::Eunknownkind,
-                    format!("stream kind 0x{:04x} is not registered", entry.kind),
-                ));
-            };
             engine.register_stream_kind(
-                kind,
+                entry.kind,
                 Arc::new(SdkStreamServiceSink {
                     handler: entry.handler,
                 }),

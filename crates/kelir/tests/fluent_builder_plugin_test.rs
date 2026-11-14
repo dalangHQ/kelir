@@ -11,7 +11,7 @@ use kelir::interface::plugin_model::{
     MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder, PluginError, PostExecGate,
     StreamFrameSink, SystemTelemetryParticipant, TokenRevocation, TrapInterposer,
 };
-use kelir::interface::protocol_wire::{StreamKind, Verdict};
+use kelir::interface::protocol_wire::Verdict;
 use kelir::interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir::plugin_model::FilterAction;
 use kelir::{HNil, Host, KelirBuilder, NoParams, ProfilePlugin, TrapFilter, Unsealed};
@@ -91,7 +91,7 @@ impl PipelineBinder for RecordingBinder {
 
     fn bind_stream_kind_scoped(
         &mut self,
-        _kind: StreamKind,
+        _kind: u16,
         _sink: Arc<dyn StreamFrameSink>,
         _scope: MountScope,
     ) {

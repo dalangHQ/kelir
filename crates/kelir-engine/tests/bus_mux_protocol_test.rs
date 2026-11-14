@@ -10,7 +10,7 @@ use kelir_interface::protocol_wire::{MsgType, StreamKind};
 use kelir_transport::Transport;
 use kelir_transport::spsc_ring::OwnedSpscRing;
 
-type SinkCall = (u32, StreamKind, u8, Vec<u8>);
+type SinkCall = (u32, u16, u8, Vec<u8>);
 
 struct RecordingSink {
     calls: Mutex<Vec<SinkCall>>,
@@ -28,7 +28,7 @@ impl kelir_engine::bus::StreamFrameSink for RecordingSink {
     fn on_stream_frame(
         &self,
         stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError> {
@@ -60,7 +60,7 @@ fn pm_04_plugin_stream_kind_dynamic_registration() -> Result<(), String> {
     let sink = Arc::new(RecordingSink::new());
     dispatcher
         .bind_stream_sink(
-            StreamKind::ProfileSync,
+            StreamKind::ProfileSync as u16,
             Arc::clone(&sink) as Arc<dyn kelir_engine::bus::StreamFrameSink>,
         )
         .map_err(|e| e.to_string())?;
@@ -78,7 +78,7 @@ fn pm_04_plugin_stream_kind_dynamic_registration() -> Result<(), String> {
     }
     assert_eq!(
         dispatcher.active_stream_kind(7),
-        Some(StreamKind::ProfileSync)
+        Some(StreamKind::ProfileSync as u16)
     );
     dispatcher
         .route_stream_frame(7, FLAG_DATA, b"hello")
@@ -89,7 +89,7 @@ fn pm_04_plugin_stream_kind_dynamic_registration() -> Result<(), String> {
         .map_err(|_| "sink lock poisoned".to_string())?;
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, 7);
-    assert_eq!(calls[0].1, StreamKind::ProfileSync);
+    assert_eq!(calls[0].1, StreamKind::ProfileSync as u16);
     assert_eq!(calls[0].2, FLAG_DATA);
     assert_eq!(calls[0].3, b"hello");
     Ok(())
@@ -206,5 +206,47 @@ fn pm_11_wire_framing_checked_math_validation() -> Result<(), String> {
         Err(e) => return Err(format!("oversized frame gave wrong error: {e}")),
         Ok(()) => return Err("oversized frame accepted".to_string()),
     }
+    Ok(())
+}
+
+// see: cans/11-protocol.md#Kind-registration
+#[test]
+fn pm_04_plugin_kind_open_admitted_when_sink_registered() -> Result<(), String> {
+    let mut control_ring = OwnedSpscRing::new(131072);
+    let mut mux_ring = OwnedSpscRing::new(262144);
+    let mut mux_writer = mux_ring.transport();
+    let mut dispatcher = BusDispatcher::new(control_ring.transport(), mux_ring.transport());
+    let sink = Arc::new(RecordingSink::new());
+    dispatcher
+        .bind_stream_sink(
+            0x0019,
+            Arc::clone(&sink) as Arc<dyn kelir_engine::bus::StreamFrameSink>,
+        )
+        .map_err(|e| e.to_string())?;
+    let open = mux_frame(9, FLAG_OPEN, &[0x19, 0x00]);
+    let written = mux_writer.write(&open).map_err(|e| e.to_string())?;
+    assert_eq!(written, open.len());
+    let ingress = dispatcher.poll_ingress().map_err(|e| e.to_string())?;
+    match ingress {
+        Some((stream_id, flags, payload)) => {
+            assert_eq!(stream_id, 9);
+            assert_eq!(flags, FLAG_OPEN);
+            assert_eq!(payload, vec![0x19u8, 0x00]);
+        }
+        None => return Err("OPEN frame never arrived".to_string()),
+    }
+    assert_eq!(dispatcher.active_stream_kind(9), Some(0x0019));
+    dispatcher
+        .route_stream_frame(9, FLAG_DATA, b"hello")
+        .map_err(|e| e.to_string())?;
+    let calls = sink
+        .calls
+        .lock()
+        .map_err(|_| "sink lock poisoned".to_string())?;
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, 9);
+    assert_eq!(calls[0].1, 0x0019);
+    assert_eq!(calls[0].2, FLAG_DATA);
+    assert_eq!(calls[0].3, b"hello");
     Ok(())
 }

@@ -613,6 +613,16 @@ impl NativeSessionHandle {
         )
     }
 
+    // see: cans/08-lifecycle.md#Clock-skew
+    #[napi]
+    pub async fn skew_clock(&self, options: NativeClockSkewOptions) -> Result<()> {
+        self.vm
+            .clock
+            .skew(skew_duration(options)?)
+            .await
+            .map_err(halt)
+    }
+
     #[napi]
     pub async fn spawn(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
         // TODO (L3) [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved

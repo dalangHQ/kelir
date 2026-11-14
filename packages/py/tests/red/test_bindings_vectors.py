@@ -11,7 +11,7 @@ VECTORS_PATH = Path(__file__).resolve().parents[4] / "vectors.json"
 
 def bp_02_python_vectors_parity_frame_verdict_equality() -> None:
     vectors = json.loads(VECTORS_PATH.read_text())["vectors"]
-    assert len(vectors) == 58, f"bp_02: vectors.json carries {len(vectors)} vectors, expected 58"
+    assert len(vectors) == 63, f"bp_02: vectors.json carries {len(vectors)} vectors, expected 63"
     assert vectors[0]["name"] == "trap-git-commit-pass", (
         "bp_02: vectors.json first vector is "
         f"{vectors[0]['name']}, expected trap-git-commit-pass"
@@ -20,11 +20,11 @@ def bp_02_python_vectors_parity_frame_verdict_equality() -> None:
     if consumer is None:
         raise AssertionError(
             "bp_02: the Python SDK exports no parity vector consumer "
-            "(kelir.run_parity_vectors), so the 58 vectors.json frames cannot be reproduced"
+            "(kelir.run_parity_vectors), so the 63 vectors.json frames cannot be reproduced"
         )
     results = consumer(str(VECTORS_PATH))
-    assert len(results) == 58, (
-        f"bp_02: the Python vector consumer asserted {len(results)} vectors, expected 58"
+    assert len(results) == 63, (
+        f"bp_02: the Python vector consumer asserted {len(results)} vectors, expected 63"
     )
     for vector, result in zip(vectors, results):
         assert result["frame_hex"] == vector["frame"]["frame_hex"], (

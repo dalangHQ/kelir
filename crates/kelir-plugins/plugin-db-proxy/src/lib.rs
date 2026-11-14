@@ -207,11 +207,11 @@ impl StreamFrameSink for DbSqliteStreamSink {
     fn on_stream_frame(
         &self,
         stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         _flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError> {
-        if kind != StreamKind::DbSqlite {
+        if kind != StreamKind::DbSqlite as u16 {
             return Ok(());
         }
         let mut frame = payload.to_vec();
@@ -251,7 +251,7 @@ impl KelirPlugin for DbProxyPlugin {
             bridge: self.sqlite_bridge(),
         });
         pipeline.bind_stream_kind_scoped(
-            StreamKind::DbSqlite,
+            StreamKind::DbSqlite as u16,
             sink,
             MountScope::default().with_stream_kinds([StreamKind::DbSqlite]),
         );

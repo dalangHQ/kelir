@@ -16,7 +16,7 @@ const POLL_SCRATCH_LEN: usize = 4096;
 pub struct BusDispatcher {
     control_transport: kelir_transport::spsc_ring::SpscRingTransport,
     stream_mux_transport: kelir_transport::spsc_ring::SpscRingTransport,
-    active_streams: RwLock<HashMap<u32, kelir_interface::protocol_wire::StreamKind>>,
+    active_streams: RwLock<HashMap<u32, u16>>,
     stream_sinks: RwLock<HashMap<u16, Arc<dyn StreamFrameSink>>>,
     mux_rx: Vec<u8>,
 }
@@ -86,19 +86,19 @@ impl BusDispatcher {
     // see: cans/11-protocol.md#Control-channel
     pub fn bind_stream_sink(
         &self,
-        kind: StreamKind,
+        kind: u16,
         sink: Arc<dyn StreamFrameSink>,
     ) -> Result<(), PluginError> {
         match self.stream_sinks.write() {
             Ok(mut guard) => {
-                guard.insert(kind as u16, sink);
+                guard.insert(kind, sink);
                 Ok(())
             }
             Err(_) => Err(PluginError::Halt("stream sink registry poisoned".into())),
         }
     }
 
-    pub fn active_stream_kind(&self, stream_id: u32) -> Option<StreamKind> {
+    pub fn active_stream_kind(&self, stream_id: u32) -> Option<u16> {
         self.active_streams.read().ok()?.get(&stream_id).copied()
     }
 
@@ -110,7 +110,13 @@ impl BusDispatcher {
             ));
         }
         let kind_id = u16::from_le_bytes([payload[0], payload[1]]);
-        let Some(kind) = StreamKind::from_u16(kind_id) else {
+        let known = StreamKind::from_u16(kind_id).is_some()
+            || self
+                .stream_sinks
+                .read()
+                .map(|guard| guard.contains_key(&kind_id))
+                .unwrap_or(false);
+        let Some(kind) = known.then_some(kind_id) else {
             return Err(PluginError::Halt(format!(
                 "EUnknownKind: stream kind 0x{kind_id:04x} is not registered"
             )));
@@ -159,12 +165,12 @@ impl BusDispatcher {
             )));
         };
         let sink = match self.stream_sinks.read() {
-            Ok(guard) => guard.get(&(kind as u16)).cloned(),
+            Ok(guard) => guard.get(&kind).cloned(),
             Err(_) => return Err(PluginError::Halt("stream sink registry poisoned".into())),
         };
         let Some(sink) = sink else {
             return Err(PluginError::Halt(format!(
-                "no stream sink bound for kind {kind:?}"
+                "no stream sink bound for kind 0x{kind:04x}"
             )));
         };
         sink.on_stream_frame(stream_id, kind, flags, payload)

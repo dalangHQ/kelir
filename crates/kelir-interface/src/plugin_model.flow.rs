@@ -20,8 +20,7 @@ pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
 use crate::protocol_wire::{
-    FilterAction, Heartbeat, PostExecAction, ProcessExit, StreamKind, SuspendUntil, TrapEvent,
-    Verdict,
+    FilterAction, Heartbeat, PostExecAction, ProcessExit, SuspendUntil, TrapEvent, Verdict,
 };
 use crate::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -477,12 +476,12 @@ pub trait PipelineBinder {
         scope: MountScope,
     );
     // see: cans/11-protocol.md#Kind-registration
-    fn bind_stream_kind(&mut self, kind: StreamKind, sink: Arc<dyn StreamFrameSink>) {
+    fn bind_stream_kind(&mut self, kind: u16, sink: Arc<dyn StreamFrameSink>) {
         self.bind_stream_kind_scoped(kind, sink, MountScope::default());
     }
     fn bind_stream_kind_scoped(
         &mut self,
-        kind: StreamKind,
+        kind: u16,
         sink: Arc<dyn StreamFrameSink>,
         scope: MountScope,
     );
@@ -498,7 +497,7 @@ pub trait StreamFrameSink: Send + Sync {
     fn on_stream_frame(
         &self,
         stream_id: u32,
-        kind: StreamKind,
+        kind: u16,
         flags: u8,
         payload: &[u8],
     ) -> Result<(), PluginError>;

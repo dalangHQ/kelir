@@ -450,7 +450,7 @@
       - Hook returns WatchdogVerdict (ExecuteDefault | Suppress | Mitigate)
       - ExecuteDefault triggers configured WatchdogAction (Reboot | Terminate)
       - Mitigate delegates recovery to host policy handler
-      - WatchdogAction::Terminate synthesizes WatchdogDiagnostic from host
+      - Terminate synthesizes WatchdogDiagnostic only when emit_diagnostic is set
       - Carries fired_at_ns, last_heartbeat_ms, and last active PID
       - Evaluates completely host-side without guest kernel cooperation
       - This is the extension point for custom actions

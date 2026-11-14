@@ -73,7 +73,7 @@ jobs:
       - name: Sign attestation
         env:
           KEY: ${{ secrets.KELIR_ATTEST_KEY }}
-        run: cargo run -p kelir-plugin-cli -- attest --sign
+        run: cargo run -p kelir-plugin-cli -- attest --sign --plugin-path .
       - uses: actions/upload-artifact@v4
         with:
           name: attestation-${{ inputs.plugin }}

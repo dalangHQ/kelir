@@ -35,7 +35,7 @@
     - MCP contract
       - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
       - Framing: JSON Lines; one object for each \n, no Content-Length
-      - Max frame: 64 KB (see 11-protocol.md#Wire-framing); larger split via FLAG_CONTINUATION
+      - Max frame: 64 KB (see 11-protocol.md#Wire-framing); split via reserved 0x20 bit
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mcp)

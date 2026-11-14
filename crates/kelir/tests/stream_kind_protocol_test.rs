@@ -81,7 +81,7 @@ impl kelir::interface::plugin_model::StreamFrameSink for ContractSink {
     fn on_stream_frame(
         &self,
         _stream_id: u32,
-        _kind: kelir::interface::protocol_wire::StreamKind,
+        _kind: u16,
         _flags: u8,
         _payload: &[u8],
     ) -> Result<(), kelir::plugin_model::PluginError> {
@@ -94,7 +94,7 @@ impl kelir::interface::plugin_model::StreamFrameSink for ContractSink {
 fn engine_stream_kind_services_bind_canonical_sink() -> Result<(), String> {
     let mut engine = kelir_engine::dispatch_plugin::PipelineEngine::new();
     engine.register_stream_kind(
-        kelir::interface::protocol_wire::StreamKind::Bulk,
+        kelir::interface::protocol_wire::StreamKind::Bulk as u16,
         std::sync::Arc::new(ContractSink),
     );
     let services = engine.stream_kind_services();

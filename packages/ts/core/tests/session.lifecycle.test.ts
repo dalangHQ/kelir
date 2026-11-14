@@ -202,10 +202,6 @@ function fakeNativeSession(options?: {
       rollback: async (snapshot: SnapshotDescriptor): Promise<void> => {
         record("vm.rollback", snapshot);
       },
-      fork: async (): Promise<NativeSessionHandle> => {
-        record("vm.fork");
-        return fakeNativeSession();
-      },
       suspend: async (path: string): Promise<void> => {
         record("vm.suspend", path);
       },
@@ -507,14 +503,14 @@ async function sessionWrapsVmPlane(): Promise<void> {
     callsOf(native, "vm.checkpoint")[0].args[0] === "boot",
     "vm.checkpoint forwards the snapshot name",
   );
-  const forked = await session.vm.fork();
+  const forked = await session.fork();
   check(
     forked instanceof Session,
-    "vm.fork returns a Session wrapping the forked native handle",
+    "session.fork returns a Session wrapping the forked native handle",
   );
   check(
     forked.driverName === "qemu-microvm",
-    "vm.fork preserves the forked driver name",
+    "session.fork preserves the forked driver name",
   );
   const descriptor: SnapshotDescriptor = {
     id: "snap-rollback",
@@ -534,6 +530,11 @@ async function sessionWrapsVmPlane(): Promise<void> {
   check(
     callsOf(native, "vm.clock.skew")[0].args[0] === skewOptions,
     "vm.clock.skew forwards the options by identity",
+  );
+  await session.skewClock(skewOptions);
+  check(
+    callsOf(native, "vm.clock.skew")[1].args[0] === skewOptions,
+    "session.skewClock forwards the options to the vm clock",
   );
   await session.vm.adjustBalloon(256);
   check(

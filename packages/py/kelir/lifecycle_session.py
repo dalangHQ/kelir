@@ -1,6 +1,7 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,10 @@ class Session:
     async def fork(self) -> Session:
         native = kelir._require_native(self._native, "session fork")
         return Session.from_native(native.fork())
+
+    # see: cans/08-lifecycle.md#Clock-skew
+    async def skew_clock(self, seconds: float) -> None:
+        await self.vm.clock.skew(timedelta(seconds=seconds))
 
     async def rollback(self, snapshot: SnapshotDescriptor | None = None) -> None:
         if snapshot is not None:

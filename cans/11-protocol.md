@@ -276,6 +276,7 @@
       - 0x04 CLOSE
       - 0x08 RST (peer aborted)
       - 0x10 WINDOW_UPDATE (backpressure)
+      - 0x20 RESERVED (continuation bit; split semantics TBD at L3)
     - Per-stream credit windows; credit exhausted parks sender
     - Backpressure inherits ring/transport semantics, not new framing
     - Zero-copy splice between mux and ring backends on supported platforms
