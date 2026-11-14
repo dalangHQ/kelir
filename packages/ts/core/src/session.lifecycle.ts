@@ -242,16 +242,34 @@ export class Session {
   }
 
   // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-  ctx<T>(plugin: string): T {
-    const found = this.native.pluginContexts?.find(
+  cap<T>(plugin: string): T | undefined {
+    return this.native.pluginContexts?.find(
       (entry) => entry.name === plugin,
-    )?.ctx;
-    if (found === undefined) {
-      throw new EConfig(
-        `kelir session has no registered plugin context '${plugin}'`,
-      );
+    )?.ctx as T | undefined;
+  }
+
+  // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+  plane<T>(name: string): T | undefined {
+    switch (name) {
+      case "vm":
+        return this.vm as T;
+      case "terminal":
+        return this.terminal as T;
+      case "storage":
+        return this.storage as T;
+      case "wire":
+        return this.wire as T;
+      case "checkpoint":
+        return this.checkpoint as T;
+      case "host":
+        return this.host as T;
+      case "vsock":
+        return this.vsock as T;
+      case "step":
+        return this.step as T;
+      default:
+        return undefined;
     }
-    return found as T;
   }
 
   // see: cans/08-lifecycle.md#CoW-fork

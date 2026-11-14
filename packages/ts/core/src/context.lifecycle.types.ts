@@ -122,9 +122,13 @@ export interface TrapContext {
   patch(mutation: ExecveMutation | CustomActionPayload): Verdict;
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
+  cap<T>(name: string): T | undefined;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type HandlerContext<Ctx, Params> = TrapContext & Ctx & {
-  readonly params: Params;
-};
+export type HandlerContext<Ctx, Params> = TrapContext &
+  Ctx & {
+    readonly params: Params;
+    cap<K extends keyof Ctx & string>(name: K): Ctx[K] | undefined;
+    cap<T>(name: string): T | undefined;
+  };

@@ -334,6 +334,14 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  pluginInstance<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+    plugin: P & ValidateDeps<Ctx, P>,
+  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+    this.checkVerb(".pluginInstance");
+    return this.use(plugin);
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
   private checkedTrapContext(event: unknown): HandlerContext<Ctx, Params> {
     if (this.paramsSchema !== undefined) {
       if (
