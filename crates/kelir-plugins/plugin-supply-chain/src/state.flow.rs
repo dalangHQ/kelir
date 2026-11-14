@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, NoDeps, PipelineBinder, PluginDeps, TrapInterposer,
+    HandlerCtx, KelirPlugin, PipelineBinder, PluginDeps, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
@@ -74,7 +74,7 @@ impl JitValidationService for SupplyChainCtx {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct SupplyChainPlugin {
     state: Arc<SupplyChainState>,
 }
@@ -256,6 +256,3 @@ impl TrapInterposer for SupplyChainPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for SupplyChainPlugin {
-    type Deps = NoDeps;
-}

@@ -7,9 +7,7 @@ use kelir_interface::driver_interface::{
     EntropyBackend, EntropyStreamPosition, PmuSample, PmuSampler, VmmError,
 };
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
-};
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleCtx, LifecycleParticipant, PluginDeps};
 use kelir_interface::protocol_wire::Errno;
 
 use crate::ReplayConfig;
@@ -224,7 +222,7 @@ impl ReplayCtx {
 }
 
 // see: cans/plugins/replay.md#Plugin-replay
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct ReplayPlugin {
     config: ReplayConfig,
     state: Arc<ReplayState>,
@@ -378,6 +376,3 @@ fn is_capability_unsupported(err: &PluginError) -> bool {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for ReplayPlugin {
-    type Deps = NoDeps;
-}

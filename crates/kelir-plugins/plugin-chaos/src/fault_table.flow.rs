@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, NoDeps, PipelineBinder, PluginDeps,
+    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder, PluginDeps,
 };
 use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
 
@@ -51,7 +51,7 @@ impl FaultInjectionService for FaultTable {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PluginDeps)]
 pub struct ChaosPlugin {
     pub fault_table: Arc<FaultTable>,
 }
@@ -165,9 +165,6 @@ impl KelirPlugin for ChaosPlugin {
 }
 
 // see: cans/plugins/chaos.md#Plugin-chaos
-impl PluginDeps for ChaosPlugin {
-    type Deps = NoDeps;
-}
 
 // TODO (L3) [plugin_engine]: construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait; slop: facade cycle: plugin-chaos depends on facade, build breaks cyclically
 

@@ -25,7 +25,7 @@ fn cargo_toml(name: &str) -> String {
 // see: cans/02-plugin-model.md#Plugin-ownership
 fn lib_rs(name: &str, struct_name: &str) -> String {
     format!(
-        "// see: cans/02-plugin-model.md#Plugin-ownership\n#![forbid(unsafe_code)]\n\nuse kelir_interface::plugin_model::{{KelirPlugin, NoDeps, PluginDeps}};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\n#[derive(Clone, Default)]\npub struct {struct_name};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl KelirPlugin for {struct_name} {{\n    type Context = ();\n    fn context(&self) -> Self::Context {{}}\n    fn name(&self) -> &str {{\n        \"{name}\"\n    }}\n}}\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl PluginDeps for {struct_name} {{\n    type Deps = NoDeps;\n}}\n"
+        "// see: cans/02-plugin-model.md#Plugin-ownership\n#![forbid(unsafe_code)]\n\nuse kelir_interface::plugin_model::{{KelirPlugin, PluginDeps}};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\n#[derive(Clone, Default, PluginDeps)]\npub struct {struct_name};\n\n// see: cans/02-plugin-model.md#KelirPlugin-trait\nimpl KelirPlugin for {struct_name} {{\n    type Context = ();\n    fn context(&self) -> Self::Context {{}}\n    fn name(&self) -> &str {{\n        \"{name}\"\n    }}\n}}\n"
     )
 }
 

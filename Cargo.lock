@@ -813,6 +813,7 @@ dependencies = [
  "blake3",
  "ciborium",
  "globset",
+ "kelir-interface-macros",
  "libc",
  "quote",
  "serde",
@@ -820,6 +821,15 @@ dependencies = [
  "syn 2.0.119",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "kelir-interface-macros"
+version = "1.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

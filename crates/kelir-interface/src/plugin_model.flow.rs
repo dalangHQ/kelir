@@ -608,6 +608,9 @@ pub trait PluginDeps {
     type Deps;
 }
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub use kelir_interface_macros::PluginDeps;
+
 #[async_trait]
 pub trait LifecycleParticipant: Send + Sync {
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {

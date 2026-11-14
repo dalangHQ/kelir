@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PipelineBinder,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
     PluginDeps,
 };
 use kelir_interface::protocol_wire::Errno;
@@ -111,7 +111,7 @@ impl MeshState {
 }
 
 // see: cans/plugins/mesh.md#Plugin-mesh
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct MeshPlugin {
     config: MeshConfig,
     pub(crate) state: Arc<MeshState>,
@@ -278,9 +278,6 @@ impl LifecycleParticipant for MeshPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for MeshPlugin {
-    type Deps = NoDeps;
-}
 
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
 #[async_trait]

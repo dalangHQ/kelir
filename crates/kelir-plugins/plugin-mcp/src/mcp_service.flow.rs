@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-    MountScope, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink, TrapInterposer, VirtioDevice,
+    MountScope, PipelineBinder, PluginDeps, StreamFrameSink, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
 use kelir_interface::runtime_block::block_on;
@@ -97,7 +97,7 @@ impl StreamFrameSink for McpCtxStreamSink {
 }
 
 // see: cans/plugins/mcp.md#Plugin-mcp
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct McpPlugin {
     pub service: McpEndpointService,
 }
@@ -155,9 +155,6 @@ impl KelirPlugin for McpPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for McpPlugin {
-    type Deps = NoDeps;
-}
 
 #[async_trait]
 impl LifecycleParticipant for McpPlugin {

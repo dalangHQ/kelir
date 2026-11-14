@@ -5,8 +5,7 @@ use std::sync::{Arc, Mutex};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, NoDeps, PipelineBinder, PluginDeps,
-    StreamFrameSink,
+    KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, PluginDeps, StreamFrameSink,
 };
 use kelir_interface::protocol_wire::StreamKind;
 use serde_json::Value;
@@ -275,7 +274,7 @@ impl ProfileState {
 }
 
 // see: cans/plugins/profile.md#Plugin-profile
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct ProfilePlugin {
     state: Arc<ProfileState>,
 }
@@ -396,8 +395,5 @@ impl KelirPlugin for ProfilePlugin {
 }
 
 // see: cans/plugins/profile.md#Plugin-profile
-impl PluginDeps for ProfilePlugin {
-    type Deps = NoDeps;
-}
 
 impl LifecycleParticipant for ProfilePlugin {}

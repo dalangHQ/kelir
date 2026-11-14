@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, MountScope, NetInterposer, NoDeps, PipelineBinder, PluginDeps, StreamFrameSink,
+    KelirPlugin, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
     VirtioDevice,
 };
 use kelir_interface::protocol_wire::{Errno, FilterAction, StreamKind, Verdict};
@@ -82,7 +82,7 @@ pub struct DbProxyConfig {
 }
 
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct DbProxyPlugin {
     pub config: DbProxyConfig,
     pub proxy: Arc<SqlProxy>,
@@ -259,9 +259,6 @@ impl KelirPlugin for DbProxyPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for DbProxyPlugin {
-    type Deps = NoDeps;
-}
 
 // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
 impl NetInterposer for DbProxyPlugin {

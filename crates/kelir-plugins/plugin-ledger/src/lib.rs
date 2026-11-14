@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, NoDeps, PluginDeps};
+use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, PluginDeps};
 use kelir_interface::telemetry::CausalDelta;
 use kelir_otlp::registry_otlp::{MetricRegistry, MetricSnapshot};
 use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
@@ -183,7 +183,7 @@ impl LedgerCtx {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct LedgerPlugin {
     pub merkle_enabled: bool,
     pub otel: OtelConfig,
@@ -269,6 +269,3 @@ impl KelirPlugin for LedgerPlugin {
 impl LifecycleParticipant for LedgerPlugin {}
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for LedgerPlugin {
-    type Deps = NoDeps;
-}

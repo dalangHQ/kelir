@@ -8,8 +8,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
-    PipelineBinder, PluginDeps, TrapInterposer,
+    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
+    PluginDeps, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{Errno, TrapEvent, Verdict};
 
@@ -81,7 +81,7 @@ impl Default for ContainerConfig {
 }
 
 // see: cans/plugins/container.md#Plugin-container
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct ContainerPlugin {
     config: ContainerConfig,
     service: Arc<SharedContainerService>,
@@ -206,9 +206,6 @@ impl KelirPlugin for ContainerPlugin {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for ContainerPlugin {
-    type Deps = NoDeps;
-}
 
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 #[async_trait]

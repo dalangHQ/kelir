@@ -8,8 +8,8 @@ use kelir_interface::driver_interface::Stream;
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
-    PipelineBinder, PluginDeps, TokenRevocation, VirtioDevice,
+    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
+    PluginDeps, TokenRevocation, VirtioDevice,
 };
 use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
@@ -111,7 +111,7 @@ impl MetadataEndpoint {
 }
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
-#[derive(Clone)]
+#[derive(Clone, PluginDeps)]
 pub struct VaultPlugin {
     config: VaultConfig,
     endpoint: Arc<MetadataEndpoint>,
@@ -415,6 +415,3 @@ fn json_string(value: &str) -> String {
 }
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait
-impl PluginDeps for VaultPlugin {
-    type Deps = NoDeps;
-}
