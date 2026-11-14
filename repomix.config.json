@@ -28,11 +28,11 @@
     }
   },
   "include": [
-        "AGENTS.md",
-    // "cans/",
+     //   "AGENTS.md",
+     "cans/",
    //   "cans/artifacts/examples",
-      "crates",
-        "packages"
+      //"crates",
+      //  "packages"
   ],
   "ignore": {
     "useGitignore": true,
@@ -50,7 +50,7 @@
       "cans/artifacts/code",
       "cans/artifacts/config",
       "cans/artifacts/diagrams",
-   //   "cans/artifacts/examples",
+     "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html",
             "**/tests/**",
  //            "cans/artifacts/",
