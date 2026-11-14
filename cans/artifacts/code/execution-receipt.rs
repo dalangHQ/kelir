@@ -81,9 +81,18 @@ pub struct ExecutionReceipt {
     // (max_as_bytes, max_nofile, max_nproc, max_cpu_seconds) are
     // reported in the receipt for auditability. The field name for the
     // limits block is not pinned in spec yet — TBD, do not invent one.
-    /// Extension entries. Core treats entries as opaque;
-    /// empty for sessions with no extension producer.
-    pub extensions: Vec<ReceiptExtension>,
+    /// Extension entries. The typed namespaces (fs:vfs, net:l7:sql)
+    /// decode into TypedExtensions; third-party namespaces stay in the
+    /// opaque raw pairs vector below. Accessor surface (fs_vfs(),
+    /// net_l7_sql(), hooks(), ext_raw()): see: artifacts/code/hook-trace.rs
+    /// and cans/10-attestation.md#Typed-extensions.
+    pub typed_extensions: crate::telemetry::hook_trace::TypedExtensions,
+    pub ext_raw_entries: Vec<(String, Vec<u8>)>,
+    /// Every hook that fired for the trapped process, in firing order.
+    /// Diagnostic only: excluded from Merkle roots (consistent with
+    /// phase_timings) and emitted to OTel as spans.
+    /// HookSpan shape: see: artifacts/code/hook-trace.rs
+    pub hook_trace: Vec<crate::telemetry::hook_trace::HookSpan>,
 }
 
 /// Per-session receipt store: latest ExecutionReceipt per pid, keyed by

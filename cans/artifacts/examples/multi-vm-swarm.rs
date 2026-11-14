@@ -189,10 +189,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
     eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner:?}");
     let denials = session
-        .ctx::<LedgerCtx, _>()
+        .cap::<LedgerCtx>()
         .count_denials(std::process::id())
         .await?;
     eprintln!("[kelir] supply-chain denials={denials}");
+
 
     session.stop().await?;
     Ok(())

@@ -1,6 +1,11 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/transaction.md#Plugin-transaction
+// L3-GAP: pre-migrate rewrite-target check, migrate-42 transaction scope with
+//   savepoint/rollback, and the live causal delta into FinalizeRequest are
+//   stubbed — SqlProxyCtx exposes no rewrite_target accessor, TransactionCtx
+//   exposes no scope/savepoint API, and the session facade exposes no
+//   get_causal_delta_from_parent.
 
 use std::env;
 
@@ -101,16 +106,12 @@ fn build_runtime(
     .plugin_instance(ledger_plugin)
     // see: cans/plugins/db-proxy.md#Plugin-db-proxy
     .trap_async(TrapFilter::binary("migrate"), |_c: HandlerCtx<_, _>| async move {
-        // TODO (L3): drop unless the db-proxy rewrite target is "migrate_schema."; SqlProxyCtx exposes no rewrite_target accessor, so the check cannot read the live target yet.
         Ok(Verdict::Pass)
     })
     .post_exec(TrapFilter::binary("migrate"), |c: HandlerCtx<_, _>| async move {
         let receipt = c.receipt().await?;
-        if receipt
-            .extensions
-            .iter()
-            .any(|e| e.namespace == "net:l7:sql")
-        {
+        // see: cans/10-attestation.md#Typed-extensions
+        if receipt.net_l7_sql().is_some() {
             Ok(PostExecAction::Proceed)
         } else {
             Ok(PostExecAction::RollbackAndHalt)
@@ -151,7 +152,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let snapshot = tokio::fs::read(LOCAL_SNAPSHOT).await?;
     session.vm.import_snapshot(&snapshot).await?;
 
-    // TODO (L3): open the transaction scope "migrate-42" over /workspace/migrations + migrate_schema, savepoint before the migrate, and roll back to it on failure; TransactionCtx exposes no scope/savepoint API yet.
     let params = MigrateParams {
         action: "migrate".into(),
         schema_name: "migrate".into(),
@@ -176,7 +176,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::fs::write(LOCAL_SNAPSHOT, out).await?;
 
     // see: cans/10-attestation.md#Execution-receipts
-    let ledger = session.ctx::<LedgerCtx, _>();
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    let ledger = session.cap::<LedgerCtx>();
+
     let final_receipt = ledger
         .finalize(FinalizeRequest {
             include_delta: ledger.get_causal_delta_from_parent().await?,

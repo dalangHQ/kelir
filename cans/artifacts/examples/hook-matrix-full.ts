@@ -1,7 +1,8 @@
 // see: cans/02-plugin-model.md#Segregated-ring-traits
+// see: cans/02-plugin-model.md#TrapFilter-predicates
 
-import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil,
-         type Session, type WatchdogVerdict } from "@kelir/core";
+import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil, Errno,
+         TrapFilter, type Session, type WatchdogVerdict } from "@kelir/core";
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 const IDENTITY_PATH = "/workspace/.policy/identity";
@@ -75,8 +76,11 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
   // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
   .onFsLookup((path) => {
+    // see: cans/02-plugin-model.md#Unified-verdict
+    // Errno is the closed enum; PathTraversal maps to EPERM in the driver.
     if (escapesWorkspace(path)) {
-      throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
+      return Verdict.Drop(Errno.PATH_TRAVERSAL,
+                           "lookup escapes the /workspace root");
     }
     if (path !== IDENTITY_PATH) return Verdict.Pass;
     return Verdict.Patch({
@@ -180,7 +184,35 @@ const runtime = kelir({
   kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
   rootfsErofs: "./fixtures/rootfs-hooks.erofs",
   tscLocked: true, enableWatchdog: true,
-}).use(hookMatrixFullPlugin);
+}).use(hookMatrixFullPlugin)
+  // see: cans/02-plugin-model.md#TrapFilter-predicates
+  // The predicate chain: cwd/env/uid/argv_regex constraints live in the
+  // filter, not in the handler body (AND-ed predicates; a handler-body
+  // guard duplicating them is redundant and should not be written).
+  .trap(
+    TrapFilter.binary("git")
+      .withArg("push")
+      .withCwd("/workspace/**")
+      .withEnv("CI", "1")
+      .withUid(0)
+      .argvMatches(/^--force$/),
+    () => Verdict.Drop(Errno.EPOLICY, "forced push denied by policy"),
+  )
+  // see: cans/02-plugin-model.md#Chain-decisions
+  // on_trap_deny moves into .deny((d) => d.onTrapDeny(...)); the verdict
+  // parameter is the DENYING Action (the unified enum), so break-glass
+  // can say "denied by X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
+  // see: cans/10-attestation.md#Hook-trace
+  // hook_trace read: every hook that fired for the trapped process
+  // carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
+  // ordinal); diagnostic only, excluded from Merkle roots. The
+  // comment-pinned HookSpan case (the hook-trace-coverage vector this
+  // example stands in for; vectors.json cannot express a hook-trace
+  // expectation today) asserts: { plugin: "hook-matrix-full",
+  // ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
+  .deny((d) =>
+    d.onTrapDeny((_event: unknown, _verdict: Verdict, _session: unknown) => {}),
+  );
 
 async function main() {
   runtime.seal();

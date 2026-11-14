@@ -3,6 +3,11 @@
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/chaos.md#Plugin-chaos
+// L3-GAP: mTLS injection at the L4-proxy host boundary; ledger denial recording
+//   and ledger flush in trap/lifecycle/deny hooks; child clock skew plus
+//   verify-hypothesis spawn and causal-delta read; winning-delta finalize
+//   (FinalizeRequest.include_delta guard) — all blocked on typed session
+//   access in those hooks and LedgerCtx surface growth.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -391,7 +396,6 @@ async fn build_runtime(
         l4_proxies: vec![L4Proxy {
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
-            // TODO (L3): mTLS injection at the host connection boundary per cans/07-wire-plane.md once the engine consumes it.
         }],
 
         tap_filter: TapFilter::AllowUdpProxied,
@@ -468,7 +472,6 @@ async fn build_runtime(
                                 PluginError::Halt(format!("intent analysis failed: {err}"))
                             })?;
                         if !intent.is_hypothesis_valid {
-                            // TODO (L3): record the denial on the ledger once trap closures receive the typed session per cans/02-plugin-model.md#Trap-and-lifecycle-hooks-receive-HandlerCtx-or-a-restricted-lifecycle-context.
                             return Ok(Verdict::Drop {
                                 errno: Some(Errno::Eperm),
                                 reason: format!(
@@ -610,7 +613,8 @@ async fn build_runtime(
                     return Err(PluginError::Halt("zero-byte delta commit".into()));
                 }
 
-                match receipt.extensions.iter().find(|e| e.namespace == "fs:vfs") {
+                // see: cans/10-attestation.md#Typed-extensions
+                match receipt.fs_vfs() {
                     Some(ext) => eprintln!(
                         "[kelir] commit fs:vfs extension present, payload_len={}",
                         ext.payload.len(),
@@ -626,9 +630,7 @@ async fn build_runtime(
                     .await
             })
         })
-        // TODO (L3): flush via session.ctx::<LedgerCtx>() once lifecycle hooks receive the typed session per cans/02-plugin-model.md#Trap-and-lifecycle-hooks-receive-HandlerCtx-or-a-restricted-lifecycle-context.
         .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        // TODO (L3): count denials via session.ctx::<LedgerCtx>().count_denials(event.ppid) once the deny hook receives the typed session per cans/02-plugin-model.md#Trap-and-lifecycle-hooks-receive-HandlerCtx-or-a-restricted-lifecycle-context.
         .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) });
 
     Ok(builder)
@@ -682,7 +684,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         },
                     )?;
                     child.checkpoint.commit_step(child.lineage(1))?;
-                    // TODO (L3): skew the child clock, spawn npm run verify-hypothesis-{id}, and read back its causal delta.
                     child.stop().await?;
                     Ok(())
                 }
@@ -727,8 +728,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "[kelir] broker commit files={} deletes={} winner={id}",
             stats.files_changed, stats.tombstones_resolved,
         );
-        // TODO (L3): spawn npm test -- --runInBand, git commit the winning fix, and finalize the ledger receipt into a FinalReceipt via LedgerCtx::finalize.
-        // TODO (L3): FinalizeRequest.include_delta is CausalDelta, not Option<CausalDelta>; guard the winning delta before finalizing.
 
         Ok(())
     }

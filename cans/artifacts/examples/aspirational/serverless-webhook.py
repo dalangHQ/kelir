@@ -3,6 +3,10 @@
 # see: cans/plugins/mcp.md#Plugin-mcp
 # see: cans/plugins/tool-guard.md#Plugin-tool-guard
 # see: cans/plugins/ledger.md#Plugin-ledger
+# STATUS: aspirational; see §4 of work-order
+#   L3-GAP: no WebhookRequest is served — the Py Session exposes no
+#   handle_ingress (the binding is an Err(missing) L3 stub); the builder,
+#   trap gating, and suspend path below are real and stay.
 from __future__ import annotations
 
 import asyncio

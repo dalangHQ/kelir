@@ -10,14 +10,14 @@ from dataclasses import dataclass
 
 import kelir
 from kelir import KelirBuilder, Session
-from kelir.model_plugin import LifecycleCtx, VetoEvent
-from kelir.plugins.plugin_mesh import (
+from kelir.plugin_model import LifecycleCtx, VetoEvent
+from kelir.plugins.mesh import (
     MeshConfig, MeshPlugin, PeerIdentity, PeerListener,
 )
-from kelir.plugins.plugin_supply_chain import (
+from kelir.plugins.supply_chain import (
     PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin, WxJitConfig,
 )
-from kelir.plugins.plugin_ledger import (
+from kelir.plugins.ledger import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
 
@@ -115,8 +115,9 @@ async def main() -> None:
         # TODO (L3): await the mesh winner announcement; the Py Caps expose no mesh handle with await_winner, so the first passing shard stands in as winner.
         print(f"[kelir] mesh winner shard={winner}")
         print(f"[kelir] {passed}/8 shards passed; winner shard={winner}")
-        denials = await session.cap.ledger.count_denials(os.getpid())
+        denials = await session.cap("ledger").count_denials(os.getpid())
         print(f"[kelir] supply-chain denials={denials}")
+
 
 
 if __name__ == "__main__":

@@ -62,10 +62,29 @@
     - Agent corrects action without orchestration timeout
   - DNS policy filter
     - Intercepts all UDP/TCP port 53 traffic crossing the userspace ingress ring
-    - Evaluates queries against the active domain allowlist (allow/deny rules)
-      - allowlist and denylist parsed from profile/network policy
-      - wildcard suffix support mirrors egress rules
+    - Evaluates queries against the active rule set
+      - SinkholeConfig { rules: Vec<SinkholeRule> } is the canonical shape
+        - SinkholeRule { host, methods: Option<Vec<String>>, paths: Option<Vec<String>>, allow }
+        - Rule shape and desugaring: see: artifacts/code/sinkhole-rules.rs
+      - host carries exact names and label-boundary wildcard suffixes
+        - wildcard suffix support mirrors egress rules
+      - methods/paths are HTTP constraints for L7-aware rules
+        - None means the rule applies regardless of method or path
+      - allow: true admits; allow: false blocks
+      - First-match-wins over the ordered rule vector
+        - A query with no matching rule falls through to the default posture
+        - Undeclared external targets return synthetic NXDOMAIN
+      - allowlist and denylist sources parsed from profile/network policy
+        - They populate rules; the rule vector is the single storage
       - decision made before upstream forward
+    - Sugar desugaring (the historical shapes keep compiling)
+      - allowlist: vec![a, b] with drop_all: false expands to two allow
+        - rules; the fall-through posture denies the rest
+      - allowlist: vec![a] with drop_all: true expands to allow rule
+        - for a plus one deny rule for host "*"
+      - dnsExcept: [names] (TS) desugars to one allow rule per name, no
+        - trailing deny; the fall-through posture governs the rest
+      - The desugaring table: see: artifacts/code/sinkhole-rules.rs
     - Blocked queries return NXDOMAIN; allowed queries forward to the live upstream
     - Filter decisions are name-based
     - Entropy gating is not a policy primitive: CDN labels, telemetry IDs, and

@@ -1,6 +1,8 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
 # see: cans/plugins/chaos.md#Plugin-chaos
 # see: cans/plugins/ledger.md#Plugin-ledger
+# L3-GAP: ledger.flush on shutdown is stubbed — no pre-boot ledger handle
+#   capture and no LifecycleCtx.cap.ledger yet.
 # TODO: SSOT header requirements kelir>=1.0, pydantic>=2.6, blake3>=0.4 have no spec anchor; verify against packages/py/pyproject.toml (pydantic>=2.0).
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from pydantic import BaseModel, Field
 import kelir
 from kelir import (
     CausalDelta,
+    Errno,
     ExecutionReceipt,
     External,
     ExternalSuspendKind,
@@ -37,7 +40,7 @@ from kelir import (
     Verdict,
     WatchdogAction,
 )
-from kelir.model_plugin import BasePlugin, LifecycleCtx, PluginError
+from kelir.plugin_model import BasePlugin, LifecycleCtx, PluginError
 from kelir.terminal_planes import PromptRule, TokenShield
 from kelir.storage_planes import (
     DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
@@ -45,13 +48,13 @@ from kelir.storage_planes import (
 from kelir.wire_planes import (
     L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
 )
-from kelir.plugins.plugin_chaos import (
+from kelir.plugins.chaos import (
     ChaosConfig,
     StorageFaultRule,
     NetworkFaultRule,
     ChaosPlugin,
 )
-from kelir.plugins.plugin_ledger import (
+from kelir.plugins.ledger import (
     LedgerConfig,
     LedgerPlugin,
     OtelConfig,
@@ -157,7 +160,7 @@ class RepoPolicyPlugin(BasePlugin):
         if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
             self.handle().record_violation()
             return FilterAction.drop(
-                errno="ENOSPC", reason="diff exceeds policy ceiling"
+                errno=Errno.ENOSPC, reason="diff exceeds policy ceiling"
             )
         return FilterAction.forward()
 
@@ -168,16 +171,25 @@ class RepoPolicyPlugin(BasePlugin):
 
 
 # see: cans/02-plugin-model.md#Hook-context-restriction
-def make_snoop(oracle: UserOracle) -> Callable[[Path, bytes, HandlerContext], Awaitable[None]]:
-    async def on_write(path: Path, raw: bytes, c: HandlerContext) -> None:
+def make_snoop(
+    oracle: UserOracle,
+) -> Callable[[Path, bytes, HandlerContext], Awaitable[Optional[FilterAction]]]:
+    # see: cans/02-plugin-model.md#Unified-verdict
+    async def on_write(
+        path: Path, raw: bytes, c: HandlerContext,
+    ) -> Optional[FilterAction]:
         evt = json.loads(raw)
         if evt.get("falsifiedResult") is True:
-            raise PluginError.reject(
-                errno="EPERM",
+            # Denial is an Action, never a PluginError (PluginError-scope pin).
+            return FilterAction.drop(
+                errno=Errno.EPERM,
                 reason=f"harness hallucination at {path}",
             )
-        producer_blake3 = await c.cap.ledger.blake3_of_producing_process(path)
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        ledger = c.cap("ledger")
+        producer_blake3 = await ledger.blake3_of_producing_process(path) if ledger else ""
         await oracle.ingest_harness_event(path, evt, producer_blake3)
+        return None
     return on_write
 
 
@@ -257,7 +269,9 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
 def make_commit_gate() -> PreExecHandler:
     async def commit_gate(c: HandlerContext) -> Verdict:
-        n = c.cap.repo_policy.violations
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        repo_policy = c.cap("repo-policy")
+        n = repo_policy.violations if repo_policy else 0
         if n > 0:
             return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
         return Verdict.pass_()
@@ -270,10 +284,8 @@ def make_zero_byte_check() -> PostExecHandler:
         receipt = await c.receipt()
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
-        vfs_ext = next(
-            (e for e in receipt.extensions if e.namespace == "fs:vfs"),
-            None,
-        )
+        # see: cans/10-attestation.md#Typed-extensions
+        vfs_ext = receipt.fs_vfs()
         if vfs_ext is None:
             log.info("[kelir] commit fs:vfs extension absent")
         else:
@@ -301,13 +313,14 @@ async def build_runtime(
     async def _ready(_ctx: LifecycleCtx | None) -> None:
         return None
 
-    # TODO (L3): SSOT ledger.flush on shutdown; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does, or LifecycleCtx.cap.ledger once the fused lifecycle payload lands, see cans/08-lifecycle.md#Session-and-context-handles
     async def _shutdown(_ctx: LifecycleCtx | None) -> None:
         return None
 
     # see: cans/08-lifecycle.md#Break-glass
     async def _deny(event: TrapEvent, session: Session) -> None:
-        if await session.cap.ledger.count_denials(event.ppid) > 5:
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        ledger = session.cap("ledger")
+        if ledger is not None and await ledger.count_denials(event.ppid) > 5:
             await session.vm.suspend("./.kelir/quarantine.snap")
             await session.console()
 
@@ -489,7 +502,7 @@ async def fork_and_verify(
             ["run", f"verify-hypothesis-{hypothesis_id}"],
             cwd="/workspace/checkout-service",
         )
-        delta = await child.cap.ledger.get_causal_delta_from_parent()
+        delta = await child.cap("ledger").get_causal_delta_from_parent()
         return hypothesis_id, run, delta
     finally:
         await child.terminate()
@@ -561,7 +574,8 @@ async def main() -> None:
         )
 
         # see: cans/10-attestation.md#Execution-receipts
-        final = await session.cap.ledger.finalize(
+        ledger = session.cap("ledger")
+        final = await ledger.finalize(
             include_delta=winning_delta,
             include_merkle_root=True,
         )

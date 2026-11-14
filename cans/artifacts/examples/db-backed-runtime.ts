@@ -1,6 +1,10 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/transaction.md#Plugin-transaction
+// L3-GAP: pre-migrate rewrite-target check, onPreCommit ledger flush, and the
+//   migrate-42 transaction scope with savepoint/rollback are stubbed — no
+//   db-proxy cap handle in @kelir/core, no pre-boot ledger capture, and no
+//   transaction scope API yet.
 
 import { kelir, t, TrapFilter, PostExecAction,
          type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
@@ -65,19 +69,18 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
     }))
     .trap(TrapFilter.binary("migrate"), {
       pre: async (c) => {
-        // TODO (L3): drop unless the db-proxy rewrite target is "migrate_schema."; the db-proxy plugin exposes no cap handle in @kelir/core, so the check cannot read the live target yet.
         return c.pass();
       },
       post: async (c) => {
         const receipt: ExecutionReceipt = await c.receipt();
-        if (!receipt.extensions.some((e) => e.namespace === "net:l7:sql"))
+        // see: cans/10-attestation.md#Typed-extensions
+        if (!receipt.netL7Sql())
           return PostExecAction.RollbackAndHalt;
         return PostExecAction.Proceed;
       },
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
     .onPreCommit(async () => {
-      // TODO (L3): flush the ledger here; capture the ledger handle at registration time as db-backed-runtime.rs does (LedgerPlugin.context()), or read LifecycleContext.cap.ledger once the fused lifecycle payload lands.
     })
     .onPostCommit(async (_ctx, committed) => {
       if (committed) {
@@ -102,7 +105,6 @@ async function main() {
     // see: cans/09-snapshots.md#Snapshots
     await session.vm.importSnapshot(await readSnapshot(LOCAL_SNAPSHOT));
 
-    // TODO (L3): open the transaction scope "migrate-42" over /workspace/migrations + migrate_schema, savepoint before the migrate, and roll back to it on failure; @kelir/core exposes no transaction scope API yet.
     const run = await session.spawn("python", ["-m", "app.migrate", "--schema", "migrate"], {
       cwd: "/workspace/migrations",
       params: { action: "migrate", schemaName: "migrate", targetVersion: 42, dryRun: false },
@@ -114,7 +116,8 @@ async function main() {
 
     // see: cans/10-attestation.md#Execution-receipts
     // see: cans/plugins/ledger.md#Plugin-ledger
-    const ledgerHandle = session.ctx<LedgerHandle>("ledger");
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    const ledgerHandle = session.cap("ledger") as LedgerHandle;
     const final = await ledgerHandle.finalize({
       includeMerkleRoot: true,
       includeDelta: await ledgerHandle.getCausalDeltaFromParent(),

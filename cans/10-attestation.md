@@ -19,7 +19,8 @@
       - Deterministic logical-trace attribution emitted per executed process
       - Emitted for every executed process at the trap/exit boundary
       - Receipts compare as values via canonical per-field structural assertions
-      - Receipts carry opaque ReceiptExtension payloads emitted by mounted plugins
+      - Receipts carry typed extension payloads emitted by mounted plugins
+        - Typed accessors: see: #Typed-extensions
       - Struct exhaustiveness tripwire
         - ExecutionReceipt and CausalDelta additions fail compilation everywhere
         - Merkle leaf hashing and OTel mappers must explicitly handle new fields
@@ -107,6 +108,38 @@
       - HandlerCtx::receipt() returns the stored receipt, or Err when none is stored
       - Fork carries a snapshot of the parent store into the child session
       - Live minting at the trap/exit boundary is L3; until then the store holds only receipts stored explicitly
+    - Hook trace
+      - hook_trace: Vec<HookSpan> on ExecutionReceipt
+        - HookSpan { plugin, ring, verdict_kind, duration_ns, ordinal }
+        - Struct shape and typed accessor receipt.hooks() -> &[HookSpan]:
+          - see: artifacts/code/hook-trace.rs
+        - Ring values are the taxonomy rings (Trap, Fs, Net, Console, Exec,
+          - Host, Lifecycle, Telemetry): see: 02-plugin-model.md#Segregated-ring-traits
+        - verdict_kind is the Action variant the hook returned
+          - Action enum home: see: artifacts/code/action-algebra.rs
+        - ordinal is the registration ordinal within the ring
+          - Ordering rule: see: 02-plugin-model.md#Hook-ordering
+      - Populated for every hook that fired for the trapped process
+        - Firing order is execution order (descending priority, then
+          - registration order), not mount order
+      - Diagnostic only: excluded from Merkle roots (consistent with phase spans)
+      - Emitted to OTel as spans
+      - Denied lifecycle vetoes surface in the trace: see: 08-lifecycle.md#Lifecycle-vetoes
+    - Typed extensions
+      - Typed accessors replace the bare extensions walk
+        - receipt.fs_vfs() -> Option<&FsVfsExt>
+        - receipt.net_l7_sql() -> Option<&NetL7SqlExt>
+        - receipt.hooks() -> &[HookSpan]
+        - receipt.ext_raw() -> &[(String, Vec<u8>)] — third-party fallback
+        - Accessor shapes and the two typed payloads:
+          - see: artifacts/code/hook-trace.rs
+      - Namespaces keep their strings: fs:vfs, net:l7:sql
+        - A typed accessor returns None when no producer emitted the namespace
+      - Third-party extensions ride ext_raw; the payload stays opaque bytes
+      - Old .extensions.some(...) / .extensions.iter().find(...) walks are
+        - non-conforming; use the accessor for the typed namespaces
+      - Denied-veto and watchdog diagnostics surface through the same typed
+        - accessor surface as hook spans: see: #Hook-trace
   - Causal delta
     - see: [2]
     - Definition: Δ = S_A − S_B between two checkpoint descriptors

@@ -22,29 +22,66 @@
       - Python runtime check cost: O(plugins) at boot; validated once
       - Python check budget: see: 02-plugin-model.md#Latency-ceiling
     - Service lookup across languages
-      - Rust: c.ctx::<T>() infallible, statically resolved
-      - TypeScript: c.<pluginKey> typed by accumulated Ctx from .use(plugin);
-        - exposes typed plugin context objects without string lookups
-      - Python: c.cap.<plugin_key> typed by .use(plugin) overloads;
-        - maps capability attributes directly without dictionary indexing
-      - .use(plugin) populates c.cap (Python) / c.<pluginKey> (TS) at boot, not before
-      - capability struct materializes from the plugin's Context at boot
-      - it is not a stub; it exists before the first handler invocation
+      - Three accessors, one meaning: session.plane(), session.cap(), c.cap()
+        - Every example uses these
+        - Signatures and sugar spellings: see: artifacts/code/session-accessors.rs
+        - Signatures and sugar spellings: see: artifacts/code/session-accessors.ts
+        - Signatures and sugar spellings: see: artifacts/code/session-accessors.py
+      - session.plane(): the one plane accessor
+        - Rust: session.plane::<P>() resolves by plane handle type
+        - TypeScript / Python: session.plane("vm") resolves by plane name
+        - session.vm, session.terminal, session.storage, session.wire,
+          - session.checkpoint, session.host, session.vsock are sugar
+          - on the accessor; each equals session.plane("<name>")
+      - session.cap(): the one capability accessor on Session
+        - Rust: session.cap::<T>() infallible where Plugins: Has<T>
+        - TypeScript / Python: session.cap("ledger") returns
+          - the capability object, or None/undefined if not mounted
+      - c.cap(): the one capability accessor inside a hook
+        - Rust: c.cap::<T>() infallible via Has<T>
+        - TypeScript / Python: c.cap("repo-policy") returns
+          - the capability object, or None/undefined if not mounted
+      - Deleted accessor forms (SSOT-A1 pin: accessor unification)
+        - session.ctx::<T, _>() and session.ctx::<T>("name") delete
+        - session.ledger and session.cap.ledger attribute access delete
+        - c.ctx::<T>() deletes; c.cap.<key> attribute access deletes
+        - c.<pluginKey> members (TS) and c["<key>"] indexing delete
+      - .use(plugin) populates session.cap()/c.cap() at boot, not before
+        - capability struct materializes from the plugin's Context at boot
+        - it is not a stub; it exists before the first handler invocation
       - Capability keys are plugin names (SSOT-A1 pin)
         - Keys: ledger, db-proxy, repo-policy, transaction, container
         - The db key is "db-proxy", not "db"
         - The policy key is "repo-policy", not "policy"
         - See: cans/plugins/db-proxy.md:5
       - Non-conforming claim withdrawn: db-backed-runtime.py conforms today
-        - Py c.cap.db_proxy.rewrite_target; TS c.cap.dbProxy.rewriteTarget
+        - Unified accessor c.cap("db-proxy") (see Naming and deprecation table); the pre-sweep c.cap.db read was non-conforming and is fixed
+
       - No string-keyed service registry on any SDK
+      - Naming and deprecation table (SSOT-A1; one form per concept)
+        - Python module: kelir.plugin_model is the public name
+          - kelir.model_plugin is the deprecated pre-rename path
+          - Rust keeps kelir::plugin_model; naming parity is per-SDK idiom
+        - session.terminate() / session.stop(): terminate is primary
+          - stop is sugar, an alias; both stay, neither removes
+        - Verdict.pass_() deletes; Python sugar is Verdict.pass()
+          - Same Action; the naming-table mention lands here,
+            the enum lands with the unified Action algebra
+        - Plugin import path: kelir.plugins.<name> is public
+          - kelir.plugins.plugin_<name> is an unstable implementation
+            detail; do not rely on it
+        - Mount verbs: .use() is universal
+          - .plugin() is the same verb by delegation in TS/Py
+          - .plugin_instance(P) is Rust-only sugar for the trait path
+            - P: KelirPlugin + PluginDeps; the three documented in one table
+            - Rust .plugin(builder) stays the builder-merge verb
       - Lifecycle hook capability reachability
         - Lifecycle hooks receive LifecycleCtx; it carries no capability caps
         - Canonical L1/L2 pattern: capture the capability handle at registration
           - The builder closure captures the pre-boot ledger handle
           - The hook calls ledger.flush() on it
           - See: artifacts/examples/db-backed-runtime.rs
-        - ctx.cap.ledger delivery through the fused lifecycle payload lands (L3)
+        - LifecycleCtx.cap.ledger delivery through the fused lifecycle payload lands (L3)
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
       - Two-tier authoring model
@@ -74,8 +111,13 @@
           - .intercept(Ring.NetOutbound, handler) for ring interception
           - .trap(TrapFilter::default(), handler)
         - Native Engine Planes on Session
-          - Core Session directly exposes the 5 planes
-          - session.terminal, session.storage, session.wire, session.checkpoint, session.host
+          - Core Session exposes the 5 planes via session.plane()
+            - Accessor home: see: #Service-lookup-across-languages
+          - session.plane("terminal"), session.plane("storage"),
+            - session.plane("wire"), session.plane("checkpoint"), session.plane("host")
+          - session.vm, session.terminal, session.storage, session.wire,
+            - session.checkpoint, session.host, session.vsock are sugar
+            - on session.plane("<name>"); see: #Service-lookup-across-languages
           - Host: session.host.lsm_status(), session.host.pressure_level()
           - Terminal: session.terminal.resize(120, 40), export_screen_matrix()
             - Replay: session.terminal.read_from(port, offset) -> (Vec<u8>, next_offset)
@@ -86,20 +128,28 @@
           - Composition root binds the plane bodies: crates/kelir constructs every Real*Ops and passes it in PlaneWiring; boot fails closed on any unbound required slot (TerminalOps, CheckpointOps, HostOps, NetOps, DnsOps, UdpNatOps, L4DivertOps, StorageIo)
           - FuseOps and ReconcilerOps ride PlaneWiring as optional slots: FuseOps needs Arc<PipelineEngine> while Session owns the engine by value, and the Reconciler needs a broker_dir the host broker journal has not anchored yet; an unbound FuseOps leaves the session with no FUSE dispatcher, and StoragePlane::reconcile fails closed without a Reconciler
         - Plugin extension pattern
-        - Optional domain plugins attach via typed extensions
-        - Rust: session.ctx::<T>() infallible via `Session<Plugins, Params>`
-          - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
-        - TypeScript: session.<pluginKey> is typed by accumulated Ctx
-          - for that plugin; no session.use(ext), no session.ext(T)
-        - Python: session.cap.<plugin_key> is typed by the .use() overload
-          - for that plugin; no session.ext(T)
-        - Inter-plugin capabilities resolve via c.ctx::<T>() (Rust),
-          - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+          - Optional domain plugins attach via typed extensions
+          - Accessors: see: #Service-lookup-across-languages
+          - Rust: session.cap::<T>() infallible via `Session<Plugins, Params>`
+            - where `Plugins: Has<T>`; no Result, no `ext`/`extension` surface
+          - TypeScript: session.cap("<pluginKey>") typed by accumulated Ctx
+            - for that plugin; no session.use(ext), no session.ext(T)
+          - Python: session.cap("<plugin_key>") typed by the .use() overload
+            - for that plugin; no session.ext(T)
+          - Inter-plugin capabilities resolve via c.cap::<T>() (Rust),
+            - c.cap("<pluginKey>") (TS), c.cap("<plugin_key>") (Python)
+          - Deprecated pre-unification forms: c.ctx::<T>() (Rust),
+            - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
+            - see: #Service-lookup-across-languages for the table
       - Unified verdict surface: see: 02-plugin-model.md#Unified-verdict
-        - Per-SDK spellings of the variants; naming deltas only, not semantics
-          - Rust: c.pass() / c.patch(m) / c.drop(e,r) / c.suspend(u) / c.abort(r)
-          - TS: c.pass / c.patch / c.drop / c.suspend / c.abort
-          - Python: Verdict.pass_() / .patch / .drop / .suspend / .abort
+        - One spelling in Rust and TS (method-call form):
+          - c.pass() / c.drop(errno, reason) / c.suspend(until) / c.abort(reason) / c.patch(payload)
+          - Filter rings add c.forward(); no c.patch() there
+        - Python spellings: c.pass_() / c.drop(errno, reason) / c.suspend(until) /
+          - c.abort(reason) / c.patch(payload), plus the c.Pass sugar attribute
+          - `pass` is a Python keyword; c.pass() is a SyntaxError, so the sugar
+            is the uppercase attribute Verdict.Pass (live SDK idiom), not c.pass()
+          - c.filter_drop() / c.filter_suspend() delete; filter rings use c.drop / c.suspend
         - Console interposer signature (all SDKs)
           - on_console_input(port, bytes) / on_console_output(port, chunk)
           - port identifies the virtio-console port
@@ -109,10 +159,16 @@
             - RS mutates in place and returns (); it is the outlier
             - See: crates/kelir-interface/src/plugin_model.flow.rs:783-808
         - Suspend surface naming
-          - Rust: Verdict::Suspend { until: SuspendUntil }
+          - Rust: Action::Suspend { until: SuspendUntil }
           - TS: c.suspend(SuspendUntil.deadline | .approval | .handshake)
-          - Python: Verdict.suspend(until=...)
+          - Python: Action.suspend(until=...)
           - No per-SDK aliases; one name across languages
+        - SuspendUntil clause
+          - SuspendUntil: Deadline(ms) | Approval | Handshake | Condition(f)
+            - Enum home and semantics: see: 11-protocol.md#Verdict-method-mapping
+          - TS / Py Condition spelling: .condition(fn) — one spelling, no alias
+          - The predicate polls on host cadence (default 100 ms, configurable);
+            - resume executes on the first true
       - Session surfaces
         - One table over one surface; rows marked data | control
           - session.vm is a property, not vm(); TS readonly vm, Py attribute
@@ -129,8 +185,8 @@
             - see: 08-lifecycle.md#Balloon-convergence
           - session.vm.set_vcpus(n) | control
             - see: 08-lifecycle.md#Elastic-compute
-          - LifecycleCtx.register_veto(event, cb) | control
-            - see: 08-lifecycle.md#Lifecycle-vetoes
+          - LifecycleCtx.register_veto(event, f) | control
+            - Veto shape and semantics: see: 08-lifecycle.md#Lifecycle-vetoes
           - session.drain(ms) | control
             - see: 08-lifecycle.md#Hypervisor-primitives
           - Checkpoint and rollback surfaces | control
@@ -165,6 +221,12 @@
               - Rust / TS / Python: Session.suspend(reason: SuspendReason) / resume()
               - The pin takes a reason and derives the path
             - Sandbox.suspend(reason) delegates to session suspend
+          - on_trap_deny(event, verdict, session) | control
+            - Break-glass hook: fired host-side when a trap is denied
+            - The verdict parameter is the DENYING Action (the unified enum),
+              - not the old Verdict split; one read yields "denied by X for Y"
+            - Reach: host-only, scope-reached via .deny(): see: 02-plugin-model.md#Nested-scopes
+            - Example spelling: see: artifacts/examples/hook-matrix-full.rs
       - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
         - Stream kind registration: builder.register_stream_kind(kind, handler)
           - core kinds frozen; plugin kinds registered at boot
@@ -327,7 +389,7 @@
     - .use(plugin) accumulates TPlugins & PContext, returning new KelirBuilder
     - Prerequisite resolution enforced at compile-time via requires constraint
     - Missing plugin dependency causes compilation error before builder.boot()
-    - .trap(matcher, handler): pre-exec gate returning a Verdict
+    - .trap(matcher, handler): pre-exec gate returning an Action (Verdict alias)
     - .trap(matcher, { pre, post }): dual pre/post gate
     - .intercept(ring, filter, handler): ring-level synchronous hot-path
     - .on(event, handler): lifecycle interceptors over LifecycleEvent values
@@ -392,21 +454,32 @@
     - Closed set: 30 verbs and 8 scopes in every SDK, both modes
       - Verb home: see: 02-plugin-model.md#Chainable-verbs
       - Scope home: see: 02-plugin-model.md#Nested-scopes
+    - Scopes are the only way to reach a ring verb; the flat chain is a group() fold
+      - Scope shapes and sub-nodes: see: 02-plugin-model.md#Nested-scopes
     - Structural verbs, all three SDKs, both modes
-      - context, require(s), scope, fork_with, vsock_service
+      - context, require(s), scope, fork_with
       - fork_with keeps its pinned per-language signature shape
         - Rust: Fn(&str) -> Box<dyn AnyPlugin>
         - TypeScript: () -> KelirBuilder
         - Python: Fn(KelirBuilder) -> KelirBuilder
+      - vsock_service lives in the .vsock() scope: .vsock(|v| v.service(…))
     - Ring verbs, all three SDKs, both modes
       - 24 verbs: trap 2, fs 4, net 2, console 2, exec 2, host 4
         - lifecycle 5, telemetry 3; names as in the verb home
+        - Reached through their 8 scopes; no unscoped flat surface
+    - Orphan-verb scopes, all three SDKs
+      - actions, streams, vsock, params, deny: see: 02-plugin-model.md#Nested-scopes
     - Scopes, all three SDKs, both modes
       - trap, fs, net, console, exec, host, lifecycle, telemetry
     - on_trap_deny return pin (SSOT-A1)
       - RS: Result<(), PluginError>; TS: Promise<void>, throws on failure
       - Py: Awaitable[None], raises on failure; failures are session errors
       - Never a silent no-op: a failed deny hook surfaces as a session error
+      - Every scope carries config / requires / fork_with / timeout / priority / rules
+      - TypeScript scopes are generic interfaces; Python scopes are Protocols
+        - TS shapes: see: artifacts/code/typescript-scope-interface.ts
+        - Py shapes: see: artifacts/code/python-scope-protocol.py
+
     - Rust
       - Entry: KelirBuilder::new(config) is the host
       - Entry: KelirBuilder::named(name) is a plugin-mode builder
@@ -415,6 +488,7 @@
       - Config after seal() is a compile error: config verbs live on Unsealed only
       - trap(filter, handler) and trap_scope(closure) exist in both modes
       - trap_async and post_exec are host-only and return Self; filter validation runs at seal()
+      - Orphan verbs are scope-reached: actions, streams, vsock, params, deny
       - Mount: host.plugin(builder) moves the registry by value
         - host.use(builder) is the same verb and delegates to plugin()
         - No plugin() on a plugin-mode builder: plugin-of-plugin is a compile error
@@ -429,11 +503,13 @@
         - Hosts fork via Session.fork()
       - seal() validates host hooks and mounted plugins; returns Result
       - boot() on Sealed is the single terminal; boot() on Unsealed does not exist
-      - Host-only: storage, terminal, wire, lock_broker, detached
-      - Host-only: fast_boot, dax_window, seal, params, plugin, plugin_instance
-      - Host-only: trap_async, post_exec, on_trap_deny, register_custom_action
-      - Host-only: register_stream_kind, lifecycle_mut
-      - register_vsock_service deletes; vsock_service is the one verb
+      - Host-only: storage, terminal, wire, detached
+      - Host-only: fast_boot, dax_window, seal, plugin, plugin_instance
+      - Host-only: trap_async, post_exec, lifecycle_mut
+      - Host-only, scope-reached: params (.params), on_trap_deny (.deny)
+      - Host-only, scope-reached: register_custom_action (.actions), register_stream_kind (.streams)
+      - lock_broker folds into .fs(|f| f.config(…)); the standalone verb deletes
+      - register_vsock_service deletes; .vsock(|v| v.service(…)) is the one surface
       - Surface: see: artifacts/code/rust-plugin-builder.rs
     - TypeScript
       - Entry: new KelirBuilder(config) is the host
@@ -462,10 +538,12 @@
         - boot() seals implicitly only when the caller omits it
       - Missing prerequisites use the same text as Rust at seal time
       - Host-only: terminal, wire, detached, boot, seal, use
-      - Host-only: on, onTrapDeny, registerStreamKind
-      - lockBroker(config) is a host-only verb
+      - Host-only: on
+      - Host-only, scope-reached: params (.params), onTrapDeny (.deny)
+      - Host-only, scope-reached: registerCustomAction (.actions), registerStreamKind (.streams)
+      - lockBroker folds into .fs((f) => f.config(…)); the standalone verb deletes
         - Only lockBroker: true reaches the native addon; globs/nonBlocking forwarding is L3
-      - registerVsockService deletes; vsockService is the one verb
+      - registerVsockService deletes; .vsock((v) => v.service(…)) is the one surface
       - build(), PluginContract, BuiltPlugin delete
       - Surface: see: artifacts/code/typescript-plugin-builder.ts
     - Python
@@ -495,11 +573,12 @@
       - seal() validates host requirements and mounted plugin shapes
       - Missing prerequisites raise EConfig at seal time (.seal())
         - seal() re-checks host requirements
-      - Host-only: storage, terminal, wire, detached, params, boot, seal, use
-      - Host-only: on_trap_deny, register_custom_action, register_stream_kind
-      - lock_broker(enabled=True) is a host-only verb
+      - Host-only: storage, terminal, wire, detached, boot, seal, use
+      - Host-only, scope-reached: params (.params), on_trap_deny (.deny)
+      - Host-only, scope-reached: register_custom_action (.actions), register_stream_kind (.streams)
+      - lock_broker folds into .fs(lambda f: f.config(lock_broker=…)); the standalone verb deletes
         - Only the boolean reaches the PyO3 bridge; scope/non_blocking forwarding needs bridge work
-      - register_vsock_service deletes; vsock_service is the one verb
+      - register_vsock_service deletes; .vsock(lambda v: v.service(…)) is the one surface
       - build(), PluginBuilder, _PluginWrapper, _Scope delete
       - Host decorator forms delete: on_vm_init, on_vm_ready, on_vm_shutdown
         - on_pre_commit, on_post_commit

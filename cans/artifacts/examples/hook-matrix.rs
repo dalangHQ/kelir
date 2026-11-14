@@ -168,8 +168,10 @@ fn escapes_workspace(path: &Path) -> bool {
 impl FsInterposer for HookMatrixPlugin {
     fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
         if escapes_workspace(path) {
+            // PathTraversal maps to EPERM in the driver; the closed Errno
+            // enum has no stringly form (02-plugin-model.md#Unified-verdict).
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eacces),
+                errno: Errno::PathTraversal,
                 reason: "lookup escapes the /workspace root".into(),
             });
         }

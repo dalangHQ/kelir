@@ -24,7 +24,7 @@
     - Hook signature (mesh): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mesh)
       - mTLS validation failure
-        - Err(Reject { errno: ECONNREFUSED })
+        - Returns Action::Drop { errno: ECONNREFUSED, reason: mTLS validation failure }
         - see: 07-wire-plane.md#Frame-drop-and-forward-semantics
         - Ledger records peer fingerprint
       - Peer identity

@@ -59,7 +59,7 @@
   - Dual-plane execution architecture
     - Interceptor pipeline plane
       - Synchronous or bounded latency inline processors
-      - Evaluates unified verdicts in monotonic order: see: #Unified-verdict
+      - Evaluates unified verdict Actions in monotonic order: see: #Unified-verdict
       - Single mutator owns target byte slice at any stage
       - Trait dispatch: see: #Static-dispatch
       - Compiled into contiguous zero-cost dispatch tables
@@ -111,6 +111,17 @@
     - AOT hook fusion collapses nested closures into single FFI trampoline
   - KelirPlugin trait
     - see: [1]
+    - Context and deps single source (context clause)
+      - type Context is the capability resolved by session.cap()/c.cap()
+        - Accessor home: see: 03-sdk-architecture.md#Service-lookup-across-languages
+      - Rust `type Deps` is DERIVED from require::<T>() calls
+        - #[derive(KelirDeps)] walks the require::<T>() sites and emits the Deps HList
+        - The derive is the only writer of `type Deps`; never hand-maintained
+        - Deps spellings: see: artifacts/code/session-accessors.rs
+      - TypeScript requires("<name>")() populates the same Deps registry
+      - Python `requires: tuple[str, ...]` populates the same registry boot() walks
+        - TS/Py spellings: see: artifacts/code/session-accessors.ts
+        - Py spelling: see: artifacts/code/session-accessors.py
     - Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state
     - fork_state() specializes child state; defaults to clone_box()
     - fork_state runs on the async runtime thread; clone without blocking
@@ -139,39 +150,102 @@
         - Plugins implement only traits for rings they touch; rest default no-op
         - Dispatch: taxonomy rings register into ring-specific contiguous arrays
         - Unused rings cost zero vtable lookups
+      - TrapFilter predicates
+        - TrapFilter grammar: constructor plus five predicate builders
+          - Constructor: TrapFilter::binary(name); non-empty by the seal() triple
+          - Predicate set: with_arg (repeatable), with_cwd, with_env (repeatable),
+            with_uid, argv_matches; spellings in the artifact
+          - Artifact (Rust shape and spellings): see: artifacts/code/trap-filter-predicates.rs
+          - Py/TS spellings: with_cwd / withCwd, with_env / withEnv,
+            with_uid / withUid, argv_matches / argvMatches; with_arg is
+            with_arg / withArg in all three SDKs
+        - AND semantics: every populated predicate on one filter must hold
+          - Predicates are AND-ed, never OR-ed; each narrows the match
+          - Repeatable predicates (with_arg, with_env) accumulate; all entries must match
+          - One-constraint predicates (with_cwd, with_uid, argv_matches): a later call replaces the earlier value
+        - A match admits the event to dispatch only; no predicate confers trust
+          - Binary predicate is membership, not identity: see: 11-protocol.md#Trap-fast-path
+          - Canonical identity stays (st_dev, st_ino, binary_blake3)
+        - Handler-body checks the filter already covers are redundant
+          - cwd/argv guard code inside an on_trap handler moves into the filter
+        - Matching engines for cwd_glob and argv_regex (glob walk, regex) are L3
+      - Hook ordering
+        - Every registered handler carries priority: i32 (default 0)
+          - Priority rides the scope-level config verb .priority(i): see: #Nested-scopes
+        - Within a ring, handlers fire by descending priority, then registration order
+          - Equal priorities fire in registration order; earlier registration fires first
+          - Scope-level priority applies to every handler registered in that scope closure
+        - Mount order is NOT execution order
+          - Descriptor order is host hooks first, then mounted plugins in
+            - mount order: see: #One-descriptor-table
+          - Execution order re-sorts the per-ring chain by the priority rule above
+        - Priority spans the whole ring chain across host hooks and plugin hooks
+          - A plugin handler with higher priority fires before a host hook
+            - registered later at lower priority
+      - Per-ring timeouts
+        - Every hook can carry .timeout(Duration) (scope-level config verb: see: #Nested-scopes)
+          - Default: none, i.e., the ring's own ceiling governs
+          - Hot-path rings (Fs, Net, Host — the synchronous rings) default to 5 ms
+        - On timeout the ring returns Action::Drop { errno: Errno::Ewouldblock,
+          - reason: "hook timeout" } and the trap is released host-side
+          - The closed Errno set has no ETIMEDOUT-style member; Ewouldblock
+            - (EWOULDBLOCK on the wire) is the closest existing member — see
+            - the conflicts entry in cans/_collab/conflicts.md; ETIMEDOUT
+            - membership is an Errno-set change owned by the enum's home
+          - Errno member set and wire spellings: see: artifacts/code/action-algebra.rs
+        - A timeout Drop is a denial by the engine, never a plugin decision
+          - The timed-out handler's own verdict is discarded; the ring decision stands
+        - Timeout is per hook, not per ring total: each handler's budget is its own
     - Unified verdict
-      - Every interposer hook returns the same engine-level `Verdict`
+      - Every interposer hook returns the same engine-level `Action`
+      - Canonical enum and closed Errno set: see: artifacts/code/action-algebra.rs
+        - TS mirror: see: artifacts/code/action-algebra.ts
+        - Py mirror: see: artifacts/code/action-algebra.py
+      - Verdict and FilterAction are type aliases of Action, not separate enums
+        - Ring acceptance is restricted by the trait signature, not the enum
+        - FsInterposer::on_fs_write accepts only Forward | Drop | Suspend | Abort
+        - FsInterposer::on_fs_lookup accepts only Pass | Drop | Suspend | Abort | Patch(FsInode)
+        - Ring-specific acceptance is enforced by From<Action> on each ring's return type
       - Verdict covers decision hooks: Trap (execve), Fs lookup, Host, MCP
-        - A Verdict prescribes an outcome: different exec, serve-alternate, deny, abort
+        - A Verdict (Action alias) prescribes an outcome: different exec, serve-alternate, deny, abort
       - Monotonic order: downstream stages cannot widen upstream denial
       - FilterAction covers in-place byte-transform hooks:
         - Rings: Fs write, Net outbound, Net inbound, pgwire
-        - A FilterAction mutates the payload in place, then forwards or gates
+        - A FilterAction (Action alias) mutates the payload in place, then forwards or gates
         - FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
         - Constructor pin (SSOT-A1): field names visible at the call site
           - TS: FilterAction.Suspend({ until }) / FilterAction.Abort({ reason })
           - Py: FilterAction.suspend(until=...) / FilterAction.abort(reason=...)
+
         - No Patch variant: the transformed buffer IS the payload
-      - Variants
-        - Verdict::Pass = proceed untouched
-        - Verdict::Patch(payload) = in-place mutation; payload schema per ring
-        - Verdict::Drop { errno, reason } = deny; errno surfaces to guest
-        - Verdict::Suspend { until } = yield or hold to host
-        - Verdict::Abort { reason } = fatal; pipeline freezes
-      - Drop without errno indicates silent blackholing for fault injection
+      - Variants: spelled in the artifact; same enum in all three SDKs
+        - Action::Pass = proceed untouched
+        - Action::Forward = forward the in-place-mutated buffer (filter rings)
+        - Action::Drop { errno, reason } = deny; errno surfaces to guest
+        - Action::Suspend { until } = yield or hold to host
+        - Action::Abort { reason } = fatal; pipeline freezes
+        - Action::Patch(payload) = in-place mutation; payload schema per ring
+      - Errno is a closed enum in all three SDKs; stringly errnos are banned at every hook boundary
+        - Errno::PathTraversal denies lookups that escape the declared root;
+          - the driver maps it to EPERM before it surfaces to the guest
+        - Errno member set and wire spellings: see: artifacts/code/action-algebra.rs
+      - Blackhole invariant: a Drop always carries an errno
+        - Policy denial is fast-fail, never silent on the wire planes (L4 gets
+          - TCP RST or ICMP Port Unreachable, L7 gets a synthetic 403 JSON receipt)
+        - The one host-response suppression is chaos loss injection, where the
+          - driver suppresses the response (plugins/chaos.md)
       - Patch payload is registered per ring: ExecveMutation, FsInode,
         - Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
-      - Hook-return pin (SSOT-A1): the split above is canonical
-        - Verdict for decision hooks (Trap, Fs lookup, Host, MCP)
-        - FilterAction for byte-transform hooks (Fs write, Net, pgwire)
-        - No per-ring aliases
-      - Reject mapping pin (SSOT-A1)
-        - Err(PluginError::Reject { errno, reason }) maps to a Drop
-        - Verdict ring: Verdict::Drop { errno: Some(errno), reason }
-        - FilterAction ring: FilterAction::Drop { errno, reason }
-        - Other PluginError variants propagate as errors
-        - See: crates/kelir-interface/src/plugin_model.flow.rs:52
+      - Hook-return pin (SSOT-A1): one Action enum is canonical
+        - Type aliases, not split enums: Verdict and FilterAction are aliases of Action
+        - Old call sites keep resolving; new code writes Action directly
+        - No per-ring aliases beyond the two historical names
+      - PluginError-scope pin (SSOT-A1)
+        - Err(PluginError::*) is reserved for "I broke": panic, I/O, invariant violation
+        - A plugin that wants to deny returns Action::Drop { errno, reason }
+        - PluginError never carries a policy denial
+        - See: artifacts/code/plugin-trait.rs
       - Observation-event pin (SSOT-A1)
         - on_heartbeat receives one HeartbeatEvent { uptime_ms }
         - on_process_exit receives one ProcessExitEvent { pid, exit_code }
@@ -181,10 +255,11 @@
       - Read/console pin (SSOT-A1)
         - Read, console, and exec-stream hooks return the buffer
         - The buffer may be new or the same one passed in
-        - Write/net hooks mutate the passed buffer and return FilterAction
+        - Write/net hooks mutate the passed buffer and return the Action alias FilterAction
         - on_fs_write buffer (SSOT-A1): RS &mut [u8]; TS Buffer; Py bytearray
         - TS Buffer is mutable; the bridge copies the buffer back on return
         - Py bytearray is mutable; bytes is read-only and cannot mutate
+
         - RS mutates in place and returns () here; it is the outlier
         - See: crates/kelir-interface/src/plugin_model.flow.rs:783-808
         - See: crates/kelir-interface/src/plugin_model.flow.rs:838
@@ -217,22 +292,24 @@
       - Storage plane fully attributed: on_fs_write carries PID and HandlerCtx
       - Control plane messages hook-observable; nothing bypasses the graph
     - Hook return semantics
-      - Verdict covers decision hooks; FilterAction covers byte hooks
-        - See: #Unified-verdict
-      - on_fs_lookup → Verdict::Pass = fall through; Patch(attr) = serve
-      - on_fs_write / on_net_outbound / on_net_inbound → FilterAction
-      - on_host_exec → Verdict
-      - Trap hooks → Verdict; ring-specific defaults documented per plane
-      - SPEC CORRECTION (SSOT-A1)
-        - The Unified-verdict split is canonical: on_fs_write returns FilterAction, not Verdict
-        - See: crates/kelir-interface/src/plugin_model.flow.rs:842-873
+      - Every interposer hook returns one Action; the enum is shared with the
+        - filter rings: see: #Unified-verdict
+      - on_fs_lookup → Action::Pass = fall through; Action::Patch(attr) = serve
+      - on_fs_write / on_net_outbound / on_net_inbound → Action (Forward for
+        - allow; Drop/Suspend/Abort gate; no Patch on filter rings)
+      - on_host_exec → Action
+      - Trap hooks → Action; ring-specific defaults documented per plane
+      - Hook panic: escaped unwinds convert to Action::Drop with EFAULT
+        - Panic quarantine boundary: see: #Static-dispatch
+      - Denial is never an error: an Ok(Action) carries it; Err(PluginError)
+        - stays reserved per the PluginError-scope pin: see: #Unified-verdict
   - Declarative plugin macros
     - Plugins expose declarative DSL attributes expanding at assembly time
     - Macros expand to static MountScope masks and binary trap registrations
     - Eliminates procedural condition checks inside userland hook bodies
     - Declarative error mapping
       - Host exceptions map directly to POSIX errnos via builder error registry
-      - Unmapped exceptions convert cleanly to Verdict::Drop or hypervisor abort
+      - Unmapped exceptions convert cleanly to Action::Drop or hypervisor abort
       - Preserves guest POSIX semantics without manual try-catch in hook bodies
   - Static dispatch
     - Dispatch compilation: direct Cargo linkage resolves plugin order at build time
@@ -252,20 +329,25 @@
     - Dispatch tables are immutable after seal; zero atomic loads on the ring path
     - Panic quarantine boundary
       - Interposer dispatches wrap in catch_unwind at the engine perimeter
-      - Escaped hook panics convert to Verdict::Drop with EFAULT
+      - Escaped hook panics convert to Action::Drop with EFAULT
       - Supervisor microkernel stays resident; active StepSlot rolls back
     - Hydration rebuilds tables pre-seal; ArcSwap is not used post-boot
     - Configuration is frozen at seal; no runtime dispatch mutation exists
     - Rehydration on restore installs a fresh immutable table, not a swap-in-place
     - First Drop, Suspend, or Abort halts pipeline; Pass/Patch continue
     - on_trap_deny is builder-level
+      - Signature: on_trap_deny(event, verdict, session) — three parameters
+        - verdict is the DENYING Action (the unified enum), so break-glass
+          - can say "denied by X for Y, quarantine" from one read
+        - Reach: host-only, scope-reached via .deny(): see: #Nested-scopes
+        - Spelling in the examples: see: artifacts/examples/hook-matrix-full.rs
       - Deny-observation composition is a user concern
   - Unified interposition pipeline
     - Single engine for every guest-to-host interaction
     - Guest Ring Event (Syscall | NetFrame | FsOp | Msg) enters one path
     - Gate 1: Fast Filter (native BPF, inode mask, CIDR/port table)
     - Gate 2: Dispatcher evaluates MountScope; FFI gated here
-    - Gate 3: Execution commits Verdict to hardware or VirtIO ring
+    - Gate 3: Execution commits the Action to hardware or VirtIO ring
     - Effect-layer finality
       - A trap Pass is provisional; it routes, it never enforces
       - The final decision lands at the effect hook where the act commits
@@ -302,14 +384,14 @@
     - binary_path and argv[0] never identify the binary
     - Trusted-prefix bypass: see: 11-protocol.md#Trap-fast-path
     - Binary-list match (L2 scope membership, not identity): no list allows all; an entry matches when it equals the event binary path, or when it carries no `/` and equals the file name of that path
-    - A binary-list match admits the event to dispatch only; it never confers trust and never yields a Pass or Skip verdict
+    - A binary-list match admits the event to dispatch only; it never confers trust and never yields a Pass or Skip action
   - Latency ceiling
     - Gate 1: In-kernel BPF allowlists execute inside guest context in 0µs
     - Gate 2: Native MountScope and schema rules evaluate in host RAM in <2µs
     - Gate 2 dispatcher budget: the Dispatcher evaluates in <1µs
     - Gate 3: Foreign FFI trampolines (V8/Python) dispatch out-of-band in 50-150µs
     - Gate 3 skip: EROFS trusted binary and payload paths bypass foreign FFI
-    - Sync hot-paths require native filters or Verdict::Suspend
+    - Sync hot-paths require native filters or Action::Suspend
     - Toolchain overhead target on cargo/npm is a CI budget, not a spec claim
     - Budget numbers live only in perf/budgets.toml (enforced by perf-budgets)
     - Budget regressions block release; absolute overhead is not asserted here
@@ -342,6 +424,7 @@
       - Direct peer crate imports resolved at compile time; see: #Plugin-tiering
       - Language context projections: see: [2]
   - First-class plugins
+    - Capability access for every catalog plugin: see: 03-sdk-architecture.md#Service-lookup-across-languages
     - Catalog tiering
       - Community plugins (in-process engine): cans/plugins/
         - mcp, mesh, tool-guard, wire-ingress, vault, container
@@ -367,7 +450,7 @@
       - Exercises raw traits or SDK surfaces; no catalog plugin
       - Terminal and trap interposition: see: artifacts/examples/git-gate.rs
       - Full hook surface: see: artifacts/examples/hook-matrix.rs
-      - Full Verdict lattice: see: artifacts/examples/policy-matrix.rs
+      - Full Action lattice: see: artifacts/examples/policy-matrix.rs
       - Each maps to a spec surface, not a plugin
     - Coverage invariant
       - Every first-class plugin names a demonstrating example
@@ -385,8 +468,8 @@
         - Hook-coverage gate: see: [3]
         - Exercises via hook-matrix and policy-matrix, not via
           - autonomous-swe-agent
-      - Action-coverage: every Verdict variant
-        - Verdict variants: see: 11-protocol.md#Verdict-method-mapping
+      - Action-coverage: every Action variant
+        - Action variants: see: 11-protocol.md#Verdict-method-mapping
         - An unused variant fails --action-coverage
         - Action-coverage gate: see: [3]
     - Behavior of each: at its plugin file
@@ -507,11 +590,17 @@
       - Machine-readable verb set: see: artifacts/config/builder-verbs.yaml
       - Chain decisions: see: #Chain-decisions
     - Chain decisions (chain fix)
-      - (a) trap: both modes have both forms, under two names
+      - (a) trap and the orphan verbs: filter forms stay flat, register forms move into scopes
         - trap(filter, handler) is the filter form, in host mode and plugin mode
         - trap_scope(closure) is the scope form, in host mode and plugin mode
         - Rust renames the plugin-mode scope form from trap to trap_scope
         - TypeScript and Python keep the one overloaded trap name for both forms
+        - register_custom_action moves into .actions(|a| a.register(…))
+        - register_stream_kind moves into .streams(|s| s.register(…))
+        - vsock_service moves into .vsock(|v| v.service(…))
+        - params moves into .params(|p| p.model::<T>())
+        - on_trap_deny moves into .deny(|d| d.on_trap_deny(…))
+        - The standalone spellings delete; only the scope forms remain: see: #Nested-scopes
       - (b) seal is the one validation gate; the boot entry differs per SDK
         - Rust: boot() on Unsealed does not exist; seal()?.boot() is the only route
         - TypeScript and Python: boot() seals implicitly (TS via fuse(), Py via seal())
@@ -529,7 +618,7 @@
         - TypeScript: forkState() throws EConfig on a host-mode builder
           - A4 lands it; live returns a clone
         - Python: fork_state() raises EConfig on a host-mode builder (live)
-      - (e) group() / guard() / .end(): one shape in all three SDKs
+      - (e) group() / guard(): one shape in all three SDKs; .end() is Rust-only
         - group(fn): the closure takes a sub-builder and returns the builder
           - Rust: group<F>(self, configure: F) -> Self where F: FnOnce(Self) -> Self (live)
           - TypeScript: group(fn: (builder: this) => this | void): this (live)
@@ -544,9 +633,10 @@
             - A5 lands it; no live verb
           - No predicate, no string, no other condition form
             - enabled is a bool; the closure runs only when it is true
-        - .end() closes a scope and returns the builder, in all three SDKs
-        - Rust scope closures must return the builder via .end()
-        - TS/Py scope closures may return the scope or void
+        - .end() exists in Rust only, as a type-system artifact, not a semantic one
+          - Rust scope closures must return the builder, and .end() is how they do it
+          - TS/Py scope closures may return the scope or void; there is no .end()
+          - A flat chain is a group() fold over the scopes; see: #Nested-scopes
       - (f) Python host-mode .context() raises EConfig
         - boot() never reads a host context and the bridge takes no host-context param
         - context() is plugin-mode only in Python and Rust
@@ -612,8 +702,9 @@
       - The filter argument may be a bare string in all three SDKs
       - Rust: the scope form is trap_scope; the filter form is trap
       - TypeScript and Python: one overloaded trap name carries both forms
-      - Same signatures as the DX-round plugin builder; the host gains them
-      - context, require, scope, vsock_service, fork_with exist in both modes
+      - Ring verbs are reached through their scopes; the flat chain is a group() fold: see: #Nested-scopes
+      - context, require, scope, fork_with exist in both modes; vsock_service lives in .vsock()
+      - Orphan verbs live in their scopes: actions, streams, vsock, params, deny: see: #Nested-scopes
       - Verb names: see: #Chainable-verbs
       - Scope names: see: #Nested-scopes
       - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
@@ -637,6 +728,7 @@
       - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
       - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
       - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
+      - Ring verbs are scope-reached: see: #Nested-scopes
       - Ring verbs
         - Trap: .on_trap, .on_process_exit
         - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
@@ -644,7 +736,7 @@
         - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
         - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
         - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
-        - Verdict (SSOT-A1): .on_vm_init / .on_vm_ready / .on_vm_shutdown
+        - Verdict (SSOT-A1; Action aliases on lifecycle rings): .on_vm_init / .on_vm_ready / .on_vm_shutdown
           - Are live ring verbs in all three SDKs
           - Artifact prose calling them superseded is stale
           - A2 corrects the artifact; the spec keeps the verbs
@@ -652,15 +744,14 @@
           - See: cans/artifacts/code/rust-plugin-builder-scopes.rs
         - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt
         - Telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
-        - Vsock: .vsock_service(spec, handler)
-          - Spec carries port, service, and schema
-          - Each call registers one service, plugin-level in all SDKs
-          - Multiple calls register multiple services
+      - Scope home: see: #Nested-scopes
       - Ring home: see: #Segregated-ring-traits
       - Verb signatures: see: artifacts/code/rust-plugin-builder.rs
       - Verb signatures: see: artifacts/code/typescript-plugin-builder.ts
       - Verb signatures: see: artifacts/code/python-plugin-builder.py
     - Nested scopes
+      - Scopes are the only way to reach a ring verb
+        - A ring verb is reached through its scope closure; there is no unscoped call surface
       - Eight scope entry points, one per ring group
         - trap: .on_trap, .on_process_exit
         - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
@@ -672,40 +763,76 @@
         - lifecycle: .on_vm_init, .on_vm_ready, .on_vm_shutdown
           - .on_pre_commit, .on_post_commit
         - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog
+      - Flat-fold pin: a flat chain exists only as `group(|g| g.on_trap(…).on_fs_write(…))` — a readability fold that produces the same descriptors. There is no separate flat surface.
+        - The fold delegates each verb to its scope's method; descriptors are identical: same rings, same ordinals
+      - Orphan-verb scopes: actions, streams, vsock, params, deny
+        - actions: .actions(|a| a.register(name, schema, handler))
+        - streams: .streams(|s| s.register(kind, schema, handler))
+        - vsock: .vsock(|v| v.service(port, service, handler))
+        - params: .params(|p| p.model::<T>())
+        - deny: .deny(|d| d.on_trap_deny(handler))
+        - Entry-point names are the scope names in all three SDKs
       - Entry-point names are the group names in all three SDKs
       - Each entry point takes a closure receiving a scope builder
         - The closure returns the builder via .end() in Rust
-        - In TS/Py it may return the scope or void
-        - .end() closes the scope; the parent chain resumes after it: see: #Chain-decisions
-        - Scope methods carry the same verb names as the flat chain
+        - In TS/Py it may return the scope or void; there is no .end() in TS/Py
+        - .end() is a Rust type-system artifact, not a semantic one: the Rust closure must return the builder, and .end() is how it does it
         - The parent chain resumes after the closure returns
+      - Scope typing pin: scopes are checked types in every SDK
+        - Python scopes are Protocols; TS scopes are generic interfaces
+        - Rust scopes are the scope structs of the scope-builders artifact
+        - f.on_trap(...) inside .fs(...) is a type error in all three SDKs
+          - Rust: no method on FsScope; TS: not on the FsScope interface; Py: Protocol without the member fails the type check
+        - Scope type shapes: see: artifacts/code/scope-builders.rs
+        - Scope type shapes: see: artifacts/code/python-scope-protocol.py
+        - Scope type shapes: see: artifacts/code/typescript-scope-interface.ts
+      - Scope sub-nodes (one shape in all three SDKs)
+        - config(cfg) — scope-level config
+          - fs: .fs(|f| f.config(…)) carries lock_broker, carryover_bytes, scan_engine, snoops
+          - Python kwargs shape: .fs(lambda f: f.config(lock_broker=…))
+          - storage.lock_broker.scope_globs rides .fs config, not a standalone verb
+        - requires::<P>() — scope-level deps
+          - TS .requires<P>() inside the scope; Py .require(P) inside the scope
+        - fork_with(f) — scope-level fork policy
+          - TS .forkWith(fn) inside the scope
+        - timeout(d) / priority(i) — per-scope scheduling
+          - The verbs land here; the ordering/timeout SEMANTICS land in
+            - #Hook-ordering and #Per-ring-timeouts (Segregated-ring-traits)
+          - TrapFilter predicate grammar: see: #TrapFilter-predicates
+        - rules(|r| r.read.allow(glob).deny(glob).write.mask(regex)) — per-rule policy inside a hook
+          - TS camelCase inside the scope: r.read.allow(glob).deny(glob).write.mask(regex)
+          - The mechanical replacement for hook-matrix-full.py's IDENTITY_PATH/DENY_MARKER/CARRYOVER constants
       - Scope groups organise the chain only
         - Ring membership and descriptors are unchanged by scope use
-        - A nested chain and the equivalent flat chain produce
+        - A nested chain and its flat-fold group produce
           - identical descriptors: same rings, same ordinals
-      - Scope shape: see: artifacts/code/rust-plugin-builder.rs
+      - Scope shape: see: artifacts/code/scope-builders.rs
       - Scope shape: see: artifacts/code/rust-plugin-builder-scopes.rs
       - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
       - Scope shape: see: artifacts/code/python-plugin-builder.py
     - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
       - Rust: storage, terminal, wire, lock_broker, detached, fast_boot
-      - Rust: dax_window, seal, params, plugin, plugin_instance
+      - Rust: dax_window, seal, plugin, plugin_instance
       - Rust: trap_async and post_exec stay host-only; trap(filter, handler) is both modes
-      - Rust: on_trap_deny stays host-only
-      - Rust: register_custom_action, register_stream_kind, lifecycle_mut
+      - Rust: register_custom_action, register_stream_kind, lifecycle_mut are host-only, reached via .actions/.streams scopes and lifecycle_mut
+      - Rust: on_trap_deny stays host-only, reached via .deny()
+      - Rust: params stays host-only, reached via .params()
       - TypeScript: terminal, wire, detached, boot, seal, use
-      - TypeScript: on and onTrapDeny stay host-only
         - trap(filter, handler) and trap(closure) are both modes
-      - TypeScript: registerStreamKind stays host-only
-      - TypeScript: lockBroker(config) is a standalone host-only verb
+      - TypeScript: on stays host-only
+        - onTrapDeny is host-only, reached via .deny()
+        - registerCustomAction, registerStreamKind, vsockService, params are host-only, reached via .actions/.streams/.vsock/.params scopes
+      - TypeScript: lockBroker(config) folds into .fs(|f| f.config(…)); the standalone verb deletes
         - Only the boolean reaches the native addon
-      - Python: storage, terminal, wire, detached, params, boot, seal, use
-      - Python: on_trap_deny stays host-only
+      - Python: storage, terminal, wire, detached, boot, seal, use
+        - register_custom_action, register_stream_kind are host-only, reached via .actions/.streams scopes
+        - vsock_service is host-only, reached via .vsock()
+        - params is host-only, reached via .params()
+        - on_trap_deny is host-only, reached via .deny()
         - trap(filter, pre, post) and trap(closure) are both modes
-      - Python: register_custom_action, register_stream_kind
-      - Python: lock_broker(enabled=True) is a standalone host-only verb
+      - Python: lock_broker folds into .fs(|f| f.config(lock_broker=…)); the standalone verb deletes
         - Only the boolean reaches the PyO3 bridge
-      - register_vsock_service deletes in all SDKs; vsock_service is the one verb
+      - register_vsock_service deletes in all SDKs; .vsock(|v| v.service(…)) is the one surface
       - Rust rejection is a compile error: no method on PluginMode
       - TypeScript and Python rejection is EConfig at the call site, not at seal
         - Host-only verbs throw at the call site on a plugin-mode builder, live in both SDKs
@@ -830,8 +957,9 @@
         - Missing prerequisite reports the same text in all SDKs
           - missing prerequisite: <dep> required by <plugin>
       - ESecurityViolation is not a prerequisite failure trigger
-      - It is the errno a hook returns via Verdict::Drop on policy violation
-      - Rust carries it as PluginError::Reject { errno, reason }
+      - It is the errno a hook returns via Action::Drop on policy violation
+      - No PluginError::Reject bridge exists; denial is always the action
+        - PluginError-scope pin: see: #Unified-verdict
       - Prerequisite home: see: 03-sdk-architecture.md#Prerequisite-gating-across-languages
     - Fused trampoline descriptor preserved
       - The .build() wrapper joins PipelineEngine as a hand-written plugin does
@@ -844,7 +972,7 @@
       - vectors.json gains a plugin_builder case family
       - Each case pins builder name, requires list, and ring set with ordinals
       - Each case pins ordered event payloads and expected outcomes
-      - Outcomes are Verdict or FilterAction results per ring
+      - Outcomes are Actions (alias Verdict or FilterAction) per ring
       - kelir-plugin-cli parity run builds the chain in Rust, TS, and Python
       - Divergent outputs block CI
       - Case schema: see: artifacts/code/plugin-builder-vectors.rs

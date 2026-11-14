@@ -9,7 +9,7 @@ from typing import Optional
 
 import kelir
 from kelir import KelirBuilder, TrapEvent, Verdict
-from kelir.model_plugin import BasePlugin
+from kelir.plugin_model import BasePlugin
 from kelir.storage_planes import IdmapConfig
 
 
@@ -22,16 +22,16 @@ class GitGatePlugin(BasePlugin):
     async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         binary = event.binary_path.rsplit("/", 1)[-1]
         if binary != "git":
-            return Verdict.pass_()
+            return Verdict.Pass
         if len(event.argv) < 2:
-            return Verdict.pass_()
+            return Verdict.Pass
         if event.argv[1] == "push":
             if "--force" in event.argv:
                 return Verdict.patch(
                     argv=[a for a in event.argv if a != "--force"],
                     env={"KELIR_DISARMED": "1"},
                 )
-            return Verdict.pass_()
+            return Verdict.Pass
         if event.argv[1] == "commit":
             if "-m" in event.argv:
                 idx = event.argv.index("-m")
@@ -42,8 +42,8 @@ class GitGatePlugin(BasePlugin):
                 return Verdict.abort(
                     reason="EPOLICY: commit references protected branch",
                 )
-            return Verdict.pass_()
-        return Verdict.pass_()
+            return Verdict.Pass
+        return Verdict.Pass
 
 
 def build_runtime() -> KelirBuilder:

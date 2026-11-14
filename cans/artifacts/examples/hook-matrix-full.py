@@ -1,4 +1,5 @@
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
+# see: cans/02-plugin-model.md#TrapFilter-predicates
 # see: cans/05-storage-plane.md#In-flight-read-masking
 # see: cans/04-terminal-plane.md#Terminal-pipeline
 from __future__ import annotations
@@ -10,13 +11,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 import kelir
-from kelir import Deadline, FilterAction, Verdict
-from kelir.model_plugin import (
+from kelir import Deadline, Errno, FilterAction, TrapFilter, Verdict
+from kelir.plugin_model import (
     BasePlugin,
     FsInodeAttr,
     HandlerContext,
     LifecycleCtx,
-    PluginError,
     WatchdogEvent,
     WatchdogVerdict,
 )
@@ -86,7 +86,7 @@ class HookMatrixFullPlugin(BasePlugin):
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
         self._state.traps += 1
-        return Verdict.pass_()
+        return Verdict.Pass
 
     # see: cans/07-wire-plane.md#Wire-plane
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
@@ -99,14 +99,16 @@ class HookMatrixFullPlugin(BasePlugin):
         return FilterAction.forward()
 
     # see: cans/05-storage-plane.md#Storage-plane
+    # see: cans/02-plugin-model.md#Unified-verdict
     def on_fs_lookup(self, path: Path) -> Verdict:
         if escapes_workspace(str(path)):
-            raise PluginError.reject(
-                errno="E_PATH_TRAVERSAL",
-                reason="lookup escapes the /workspace root",
+            # Errno is the closed enum; PathTraversal maps to EPERM in the driver.
+            return Verdict.drop(
+                Errno.PATH_TRAVERSAL,
+                "lookup escapes the /workspace root",
             )
         if str(path) != IDENTITY_PATH:
-            return Verdict.pass_()
+            return Verdict.Pass
         return Verdict.patch(FsInodeAttr(
             mode=0o400,
             uid=0,
@@ -133,16 +135,16 @@ class HookMatrixFullPlugin(BasePlugin):
         self, path: Path, flock_cmd: int, flock_type: int, pid: int,
     ) -> Verdict:
         self._state.fs_locks += 1
-        return Verdict.pass_()
+        return Verdict.Pass
 
     def on_host_lsm_exec(self, path: Path, pid: int) -> Verdict:
-        return Verdict.pass_()
+        return Verdict.Pass
 
     def on_host_pressure(self, level: int) -> Verdict:
-        return Verdict.pass_()
+        return Verdict.Pass
 
     def on_host_keyring_access(self, key: str) -> Verdict:
-        return Verdict.pass_()
+        return Verdict.Pass
 
     async def on_host_preempt(self, ctx: LifecycleCtx | None) -> None:
         self._state.host_preempts += 1
@@ -208,6 +210,23 @@ class HookMatrixFullPlugin(BasePlugin):
         if event.exit_code != 0:
             self._state.failures += 1
 
+    # see: cans/02-plugin-model.md#TrapFilter-predicates
+    # The predicate chain: cwd/env/uid/argv_regex constraints live in the
+    # filter, not in the handler body (AND-ed predicates; a handler-body
+    # guard duplicating them is redundant and should not be written).
+    # see: cans/02-plugin-model.md#Hook-context-restriction
+    # on_trap_deny(event, verdict, session): the verdict parameter is the
+    # DENYING Action (the unified enum), so break-glass can say "denied by
+    # X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
+    # see: cans/10-attestation.md#Hook-trace
+    # hook_trace read: every hook that fired for the trapped process
+    # carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
+    # ordinal); diagnostic only, excluded from Merkle roots. The
+    # comment-pinned HookSpan case (the hook-trace-coverage vector this
+    # example stands in for; vectors.json cannot express a hook-trace
+    # expectation today) asserts: { plugin: "hook-matrix-full",
+    # ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
+
 
 async def main() -> None:
     import platform
@@ -224,6 +243,26 @@ async def main() -> None:
             driver="auto",
         )
         .use(plugin)
+        # see: cans/02-plugin-model.md#TrapFilter-predicates
+        .trap(
+            TrapFilter.binary("git")
+            .with_arg("push")
+            .with_cwd("/workspace/**")
+            .with_env("CI", "1")
+            .with_uid(0)
+            .argv_matches(r"^--force$"),
+            pre=lambda event, ctx: Verdict.drop(
+                Errno.EPOLICY, "forced push denied by policy",
+            ),
+        )
+        # see: cans/02-plugin-model.md#Chain-decisions
+        # on_trap_deny moves into .deny(|d| d.on_trap_deny(…)); the
+        # verdict parameter is the DENYING Action.
+        .deny(
+            lambda d: d.on_trap_deny(
+                lambda event, verdict, session: None,
+            )
+        )
         .seal()
     )
 

@@ -417,17 +417,27 @@
     - Compare-and-swap on the catalog row; mismatch aborts E_STALE_INCARNATION
     - Eliminates same-session_id replacement destruction across workers
   - Lifecycle vetoes
+    - Veto pin (SSOT-A1)
+      - Registration: LifecycleCtx.register_veto(event, Box<dyn Fn() -> Veto>)
+      - Veto { allowed: bool, by: String, reason: String, recovery: Option<String> }
+        - Veto::allowed(true) is the success case; the other three fields
+          - are populated only on denial
+        - by names the vetoing plugin; reason says why; recovery names the
+          - operator action that would re-permit, if one exists
+      - The former Box<dyn Fn() -> bool> callback shape is superseded;
+        - a bare bool no longer reaches the registration
     - Scope: hard vetoes only
       - Fork, Suspend, ClockSkew
     - Registration
-      - LifecycleCtx.register_veto(event, Box<dyn Fn() -> bool>)
       - Register in on_vm_init
       - Pre-boot: builder lifecycle_mut().register_veto
         - Before seal/boot; validated at boot
       - All registrations validated at boot
       - Callbacks fire in DAG order across all plugins
     - Semantics
-      - Any false return aborts the action with ESessionVeto
+      - Any denied Veto aborts the action with ESessionVeto
+        - The denial surfaces in LifecycleCtx and in the receipt
+          - hook_trace: see: 10-attestation.md#Hook-trace
       - Vetoable = state-mutating action
         - Aborting a state-preserving action leaves no recovery
       - VetoEvent enum: Fork, Suspend, ClockSkew only
@@ -452,6 +462,18 @@
         - RS: set_watchdog(timeout: Duration, action: WatchdogAction), positional
         - TS: setWatchdog({ timeoutMs: number, action: "reboot" | "terminate" })
         - Py: set_watchdog(timeout: timedelta, action: WatchdogAction), kwargs
+      - Veto relay
+
+      - Watchdog reboots and terminates are state-mutating actions; they
+
+        - carry the Veto shape at the lifecycle veto point: see: #Lifecycle-vetoes
+
+      - A denied Veto { event, by, reason, recovery } surfaces in
+
+        - LifecycleCtx and in the receipt hook_trace:
+
+        - see: 10-attestation.md#Hook-trace
+
     - Heartbeat
       - Shim emits GuestToHost::Heartbeat at driver-configured cadence
       - on_heartbeat fires per receipt; observation only

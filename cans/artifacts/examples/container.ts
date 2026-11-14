@@ -2,6 +2,10 @@
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 // see: cans/plugins/container.md#Rootless-container-execution
 // see: cans/01-architecture.md#VirtIO-Device-Complex
+// STATUS: aspirational; see §4 of work-order
+//   L3-GAP: the OCI tarball cannot be ingested yet — @kelir/core exposes no
+//   container cap handle, so the image id is not available; the boot/spawn
+//   path below is real and stays.
 
 import { kelir, container } from "@kelir/core";
 
@@ -23,7 +27,6 @@ async function main() {
   runtime.seal();
   const session = await runtime.boot();
   try {
-    // TODO (L3): ingest the OCI tarball via a container cap handle; @kelir/core exposes no container handle, so the image id is not available yet.
     const image = OCI_TARBALL;
 
     const run = await session.spawn("podman",

@@ -20,7 +20,7 @@
         - execution shims without passing tool-guard
     - Taint tracking and mutation gating
       - Ingestion tools consuming untrusted payloads mark trace as tainted
-      - Mutating tools under tainted state require Verdict::Suspend for approval
+      - Mutating tools under tainted state require Action::Suspend for approval
       - Host approval binds strictly to canonical arguments and payload hash
       - Model-controlled flags or parameters cannot bypass approval gates
       - In-guest instructions cannot clear host-tracked taint flags
@@ -37,9 +37,9 @@
       - Non-matching tool calls evaluate static MountScope allowlists;
         - matching calls cross FFI trampoline to host
     - Unified verdict surface (tool-guard)
-      - Returns engine-level Verdict from 02-plugin-model.md#Unified-verdict
-      - Verdict::Pass: forwards frame untouched
-      - Verdict::Patch(ExecveMutation): serializes canonical mutation ABI:
+      - Returns engine-level Action (Verdict alias) from 02-plugin-model.md#Unified-verdict
+      - Action::Pass: forwards frame untouched
+      - Action::Patch(ExecveMutation): serializes canonical mutation ABI:
         - Field layout owned by crates/kelir-interface/src/protocol_wire.flow.rs
         - new_binary: Option<String> (overrides target ELF path)
         - new_argv: Option<Vec<String>> (replaces execution arguments)
@@ -47,8 +47,8 @@
         - unset_env: Vec<String> (stripped environment variables)
         - envp stays a map (observed snapshot); set_env is the ordered mutation delta
       - Guest shim decodes and applies atomically before trapped execve releases
-      - Verdict::Drop { errno, reason }: JSON-RPC error response synthesized
-      - Verdict::Suspend { until: Approval }: hypervisor external suspend
+      - Action::Drop { errno, reason }: JSON-RPC error response synthesized
+      - Action::Suspend { until: Approval }: hypervisor external suspend
         - Host waits for human out-of-band authorization via vsock Channel 0
         - Swap mechanics: see: 08-lifecycle.md#Suspend-and-resume
     - Call quota
@@ -64,7 +64,7 @@
   - Error and return semantics (tool-guard)
     - Hook signature (tool-guard): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (tool-guard)
-      - Verdict::Drop returns JSON-RPC error object:
+      - Action::Drop returns JSON-RPC error object:
         - code = -32001 (EPERM) or mapped POSIX errno
         - message = user-defined reason or "Policy violation: tool execution rejected"
       - Schema drift or unpinned tool tampering returns -32601

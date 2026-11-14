@@ -78,7 +78,7 @@ async function main() {
     // TODO (L3): await the mesh winner announcement; MeshHandle exposes peers only, with no awaitWinner, so the first passing shard stands in as winner.
     console.error(`[kelir] mesh winner shard=${winner}`);
     console.error(`[kelir] ${passed}/8 shards passed; winner shard=${winner}`);
-    const denials = await session.ctx<LedgerHandle>("ledger").countDenials(process.pid);
+    const denials = await (session.cap("ledger") as LedgerHandle).countDenials(process.pid);
     console.error(`[kelir] supply-chain denials=${denials}`);
   } finally {
     await session.stop();

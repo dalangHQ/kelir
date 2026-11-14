@@ -9,7 +9,7 @@ import platform
 
 import kelir
 from kelir import KelirBuilder
-from kelir.plugins.plugin_replay import ReplayConfig, ReplayPlugin
+from kelir.plugins.replay import ReplayConfig, ReplayPlugin
 
 
 def build_runtime() -> KelirBuilder:

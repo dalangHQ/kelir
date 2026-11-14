@@ -1,4 +1,7 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+// L3-GAP: .on(VmReady) npm-ci via session.execInGuest and .on(VmShutdown)
+//   ledger.flush are stubbed — no pre-boot ledger handle capture and no fused
+//   LifecycleContext.cap.ledger yet.
 
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction,
          type KelirBuilder, type Session, type SnapshotDescriptor, type ExecutionReceipt,
@@ -57,7 +60,7 @@ const runtime = kelir({
   }))
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
 
-  // 2. Planes and hooks mount next; c.ledger is statically inferred without manual generics
+  // 2. Planes and hooks mount next; c.cap("ledger") is statically inferred without manual generics
   .terminal({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
@@ -84,7 +87,7 @@ const runtime = kelir({
         onWrite: async (path, raw, c) => {
           const evt = JSON.parse(raw.toString());
           if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
-          const producerBlake3 = await c.ledger.blake3OfProducingProcess(path);
+          const producerBlake3 = await c.cap<LedgerHandle>("ledger")!.blake3OfProducingProcess(path);
           await oracle.ingestHarnessEvent({ path, event: evt, producerBlake3 });
         } },
     ],
@@ -149,9 +152,11 @@ const runtime = kelir({
                      env: { OTEL_TRACE_ID: oracle.currentTraceId(), CI: "1" } });
   })
   .trap(TrapFilter.binary("git").withArg("push"), async (c) => {
-    if (c["repo-policy"].policy.isProtected()) {
-      c["repo-policy"].policy.recordViolation();
-      return c.drop("EPERM", `EPOLICY: '${c["repo-policy"].policy.currentBranch}' protected.`);
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    const repoPolicy = c.cap("repo-policy");
+    if (repoPolicy && repoPolicy.policy.isProtected()) {
+      repoPolicy.policy.recordViolation();
+      return c.drop("EPERM", `EPOLICY: '${repoPolicy.policy.currentBranch}' protected.`);
     }
     if (c.trap.argv.includes("--force"))
       return c.patch({ binary: "/bin/git",
@@ -165,15 +170,19 @@ const runtime = kelir({
   })
   // see: cans/10-attestation.md#Execution-receipts
   .trap(TrapFilter.binary("git").withArg("commit"), {
-    pre: async (c) =>
-      c["repo-policy"].policy.violations > 0
-        ? c.drop("EPERM", `EPOLICY: ${c["repo-policy"].policy.violations} prior violation(s).`)
-        : c.pass(),
+    pre: async (c) => {
+      // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+      const repoPolicy = c.cap("repo-policy");
+      return repoPolicy && repoPolicy.policy.violations > 0
+        ? c.drop("EPERM", `EPOLICY: ${repoPolicy.policy.violations} prior violation(s).`)
+        : c.pass();
+    },
     post: async (c) => {
       const receipt = await c.receipt();
       if (receipt.dirtyBytes === 0)
         throw new Error("Verification anomaly: zero-byte delta commit attempted.");
-      const vfsExt = receipt.extensions?.find((e) => e.namespace === "fs:vfs");
+      // see: cans/10-attestation.md#Typed-extensions
+      const vfsExt = receipt.fsVfs();
       console.log(vfsExt
         ? `[kelir] commit fs:vfs extension present, payload_len=${vfsExt.payload.length}`
         : "[kelir] commit fs:vfs extension absent");
@@ -181,11 +190,10 @@ const runtime = kelir({
     },
   })
 
-  // TODO (L3): SSOT .on(VmReady) npm-ci via session.execInGuest and .on(VmShutdown) ledger.flush; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does, or LifecycleContext.cap.ledger once the fused lifecycle payload lands, see cans/08-lifecycle.md#Session-and-context-handles
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   // see: cans/08-lifecycle.md#Break-glass
   .onTrapDeny(async (e, s) => {
-    if (await s.ledger.countDenials(e.ppid) > 5) {
+    if (await s.cap("ledger")!.countDenials(e.ppid) > 5) {
       await s.vm.suspend("./.kelir/quarantine.snap");
       await s.console();
     }
@@ -216,7 +224,8 @@ async function main() {
         await child.vm.clock.skew({ days: 24 * (id.charCodeAt(0) - 64) });
         const run = await child.spawn("npm", ["run", `verify-hypothesis-${id}`],
                                        { cwd: "/workspace/checkout-service" });
-        const delta = await child.ctx<LedgerHandle>("ledger").getCausalDeltaFromParent();
+        // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        const delta = await child.cap<LedgerHandle>("ledger")!.getCausalDeltaFromParent();
         await child.terminate();
         return { id, run, delta };
       })
@@ -240,7 +249,7 @@ async function main() {
       ["commit", "-am", `fix(stripe): dedupe webhook body reads (${winner.id})`],
       { cwd: "/workspace/checkout-service" });
 
-    const final = await session.ledger.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
+    const final = await session.cap<LedgerHandle>("ledger")!.finalize({ includeDelta: winningDelta!, includeMerkleRoot: true });
     console.log("[kelir] merkle root:", final.merkleRoot);
     console.log("[kelir] signed JWS: ", final.signedJws.slice(0, 80) + "…");
   } finally {

@@ -9,7 +9,7 @@ import os
 
 import kelir
 from kelir import KelirBuilder, Session
-from kelir.plugins.plugin_container import ContainerConfig, ContainerPlugin
+from kelir.plugins.container import ContainerConfig, ContainerPlugin
 
 
 OCI_TARBALL = "./fixtures/oci-hello-world.tar"
@@ -35,7 +35,8 @@ def build_runtime() -> KelirBuilder:
 
 async def main() -> None:
     async with build_runtime() as session:
-        image = await session.cap.container.ingest_image(OCI_TARBALL)
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        image = await session.cap("container").ingest_image(OCI_TARBALL)
 
         run = await session.spawn(
             "podman", ["run", "--rm", "--rootless", image,

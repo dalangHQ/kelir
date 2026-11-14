@@ -1,4 +1,4 @@
-# see: cans/02-plugin-model.md#Full-Verdict-lattice
+# see: cans/02-plugin-model.md#Unified-verdict
 # see: cans/05-storage-plane.md#In-flight-read-masking
 # see: cans/04-terminal-plane.md#Terminal-pipeline
 from __future__ import annotations
@@ -10,10 +10,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import kelir
-from kelir import Deadline, FilterAction, Verdict
-from kelir.model_plugin import (
+from kelir import Deadline, Errno, FilterAction, Verdict
+from kelir.plugin_model import (
     BasePlugin,
-    PluginError,
     FsInodeAttr,
     HandlerContext,
 )
@@ -81,14 +80,16 @@ class HookMatrixPlugin(BasePlugin):
         return FilterAction.forward()
 
     # see: cans/05-storage-plane.md#Storage-plane
+    # see: cans/02-plugin-model.md#Unified-verdict
     def on_fs_lookup(self, path: Path) -> Verdict:
         if escapes_workspace(str(path)):
-            raise PluginError.reject(
-                errno="E_PATH_TRAVERSAL",
-                reason="lookup escapes the /workspace root",
+            # Errno is the closed enum; PathTraversal maps to EPERM in the driver.
+            return Verdict.drop(
+                Errno.PATH_TRAVERSAL,
+                "lookup escapes the /workspace root",
             )
         if str(path) != IDENTITY_PATH:
-            return Verdict.pass_()
+            return Verdict.Pass
         return Verdict.patch(FsInodeAttr(
             mode=0o400,
             uid=0,

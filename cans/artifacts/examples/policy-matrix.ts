@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
-import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, SuspendReason, VetoEvent,
+import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, SuspendReason, VetoEvent, Errno,
          type Session } from "@kelir/core";
 
 const policyState = {
@@ -18,7 +18,8 @@ const policyPlugin = createPlugin("policy-matrix")
       case "policy-allow":
         return c.pass();
       case "policy-deny":
-        return c.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.");
+        // errno is the closed Errno enum; stringly errnos are non-conforming.
+        return c.drop(Errno.EPOLICY, "EPOLICY: policy-matrix denies this binary.");
       // see: cans/02-plugin-model.md#Patch-payload-is-registered-per-ring:-ExecveMutation,-FsInode,
       case "policy-rewrite":
         return c.patch({

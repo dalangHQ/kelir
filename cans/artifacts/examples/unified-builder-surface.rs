@@ -1,19 +1,22 @@
 #![allow(dead_code)]
 
 // see: cans/02-plugin-model.md#Unified-builder
+// see: cans/02-plugin-model.md#Nested-scopes
 // see: cans/03-sdk-architecture.md#Unified-builder-surface
 // see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_plugin
 // see: cans/artifacts/examples/unified-builder-surface.ts#buildSurfacePlugin
 // see: cans/artifacts/examples/unified-builder-surface.py#build_surface_plugin
 
 // The unified builder surface, walked end to end in one file: structural
-// verbs, all 24 ring verbs flat, all 8 scope closures, the four chain cases
-// (seal, trap filter, trap_scope, lock_broker) and the four mount cases
-// (host-only verbs on a host builder, host-only verbs on a plugin builder,
-// host.use(builder) merge ordering, nested-scope = flat-chain equivalence).
-// Handlers are trivial stubs: Forward for filter verbs, Pass for verdict
-// verbs, passthrough bytes for console/exec, Ok(()) for lifecycle and
-// telemetry. L1/L2: descriptors only, no execution, no boot().
+// verbs, all 24 ring verbs reached through their 8 scope closures, the
+// five orphan-verb scopes (actions, streams, vsock, params, deny), the
+// chain cases (seal, trap filter, trap_scope, .fs config) and the mount
+// cases (host-only verbs on a host builder, host-only verbs on a plugin
+// builder, host.use(builder) merge ordering, flat-fold = nested-scope
+// equivalence via group()). Handlers are trivial stubs: Forward for
+// filter verbs, Pass for verdict verbs, passthrough bytes for
+// console/exec, Ok(()) for lifecycle and telemetry. L1/L2: descriptors
+// only, no execution, no boot().
 
 use async_trait::async_trait;
 use kelir_interface::driver_interface::Stream;
@@ -70,48 +73,28 @@ impl VsockServiceHandler for EchoVsock {
     }
 }
 
-// see: cans/02-plugin-model.md#Unified-builder
-// Structural verbs: context, require, scope, fork_with, vsock_service.
-// Then the 24 ring verbs flat, then the 8 scope closures.
+// see: cans/02-plugin-model.md#Nested-scopes
+// Structural verbs: context, require, scope, fork_with. The vsock service
+// and the 24 ring verbs are scope-reached: .vsock() carries the service,
+// the 8 ring scopes carry the verbs. .end() below is a Rust type-system
+// artifact, not a semantic one: the Rust closure must return the builder,
+// and .end() is how it does it (see: #Chain-decisions (e)).
 pub fn build_surface_plugin() -> SurfaceBuilder {
     KelirBuilder::named("surface")
         .context::<SurfaceCtx>(|| SurfaceCtx)
         .require::<LedgerPlugin>()
         .scope(MountScope::default().with_paths(["/workspace"]))
         .fork_with(|_id| Box::new(build_surface_plugin()) as Box<dyn AnyPlugin>)
-        .vsock_service(
-            VsockServiceSpec {
-                port: 0x0013,
-                service: "echo".to_string(),
-                schema: None,
-            },
-            EchoVsock,
-        )
-        .on_trap(|_, _| Ok(Verdict::Pass))
-        .on_process_exit(|_, _| Ok(()))
-        .on_fs_lookup(|_| Ok(Verdict::Pass))
-        .on_fs_read(|_, data| Ok(data.to_vec()))
-        .on_fs_write(|_, _, _, _| Ok(FilterAction::Forward))
-        .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
-        .on_net_outbound(|_| Ok(FilterAction::Forward))
-        .on_net_inbound(|_| Ok(FilterAction::Forward))
-        .on_console_input(|_, bytes| Ok(bytes.to_vec()))
-        .on_console_output(|_, bytes| Ok(bytes.to_vec()))
-        .on_exec_stdout(|_, _, bytes| Ok(bytes.to_vec()))
-        .on_exec_stderr(|_, _, bytes| Ok(bytes.to_vec()))
-        .on_host_lsm_exec(|_, _| Ok(Verdict::Pass))
-        .on_host_pressure(|_| Ok(Verdict::Pass))
-        .on_host_keyring_access(|_| Ok(Verdict::Pass))
-        .on_vm_init(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_ready(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_shutdown(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_pre_commit(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_post_commit(|_, _| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_host_preempt(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_memory_pressure(|_, _| async move { Ok::<(), PluginError>(()) })
-        .on_heartbeat(|_| async move { Ok::<(), PluginError>(()) })
-        .on_watchdog(|_| async move {
-            Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
+        .vsock(|v| {
+            v.service(
+                VsockServiceSpec {
+                    port: 0x0013,
+                    service: "echo".to_string(),
+                    schema: None,
+                },
+                EchoVsock,
+            )
+            .end()
         })
         .trap_scope(|t| {
             t.on_trap(|_, _| Ok(Verdict::Pass))
@@ -168,20 +151,24 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
 // see: cans/02-plugin-model.md#Unified-builder
 // The merge-ordering second mount: no requires, one trivial verb.
 pub fn build_plain_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-    KelirBuilder::named("plain").on_heartbeat(|_| async move { Ok::<(), PluginError>(()) })
+    KelirBuilder::named("plain").telemetry(|t| {
+        t.on_heartbeat(|_| async move { Ok::<(), PluginError>(()) }).end()
+    })
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // Mount case 1: host-only verbs on a host builder (terminal, storage,
-// wire, detached, lock_broker). Chain cases: trap filter, trap_scope,
-// lock_broker, then seal() in main. Mount case 3: merge ordering — the
-// ledger trait instance first (it satisfies the surface plugin's require
-// at compile time via Satisfies), then the surface plugin via plugin(),
-// then the plain plugin via use(), the same verb under its second name.
+// wire, detached). The lock-broker config rides .fs(|f| f.config(…)).
+// Chain cases: trap filter, trap_scope, .fs config, then seal() in main.
+// Mount case 3: merge ordering — the ledger trait instance first (it
+// satisfies the surface plugin's require at compile time via Satisfies),
+// then the surface plugin via plugin(), then the plain plugin via use(),
+// the same verb under its second name.
 // The .plugin()/.r#use() mounts do not grow Plugins (they return Self and
 // only check Satisfies against their Deps), so the declared return type
 // stays HCons<LedgerCtx, HNil> — the single Context contributed by the
 // ledger .plugin_instance() mount.
+
 pub fn build_host() -> SurfaceHostBuilder {
     KelirBuilder::new(VmConfig {
         vcpus: 2,
@@ -223,10 +210,13 @@ pub fn build_host() -> SurfaceHostBuilder {
             host_uid: 0,
         },
         shared_caches: Vec::new(),
-        lock_broker: true,
         synthetic_files: Vec::new(),
         mask_read: Vec::new(),
         encapsulation: WorkspaceEncapsulation::Passthrough,
+        // lock_broker, carryover_bytes, scan_engine, and snoops ride
+        // .fs(|f| f.config(…)) below; the StoragePlaneConfig literals keep
+        // their live field set for the host face.
+        lock_broker: true,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
         snoops: Vec::new(),
@@ -245,20 +235,90 @@ pub fn build_host() -> SurfaceHostBuilder {
     .plugin_instance(LedgerPlugin::new(true))
     .plugin(build_surface_plugin())
     .r#use(build_plain_plugin())
-    .trap(TrapFilter::binary("surface-allow"), |_, _| {
-        Ok(Verdict::Pass)
-    })
+    // see: cans/02-plugin-model.md#TrapFilter-predicates
+    // The filter call site carries the full predicate chain (with_arg,
+    // with_cwd, with_env, with_uid, argv_matches — AND-ed); the handler
+    // body needs no cwd/argv guard.
+    .trap(
+        TrapFilter::binary("surface-allow")
+            .with_arg("run")
+            .with_cwd("/workspace/**")
+            .with_env("CI", "1")
+            .with_uid(0)
+            .argv_matches(r"^--fast$"),
+        |_, _| { Ok(Verdict::Pass) },
+    )
     .trap_scope(|t| {
         t.on_trap(|_, _| Ok(Verdict::Pass))
             .on_process_exit(|_, _| Ok(()))
             .end()
     })
-    .lock_broker(LockBrokerConfig {
-        scope: LockScope::Globs(vec![
-            "**/Cargo.lock".into(),
-            "**/package-lock.json".into(),
-        ]),
-        non_blocking: true,
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // The host-only fs scope sub-nodes: config carries lock_broker,
+    // carryover_bytes, scan_engine, snoops; requires / fork_with /
+    // timeout / priority / rules pin the shared scope shape. The
+    // standalone lock_broker verb folds into this config.
+    .fs(|f| {
+        f.config(
+            Some(LockBrokerConfig {
+                scope: LockScope::Globs(vec![
+                    "**/Cargo.lock".into(),
+                    "**/package-lock.json".into(),
+                ]),
+                non_blocking: true,
+            }),
+            Some(1024),
+            Some(ReadMaskEngine::FastRegex),
+            Vec::new(),
+        )
+        .requires::<LedgerPlugin>()
+        .fork_with(|_id| Box::new(build_plain_plugin()) as Box<dyn AnyPlugin>)
+        .timeout(std::time::Duration::from_millis(5))
+        .priority(0)
+        .rules(Default::default())
+        .on_fs_lookup(|_| Ok(Verdict::Pass))
+        .end()
+    })
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // The five orphan-verb scopes on the host: actions, streams, vsock,
+    // params, deny. The standalone register_custom_action,
+    // register_stream_kind, vsock_service, params, on_trap_deny verbs
+    // delete; these scopes are the one surface.
+    .actions(|a| {
+        a.register("quarantine", serde_json::json!({}), |payload| {
+            async move {
+                let _ = payload;
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            }
+        })
+        .end()
+    })
+    .streams(|s| {
+        s.register(0x0013, serde_json::json!({}), |request| {
+            async move {
+                Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request)
+            }
+        })
+        .end()
+    })
+    .vsock(|v| {
+        v.service(
+            VsockServiceSpec {
+                port: 0x0013,
+                service: "echo".to_string(),
+                schema: None,
+            },
+            EchoVsock,
+        )
+        .end()
+    })
+    .params(|p| p.model::<NoParams>().end())
+    .deny(|d| {
+        d.on_trap_deny(|event, verdict, session| {
+            let _ = (event, verdict, session);
+            async move { Ok::<(), PluginError>(()) }
+        })
+        .end()
     })
 }
 
@@ -275,29 +335,43 @@ pub fn host_only_verbs_rejected_on_plugin(
     // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, token_shield: None, prompts: Vec::new(), stream_engine: "StatelessRegex".into() });
     // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, synthetic_files: Vec::new(), mask_read: Vec::new(), encapsulation: WorkspaceEncapsulation::Passthrough, scan_engine: ReadMaskEngine::FastRegex, carryover_bytes: 1024 });
     // plugin.wire(WireConfig { sinkhole: SinkholeConfig { allowlist: Vec::new(), drop_all: true }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied });
-    // plugin.lock_broker(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true });
+    // plugin.fs(|f| f.config(Some(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true }), None, None, Vec::new()));
     // plugin.detached(true);
     // plugin.seal();
-    // plugin.params::<()>();
+    // plugin.params(|p| p.model::<NoParams>().end());
     // plugin.plugin(build_plain_plugin());
     // plugin.r#use(build_plain_plugin());
     // plugin.plugin_instance(LedgerPlugin::new(true));
     // plugin.trap_async("*", |_| async move { Ok::<Verdict, PluginError>(Verdict::Pass) });
     // plugin.post_exec("*", |_| async move { Ok::<PostExecAction, PluginError>(PostExecAction::Proceed) });
-    // plugin.on_trap_deny(|_, _| async move { Ok::<(), PluginError>(()) });
-    // plugin.register_custom_action("quarantine", serde_json::json!({}), |_| async move { Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()) });
-    // plugin.register_stream_kind(0x0013, serde_json::json!({}), |_| async move { Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(Vec::new()) });
+    // plugin.deny(|d| d.on_trap_deny(|_, _, _| async move { Ok::<(), PluginError>(()) }).end());
+    // plugin.actions(|a| a.register("quarantine", serde_json::json!({}), |payload| async move { Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()) }).end());
+    // plugin.streams(|s| s.register(0x0013, serde_json::json!({}), |request| async move { Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request) }).end());
     // plugin.lifecycle_mut();
     plugin
 }
 
-// see: cans/02-plugin-model.md#Unified-builder
-// Mount case 4, scoped form: the same verbs as build_flat_plugin, grouped
-// into the 8 scope closures. Scope groups organise the chain only; ring
-// membership and descriptors are unchanged by scope use.
-pub fn build_scoped_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-    KelirBuilder::named("surface-scoped")
-        .trap_scope(|t| {
+// see: cans/02-plugin-model.md#Nested-scopes
+// Negative vector: f.on_trap(...) inside .fs(...) is a compile error in
+// Rust — FsScope has no on_trap method. Uncommenting the body must fail
+// the build with E0599 (no method named `on_trap` found for `FsScope`).
+// vectors.json cannot express an expected-error case (its schema carries
+// event/expected_verdict only), so the negative case is pinned here as a
+// comment-pinned block and in the TS/Py siblings.
+// fn negative_fs_on_trap(
+//     builder: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
+// ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
+//     builder.fs(|f| f.on_trap(|_, _| Ok(Verdict::Pass)).end())
+// }
+
+// see: cans/02-plugin-model.md#Nested-scopes
+// Flat-fold pin: a flat chain exists only as a group() fold over the
+// scopes — a readability fold that produces the same descriptors (same
+// rings, same ordinals). There is no separate flat surface: no
+// build_flat_plugin exists, the fold delegates each verb to its scope.
+pub fn build_flat_fold_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
+    KelirBuilder::named("surface-flat-fold").group(|g| {
+        g.trap_scope(|t| {
             t.on_trap(|_, _| Ok(Verdict::Pass))
                 .on_process_exit(|_, _| Ok(()))
                 .end()
@@ -347,47 +421,13 @@ pub fn build_scoped_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, N
                 })
                 .end()
         })
-}
-
-// see: cans/02-plugin-model.md#Unified-builder
-// Mount case 4, flat form: the same 24 verbs as build_scoped_plugin, with
-// no scope grouping. A nested chain and the equivalent flat chain produce
-// identical descriptors: same rings, same ordinals.
-pub fn build_flat_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-    KelirBuilder::named("surface-flat")
-        .on_trap(|_, _| Ok(Verdict::Pass))
-        .on_process_exit(|_, _| Ok(()))
-        .on_fs_lookup(|_| Ok(Verdict::Pass))
-        .on_fs_read(|_, data| Ok(data.to_vec()))
-        .on_fs_write(|_, _, _, _| Ok(FilterAction::Forward))
-        .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
-        .on_net_outbound(|_| Ok(FilterAction::Forward))
-        .on_net_inbound(|_| Ok(FilterAction::Forward))
-        .on_console_input(|_, bytes| Ok(bytes.to_vec()))
-        .on_console_output(|_, bytes| Ok(bytes.to_vec()))
-        .on_exec_stdout(|_, _, bytes| Ok(bytes.to_vec()))
-        .on_exec_stderr(|_, _, bytes| Ok(bytes.to_vec()))
-        .on_host_lsm_exec(|_, _| Ok(Verdict::Pass))
-        .on_host_pressure(|_| Ok(Verdict::Pass))
-        .on_host_keyring_access(|_| Ok(Verdict::Pass))
-        .on_vm_init(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_ready(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_vm_shutdown(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_pre_commit(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_post_commit(|_, _| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_host_preempt(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_memory_pressure(|_, _| async move { Ok::<(), PluginError>(()) })
-        .on_heartbeat(|_| async move { Ok::<(), PluginError>(()) })
-        .on_watchdog(|_| async move {
-            Ok::<WatchdogVerdict, PluginError>(WatchdogVerdict::ExecuteDefault)
-        })
+    })
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _sealed = build_host().seal()?;
     let _plugin = host_only_verbs_rejected_on_plugin(build_plain_plugin());
-    let _scoped = build_scoped_plugin();
-    let _flat = build_flat_plugin();
+    let _flat_fold = build_flat_fold_plugin();
     Ok(())
 }

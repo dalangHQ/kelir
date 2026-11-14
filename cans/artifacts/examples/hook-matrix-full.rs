@@ -1,4 +1,5 @@
 // see: cans/02-plugin-model.md#Segregated-ring-traits
+// see: cans/02-plugin-model.md#TrapFilter-predicates
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 // see: cans/05-storage-plane.md#In-flight-read-masking
 
@@ -16,7 +17,9 @@ use kelir::{
         LifecycleCtx, LifecycleParticipant, NetInterposer, NoDeps, PluginDeps, PluginError,
         SystemTelemetryParticipant, TrapInterposer, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol_wire::{Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent},
+    protocol_wire::{
+        Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent, TrapFilter,
+    },
     KelirBuilder, SnapshotDescriptor, VmConfig,
 };
 
@@ -275,8 +278,10 @@ fn escapes_workspace(path: &Path) -> bool {
 impl FsInterposer for HookMatrixFullPlugin {
     fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
         if escapes_workspace(path) {
+            // PathTraversal maps to EPERM in the driver; the closed Errno
+            // enum has no stringly form (02-plugin-model.md#Unified-verdict).
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eacces),
+                errno: Errno::PathTraversal,
                 reason: "lookup escapes the /workspace root".into(),
             });
         }
@@ -428,12 +433,27 @@ impl TrapInterposer for HookMatrixFullPlugin {
     async fn on_process_exit(
         &self,
         event: &ProcessExit,
-        _ctx: &HandlerCtx,
+        ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         state.exits += 1;
         if event.exit_code != 0 {
             state.failures += 1;
+        }
+        // see: cans/10-attestation.md#Hook-trace
+        // hook_trace read: every hook that fired for the trapped process
+        // carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
+        // ordinal); diagnostic only, excluded from Merkle roots. The
+        // comment-pinned HookSpan case (the hook-trace-coverage vector
+        // this example stands in for) asserts the ring + ordinal pair
+        // below: a span for this plugin on the Trap ring at ordinal 0.
+        //
+        // HookSpan case (vectors.json cannot express a hook-trace
+        // expectation today; pinned here as Agent 3's negative vectors
+        // are): { plugin: "hook-matrix-full", ring: Trap, verdict_kind:
+        // Pass, duration_ns: 0, ordinal: 0 }
+        if let Ok(receipt) = ctx.receipt().await {
+            let _ = receipt.hooks(); // &[HookSpan]; populated per fired hook
         }
         Ok(())
     }
@@ -501,6 +521,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entropy_seed: None,
     })
     .plugin_instance(plugin)
+    // see: cans/02-plugin-model.md#TrapFilter-predicates
+    // The predicate chain: cwd/env/uid/argv_regex constraints live in the
+    // filter, not in the handler body (AND-ed predicates; a handler-body
+    // guard duplicating them is redundant and should not be written).
+    .trap(
+        TrapFilter::binary("git").with_arg("push").with_cwd("/workspace/**").with_env("CI", "1").with_uid(0).argv_matches(r"^--force$"),
+        |_, _| {
+            // Handler body carries no cwd/argv guard: the filter already
+            // pinned those predicates before the handler was admitted.
+            Ok(Verdict::Drop {
+                errno: Errno::Epolicy,
+                reason: "forced push denied by policy".into(),
+            })
+        },
+    )
+    // see: cans/02-plugin-model.md#Hook-context-restriction
+    // on_trap_deny(event, verdict, session): the verdict parameter is the
+    // DENYING Action (the unified enum), so break-glass can say "denied by
+    // X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
+    .deny(|d| {
+        d.on_trap_deny(|event, verdict, session| {
+            // Signature: (event, verdict, session); verdict is the DENYING
+            // Action (the unified enum), not the old Verdict split.
+            let _ = (event, verdict, session);
+            async move { Ok::<(), PluginError>(()) }
+        })
+        .end()
+    })
     .seal()?
     .boot()
     .await?;

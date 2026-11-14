@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Approval, Deadline, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict, VsockServiceEntry
-from kelir.model_plugin import (
+from kelir import Approval, Deadline, Errno, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict, VsockServiceEntry
+from kelir.plugin_model import (
     BasePlugin,
     VetoEvent,
     WatchdogEvent,
@@ -66,11 +66,12 @@ PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 
 
 async def row_allow(c: HandlerContext) -> Verdict:
-    return Verdict.pass_()
+    return Verdict.Pass
 
 
 async def row_deny(c: HandlerContext) -> Verdict:
-    return Verdict.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.")
+    # errno is the closed Errno enum; stringly errnos are non-conforming.
+    return Verdict.drop(Errno.EPOLICY, "EPOLICY: policy-matrix denies this binary.")
 
 
 async def row_rewrite(c: HandlerContext) -> Verdict:

@@ -32,11 +32,12 @@
         - This invariant is the reason the WAL exists separately from receipts
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
-        - flush(): forces WAL flush and OTel export
+        - c.cap("ledger").flush() (TS/Py) / c.cap::<LedgerCtx>().flush() (RS) forces WAL flush and OTel export
         - count_denials(ppid) -> u64; TS countDenials(ppid); Py count_denials(ppid)
         - blake3_of_producing_process(path) -> str; TS blake3OfProducingProcess
         - finalize(FinalizeRequest): see: #Finalize-pin-(SSOT-A1)
         - get_causal_delta_from_parent(): see: #Causal-delta-access-(ledger)
+
         - Hook reachability: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
       - Merkle WAL specification
         - Record Schema (Packed Little-Endian):
@@ -90,15 +91,14 @@
       - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:91-102
       - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:160
     - Return errno and rejection behavior (ledger)
-      - Pure observer: never returns Reject or blocks inline execution
+      - Pure observer: never returns Action::Drop or blocks inline execution
       - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)
   - Causal delta access (ledger)
     - Canonical accessor (SSOT-A1 pin)
       - ledger.get_causal_delta_from_parent() -> CausalDelta
-      - Capability-key home: c.cap.ledger (Py), c.ledger (TS), c.ctx::<LedgerCtx>() (RS)
-      - Session-level lookup:
-        - session.cap.ledger (Py)
-        - session.ctx<LedgerHandle>("ledger") (TS)
-        - session.ctx::<LedgerCtx>() (RS)
+      - Capability-key home: c.cap::<LedgerCtx>() (RS), c.cap("ledger") (TS/Py)
+      - Session-level lookup: session.cap::<LedgerCtx>() (RS), session.cap("ledger") (TS/Py)
+        - TS/Py return None/undefined when the plugin is not mounted
+        - Accessor home: see: 03-sdk-architecture.md#Service-lookup-across-languages
       - Session-level facade access lands on the bindings (L3)
     - Causal deltas are produced by plugin-ledger over the delta chain

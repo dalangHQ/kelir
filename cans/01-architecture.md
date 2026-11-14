@@ -130,6 +130,14 @@
           - Deletion posture: dead code, single-use traits, and speculative shims purged
           - DRY and SSOT: `kelir-interface` owns shared types; zero type duplication
           - YAGNI: concrete structs first; traits require multiple implementations
+        - Config-default invariant
+          - Every VmConfig, StoragePlaneConfig, WireConfig, PtyConfig, DriverPolicy,
+            and plugin `*Config` struct derives `Default`; adding a field is not
+            a breaking change to callers
+          - The `default_vm_config(...)` helper in #Embedded-profile is deprecated
+            in favor of typestate setters on KelirBuilder; the deprecation note
+            stays for one release
+          - Field sets and typestate-setter spellings: see: artifacts/code/vm-config-defaults.rs
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
       - Params API: .params(schema), validated out-of-band by paravirtual
@@ -252,6 +260,11 @@
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
+    - DEPRECATED (one release): the `default_vm_config(...)` helper that fills this
+      - preset is deprecated in favor of `Default` on VmConfig plus typestate
+      - setters on KelirBuilder (.vcpus(n), .memory_mb(n), .kernel(p), .rootfs(p),
+      - .tsc_locked(b), .watchdog(b), .driver(DriverPolicy)); the helper's callers
+      - migrate during the deprecation window, then the helper is removed
     - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
     - default_vm_config builds a VmConfig from six optional params (RS)
       - Params: vcpus, memory_mb, kernel, rootfs_erofs, tsc_locked, enable_watchdog

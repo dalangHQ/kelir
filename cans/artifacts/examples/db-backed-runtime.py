@@ -1,6 +1,8 @@
 # see: cans/plugins/db-proxy.md#Plugin-db-proxy
 # see: cans/plugins/ledger.md#Plugin-ledger
 # see: cans/plugins/transaction.md#Plugin-transaction
+# L3-GAP: on_pre_commit ledger flush is stubbed — the Py LedgerPlugin exposes
+#   no pre-boot handle capture (LedgerPlugin.context() as in the Rust example).
 from __future__ import annotations
 
 import asyncio
@@ -11,14 +13,14 @@ from pydantic import BaseModel, Field
 
 import kelir
 from kelir import HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
-from kelir.plugins.plugin_db_proxy import (
+from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
 )
-from kelir.plugins.plugin_ledger import (
+from kelir.plugins.ledger import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
-from kelir.plugins.plugin_transaction import (
+from kelir.plugins.transaction import (
     TransactionConfig, TransactionPlugin,
 )
 
@@ -35,21 +37,24 @@ LOCAL_SNAPSHOT = "./fixtures/migrate-snapshot.erofs"
 
 def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     async def pre_migrate(c: HandlerContext) -> Verdict:
-        if c.cap.db_proxy.rewrite_target != "migrate_schema.":
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        db_proxy = c.cap("db-proxy")
+        if db_proxy is None or db_proxy.rewrite_target != "migrate_schema.":
             return Verdict.drop(
                 "EPOLICY",
-                f"schema mismatch: expected 'migrate_schema.', got {c.cap.db_proxy.rewrite_target!r}",
+                f"schema mismatch: expected 'migrate_schema.', got {db_proxy.rewrite_target if db_proxy else None!r}",
+
             )
         return Verdict.pass_()
 
     async def post_migrate(c: HandlerContext) -> PostExecAction:
         receipt = await c.receipt()
-        if not any(e.namespace == "net:l7:sql" for e in receipt.extensions):
+        # see: cans/10-attestation.md#Typed-extensions
+        if receipt.net_l7_sql() is None:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
     # see: cans/plugins/transaction.md#Plugin-transaction
-    # TODO (L3): flush the ledger here; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does via LedgerPlugin.context(), but the Py LedgerPlugin exposes no such handle yet, so the flush is dropped.
     async def _pre_commit(_ctx) -> None:
         return None
 
@@ -123,7 +128,7 @@ async def main() -> None:
             await session.vm.import_snapshot(f.read())
 
         # see: cans/plugins/transaction.md#Temporal-savepoints
-        async with session.cap.transaction.scope(
+        async with session.cap("transaction").scope(
             "migrate-42",
             paths=["/workspace/migrations"],
             schemas=["migrate_schema"],
@@ -145,7 +150,9 @@ async def main() -> None:
             with open(LOCAL_SNAPSHOT, "wb") as f:
                 f.write(out)
 
-        ledger = session.cap.ledger
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        ledger = session.cap("ledger")
+        assert ledger is not None  # ledger is mounted above
         # see: cans/10-attestation.md#Execution-receipts
         final = await ledger.finalize(
             include_merkle_root=True,

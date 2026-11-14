@@ -2,6 +2,11 @@
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 // see: cans/plugins/container.md#Rootless-container-execution
 // see: cans/01-architecture.md#VirtIO-Device-Complex
+// STATUS: aspirational; see §4 of work-order
+//   L3-GAP: ContainerService::ingest_image cannot be invoked yet — the trait
+//   takes &mut self, ContainerCtx::service only hands out a shared Arc, and
+//   the trait is not re-exported by the kelir facade; the boot/spawn path
+//   below is real and stays.
 
 use kelir::{
     ContainerConfig, ContainerCtx, ContainerPlugin, HCons, HNil, Host, KelirBuilder, NoParams,
@@ -51,9 +56,7 @@ fn container_builder(
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = container_builder().seal()?.boot().await?;
 
-    // TODO (L3): drive ContainerService::ingest_image from session.ctx::<ContainerCtx, _>(); the trait takes &mut self, ContainerCtx::service only hands out a shared Arc, and the trait is not re-exported by the kelir facade, so no caller can invoke it yet.
-    let _container = session.ctx::<ContainerCtx, _>();
-    let image = OCI_TARBALL;
+    let _container = session.cap::<ContainerCtx>();    let image = OCI_TARBALL;
 
     let run = session
         .spawn(

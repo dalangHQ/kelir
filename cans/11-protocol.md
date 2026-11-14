@@ -242,18 +242,35 @@
     - Hook binding: one hook per message
       - Contract: see: 02-plugin-model.md#KelirPlugin-trait
     - Verdict-method-mapping
-      - Verdict::Pass: c.pass()
-      - Verdict::Patch(ExecveMutation): c.patch(mutation)
-      - Verdict::Drop { errno, reason }: c.drop(errno, reason)
-      - Verdict::Suspend { until }: c.suspend(until)
-      - Verdict::Abort { reason }: c.abort(reason)
-      - SuspendUntil: Deadline(ms) | Approval | Handshake
+      - One Action enum; Verdict and FilterAction are its type aliases
+        - Enum home: see: artifacts/code/action-algebra.rs
+      - Spelling is identical in Rust and TS; Python differs only on pass
+        - Action::Pass: c.pass() (Rust/TS); c.pass_() or c.Pass (Python; `pass`
+          - is a keyword, c.pass() is a SyntaxError)
+        - Action::Forward (filter rings): c.forward(); buffer mutations already applied
+        - Action::Drop { errno, reason }: c.drop(errno, reason)
+        - Action::Suspend { until }: c.suspend(until)
+        - Action::Abort { reason }: c.abort(reason)
+        - Action::Patch(ExecveMutation): c.patch(mutation)
+      - SuspendUntil pin (SSOT-A1)
+        - SuspendUntil: Deadline(ms) | Approval | Handshake | Condition(f)
+          - Condition(f) is the boxed predicate hold:
+            - Rust: SuspendUntil::Condition(Box<dyn Fn(&SessionContext) -> bool + Send + Sync>)
+            - TS / Py: .condition(fn); one spelling, no per-SDK alias
+          - The predicate polls on a host-driven cadence: default 100 ms,
+            - configurable per session
+          - Resume executes on the first true; false keeps the hold
+          - Deadline and Approval stay; Condition replaces neither
+        - The wire frame never carries the predicate itself
+          - Condition resolves host-side; the frame carries only the hold kind
+        - The Hold wire contract below governs all four variants
       - Custom payload: c.patch(Custom { name, cbor })
-      - FilterAction (sync buffer rings: Fs write, Net inbound/outbound)
-        - FilterAction::Forward: c.forward(); buffer mutations already applied
-        - FilterAction::Drop { errno, reason }: c.filter_drop(errno, reason)
-        - FilterAction::Suspend { until }: c.filter_suspend(until)
+      - errno is the closed Errno enum; bare string errnos are non-conforming
+        - Errno set: see: artifacts/code/action-algebra.rs
+      - Filter rings (sync buffer rings: Fs write, Net inbound/outbound)
+        - Accept only c.forward() / c.drop(errno, reason) / c.suspend(until) / c.abort(reason)
         - No c.patch() on filter rings: the buffer is mutated in place
+        - No c.filter_drop() / c.filter_suspend(): the filter spellings delete
     - Hold wire contract
       - Host halts vCPU execution and drops RAM footprint via suspend primitive
       - Host releases suspension when the hold duration elapses
@@ -267,7 +284,7 @@
         - See: cans/artifacts/examples/policy-matrix.rs:349-355
       - Unknown name at trap time fails with EUnknownAction
       - Registration after boot() fails with EConfig
-    - Verdict invariants: see: [1]
+    - Action invariants (Verdict/FilterAction aliases): see: [1]
   - Stream mux framing
     - Frame layout: stream_id: u32, flags: u8, len: u32, payload
     - flags
@@ -282,7 +299,7 @@
     - Zero-copy splice between mux and ring backends on supported platforms
   - Env injection
     - Workload environment variables, registers, and execution paths remain
-      - immutable under Pass verdicts
+      - immutable under Pass actions
     - State mutations require explicit Rewrite with validated disjoint keys
   - Trap decision invariants
     - Rewrite loop prevention
@@ -301,7 +318,7 @@
       - Key length ≤ 128 bytes
       - vault:// placeholder values reject ESecurityViolation
     - Custom dispatch timeout
-      - Exceeded handler falls through to Verdict::Pass
+      - Exceeded handler falls through to Action::Pass (c.pass_() in Python)
       - Per-custom-action; defaults to 30s
 
 - [1]: artifacts/code/messages.rs

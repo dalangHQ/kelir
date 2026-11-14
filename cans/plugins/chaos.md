@@ -35,5 +35,6 @@
     - Return errno and rejection behavior (chaos)
       - Fault injection adheres to monotonic lattice via FilterAction
       - Drop semantics: see: 07-wire-plane.md#Frame-drop-and-forward-semantics
-      - Synthetic loss uses FilterAction::Drop { errno: None }
+      - Synthetic loss is an Action::Drop; the driver suppresses the host
+        - response for chaos loss injection only (02-plugin-model.md#Unified-verdict)
       - Chaos reserves ECONNREFUSED for RST injection

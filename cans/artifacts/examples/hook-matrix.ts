@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 
-import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil,
+import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil, Errno,
          type Session } from "@kelir/core";
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
@@ -66,8 +66,11 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
   // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
   .onFsLookup((path) => {
+    // see: cans/02-plugin-model.md#Unified-verdict
+    // Errno is the closed enum; PathTraversal maps to EPERM in the driver.
     if (escapesWorkspace(path)) {
-      throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
+      return Verdict.Drop(Errno.PATH_TRAVERSAL,
+                           "lookup escapes the /workspace root");
     }
     if (path !== IDENTITY_PATH) return Verdict.Pass;
     return Verdict.Patch({

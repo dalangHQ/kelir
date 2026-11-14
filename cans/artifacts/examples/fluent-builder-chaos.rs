@@ -21,6 +21,9 @@ use kelir::protocol_wire::Errno;
 // No build(): the plugin-mode builder is mounted as-is, and the host's
 // seal() validates it. The concrete KelirBuilder type parameters follow
 // the spec arity pin (cans/02-plugin-model.md#Unified-builder, A1).
+// .end() is a Rust type-system artifact, not a semantic one: the Rust
+// scope closure must return the builder, and .end() is how it does it;
+// TS/Py have no .end() (cans/02-plugin-model.md#Chain-decisions (e)).
 pub fn build_chaos_plugin(
 ) -> KelirBuilder<Plugin, Unsealed, (), HCons<LedgerCtx, HNil>, HNil, NoParams> {
     KelirBuilder::named("chaos")

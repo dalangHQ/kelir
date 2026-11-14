@@ -171,7 +171,7 @@ impl TrapInterposer for PolicyMatrixPlugin {
             "policy-allow" => Ok(Verdict::Pass),
 
             "policy-deny" => Ok(Verdict::Drop {
-                errno: Some(Errno::Epolicy),
+                errno: Errno::Epolicy,
                 reason: "EPOLICY: policy-matrix denies this binary.".into(),
             }),
             // Row 3: Patch — env mutation ONLY through the ExecveMutation

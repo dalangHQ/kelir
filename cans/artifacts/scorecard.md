@@ -91,12 +91,9 @@ Per-scenario plane composition (domain → plane map; adjacent pairs enforced by
 
 ## Test Plan Coverage
 
-Status counts from `cans/artifacts/test-plan/case-to-test-map.yaml`;
-state machine is gap → red → implemented, one direction only.
-
-| Implemented | Red | Gap |
-|---:|---:|---:|
-| 73 | 106 | 75 |
+Coverage is per-plugin per the #Per-plugin-CI matrix; see:
+`02-plugin-model.md#First-class-plugins`. Scenario counts are TBD until
+the runner is rebuilt against a live SDK.
 
 ## Hypervisor Performance Floor (Budgets)
 

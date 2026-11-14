@@ -131,12 +131,21 @@
       - Rust: cargo check per example bin; Python: syntax plus import
       - against the live SDK; TypeScript: tsc over tsconfig.check.json
       - after the @kelir/core build
+    - Aspirational tier: cans/artifacts/examples/aspirational/ holds examples
+      - whose core demonstration is a runtime no-op; they are excluded from
+      - `just check-examples` (scripts/check-examples.sh globs examples/*.rs,
+      - *.py non-recursively, so the subdirectory is naturally out of the gate)
+    - examples/ (top level) compiles in all three languages or it is not in
+      - examples/ — a whole-fiction example lives under aspirational/ instead
     - No path filter: an SDK change anywhere can break an example
     - Local mirror: `just check-examples`, also in `just check-all`
   - Coverage-gates
     - Coverage gates are gate names, distinct from cans check flags
       - cans check has no --*-coverage flags; each gate names its enforcement below
       - Veto and watchdog have no per-item enumeration gate; they ride parity vectors
+    - The scenario runner is not part of the artifact set. Coverage is asserted
+      - by `kelir-plugin-cli parity run` and the per-plugin matrix; there is
+      - no separate scenario-execution harness.
     - Test plan domains
       - Domain plugin_engine: --plugin-coverage, --hook-coverage
       - Domain plugin_engine: --action-coverage, --panic-hunt-coverage
@@ -191,10 +200,17 @@
         - Asserts every builder verb exists on host mode and plugin mode
         - Asserts every nested scope exists on host mode and plugin mode
         - Asserts every mount merges: host descriptors include plugin hooks
-        - 50 builder cases: one per verb (30), one per scope (8), one per merge (8)
-        - Plus one per chain verb (5)
-        - 58 vectors live in vectors.json; 63 total once the 5 chain cases generate
-          - 50 builder cases plus the 13 other cases
+        - Builder cases: 8 scopes x (verbs + config + requires + fork
+          + timeout + priority + rules) + 5 chain cases + 5 predicate cases
+          - 82 cases: 24 ring-verb cases (trap 2, fs 4, net 2, console 2,
+            exec 2, host 4, lifecycle 5, telemetry 3) + 48 scope sub-node
+            cases (8 scopes x config/requires/fork/timeout/priority/rules)
+            + 5 chain cases (seal, trap filter form, trap scope form,
+            fs config, chaos-only) + 5 predicate cases
+          - Predicate grammar (the 5 predicate methods: with_arg,
+            with_cwd, with_env, with_uid, argv_matches):
+            see: 02-plugin-model.md#TrapFilter-predicates
+        - The 58 live vectors.json cases stay until the vectors regenerate
         - Asserts every Verdict and FilterAction outcome appears in a case
         - Verb home: see: 02-plugin-model.md#Chainable-verbs
         - Scope home: see: 02-plugin-model.md#Nested-scopes
@@ -202,6 +218,22 @@
         - Vector family: see: #Unified-builder-parity-vectors
         - Enforcement: kelir-plugin-cli parity run; gate spec only
         - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
+      - --trapfilter-coverage
+        - Asserts every TrapFilter predicate method has at least one vector
+        - Predicate set: with_arg, with_cwd, with_env, with_uid, argv_matches
+          - Predicate home: see: 02-plugin-model.md#TrapFilter-predicates
+        - The canonical predicate chain (all five on one filter) is
+          exercised in cans/artifacts/examples/hook-matrix-full.{rs,ts,py}
+        - Enforcement: kelir-plugin-cli parity run; gate spec only
+      - --hook-trace-coverage
+        - Asserts every Ring value appears in at least one HookSpan vector
+        - Ring set: the taxonomy rings (Trap, Fs, Net, Console, Exec,
+          Host, Lifecycle, Telemetry): see: 10-attestation.md#Hook-trace
+        - HookSpan shape: see: artifacts/code/hook-trace.rs
+        - The comment-pinned HookSpan case lives in
+          cans/artifacts/examples/hook-matrix-full.{rs,ts,py} (vectors.json
+          cannot express a hook-trace expectation today)
+        - Enforcement: kelir-plugin-cli parity run; gate spec only
       - --fluent-builder-coverage
         - History, not a second gate: see: #--unified-builder-coverage
         - Current count there: 46 builder cases, 58 vectors; 50/63 once the 5 chain cases generate
@@ -351,9 +383,14 @@
     - Release gate: kelir-engine release requires parity green
     - Unified-builder parity vectors
       - vectors.json gains a plugin-merge case family
-      - Builder cases: 30 verb, 8 scope, 8 merge, 5 chain
-        - 63 vectors total once generated (58 live)
-      - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, lock broker, chaos-only
+      - Builder cases: 8 scopes x (verbs + config + requires + fork
+        + timeout + priority + rules) + 5 chain + 5 predicate cases
+        - 82 cases: 24 ring-verb cases + 48 scope sub-node cases
+          (8 scopes x config/requires/fork/timeout/priority/rules)
+          + 5 chain + 5 predicate; arithmetic mirrors
+          #--unified-builder-coverage
+        - The 58 live vectors.json cases stay until the vectors regenerate
+      - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, fs config, chaos-only
       - Each chain case pins builder name, requires list, and ring set with ordinals
       - Chain cases are built by the parity run as one expression per SDK
         - No reassignment, no ? mid-chain
@@ -362,7 +399,7 @@
       - FilterAction results are pinned for byte-transform rings
       - Merge cases pin host descriptors: host hooks first, then plugin hooks
       - Merge cases pin the plugin scope on the merged descriptors
-      - Nested-scope cases assert descriptors equal the flat chain
+      - Flat-fold cases assert descriptors equal the nested-scope chain: see: 02-plugin-model.md#Nested-scopes
       - kelir-plugin-cli parity run builds the equivalent chain per SDK
       - Divergent outputs block CI; unexecuted verdicts report not-executable
       - Case schema: see: artifacts/code/plugin-builder-vectors.rs
