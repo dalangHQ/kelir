@@ -2,7 +2,7 @@
 
 use std::marker::PhantomData;
 
-use kelir_interface::handlers_plugin::Has;
+use kelir_interface::handlers_plugin::{Capability, Has};
 
 pub use kelir_interface::plugin_model::HNil;
 
@@ -94,6 +94,21 @@ where
 {
     fn get(&self) -> &T {
         self.lookup()
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl<Head, Tail, P> Capability<P> for HCons<Head, Tail>
+where
+    Head: Clone + Send + Sync + 'static,
+    Tail: HList + Capability<P>,
+    P: 'static,
+{
+    fn capability(&self) -> Option<&P> {
+        self.tail.capability().or_else(|| {
+            let head: &dyn std::any::Any = &self.head;
+            head.downcast_ref::<P>()
+        })
     }
 }
 

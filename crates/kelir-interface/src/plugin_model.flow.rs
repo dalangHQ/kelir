@@ -589,6 +589,13 @@ pub type NoDeps = HNil;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HNil;
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl<P: 'static> crate::handlers_plugin::Capability<P> for HNil {
+    fn capability(&self) -> Option<&P> {
+        None
+    }
+}
+
 // see: cans/02-plugin-model.md#Compile-time-prerequisites
 #[derive(Clone, Debug)]
 pub struct HCons<Head, Tail> {

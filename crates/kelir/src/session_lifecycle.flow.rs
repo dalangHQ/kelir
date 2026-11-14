@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use kelir_interface::errno_types::Errno;
-use kelir_interface::handlers_plugin::Has;
+use kelir_interface::handlers_plugin::Capability;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
@@ -20,7 +20,54 @@ use crate::hlist_sdk::{HList, HNil, NoParams};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::protocol_wire::{ProcessLimits, StreamKind, TrapEvent, Verdict};
 
-// see: cans/03-sdk-architecture.md#Rust-SDK
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub trait Plane: std::any::Any {
+    fn plane_kind(&self) -> &'static str;
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::terminal::TerminalPlane {
+    fn plane_kind(&self) -> &'static str {
+        "terminal"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::storage::StoragePlane {
+    fn plane_kind(&self) -> &'static str {
+        "storage"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::wire::WirePlane {
+    fn plane_kind(&self) -> &'static str {
+        "wire"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::checkpoint::CheckpointPlane {
+    fn plane_kind(&self) -> &'static str {
+        "checkpoint"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for kelir_engine::planes::host::HostPlane {
+    fn plane_kind(&self) -> &'static str {
+        "host"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+impl Plane for VmHandle {
+    fn plane_kind(&self) -> &'static str {
+        "vm"
+    }
+}
+
+// see: cans/03-sdk-architecture.md#Session-surfaces
 pub struct Session<Plugins = HNil, Params = NoParams>
 where
     Plugins: HList,
@@ -51,11 +98,45 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-    pub fn ctx<T, Index>(&self) -> &T
+    pub fn cap<P: 'static>(&self) -> Option<&P>
     where
-        Plugins: Has<T, Index>,
+        Plugins: Capability<P>,
     {
-        self.plugins.get()
+        self.plugins.capability()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn plane<P: Plane>(&self) -> Option<&P> {
+        match std::any::type_name::<P>() {
+            "kelir_engine::planes::terminal::TerminalPlane" => {
+                self.core.terminal.as_ref() as &dyn std::any::Any
+            }
+            "kelir_engine::planes::storage::StoragePlane" => {
+                &self.core.storage as &dyn std::any::Any
+            }
+            "kelir_engine::planes::wire::WirePlane" => &self.core.wire as &dyn std::any::Any,
+            "kelir_engine::planes::checkpoint::CheckpointPlane" => {
+                self.core.checkpoint.as_ref() as &dyn std::any::Any
+            }
+            "kelir_engine::planes::host::HostPlane" => &self.core.host as &dyn std::any::Any,
+            "kelir_interface::handles_lifecycle::VmHandle" => &self.vm as &dyn std::any::Any,
+            _ => return None,
+        }
+        .downcast_ref::<P>()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn plane_named(&self, name: &str) -> Option<&dyn std::any::Any> {
+        match name {
+            "vm" => Some(&self.vm),
+            "terminal" => Some(self.core.terminal.as_ref()),
+            "storage" => Some(&self.core.storage),
+            "wire" => Some(&self.core.wire),
+            "checkpoint" => Some(self.core.checkpoint.as_ref()),
+            "host" => Some(&self.core.host),
+            "vsock" => Some(&self.vsock),
+            _ => None,
+        }
     }
 
     pub fn core(&self) -> &kelir_engine::Session {
@@ -224,25 +305,27 @@ impl Session<HNil, NoParams> {
 #[cfg(feature = "plugin-ledger")]
 impl<Plugins: HList, Params> Session<Plugins, Params> {
     // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
-    pub async fn get_causal_delta_from_parent<Index>(
+    pub async fn get_causal_delta_from_parent(
         &self,
     ) -> Result<kelir_interface::telemetry::CausalDelta, PluginError>
     where
-        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+        Plugins: Capability<plugin_ledger::LedgerCtx>,
     {
-        self.ctx::<plugin_ledger::LedgerCtx, Index>()
-            .get_causal_delta_from_parent()
-            .await
+        let ledger = self
+            .cap::<plugin_ledger::LedgerCtx>()
+            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
+        ledger.get_causal_delta_from_parent().await
     }
 
     // see: cans/plugins/ledger.md#Ledger-handler-API
-    pub async fn count_denials<Index>(&self, ppid: u32) -> Result<u64, PluginError>
+    pub async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError>
     where
-        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+        Plugins: Capability<plugin_ledger::LedgerCtx>,
     {
-        self.ctx::<plugin_ledger::LedgerCtx, Index>()
-            .count_denials(ppid)
-            .await
+        let ledger = self
+            .cap::<plugin_ledger::LedgerCtx>()
+            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
+        ledger.count_denials(ppid).await
     }
 }
 
