@@ -105,7 +105,7 @@ const runtime = kelir({
   // see: cans/10-attestation.md#Execution-receipts
   .trap("*", {
     pre: async (c) => {
-      await c.vm.checkpoint(`pre:${c.trap.pid}`);
+      await c.checkpoint.create(`pre:${c.trap.pid}`);
       const intent = await oracle.analyzeIntent({
         binary: c.trap.binaryPath,
         binaryBlake3: c.trap.binaryBlake3,

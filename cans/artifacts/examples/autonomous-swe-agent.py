@@ -187,7 +187,7 @@ PostExecHandler = Callable[[HandlerContext], Awaitable[PostExecAction]]
 
 def make_universal_step(oracle: UserOracle) -> PreExecHandler:
     async def universal_step(c: HandlerContext) -> Verdict:
-        await c.vm.checkpoint(f"pre:{c.trap.pid}")
+        await c.checkpoint.create(f"pre:{c.trap.pid}")
         intent = await oracle.analyze_intent(c.trap)
         if not intent.is_hypothesis_valid:
             return Verdict.drop(

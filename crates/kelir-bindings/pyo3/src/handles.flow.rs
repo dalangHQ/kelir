@@ -68,7 +68,7 @@ fn suspend_reason_of(record: &Bound<'_, PyDict>) -> PyResult<SuspendReason> {
                 other => {
                     return Err(missing(&format!(
                         "suspend reason detail `{other}` is not an ExternalSuspendKind"
-                    )))
+                    )));
                 }
             };
             Ok(SuspendReason::External(external))

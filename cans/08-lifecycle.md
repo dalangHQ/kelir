@@ -186,8 +186,9 @@
         - The image path derives from session state, never user-supplied
         - Path: <session_dir>/suspend.img
       - VmHandle::suspend(reason, path) / VmHandle::resume(path) is the low-level primitive
-        - VmControl::suspend(reason, path) carries both; see: crates/kelir-interface/src/handles_lifecycle.flow.rs
-        - The native session-handle bridge keeps the path form and supplies a fixed reason
+        - VmControl::suspend(reason, path) carries both
+          - crates/kelir-interface/src/handles_lifecycle.flow.rs
+        - The native VmHandle bridge keeps the path form and supplies a fixed reason
         - Reason: External(HumanAuthorizationHold)
         - See: crates/kelir-bindings/napi/src/handles.flow.rs
         - See: crates/kelir-bindings/pyo3/src/handles.flow.rs
@@ -337,7 +338,7 @@
     - Graceful host preemption window
       - In-process Tokio handler catches host SIGTERM; delays SIGKILL
       - Waits preemption_grace_ms; dispatches on_host_preempt() hook
-      - Android LMK hook: executes session.suspend() before OS termination
+      - Android LMK hook: executes session.suspend(reason) before OS termination
       - Prevents session state corruption during mobile app backgrounding
     - Platform coverage
       - Linux: PR_SET_PDEATHSIG (kernel-enforced)
@@ -435,7 +436,7 @@
       - Non-blocking; cannot veto; no return value
     - Use for ledger / trace / metrics
     - Terminate flush belongs to on_vm_shutdown, not a subscriber
-    - Flush handle reachability: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
+    - Flush reachability: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
   - Watchdog
     - see: [1] (WatchdogAction)
     - Armed via LifecycleCtx.set_watchdog

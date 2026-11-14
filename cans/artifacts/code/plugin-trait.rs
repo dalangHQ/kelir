@@ -358,7 +358,7 @@ impl<'a> LifecycleCtx<'a> {
 pub trait KelirPlugin: Send + Sync {
     /// Context contributed to the builder's accumulated Plugins tuple.
     /// HandlerCtx resolves it infallibly via `Plugins: Has<Self::Context>`.
-    /// `Clone` lets session.vm.fork() reproduce the tuple for the child.
+    /// `Clone` lets session.fork() reproduce the tuple for the child.
     type Context: Send + Sync + Clone + 'static;
 
     /// Build the Context value that install_plugin appends to Plugins.

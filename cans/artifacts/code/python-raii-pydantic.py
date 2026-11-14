@@ -27,7 +27,7 @@ policy = RepoPolicyPlugin()
 builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 
 # 3. Handler reads typed plugin state from c.cap, statically projected.
-# c.cap.policy is populated by .use(policy) at builder.boot(), not before:
+# c.cap.repo_policy is populated by .use(policy) at builder.boot(), not before:
 # the capability struct is materialized from the plugin's Context before
 # the first handler invocation; it is not a stub.
 # Verdict methods: pass_() / patch() / drop(errno, reason) /
@@ -36,7 +36,7 @@ builder = kelir.builder(vcpus=4, memory_mb=4096).use(policy)
 # as the generic POSIX denial — no policy-specific errno is pinned
 # in the grounded spec facts).
 async def commit_gate(c: HandlerContext) -> Verdict:
-    policy_svc = c.cap.policy
+    policy_svc = c.cap.repo_policy
     if policy_svc.violations > 0:
         return Verdict.drop("EPERM", f"EPOLICY: {policy_svc.violations} violation(s)")
     return Verdict.pass_()

@@ -373,7 +373,7 @@
       - Callers hold `Box<dyn VmmDriver>` only; no backend type is surfaced
     - Hypervisor hardware boundary
       - Driver rollback resets physical RAM and vCPU registers only (<8ms)
-      - Storage diff discard is orchestrated by Session::rollback() in kelir-engine
+      - Storage diff discard is orchestrated by Session::rollback(lineage) in kelir-engine
     - SnapshotDescriptor.dirty_bytes
       - Byte count, not page count: page size is 16KB on Apple Silicon ARM64
         - and 4KB on Linux/x86

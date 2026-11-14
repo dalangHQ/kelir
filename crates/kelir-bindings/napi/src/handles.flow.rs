@@ -90,7 +90,7 @@ fn suspend_reason_of(record: NativeSuspendReasonRecord) -> Result<SuspendReason>
                 other => {
                     return Err(missing(&format!(
                         "suspend reason detail `{other}` is not an ExternalSuspendKind"
-                    )))
+                    )));
                 }
             };
             Ok(SuspendReason::External(kind))

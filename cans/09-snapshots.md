@@ -53,5 +53,6 @@
       - A live head pins its full ancestor prefix; interior nodes with multiple
         - live descendants remain materialized
     - SDK lineage surfaces
-      - Rust: session.lineage(root_pid) -> PidLineage; step surfaces: see: 03-sdk-architecture.md#Session-control-surface
-      - Py/TS: Session.rollback(snapshot) / VmHandle.rollback(snapshot) are the lineage-visible surfaces
+      - Rust: session.lineage(root_pid) -> PidLineage
+      - Step surfaces: see: 03-sdk-architecture.md#Session-control-surface
+      - Py/TS: Session.rollback(snapshot) / VmHandle.rollback(snapshot) are lineage-visible

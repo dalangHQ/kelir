@@ -41,7 +41,8 @@
       - Lifecycle hook capability reachability
         - Lifecycle hooks receive LifecycleCtx; it carries no capability caps
         - Canonical L1/L2 pattern: capture the capability handle at registration
-          - The builder closure captures the pre-boot ledger handle; the hook calls ledger.flush() on it
+          - The builder closure captures the pre-boot ledger handle
+          - The hook calls ledger.flush() on it
           - See: artifacts/examples/db-backed-runtime.rs
         - ctx.cap.ledger delivery through the fused lifecycle payload lands (L3)
     - Authoring model
@@ -131,7 +132,8 @@
           - Checkpoint and rollback surfaces | control
             - Split per language (SSOT-A1)
             - Rust
-              - Session derefs to the engine Session; session.checkpoint resolves to the engine's checkpoint: Arc<CheckpointPlane>
+              - Session derefs to the engine Session
+              - session.checkpoint resolves to the engine's checkpoint: Arc<CheckpointPlane>
               - session.lineage(root_pid) -> PidLineage
               - session.checkpoint.create_step(lineage, SnapshotDescriptor) -> u64
               - session.checkpoint.commit_step(lineage) -> u64
@@ -145,7 +147,8 @@
               - session.rollback(lineage: PidLineage) rolls back to the lineage head
               - session.rollback_here(pid: u32) resolves the pid to its lineage first
             - Py/TS
-              - session.checkpoint.create(label) -> SnapshotDescriptor; one-shot, wraps VmHandle::checkpoint
+              - session.checkpoint.create(label) -> SnapshotDescriptor; one-shot
+              - Wraps VmHandle::checkpoint
               - session.vm.checkpoint(label) -> SnapshotDescriptor; low-level, same call
               - session.vm.rollback(snapshot: SnapshotDescriptor)
               - session.rollback(snapshot); convenience wrap of session.vm.rollback(snapshot)

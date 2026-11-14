@@ -177,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::fs::write(LOCAL_SNAPSHOT, out).await?;
 
     // see: cans/10-attestation.md#Execution-receipts
-    // TODO (L3): pass the live causal delta; the session facade exposes no get_causal_delta_from_parent yet, so the request carries a zero delta.
+    // TODO (L3): pass the live causal delta from plugin-ledger LedgerCtx::get_causal_delta_from_parent; the session facade exposes no get_causal_delta_from_parent yet, so the request carries a zero delta.
     let ledger = session.ctx::<LedgerCtx, _>();
     let final_receipt = ledger
         .finalize(FinalizeRequest {
