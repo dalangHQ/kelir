@@ -29,10 +29,10 @@
   },
   "include": [
      //   "AGENTS.md",
-     "cans/",
+    // "cans/",
    //   "cans/artifacts/examples",
-      //"crates",
-      //  "packages"
+      "crates",
+        "packages"
   ],
   "ignore": {
     "useGitignore": true,
