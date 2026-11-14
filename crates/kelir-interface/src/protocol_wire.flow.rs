@@ -120,16 +120,9 @@ pub enum SuspendUntil {
 pub enum Action {
     Pass,
     Forward,
-    Drop {
-        errno: Errno,
-        reason: String,
-    },
-    Suspend {
-        until: SuspendUntil,
-    },
-    Abort {
-        reason: String,
-    },
+    Drop { errno: Errno, reason: String },
+    Suspend { until: SuspendUntil },
+    Abort { reason: String },
     Patch(PatchPayload),
 }
 

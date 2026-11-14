@@ -75,7 +75,7 @@ impl TrapInterposer for DropTrap {
         _ctx: &HandlerCtx,
     ) -> Result<Verdict, kelir_interface::plugin_model::PluginError> {
         Ok(Verdict::Drop {
-            errno: Some(Errno::Eperm),
+            errno: Errno::Eperm,
             reason: "denied".to_string(),
         })
     }
@@ -188,9 +188,7 @@ async fn pe_04_interceptor_pipeline_monotonic_verdict() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match verdict {
-        Verdict::Drop {
-            errno: Some(errno), ..
-        } => assert_eq!(errno, Errno::Eperm),
+        Verdict::Drop { errno, .. } => assert_eq!(errno, Errno::Eperm),
         other => return Err(format!("first Drop did not halt pipeline: {other:?}")),
     }
     assert!(!second_called.load(Ordering::SeqCst));
@@ -307,10 +305,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match verdict {
-        Verdict::Drop {
-            errno: Some(errno),
-            reason,
-        } => {
+        Verdict::Drop { errno, reason } => {
             assert_eq!(errno, Errno::Efault);
             assert_eq!(reason, "Plugin panicked");
         }
@@ -325,9 +320,7 @@ async fn pe_09_panic_quarantine_catch_unwind_efault() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     match second {
-        Verdict::Drop {
-            errno: Some(errno), ..
-        } => assert_eq!(errno, Errno::Efault),
+        Verdict::Drop { errno, .. } => assert_eq!(errno, Errno::Efault),
         other => {
             return Err(format!(
                 "engine did not survive quarantined panic: {other:?}"

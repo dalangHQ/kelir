@@ -5,7 +5,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
-use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -287,35 +286,35 @@ fn triple_failure(name: &str, failure: String) -> String {
 
 fn validate_vsock_spec(name: &str, port: u32, service: &str) -> Result<(), PluginError> {
     if port == 0 || port > 65_535 {
-        return Err(PluginError::reject(
-            Errno::Econfig,
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
             triple_failure(
                 name,
                 format!("vsock service port {port} out of range 1..=65535"),
-            ),
-        ));
+            )
+        )));
     }
     if service.is_empty() {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "vsock service name must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "vsock service name must not be empty".to_string())
+        )));
     }
     Ok(())
 }
 
 fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
     if has_empty(&scope.binaries) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "scope binary name must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "scope binary name must not be empty".to_string())
+        )));
     }
     if has_empty(&scope.paths) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            triple_failure(name, "scope path must not be empty".to_string()),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {}",
+            triple_failure(name, "scope path must not be empty".to_string())
+        )));
     }
     Ok(())
 }
@@ -323,16 +322,14 @@ fn validate_scope(name: &str, scope: &MountScope) -> Result<(), PluginError> {
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 pub(crate) fn validate_trap_filter(name: &str, filter: &TrapFilter) -> Result<(), PluginError> {
     if filter.binary.as_deref() == Some("") {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter binary must not be empty"),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter binary must not be empty"
+        )));
     }
     if filter.args.iter().any(|arg| arg.is_empty()) {
-        return Err(PluginError::reject(
-            Errno::Econfig,
-            format!("{name}: trap filter arg must not be empty"),
-        ));
+        return Err(PluginError::Halt(format!(
+            "EConfig: {name}: trap filter arg must not be empty"
+        )));
     }
     Ok(())
 }
@@ -432,30 +429,24 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
             validate_trap_filter("host", filter)?;
         }
         if self.fast_boot != FastBootMode::Off {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                format!(
-                    "fast_boot {:?} rejected: only Off seals until the L3 driver backend lands",
-                    self.fast_boot
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EConfig: fast_boot {:?} rejected: only Off seals until the L3 driver backend lands",
+                self.fast_boot
+            )));
         }
         if self.dax_window != DaxWindowMode::Off {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                format!(
-                    "dax_window {:?} rejected: only Off seals until the L3 driver backend lands",
-                    self.dax_window
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EConfig: dax_window {:?} rejected: only Off seals until the L3 driver backend lands",
+                self.dax_window
+            )));
         }
         let mut seen: Vec<&'static str> = Vec::new();
         for mounted in &self.registration.mounted {
             if seen.contains(&mounted.name) {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    format!("plugin already mounted: {}", mounted.name),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EConfig: plugin already mounted: {}",
+                    mounted.name
+                )));
             }
             seen.push(mounted.name);
             mounted.registry.validate_vsock(mounted.name)?;
@@ -708,9 +699,8 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
         let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_config();
         let Some(config) = self.config.take() else {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                "host builder has no VmConfig",
+            return Err(PluginError::Halt(
+                "EConfig: host builder has no VmConfig".to_string(),
             ));
         };
         let mut engine = kelir_engine::dispatch_plugin::PipelineEngine::new();

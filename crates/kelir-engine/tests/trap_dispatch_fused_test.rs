@@ -99,7 +99,7 @@ fn fused_callback(verdict: Verdict) -> (Arc<FusedCallback>, Arc<AtomicBool>) {
 
 fn fused_drop() -> Verdict {
     Verdict::Drop {
-        errno: Some(Errno::Eperm),
+        errno: Errno::Eperm,
         reason: "denied".to_string(),
     }
 }
@@ -120,7 +120,7 @@ async fn fused_callback_drop_short_circuits_trap_dispatch() -> Result<(), String
         .map_err(|e| e.to_string())?;
     match verdict {
         Verdict::Drop {
-            errno: Some(Errno::Eperm),
+            errno: Errno::Eperm,
             ..
         } => {}
         other => return Err(format!("fused drop did not win: {other:?}")),

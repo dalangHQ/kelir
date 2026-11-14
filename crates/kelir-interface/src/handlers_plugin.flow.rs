@@ -10,9 +10,7 @@ use serde::de::DeserializeOwned;
 use crate::errno_types::Errno;
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
-use crate::protocol_wire::{
-    PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
-};
+use crate::protocol_wire::{PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict};
 use crate::telemetry::ExecutionReceipt;
 
 // see: cans/03-sdk-architecture.md#Rust-SDK

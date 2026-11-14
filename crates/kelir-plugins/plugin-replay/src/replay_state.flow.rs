@@ -10,12 +10,8 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
 };
-use kelir_interface::protocol_wire::Errno;
 
 use crate::ReplayConfig;
-
-// see: cans/plugins/replay.md#Error-and-return-semantics-(replay)
-const ECLOCKREGRESS: Errno = Errno::Eclockregress;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.replay
 impl Default for ReplayConfig {
@@ -111,9 +107,9 @@ impl ReplayState {
             *regress = Some(format!(
                 "PMU sample timestamp regressed: {sampled_at_ns}ns behind floor {floor}ns"
             ));
-            return Err(PluginError::reject(
-                ECLOCKREGRESS,
-                "PMU sample timestamp regressed behind the monotonic floor",
+            return Err(PluginError::Halt(
+                "EClockRegress: PMU sample timestamp regressed behind the monotonic floor"
+                    .to_string(),
             ));
         }
         *floor = sampled_at_ns;

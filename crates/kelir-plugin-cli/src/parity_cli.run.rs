@@ -420,20 +420,90 @@ fn assert_canonical_roster(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/15-operations.md#--action-coverage
+fn assert_action_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let mut seen: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for vector in vectors {
+        if let Some(builder) = &vector.plugin_builder {
+            for outcome in &builder.expected_outcomes {
+                match outcome {
+                    kelir_plugin_testkit::vectors_testkit::UnifiedBuilderOutcome::Verdict(
+                        verdict,
+                    ) => {
+                        let kind = match verdict {
+                            Verdict::Pass => "Pass",
+                            Verdict::Forward => "Forward",
+                            Verdict::Drop { .. } => "Drop",
+                            Verdict::Suspend { .. } => "Suspend",
+                            Verdict::Abort { .. } => "Abort",
+                            Verdict::Patch(_) => "Patch",
+                            _ => continue,
+                        };
+                        *seen.entry(kind).or_default() += 1;
+                    }
+                    kelir_plugin_testkit::vectors_testkit::UnifiedBuilderOutcome::Filter(_) => {
+                        *seen.entry("Forward").or_default() += 1;
+                    }
+                }
+            }
+        }
+        match &vector.expected_verdict {
+            Verdict::Pass => *seen.entry("Pass").or_default() += 1,
+            Verdict::Forward => *seen.entry("Forward").or_default() += 1,
+            Verdict::Drop { .. } => *seen.entry("Drop").or_default() += 1,
+            Verdict::Suspend { .. } => *seen.entry("Suspend").or_default() += 1,
+            Verdict::Abort { .. } => *seen.entry("Abort").or_default() += 1,
+            Verdict::Patch(_) => *seen.entry("Patch").or_default() += 1,
+            _ => {}
+        }
+    }
+    let required = ["Pass", "Forward", "Drop", "Suspend", "Abort", "Patch"];
+    let missing: Vec<&str> = required
+        .iter()
+        .filter(|kind| !seen.contains_key(**kind))
+        .copied()
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "parity: action coverage missing Action variants {missing:?} in vectors.json chains"
+        ));
+    }
+    println!(
+        "parity: action coverage OK ({}/{} Action variants)",
+        required.len(),
+        required.len()
+    );
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut path = "vectors.json".to_string();
+    let mut action_coverage = false;
+    let mut rest = args;
     match args.first().map(String::as_str) {
         None => {}
         Some("run") => {
-            if let Some(custom) = args.get(1) {
-                path = custom.clone();
-            }
+            rest = &args[1..];
         }
         Some(other) => {
             return Err(CliError::usage(format!(
-                "parity: unknown action `{other}` (expected `run [path]`)"
+                "parity: unknown action `{other}` (expected `run [path] [--action-coverage]`)"
             )));
         }
+    }
+    let positional: Vec<&String> = rest
+        .iter()
+        .filter(|arg| {
+            if arg.as_str() == "--action-coverage" {
+                action_coverage = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    if let Some(custom) = positional.first() {
+        path = (*custom).clone();
     }
     let text = fs::read_to_string(&path).map_err(|e| {
         format!(
@@ -444,6 +514,9 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     let vectors = suite.vectors.as_slice();
     let report = assert_vectors(vectors)?;
     assert_canonical_roster(vectors)?;
+    if action_coverage {
+        assert_action_coverage(vectors)?;
+    }
     println!(
         "parity: {} vector(s) from {path}: frame-validated {}; watchdog-armed {}; veto-registered {}",
         report.total, report.frame_validated, report.watchdog_armed, report.veto_registered

@@ -2,6 +2,7 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, NoDeps, PipelineBinder, PluginDeps,
@@ -82,14 +83,14 @@ impl ChaosPlugin {
             if rule.inject_rst {
                 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
                 return Ok(FilterAction::Drop {
-                    errno: Some(RST_INJECTION_ERRNO),
+                    errno: RST_INJECTION_ERRNO,
                     reason: format!("chaos: synthetic TCP RST injected for {}", rule.target),
                 });
             }
             if self.loss_sampled(rule)? {
                 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
                 return Ok(FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: format!("chaos: synthetic packet loss for {}", rule.target),
                 });
             }
@@ -114,7 +115,7 @@ impl ChaosPlugin {
             if self.error_sampled(rule)? {
                 // see: cans/05-storage-plane.md#Write-gating
                 return Ok(FilterAction::Drop {
-                    errno: Some(rule.simulate_error),
+                    errno: rule.simulate_error,
                     reason: format!("chaos: simulated storage fault on {}", rule.target_path),
                 });
             }

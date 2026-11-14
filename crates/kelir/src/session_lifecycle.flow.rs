@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
@@ -386,9 +385,9 @@ impl Future for SpawnBuilder {
             return Poll::Ready(Err(PluginError::Halt(error.clone())));
         }
         if self.limits.is_some() {
-            return Poll::Ready(Err(PluginError::reject(
-                Errno::Econfig,
-                "per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder",
+            return Poll::Ready(Err(PluginError::Halt(
+                "EConfig: per-command rlimits need the L3 EXEC control sub-lane 0x03 encoder"
+                    .to_string(),
             )));
         }
         let Some(transport) = &self.transport else {

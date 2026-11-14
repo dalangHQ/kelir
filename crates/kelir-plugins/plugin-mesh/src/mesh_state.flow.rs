@@ -10,16 +10,12 @@ use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PipelineBinder,
     PluginDeps,
 };
-use kelir_interface::protocol_wire::Errno;
 use kelir_interface::vsock_mesh::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
 };
 
 use crate::handshake::HandshakeDriver;
 use crate::{MeshConfig, PeerIdentity, PeerRejection};
-
-// see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
-const ECONNREFUSED: Errno = Errno::Econnrefused;
 
 // see: cans/02-plugin-model.md#Latency-ceiling
 const MAX_CONCURRENT_HANDSHAKES: usize = 64;
@@ -84,9 +80,8 @@ impl MeshState {
         let mut handshakes = self.lock_handshakes()?;
         handshakes.retain(|handle| !handle.is_finished());
         if handshakes.len() >= MAX_CONCURRENT_HANDSHAKES {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                "mesh peer handshake capacity exceeded",
+            return Err(PluginError::Halt(
+                "ECONNREFUSED: mesh peer handshake capacity exceeded".into(),
             ));
         }
         handshakes.push(handle);
@@ -153,26 +148,20 @@ impl MeshPlugin {
     ) -> Result<(), PluginError> {
         let PeerIdentity::Spiffe { trust_domain, .. } = &self.config.peer_identity;
         if &handshake.svid.spiffe_id.trust_domain != trust_domain {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                format!(
-                    "peer {}:{} presented trust domain {}",
-                    peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "ECONNREFUSED: peer {}:{} presented trust domain {}",
+                peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
+            )));
         }
         if peer
             .spiffe_id
             .as_ref()
             .is_some_and(|peer_id| peer_id != &handshake.svid.spiffe_id)
         {
-            return Err(PluginError::reject(
-                ECONNREFUSED,
-                format!(
-                    "peer {}:{} vsock identity diverges from the handshake SVID",
-                    peer.cid, peer.port
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "ECONNREFUSED: peer {}:{} vsock identity diverges from the handshake SVID",
+                peer.cid, peer.port
+            )));
         }
         // TODO (L3) [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh
         Ok(())

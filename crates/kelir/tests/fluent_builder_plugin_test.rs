@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use kelir::interface::driver_interface::{Stream, WatchdogVerdict, default_vm_config};
+use kelir::interface::errno_types::Errno;
 use kelir::interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin, LifecycleParticipant,
     MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder, PluginError, PostExecGate,
@@ -422,7 +423,7 @@ fn duplicate_handlers_append_in_order() {
         .on_fs_write(|_path, _data, _pid, _ctx| Ok(FilterAction::Forward))
         .on_fs_write(|_path, _data, _pid, _ctx| {
             Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason: "second".to_string(),
             })
         })

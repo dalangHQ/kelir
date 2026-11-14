@@ -280,6 +280,38 @@ class ExecveMutation:
         }
 
 
+from enum import Enum
+
+
+# see: cans/02-plugin-model.md#Unified-verdict
+class Errno(Enum):
+
+    EPERM = "EPERM"
+    EACCES = "EACCES"
+    ENOENT = "ENOENT"
+    EINVAL = "EINVAL"
+    ENOSPC = "ENOSPC"
+    EROFS = "EROFS"
+    ECONNREFUSED = "ECONNREFUSED"
+    ENXIO = "ENXIO"
+    EWOULDBLOCK = "EWOULDBLOCK"
+    EFAULT = "EFAULT"
+    EBUSY = "EBUSY"
+    EXDEV = "EXDEV"
+    EPIPE = "EPIPE"
+    ENODATA = "ENODATA"
+    EPROTO = "EPROTO"
+    EPOLICY = "EPOLICY"
+    ETOOLQUOTA = "ETOOLQUOTA"
+    EWXVIOLATION = "EWXVIOLATION"
+    E_CONFIG = "EConfig"
+    E_SECURITY_VIOLATION = "ESecurityViolation"
+    E_UNKNOWN_KIND = "EUnknownKind"
+    E_CLOCK_REGRESS = "EClockRegress"
+    PATH_TRAVERSAL = "PathTraversal"
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+
 class Verdict:
 
     def __init__(self, kind: str, **payload: Any) -> None:
@@ -294,7 +326,19 @@ class Verdict:
     Pass = pass_
 
     @classmethod
+    def forward(cls) -> Verdict:
+        return cls("forward")
+
+    @classmethod
     def drop(cls, errno: str = "", reason: str = "") -> Verdict:
+        # see: cans/02-plugin-model.md#Unified-verdict
+        if errno:
+            if errno == "E_PATH_TRAVERSAL":
+                raise ValueError("use Errno.PATH_TRAVERSAL, not E_PATH_TRAVERSAL")
+            try:
+                Errno(errno)
+            except ValueError:
+                raise ValueError(f"unknown errno: {errno}") from None
         return cls("drop", errno=errno, reason=reason)
 
     @classmethod
@@ -352,28 +396,8 @@ class PostExecAction:
         return cls("rollback_and_halt")
 
 
-class FilterAction:
-
-    def __init__(self, kind: str, **payload: Any) -> None:
-        self.kind = kind
-        self.payload = payload
-
-    @classmethod
-    def forward(cls) -> FilterAction:
-        return cls("forward")
-
-    @classmethod
-    def drop(cls, errno: str = "", reason: str = "") -> FilterAction:
-        return cls("drop", errno=errno, reason=reason)
-
-    @classmethod
-    def suspend(cls, until: SuspendUntil | None = None) -> FilterAction:
-        return cls("suspend", until=_suspend_until(until))
-
-    # see: cans/02-plugin-model.md#Unified-verdict
-    @classmethod
-    def abort(cls, reason: str = "") -> FilterAction:
-        return cls("abort", reason=reason)
+# see: cans/02-plugin-model.md#Unified-verdict
+FilterAction = Verdict
 
 
 
@@ -689,6 +713,7 @@ from kelir.kelir_builder import (
 
 __all__ = [
     "Approval",
+    "Errno",
     "Caps",
     "CausalDelta",
     "Channel",

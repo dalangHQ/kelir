@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 
 // see: cans/plugins/mcp.md#MCP-contract
@@ -128,9 +127,9 @@ impl ToolRegistry {
         if self.lock_digest()?.is_some()
             && canonical_catalog(&candidate) != canonical_catalog(&schemas)
         {
-            return Err(PluginError::reject(
-                Errno::Esecurityviolation,
-                "tool catalog mutation after the locked advertisement",
+            return Err(PluginError::Halt(
+                "ESecurityViolation: tool catalog mutation after the locked advertisement"
+                    .to_string(),
             ));
         }
         *schemas = candidate;

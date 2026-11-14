@@ -3,6 +3,7 @@
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 use std::sync::{Arc, Mutex, RwLock};
 
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::vsock_mesh::VsockServiceHandler;

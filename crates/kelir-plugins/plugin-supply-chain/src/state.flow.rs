@@ -108,7 +108,7 @@ impl SupplyChainPlugin {
         {
             // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO),
+                errno: SCRIPT_DENY_ERRNO,
                 reason: format!("lifecycle script denied: {}", event.binary_path),
             });
         }
@@ -147,7 +147,7 @@ impl SupplyChainPlugin {
         }
         // see: cans/plugins/supply-chain.md#Return-errno-and-rejection-behavior-(supply-chain)
         Ok(Verdict::Drop {
-            errno: Some(WX_VIOLATION_ERRNO),
+            errno: WX_VIOLATION_ERRNO,
             reason: format!("PID {} attempted {operation}", event.pid),
         })
     }
@@ -244,7 +244,7 @@ impl TrapInterposer for SupplyChainPlugin {
         if !self.is_bypass_runner(&event.binary_path) && self.flags_obfuscated_argv(&event.argv)? {
             // TODO (L3) [sc_02_argv_high_entropy_obfuscation_kill]: flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold; slop: flag-to-verdict unimplemented, obfuscated argv Passes despite entropy
             return Ok(Verdict::Drop {
-                errno: Some(SCRIPT_DENY_ERRNO),
+                errno: SCRIPT_DENY_ERRNO,
                 reason: format!("obfuscated argv denied: {}", event.binary_path),
             });
         }

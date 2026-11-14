@@ -6,12 +6,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
     PipelineBinder, PluginDeps, TrapInterposer,
 };
-use kelir_interface::protocol_wire::{Errno, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 
 #[path = "service_container.flow.rs"]
 pub mod service_container;
@@ -216,10 +217,7 @@ impl LifecycleParticipant for ContainerPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/container.md#Non-nested-OCI-container-execution
         if !self.config.isolate_var_lib_containers && !self.config.allow_unsandboxed {
-            return Err(PluginError::reject(
-                Errno::Esecurityviolation,
-                "isolate_var_lib_containers is required; set allow_unsandboxed to opt out explicitly",
-            ));
+            return Err(PluginError::Halt("ESecurityViolation: isolate_var_lib_containers is required; set allow_unsandboxed to opt out explicitly".to_string()));
         }
         self.service.configure_rootless_runtime().await?;
         if self.config.isolate_var_lib_containers {
@@ -321,7 +319,7 @@ fn allocation_within(alloc: IdMapAllocation, pinned: &Range<u32>) -> bool {
 // see: cans/plugins/container.md#Error-and-return-semantics-(container)
 fn reject_eperm(reason: &str) -> Verdict {
     Verdict::Drop {
-        errno: Some(Errno::Eperm),
+        errno: Errno::Eperm,
         reason: reason.to_string(),
     }
 }
@@ -340,16 +338,14 @@ fn effective_host_uid() -> Result<u32, PluginError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        let meta = std::fs::metadata("/proc/self").map_err(|e| {
-            PluginError::reject(Errno::Enoent, format!("host identity probe failed: {e}"))
-        })?;
+        let meta = std::fs::metadata("/proc/self")
+            .map_err(|e| PluginError::Halt(format!("ENOENT: host identity probe failed: {e}")))?;
         Ok(meta.uid())
     }
     #[cfg(not(unix))]
     {
-        Err(PluginError::reject(
-            Errno::Einval,
-            "rootless id mapping requires a unix host",
+        Err(PluginError::Halt(
+            "EINVAL: rootless id mapping requires a unix host".to_string(),
         ))
     }
 }
@@ -370,7 +366,7 @@ fn passwd_name_for_uid(uid: u32) -> Option<String> {
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 fn parse_subid_file(path: &str, owner: &SubidOwner) -> Result<Option<Range<u32>>, PluginError> {
     let contents = std::fs::read_to_string(path)
-        .map_err(|e| PluginError::reject(Errno::Enoent, format!("{path} unreadable: {e}")))?;
+        .map_err(|e| PluginError::Halt(format!("ENOENT: {path} unreadable: {e}")))?;
     let mut matched = None;
     for line in contents.lines() {
         if line.trim().is_empty() {
@@ -382,41 +378,33 @@ fn parse_subid_file(path: &str, owner: &SubidOwner) -> Result<Option<Range<u32>>
                 (user, lower, count)
             }
             _ => {
-                return Err(PluginError::reject(
-                    Errno::Einval,
-                    format!("{path} line is not owner:lower:count: {line}"),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EINVAL: {path} line is not owner:lower:count: {line}"
+                )));
             }
         };
         let lower = lower.parse::<u32>().map_err(|_| {
-            PluginError::reject(
-                Errno::Einval,
-                format!("{path} lower id is not numeric: {line}"),
-            )
+            PluginError::Halt(format!("EINVAL: {path} lower id is not numeric: {line}"))
         })?;
         let count = count.parse::<u32>().map_err(|_| {
-            PluginError::reject(
-                Errno::Einval,
-                format!("{path} count is not numeric: {line}"),
-            )
+            PluginError::Halt(format!("EINVAL: {path} count is not numeric: {line}"))
         })?;
         if count == 0 {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                format!("{path} count is zero: {line}"),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EINVAL: {path} count is zero: {line}"
+            )));
         }
         let end = lower.checked_add(count).ok_or_else(|| {
-            PluginError::reject(Errno::Einval, format!("{path} range overflows u32: {line}"))
+            PluginError::Halt(format!("EINVAL: {path} range overflows u32: {line}"))
         })?;
         let owner_match = owner.name.as_deref().is_some_and(|name| user == name)
             || user.parse::<u32>() == Ok(owner.uid);
         if owner_match {
             if matched.is_some() {
-                return Err(PluginError::reject(
-                    Errno::Einval,
-                    format!("{path} carries duplicate entries for uid {}", owner.uid),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EINVAL: {path} carries duplicate entries for uid {}",
+                    owner.uid
+                )));
             }
             matched = Some(lower..end);
         }
@@ -429,16 +417,16 @@ fn resolve_unprivileged_ranges(
     owner: &SubidOwner,
 ) -> Result<(Range<u32>, Range<u32>), PluginError> {
     let subuid = parse_subid_file(SUBUID_PATH, owner)?.ok_or_else(|| {
-        PluginError::reject(
-            Errno::Enoent,
-            format!("no subuid range allocated to uid {}", owner.uid),
-        )
+        PluginError::Halt(format!(
+            "ENOENT: no subuid range allocated to uid {}",
+            owner.uid
+        ))
     })?;
     let subgid = parse_subid_file(SUBGID_PATH, owner)?.ok_or_else(|| {
-        PluginError::reject(
-            Errno::Enoent,
-            format!("no subgid range allocated to uid {}", owner.uid),
-        )
+        PluginError::Halt(format!(
+            "ENOENT: no subgid range allocated to uid {}",
+            owner.uid
+        ))
     })?;
     Ok((subuid, subgid))
 }

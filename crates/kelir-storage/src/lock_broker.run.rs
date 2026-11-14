@@ -134,7 +134,7 @@ impl LockBroker {
             Verdict::Drop { errno, reason } => {
                 return Err(PluginError::Halt(format!(
                     "lock denied by interposer: {reason} ({})",
-                    errno.map_or("none", |errno| errno.as_str())
+                    errno.as_str()
                 )));
             }
             Verdict::Patch(_) => {

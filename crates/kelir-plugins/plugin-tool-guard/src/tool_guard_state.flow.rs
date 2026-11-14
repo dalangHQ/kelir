@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
     PipelineBinder, PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{Errno, StreamKind, Verdict};
+use kelir_interface::protocol_wire::{StreamKind, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
@@ -118,7 +119,7 @@ impl ToolGuardPlugin {
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if frame.method == McpMethod::Unparsed {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eperm),
+                errno: Errno::Eperm,
                 reason: "unparsed MCP frame fails closed pending JSON-RPC 2.0 decode".into(),
             });
         }
@@ -127,13 +128,13 @@ impl ToolGuardPlugin {
         }
         let Some(tool) = frame.tool_name.clone() else {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eperm),
+                errno: Errno::Eperm,
                 reason: "tools/call frame carries no tool name".into(),
             });
         };
         if !self.charge_quota(trace)? {
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Etoolquota),
+                errno: Errno::Etoolquota,
                 reason: format!("tool {tool} exceeded max_invocations_per_trace"),
             });
         }
@@ -141,7 +142,7 @@ impl ToolGuardPlugin {
             Ok(Some(schema)) => schema,
             Ok(None) => {
                 return Ok(Verdict::Drop {
-                    errno: Some(Errno::Eperm),
+                    errno: Errno::Eperm,
                     reason: format!("tool {tool} is not pinned in the locked catalog"),
                 });
             }
@@ -266,7 +267,7 @@ impl ConsoleInterposer for ToolGuardPlugin {
         match self.guard_tool_call(port, bytes).await? {
             Verdict::Pass | Verdict::Patch(_) => Ok(bytes.to_vec()),
             Verdict::Drop { errno, reason } => {
-                Err(PluginError::reject(errno.unwrap_or(Errno::Eperm), reason))
+                Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
             }
             // TODO (L3) [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
             Verdict::Suspend { .. } => Err(PluginError::Halt(

@@ -92,9 +92,9 @@ impl IngressState {
             match parked.get_mut(&frame.connection_id) {
                 Some(existing) => {
                     if existing.target_port != frame.target_port {
-                        return Err(PluginError::reject(
-                            Errno::Eproto,
-                            "L4_FORWARD connection id reused for a different target port",
+                        return Err(PluginError::Halt(
+                            "EPROTO: L4_FORWARD connection id reused for a different target port"
+                                .to_string(),
                         ));
                     }
                     if existing.buffered.len() + initial.len() > config.parking.max_buffered_bytes {
@@ -285,7 +285,7 @@ impl WireIngressPlugin {
     pub fn on_l4_forward_frame(&self, payload: &mut [u8]) -> Result<FilterAction, PluginError> {
         let Some((l4, initial)) = L4ForwardFrame::decode(payload) else {
             return Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason:
                     "wire-ingress: malformed L4_FORWARD frame header dropped at the ingress stream"
                         .into(),
@@ -299,7 +299,7 @@ impl WireIngressPlugin {
                 until: SuspendUntil::Deadline(self.config.parking.idle_timeout_ms),
             }),
             ParkOutcome::Overflow => Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason: "wire-ingress backlog overflow: 503 + Retry-After: 1".into(),
             }),
         }

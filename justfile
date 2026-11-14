@@ -64,6 +64,10 @@ check-spec-touched:
 check-plugin-coverage:
     ./scripts/check-plugin-coverage.sh
 
+# --action-coverage: every Action variant appears in at least one vector.
+check-action-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --action-coverage
+
 # --examples-canonical: cans/artifacts/examples/ is the single canonical home.
 check-examples-canonical:
     ./scripts/check-examples-canonical.sh

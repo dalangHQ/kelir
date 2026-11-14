@@ -2,7 +2,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     KelirPlugin, LifecycleParticipant, MountScope, NoDeps, PipelineBinder, PluginDeps,
@@ -36,10 +35,9 @@ impl NamespaceRouter {
     pub fn route(&mut self, namespace: &str, fragment: &[u8]) -> Result<(), PluginError> {
         match self.namespaces.get_mut(namespace) {
             Some(plugin) => plugin.configure(fragment),
-            None => Err(PluginError::reject(
-                Errno::Econfig,
-                format!("profile namespace `{namespace}` has no registered owner"),
-            )),
+            None => Err(PluginError::Halt(format!(
+                "EConfig: profile namespace `{namespace}` has no registered owner"
+            ))),
         }
     }
 
@@ -89,39 +87,37 @@ impl ProfileState {
 
     fn ingest_json(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_json::from_str(document).map_err(|err| {
-            PluginError::reject(Errno::Econfig, format!("profile JSON parse failed: {err}"))
+            PluginError::Halt(format!("EConfig: profile JSON parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
     fn ingest_toml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = toml::from_str(document).map_err(|err| {
-            PluginError::reject(Errno::Econfig, format!("profile TOML parse failed: {err}"))
+            PluginError::Halt(format!("EConfig: profile TOML parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
     fn ingest_yaml(&self, document: &str) -> Result<Vec<String>, PluginError> {
         let value: Value = serde_yaml::from_str(document).map_err(|err| {
-            PluginError::reject(Errno::Econfig, format!("profile YAML parse failed: {err}"))
+            PluginError::Halt(format!("EConfig: profile YAML parse failed: {err}"))
         })?;
         self.ingest_value(value)
     }
 
     fn ingest_value(&self, value: Value) -> Result<Vec<String>, PluginError> {
         let Some(document) = value.as_object() else {
-            return Err(PluginError::reject(
-                Errno::Econfig,
-                "profile document must be an object keyed by namespace",
+            return Err(PluginError::Halt(
+                "EConfig: profile document must be an object keyed by namespace".to_string(),
             ));
         };
         let mut routed = Vec::new();
         for (namespace, fragment) in document {
             let fragment_bytes = serde_json::to_vec(fragment).map_err(|err| {
-                PluginError::reject(
-                    Errno::Econfig,
-                    format!("profile fragment for `{namespace}` failed to serialize: {err}"),
-                )
+                PluginError::Halt(format!(
+                    "EConfig: profile fragment for `{namespace}` failed to serialize: {err}"
+                ))
             })?;
             self.route(namespace, &fragment_bytes)?;
             let mut bases = self
@@ -136,32 +132,28 @@ impl ProfileState {
 
     fn dispatch_patch(&self, payload: &[u8]) -> Result<Vec<String>, PluginError> {
         if !self.config.rfc6902_dynamic_patching {
-            return Err(PluginError::reject(
-                Errno::Eperm,
-                "RFC 6902 dynamic patching is disabled in the profile config",
+            return Err(PluginError::Halt(
+                "EPERM: RFC 6902 dynamic patching is disabled in the profile config".to_string(),
             ));
         }
         let patches: Vec<JsonPatch> = serde_json::from_slice(payload).map_err(|err| {
-            PluginError::reject(
-                Errno::Econfig,
-                format!("PROFILE_SYNC patch payload failed to parse: {err}"),
-            )
+            PluginError::Halt(format!(
+                "EConfig: PROFILE_SYNC patch payload failed to parse: {err}"
+            ))
         })?;
         let mut routed = Vec::new();
         for patch in &patches {
             patch.validate()?;
             let Some(namespace) = patch.namespace() else {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    "RFC 6902 patch path carries no namespace segment",
+                return Err(PluginError::Halt(
+                    "EConfig: RFC 6902 patch path carries no namespace segment".to_string(),
                 ));
             };
             self.check_monotonic(patch)?;
             let fragment = serde_json::to_vec(patch).map_err(|err| {
-                PluginError::reject(
-                    Errno::Econfig,
-                    format!("RFC 6902 patch for `{namespace}` failed to serialize: {err}"),
-                )
+                PluginError::Halt(format!(
+                    "EConfig: RFC 6902 patch for `{namespace}` failed to serialize: {err}"
+                ))
             })?;
             self.route(namespace, &fragment)?;
             self.apply_patch_to_base(patch);
@@ -211,13 +203,10 @@ impl ProfileState {
                     None => Ok(()),
                     Some(target) => {
                         if contains_number(target) {
-                            return Err(PluginError::reject(
-                                Errno::Esecurityviolation,
-                                format!(
-                                    "RFC 6902 patch at `{}` removes a numeric limit",
-                                    patch.path
-                                ),
-                            ));
+                            return Err(PluginError::Halt(format!(
+                                "ESecurityViolation: RFC 6902 patch at `{}` removes a numeric limit",
+                                patch.path
+                            )));
                         }
                         Ok(())
                     }

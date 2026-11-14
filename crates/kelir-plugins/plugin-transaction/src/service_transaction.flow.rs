@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 
 use crate::TransactionCtx;
@@ -59,10 +58,9 @@ impl TransactionService for TransactionCtx {
         coordination.require_active(&handle)?;
         if let Err(err) = coordination.prepare_participants().await {
             coordination.abort_active().await?;
-            return Err(PluginError::reject(
-                Errno::Epolicy,
-                format!("2PC prepare failed; participants rolled back: {err}"),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EPOLICY: 2PC prepare failed; participants rolled back: {err}"
+            )));
         }
         // TODO (L3) [relational_transaction]: broker upper replay rides the on_post_commit(true) driver hook per cans/plugins/transaction.md#Multi-resource-2PC-coordination; slop: broker replay never rides on_post_commit, post-commit diverges from DB
         if let Err(err) = coordination.issue_sql_commit().await {

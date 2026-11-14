@@ -1,5 +1,4 @@
 // see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use serde_json::Value;
 
@@ -15,33 +14,24 @@ impl JsonPatch {
         match self.namespace() {
             Some(namespace) if !namespace.is_empty() => {}
             _ => {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    format!(
-                        "RFC 6902 patch path `{}` carries no namespace segment",
-                        self.path
-                    ),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EConfig: RFC 6902 patch path `{}` carries no namespace segment",
+                    self.path
+                )));
             }
         }
         match self.op {
             PatchOp::Add | PatchOp::Replace | PatchOp::Test if self.value.is_none() => {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    format!(
-                        "RFC 6902 {:?} patch at `{}` requires a value",
-                        self.op, self.path
-                    ),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EConfig: RFC 6902 {:?} patch at `{}` requires a value",
+                    self.op, self.path
+                )));
             }
             PatchOp::Move | PatchOp::Copy if self.from.is_none() => {
-                return Err(PluginError::reject(
-                    Errno::Econfig,
-                    format!(
-                        "RFC 6902 {:?} patch at `{}` requires a from path",
-                        self.op, self.path
-                    ),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "EConfig: RFC 6902 {:?} patch at `{}` requires a from path",
+                    self.op, self.path
+                )));
             }
             _ => {}
         }
@@ -99,10 +89,9 @@ pub(crate) fn check_value_against_base(
     path: &str,
 ) -> Result<(), PluginError> {
     if matches!(base, Some(Value::Number(_))) && !value.is_number() {
-        return Err(PluginError::reject(
-            Errno::Esecurityviolation,
-            format!("RFC 6902 patch at `{path}` replaces a numeric limit with a non-numeric value"),
-        ));
+        return Err(PluginError::Halt(format!(
+            "ESecurityViolation: RFC 6902 patch at `{path}` replaces a numeric limit with a non-numeric value"
+        )));
     }
     match value {
         Value::Number(number) => {
@@ -116,12 +105,9 @@ pub(crate) fn check_value_against_base(
                 return Ok(());
             };
             if new_number > base_number {
-                return Err(PluginError::reject(
-                    Errno::Esecurityviolation,
-                    format!(
-                        "RFC 6902 patch at `{path}` widens a monotonic limit from {base_number} to {new_number}"
-                    ),
-                ));
+                return Err(PluginError::Halt(format!(
+                    "ESecurityViolation: RFC 6902 patch at `{path}` widens a monotonic limit from {base_number} to {new_number}"
+                )));
             }
             Ok(())
         }

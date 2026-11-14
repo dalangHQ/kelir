@@ -43,7 +43,7 @@ impl ErrorEnvelope {
             ring: None,
             pid: None,
             binary: None,
-            errno: None,
+            errno: Some(Errno::Eperm),
         }
     }
     // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants

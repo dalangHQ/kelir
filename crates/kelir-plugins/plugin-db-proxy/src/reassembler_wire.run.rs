@@ -5,7 +5,6 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::{Mutex, MutexGuard};
 
 use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 
 use crate::pgwire_db_proxy::PgFrameDescriptor;
@@ -196,9 +195,8 @@ impl PgStreamDecoder {
             let length = header.length() as usize;
             let total = layout_wire::PG_TYPE_BYTES + length;
             if length < layout_wire::PG_MIN_LENGTH || total > MAX_FRAME_PAYLOAD {
-                return Err(PluginError::reject(
-                    Errno::Eproto,
-                    "pgwire frame length exceeds the 64KB frame budget",
+                return Err(PluginError::Halt(
+                    "EPROTO: pgwire frame length exceeds the 64KB frame budget".into(),
                 ));
             }
             if self.carryover.len() < total {
@@ -211,9 +209,8 @@ impl PgStreamDecoder {
             self.carryover.drain(..total);
         }
         if self.carryover.len() > MAX_FRAME_PAYLOAD {
-            return Err(PluginError::reject(
-                Errno::Eproto,
-                "pgwire carryover window exceeds the 64KB frame budget",
+            return Err(PluginError::Halt(
+                "EPROTO: pgwire carryover window exceeds the 64KB frame budget".into(),
             ));
         }
         Ok(frames)

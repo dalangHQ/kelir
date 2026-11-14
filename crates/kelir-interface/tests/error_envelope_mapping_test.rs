@@ -1,11 +1,11 @@
 // see: cans/02-plugin-model.md#Declarative-error-mapping
 // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
 use kelir_interface::errno_types::Errno;
+use kelir_interface::error_envelope::config_envelope;
 use kelir_interface::error_envelope::{
     EAMBIGUOUSMUTATION_CODE, ECONFIG_CODE, EFFIQUEUESATURATED_CODE, EHALT_CODE, EWXVIOLATION_CODE,
     ErrorEnvelope,
 };
-use kelir_interface::error_envelope::config_envelope;
 use kelir_interface::plugin_model::PluginError;
 
 #[test]

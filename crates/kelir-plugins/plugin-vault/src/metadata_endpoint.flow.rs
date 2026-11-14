@@ -5,7 +5,6 @@ use std::thread::JoinHandle;
 use async_trait::async_trait;
 use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, NoDeps,
@@ -68,9 +67,8 @@ impl MetadataEndpoint {
         let mut serving = self.lock_serving()?;
         serving.retain(|handle| !handle.is_finished());
         if serving.len() >= MAX_CONCURRENT_METADATA_SESSIONS {
-            return Err(PluginError::reject(
-                Errno::Econnrefused,
-                "metadata service: serving capacity exceeded",
+            return Err(PluginError::Halt(
+                "ECONNREFUSED: metadata service: serving capacity exceeded".into(),
             ));
         }
         serving.push(handle);
@@ -165,9 +163,7 @@ impl VaultPlugin {
                 "metadata service: session guest CID unbound at boot; core vsock CID wiring pending (L3)"
                     .into(),
             ),
-            Some(_) => PluginError::reject(Errno::Econnrefused,
-                "metadata service: non-session vsock peer",
-            ),
+            Some(_) => PluginError::Halt("ECONNREFUSED: metadata service: non-session vsock peer".into()),
         }
     }
 
@@ -246,7 +242,7 @@ impl CredentialBrokerCtx {
 
 // see: cans/plugins/vault.md#Return-errno-and-rejection-behavior-(vault)
 fn halt(err: VaultError) -> PluginError {
-    PluginError::reject(err.errno(), err.reason())
+    PluginError::Halt(format!("{}: {}", err.errno(), err.reason()))
 }
 
 // see: cans/08-lifecycle.md#Rollback
@@ -318,9 +314,8 @@ fn read_metadata_request(stream: &mut dyn Stream) -> Result<Vec<u8>, PluginError
     let mut chunk = [0u8; 1024];
     loop {
         if request.len() >= METADATA_MAX_REQUEST_BYTES {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                "metadata request exceeds the 64KB frame budget",
+            return Err(PluginError::Halt(
+                "EINVAL: metadata request exceeds the 64KB frame budget".into(),
             ));
         }
         let read = stream.read(&mut chunk)?;
@@ -351,9 +346,8 @@ fn write_metadata_response(stream: &mut dyn Stream, response: &[u8]) -> Result<(
     while written < response.len() {
         let written_now = stream.write(&response[written..])?;
         if written_now == 0 {
-            return Err(PluginError::reject(
-                Errno::Epipe,
-                "metadata client closed the vsock stream",
+            return Err(PluginError::Halt(
+                "EPIPE: metadata client closed the vsock stream".into(),
             ));
         }
         written += written_now;

@@ -139,17 +139,17 @@ def test_materialize_cap_aliases_db_proxy_and_keeps_methods() -> None:
 
 
 def test_plugin_error_maps_to_drop() -> None:
-    err = PluginError.reject(errno="E_PATH_TRAVERSAL", reason="escapes root")
+    err = PluginError.halt("EPERM: escapes root")
     verdict = plugin_error_to_verdict(err)
     assert verdict.kind == "drop"
     assert verdict.payload == {
-        "errno": "E_PATH_TRAVERSAL",
+        "errno": "EPERM",
         "reason": "escapes root",
     }
     action = plugin_error_to_filter_action(err)
     assert action.kind == "drop"
     assert action.payload == {
-        "errno": "E_PATH_TRAVERSAL",
+        "errno": "EPERM",
         "reason": "escapes root",
     }
 

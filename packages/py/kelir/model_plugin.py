@@ -44,9 +44,18 @@ class PluginError(Exception):
         self.errno = errno
         self.reason = reason
 
+
+
     @classmethod
-    def reject(cls, errno: str = "", reason: str = "") -> PluginError:
-        return cls(errno=errno, reason=reason)
+    def config(cls, message: str = "") -> "PluginError":
+        # see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
+        return cls(errno="EConfig", reason=message)
+
+    @classmethod
+    def halt(cls, message: str = "") -> "PluginError":
+        # see: cans/02-plugin-model.md#PluginError-scope-pin
+        errno, _, reason = message.partition(": ")
+        return cls(errno=errno, reason=reason) if reason else cls(errno=message)
 
 
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
@@ -56,7 +65,7 @@ def plugin_error_to_verdict(err: PluginError) -> Verdict:
 
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
 def plugin_error_to_filter_action(err: PluginError) -> FilterAction:
-    return FilterAction.drop(err.errno, err.reason)
+    return Verdict.drop(err.errno, err.reason)
 
 
 @dataclass

@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::LockBrokerCoordination;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -115,19 +114,15 @@ impl PeerCoordination {
         handle: &TransactionHandle,
     ) -> Result<ActiveTransaction, PluginError> {
         let active = self.active()?.ok_or_else(|| {
-            PluginError::reject(
-                Errno::Einval,
-                "no transaction scope is active on the coordinator",
+            PluginError::Halt(
+                "EINVAL: no transaction scope is active on the coordinator".to_string(),
             )
         })?;
         if active.handle.id != handle.id {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                format!(
-                    "handle {} does not match the active transaction {}",
-                    handle.id, active.handle.id
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EINVAL: handle {} does not match the active transaction {}",
+                handle.id, active.handle.id
+            )));
         }
         Ok(active)
     }
@@ -140,9 +135,9 @@ impl PeerCoordination {
                 .active()?
                 .is_some_and(|active| !active.scope.schemas.is_empty())
         {
-            return Err(PluginError::reject(
-                Errno::Epolicy,
-                "transaction declares SQL schemas but no SqlProxyCtx peer is bound",
+            return Err(PluginError::Halt(
+                "EPOLICY: transaction declares SQL schemas but no SqlProxyCtx peer is bound"
+                    .to_string(),
             ));
         }
         Ok(peer)
@@ -154,13 +149,10 @@ impl PeerCoordination {
         scope: TransactionScope,
     ) -> Result<TransactionHandle, PluginError> {
         if let Some(active) = self.active()? {
-            return Err(PluginError::reject(
-                Errno::Einval,
-                format!(
-                    "transaction {} is still active; commit or abort it before opening a new scope",
-                    active.handle.id
-                ),
-            ));
+            return Err(PluginError::Halt(format!(
+                "EINVAL: transaction {} is still active; commit or abort it before opening a new scope",
+                active.handle.id
+            )));
         }
         let handle = TransactionHandle {
             id: self.next_handle.fetch_add(1, Ordering::AcqRel),
@@ -254,13 +246,10 @@ impl PeerCoordination {
                 recorded.savepoint == savepoint && recorded.transaction == *transaction
             })
             .ok_or_else(|| {
-                PluginError::reject(
-                    Errno::Einval,
-                    format!(
-                        "savepoint {} is not registered on transaction {}",
-                        savepoint.id, transaction.id
-                    ),
-                )
+                PluginError::Halt(format!(
+                    "EINVAL: savepoint {} is not registered on transaction {}",
+                    savepoint.id, transaction.id
+                ))
             })?;
         savepoints.truncate(index + 1);
         Ok(())
@@ -402,10 +391,7 @@ impl LifecycleParticipant for TransactionPlugin {
     async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
         if !self.config.flush_fuse_before_commit {
-            return Err(PluginError::reject(
-                Errno::Esecurityviolation,
-                "flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity",
-            ));
+            return Err(PluginError::Halt("ESecurityViolation: flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity".to_string()));
         }
         // see: cans/08-lifecycle.md#Hypervisor-primitives
         ctx.freeze_vcpus().await?;

@@ -51,9 +51,7 @@ use crate::session_lifecycle::Session;
 use crate::trap_gate::{GateDecision, TrapGateEvaluator};
 
 pub use engine::PipelineEngine;
-pub(crate) use quarantine::{
-    Quarantined, quarantine_sync, quarantine_unit, quarantine_verdict,
-};
+pub(crate) use quarantine::{Quarantined, quarantine_sync, quarantine_unit, quarantine_verdict};
 pub use registration::{
     CustomActionBinding, CustomActionCallback, HostRegistrationState, TrapDenyCallback,
 };

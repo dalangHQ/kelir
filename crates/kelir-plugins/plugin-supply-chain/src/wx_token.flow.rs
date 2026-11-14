@@ -7,8 +7,6 @@ use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::vsock_mesh::VsockPeer;
 
-use crate::WX_VIOLATION_ERRNO;
-
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WxAllocToken {
@@ -77,10 +75,9 @@ impl WxTokenLedger {
             .iter()
             .position(|token| token.nonce == nonce)
             .ok_or_else(|| {
-                PluginError::reject(
-                    WX_VIOLATION_ERRNO,
-                    format!("W^X allocation token {nonce:#x} is unknown or already consumed"),
-                )
+                PluginError::Halt(format!(
+                    "EWXVIOLATION: W^X allocation token {nonce:#x} is unknown or already consumed"
+                ))
             })?;
         Ok(minted.remove(index))
     }

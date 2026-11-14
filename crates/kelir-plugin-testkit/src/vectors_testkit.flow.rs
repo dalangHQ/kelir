@@ -257,7 +257,7 @@ impl VectorSuite {
                             HashMap::new(),
                         ),
                         Verdict::Drop {
-                            errno: Some(Errno::Eperm),
+                            errno: Errno::Eperm,
                             reason: "EPOLICY: force push denied".to_string(),
                         },
                     )?,
@@ -435,7 +435,7 @@ fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
         expected_outcomes: vec![
             UnifiedBuilderOutcome::Verdict(Verdict::Pass),
             UnifiedBuilderOutcome::Verdict(Verdict::Drop {
-                errno: Some(Errno::Epolicy),
+                errno: Errno::Epolicy,
                 reason: "EPOLICY: policy-matrix denies this binary.".to_string(),
             }),
             UnifiedBuilderOutcome::Verdict(Verdict::Abort {

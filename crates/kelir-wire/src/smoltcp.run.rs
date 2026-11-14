@@ -62,7 +62,7 @@ impl RealNetOps {
             | FrameClass::NonIp
             | FrameClass::NonTcpUdp
             | FrameClass::UdpOther => Ok(FilterAction::Drop {
-                errno: None,
+                errno: Errno::Eperm,
                 reason: "non-TCP/UDP frame dropped at ingress ring".into(),
             }),
             FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
@@ -78,7 +78,7 @@ impl RealNetOps {
         match classify_frame_directional(frame, FrameDirection::Outbound) {
             FrameClass::TooShort | FrameClass::NonIp | FrameClass::NonTcpUdp => {
                 Ok(FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "non-TCP/UDP frame dropped at egress ring".into(),
                 })
             }
@@ -94,7 +94,7 @@ impl RealNetOps {
                     Ok(FilterAction::Forward)
                 } else {
                     Ok(FilterAction::Drop {
-                        errno: Some(Errno::Econnrefused),
+                        errno: Errno::Econnrefused,
                         reason: "UDP egress denied: allow_udp_proxied not enabled".into(),
                     })
                 }
@@ -107,7 +107,7 @@ impl RealNetOps {
                         Ok(FilterAction::Forward)
                     }
                     None => Ok(FilterAction::Drop {
-                        errno: None,
+                        errno: Errno::Eperm,
                         reason: "DNS frame without a gateway payload dropped at egress ring".into(),
                     }),
                 }
@@ -134,7 +134,7 @@ impl NetOps for RealNetOps {
         match link_local_route(frame, direction) {
             Some(LinkLocalRoute::Drop) => {
                 return Ok(FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
                 });
             }

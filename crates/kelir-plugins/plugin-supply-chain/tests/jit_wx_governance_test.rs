@@ -81,7 +81,7 @@ fn sc_03_seccomp_unotify_wx_jit_mediation() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Ewxviolation),
+            errno: Errno::Ewxviolation,
             ..
         } => (),
         verdict => {
@@ -178,7 +178,7 @@ fn sc_05_unverified_binary_jit_ewxviolation() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Ewxviolation),
+            errno: Errno::Ewxviolation,
             reason,
         } => {
             assert!(
@@ -213,7 +213,7 @@ fn sc_08_memfd_create_dynamic_elf_block() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Ewxviolation),
+            errno: Errno::Ewxviolation,
             ..
         } => (),
         verdict => {
@@ -269,7 +269,7 @@ fn sc_01_lifecycle_script_trap_exit126() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Eacces),
+            errno: Errno::Eacces,
             reason,
         } => {
             assert!(
@@ -302,7 +302,7 @@ fn sc_02_argv_high_entropy_obfuscation_kill() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Eacces),
+            errno: Errno::Eacces,
             reason,
         } => {
             assert!(
@@ -345,7 +345,7 @@ fn sc_06_package_guard_pip_lifecycle_block() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&build, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Eacces),
+            errno: Errno::Eacces,
             reason,
         } => {
             assert!(
@@ -383,7 +383,7 @@ fn sc_07_nested_script_ancestor_trap() -> Result<(), String> {
     );
     match block_on(plugin.on_trap(&sh, &ctx)).map_err(|err| format!("{err:?}"))? {
         Verdict::Drop {
-            errno: Some(Errno::Eacces),
+            errno: Errno::Eacces,
             reason,
         } => {
             assert!(
