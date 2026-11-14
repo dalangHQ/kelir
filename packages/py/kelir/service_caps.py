@@ -1,11 +1,13 @@
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 # see: cans/plugins/db-proxy.md#Plugin-db-proxy
 # see: cans/plugins/ledger.md#Plugin-ledger
+# see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
 # see: cans/plugins/transaction.md#Plugin-transaction
 # see: cans/plugins/container.md#Plugin-container
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -19,6 +21,7 @@ __all__ = [
     "DbCap",
     "LedgerCap",
     "LedgerFinalizeResult",
+    "MeshHandle",
     "RepoPolicyCap",
     "Savepoint",
     "TransactionCap",
@@ -130,10 +133,17 @@ class ContainerCap:
         raise _missing("container ingest_image")
 
 
+class MeshHandle:
+    async def await_winner(self, timeout: timedelta) -> int:
+        # TODO (L3) [protocol_mux]: await the winning shard announcement on the mesh listeners via the PyO3 _kelir bridge.; slop: no listener wait, winning shard never awaited, election never settles
+        raise _missing("mesh await_winner")
+
+
 class Caps:
     def __init__(self) -> None:
         self.db_proxy = DbCap()
         self.ledger = LedgerCap()
+        self.mesh = MeshHandle()
         self.repo_policy = RepoPolicyCap()
         self.transaction = TransactionCap()
         self.container = ContainerCap()

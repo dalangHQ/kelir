@@ -240,12 +240,19 @@ class External:
 
 
 # see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
+@dataclass
 class ResourcePressure:
     pass
 
 
 # see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
 SuspendReason = External | ResourcePressure
+
+
+# see: cans/08-lifecycle.md#Watchdog
+class WatchdogAction(str, Enum):
+    REBOOT = "reboot"
+    TERMINATE = "terminate"
 
 
 # see: cans/11-protocol.md#Wire-framing
@@ -431,6 +438,7 @@ from kelir.service_caps import (
     DbCap as DbCap,
     LedgerCap as LedgerCap,
     LedgerFinalizeResult as LedgerFinalizeResult,
+    MeshHandle as MeshHandle,
     RepoPolicyCap as RepoPolicyCap,
     Savepoint as Savepoint,
     TransactionCap as TransactionCap,
@@ -703,6 +711,7 @@ __all__ = [
     "KelirBuilder",
     "LedgerCap",
     "LedgerFinalizeResult",
+    "MeshHandle",
     "MsgType",
     "ParamsT",
     "PhaseTimings",
@@ -724,6 +733,7 @@ __all__ = [
     "TrapEvent",
     "TrapFilter",
     "Verdict",
+    "WatchdogAction",
     "builder",
     "kelir",
     "relay_socket_path",

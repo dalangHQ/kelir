@@ -31,6 +31,7 @@ pub struct PlaneWiring {
     pub fuse_ops: Option<Arc<dyn kelir_interface::storage::FuseOps>>,
     pub wire: Option<kelir_interface::wire::net::WireWiring>,
     pub storage: crate::planes::storage::StorageConfig,
+    pub snoops: Vec<kelir_interface::storage::SnoopRule>,
 }
 
 // see: cans/03-sdk-architecture.md#Params-typed-views
@@ -400,6 +401,7 @@ impl Session {
         )
         .with_synthetic_files(synthetic_files)
         .with_wiring(plane_wiring.storage)
+        .with_snoops(plane_wiring.snoops)
         .with_io(storage_io);
         if let Some(reconciler) = plane_wiring.reconciler {
             storage = storage.with_reconciler(reconciler);
@@ -606,6 +608,7 @@ impl Session {
 
     // see: cans/08-lifecycle.md#CoW-fork
     // SAFETY: the wrapper copies every parent field it needs before the first await so the returned future never borrows the !Sync parent.
+    // TODO (L2): fork_state runs on this async path and must not block the runtime thread; clone plugin state without blocking_lock/block_on per cans/02-plugin-model.md#KelirPlugin-trait.
     pub fn fork(
         &self,
     ) -> impl Future<Output = Result<Self, kelir_interface::plugin_model::PluginError>> + Send {
@@ -622,6 +625,7 @@ impl Session {
         let storage_wiring = self.storage.wiring().clone();
         let storage_io = self.storage.storage_io();
         let storage_reconciler = self.storage.reconciler();
+        let storage_snoops = self.storage.snoops().to_vec();
         let wire_ops = self.wire.ops();
         let fuse_ops = self.fuse_ops.clone();
         let config = self.config.clone();
@@ -656,7 +660,8 @@ impl Session {
                 DEFAULT_WORKSPACE_QUOTA_INODES,
             )
             .with_wiring(storage_wiring)
-            .with_io(storage_io);
+            .with_io(storage_io)
+            .with_snoops(storage_snoops);
             if let Some(reconciler) = storage_reconciler {
                 storage = storage.with_reconciler(reconciler);
             }
@@ -970,6 +975,11 @@ impl Session {
         // TODO (L3) [lc_10_abrupt_kill_dirty_shutdown_receipt]: hard driver terminate without drain or flush; slop: kill returns Normal exit 0, no HardKilled receipt
         self.advance_lifecycle(LifecycleState::Terminated)?;
         self.teardown_catalog()
+    }
+
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    pub fn terminate(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        self.kill()
     }
 
     // see: cans/09-snapshots.md#Archives-and-portability

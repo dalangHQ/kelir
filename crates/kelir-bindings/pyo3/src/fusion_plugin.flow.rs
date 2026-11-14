@@ -41,7 +41,8 @@ impl FusedTrampolineCallback for PyFusedCallback {
                 ring.as_tag()
             ))
         })?;
-        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+        // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
+        // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; Py write hooks receive a writable bytearray and return a bytes snapshot; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
         Ok(Verdict::Pass)
     }
 }

@@ -35,6 +35,7 @@ fn usize_of(value: f64, what: &str) -> Result<usize> {
 
 // see: cans/05-storage-plane.md#Storage-architecture
 // TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: NAPI lock-broker scope globs ride a dedicated native lock-broker config surface.; slop: globs accepted without flock bridge, lock unenforced
+// TODO (L3) [bindings_ts]: snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands, so snoops do not cross into the Rust SnoopRule yet.; slop: snoop callbacks stay TS-side, writes unobserved
 pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
     let encapsulation = match cfg.encapsulation.as_deref() {
         None => WorkspaceEncapsulation::default(),

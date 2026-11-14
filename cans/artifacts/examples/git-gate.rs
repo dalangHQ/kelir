@@ -117,6 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
+        snoops: Vec::new(),
     })
     .plugin_instance(GitGatePlugin)
     .seal()?

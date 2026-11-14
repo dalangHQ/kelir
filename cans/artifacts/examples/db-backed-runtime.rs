@@ -12,7 +12,6 @@ use kelir::{
     SqlProxyCtx, TransactionConfig, TransactionCtx, TransactionPlugin, TrapFilter, Unsealed,
     Verdict, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
-    interface::telemetry::CausalDelta,
     plugin_model::{KelirPlugin, PluginError},
 };
 
@@ -150,7 +149,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // see: cans/09-snapshots.md#Snapshots
     let snapshot = tokio::fs::read(LOCAL_SNAPSHOT).await?;
-    session.vm().import_snapshot(&snapshot).await?;
+    session.vm.import_snapshot(&snapshot).await?;
 
     // TODO (L3): open the transaction scope "migrate-42" over /workspace/migrations + migrate_schema, savepoint before the migrate, and roll back to it on failure; TransactionCtx exposes no scope/savepoint API yet.
     let params = MigrateParams {
@@ -173,15 +172,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Err(format!("migration failed: {}", run.exit_code).into());
     }
 
-    let out = session.vm().export_snapshot().await?;
+    let out = session.vm.export_snapshot().await?;
     tokio::fs::write(LOCAL_SNAPSHOT, out).await?;
 
     // see: cans/10-attestation.md#Execution-receipts
-    // TODO (L3): pass the live causal delta from plugin-ledger LedgerCtx::get_causal_delta_from_parent; the session facade exposes no get_causal_delta_from_parent yet, so the request carries a zero delta.
     let ledger = session.ctx::<LedgerCtx, _>();
     let final_receipt = ledger
         .finalize(FinalizeRequest {
-            include_delta: CausalDelta::new(0, vec![], vec![], 0, [0; 32], [0; 32]),
+            include_delta: ledger.get_causal_delta_from_parent().await?,
             include_merkle_root: true,
         })
         .await?;

@@ -37,8 +37,8 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     async def pre_migrate(c: HandlerContext) -> Verdict:
         if c.cap.db_proxy.rewrite_target != "migrate_schema.":
             return Verdict.drop(
-                "EdbProxySchema",
-                f"EdbProxySchema: got {c.cap.db_proxy.rewrite_target!r}",
+                "EPOLICY",
+                f"schema mismatch: expected 'migrate_schema.', got {c.cap.db_proxy.rewrite_target!r}",
             )
         return Verdict.pass_()
 

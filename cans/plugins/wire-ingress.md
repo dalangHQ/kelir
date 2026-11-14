@@ -10,6 +10,9 @@
     - Lifecycle attachment (wire-ingress): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (wire-ingress)
     - Exports IngressRoutingService via PipelineBinder for socket forwarding
+    - Session surface: session.handleIngress({ cwd?, handler }) -> AsyncGenerator
+      - TS spelling; Py and RS spell it handle_ingress
+      - Yields inbound requests routed by the ingress forwarder; handler replies
   - Invariants and policy (wire-ingress)
     - Connection parking on suspend: see: artifacts/examples/serverless-webhook.ts
     - Holds inbound client TCP connections without dropped frames during suspend

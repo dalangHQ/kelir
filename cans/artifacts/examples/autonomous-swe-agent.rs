@@ -5,7 +5,7 @@
 // see: cans/plugins/chaos.md#Plugin-chaos
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -13,7 +13,6 @@ use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use kelir::{
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
@@ -23,14 +22,14 @@ use kelir::{
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
-            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, StoragePlaneConfig,
-            SyntheticFile, WorkspaceEncapsulation,
+            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, SnoopRule,
+            StoragePlaneConfig, SyntheticFile, WorkspaceEncapsulation,
         },
         terminal_plane::{PromptRule, PtyConfig, TokenShieldConfig},
         wire_plane::{L4Proxy, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin_model::{
-        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, NoDeps, PluginDeps, PluginError,
+        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError,
         TrapInterposer,
     },
     protocol_wire::{Errno, ExecveMutation, PatchPayload, TrapEvent},
@@ -75,19 +74,29 @@ pub struct RepoPolicyHandle {
 
 impl RepoPolicyHandle {
     pub async fn violations(&self) -> usize {
-        self.state.lock().await.violations
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).violations
     }
     pub async fn branch(&self) -> String {
-        self.state.lock().await.current_branch.clone()
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .current_branch
+            .clone()
     }
     pub async fn record_violation(&self) {
-        self.state.lock().await.violations += 1;
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .violations += 1;
     }
     pub async fn set_branch(&self, b: impl Into<String>) {
-        self.state.lock().await.current_branch = b.into();
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .current_branch = b.into();
     }
     pub async fn is_protected(&self) -> bool {
-        let s = self.state.lock().await;
+        let s = self.state.lock().unwrap_or_else(|e| e.into_inner());
         self.protected.iter().any(|p| {
             p == &s.current_branch
                 || p.strip_suffix('*')
@@ -141,13 +150,15 @@ impl KelirPlugin for RepoPolicyPlugin {
     fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
         Box::new(Self {
             opts: self.opts.clone(),
-            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
+            state: Arc::new(Mutex::new(
+                self.state.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+            )),
         })
     }
 }
 
 impl PluginDeps for RepoPolicyPlugin {
-    type Deps = NoDeps;
+    type Deps = HCons<LedgerCtx, HNil>;
 }
 
 #[async_trait]
@@ -197,7 +208,10 @@ impl FsInterposer for RepoPolicyPlugin {
         _ctx: &IfaceHandlerCtx,
     ) -> Result<FilterAction, PluginError> {
         if path.extension().is_some_and(|e| e == "diff") && data.len() > self.opts.max_diff_bytes {
-            self.state.blocking_lock().violations += 1;
+            self.state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .violations += 1;
             return Ok(FilterAction::Drop {
                 errno: Some(Errno::Enospc),
                 reason: "diff exceeds policy ceiling".into(),
@@ -320,6 +334,38 @@ async fn build_runtime(
                 ),
                 (r"AKIA[0-9A-Z]{16}".into(), "[AWS_IAM_REDACTED]".into()),
             ],
+        }],
+        snoops: vec![SnoopRule {
+            path: "~/.claude/sessions/*.json".into(),
+            sync: true,
+            on_write: Arc::new({
+                let oracle = Arc::clone(&oracle);
+                move |path: &Path, raw: &[u8], _ctx: &IfaceHandlerCtx| {
+                    let oracle = Arc::clone(&oracle);
+                    let path = path.to_path_buf();
+                    let raw = raw.to_vec();
+                    Box::pin(async move {
+                        let evt: serde_json::Value = serde_json::from_slice(&raw).map_err(|err| {
+                            PluginError::Halt(format!("snoop payload decode failed: {err}"))
+                        })?;
+                        if evt
+                            .get("falsifiedResult")
+                            .and_then(|value| value.as_bool())
+                            .unwrap_or(false)
+                        {
+                            return Err(PluginError::reject(
+                                Errno::Eperm,
+                                format!("harness hallucination at {}", path.display()),
+                            ));
+                        }
+                        // TODO (L3): resolve blake3_of_producing_process once the snoop ctx carries the ledger cap per cans/plugins/ledger.md#Ledger-handler-API.
+                        oracle
+                            .ingest_harness_event(&path, &evt, "")
+                            .await
+                            .map_err(|err| PluginError::Halt(err.to_string()))
+                    })
+                }
+            }),
         }],
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
@@ -497,7 +543,7 @@ async fn build_runtime(
                             .ok_or_else(|| PluginError::Halt("no pre-exec checkpoint".into()))?;
                         let receipt: ExecutionReceipt = c.receipt().await?;
 
-                        // see: cans/10-attestation.md#ExecutionReceipt-records-final-binary-blake3
+                        // see: cans/10-attestation.md#binary_blake3-identity
                         let trap_hex = hex_lower(&c.trap.binary_blake3);
                         if receipt.binary_blake3 != trap_hex {
                             c.vm.rollback(&pre).await?;
@@ -738,7 +784,7 @@ impl UserOracle {
         &self,
         trap: &TrapEvent,
     ) -> Result<IntentAnalysis, Box<dyn std::error::Error + Send + Sync>> {
-        let state = self.state.lock().await;
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(reason) = state.falsified.clone() {
             return Ok(IntentAnalysis {
                 is_hypothesis_valid: false,
@@ -764,7 +810,7 @@ impl UserOracle {
         &self,
         receipt: &ExecutionReceipt,
     ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        let state = self.state.lock().await;
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.falsified.is_some() {
             return Ok(false);
         }
@@ -773,13 +819,13 @@ impl UserOracle {
     }
 
     // see: cans/02-plugin-model.md#Shape-of-the-surface
-    fn ingest_harness_event(
+    async fn ingest_harness_event(
         &self,
         path: &Path,
         event: &serde_json::Value,
         _blake3: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut state = self.state.blocking_lock();
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if event
             .get("falsifiedResult")
             .and_then(|value| value.as_bool())
@@ -794,7 +840,13 @@ impl UserOracle {
     }
 
     async fn await_human_approval(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if self.state.lock().await.falsified.is_some() {
+        if self
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .falsified
+            .is_some()
+        {
             return Err("human approval denied: harness falsification on record".into());
         }
         tokio::time::sleep(Duration::from_millis(50)).await;

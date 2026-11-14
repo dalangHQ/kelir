@@ -317,6 +317,7 @@ impl PyKelirBuilder {
             fuse_ops: None,
             wire: self.wire_wiring.clone(),
             storage: self.storage_config.config.clone(),
+            snoops: Vec::new(),
         };
         let started = Instant::now();
         let session = Session::boot_with_plugins(

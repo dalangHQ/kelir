@@ -83,7 +83,7 @@ async def row_rewrite(c: HandlerContext) -> Verdict:
 
 
 async def row_abort(c: HandlerContext) -> Verdict:
-    return Verdict.abort("EPOLICY: abort row")
+    return Verdict.abort(reason="EPOLICY: abort row")
 
 
 # see: cans/09-snapshots.md#Snapshots

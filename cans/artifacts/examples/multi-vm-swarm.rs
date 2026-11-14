@@ -188,7 +188,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Err(err) => eprintln!("[kelir] mesh await_winner pending (L3): {err}"),
     }
     eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner:?}");
-    // TODO (L3): count supply-chain denials via session.ctx::<LedgerCtx>() once LedgerCtx grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API.
+    let denials = session
+        .ctx::<LedgerCtx, _>()
+        .count_denials(std::process::id())
+        .await?;
+    eprintln!("[kelir] supply-chain denials={denials}");
 
     session.stop().await?;
     Ok(())

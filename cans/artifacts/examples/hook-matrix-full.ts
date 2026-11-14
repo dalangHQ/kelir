@@ -25,6 +25,7 @@ function escapesWorkspace(path: string): boolean {
 
 const hookState = {
   tail: "" as string,
+  consoleTail: "" as string,
   heartbeats: 0,
   lastUptimeMs: null as number | null,
   stalls: 0,
@@ -63,7 +64,7 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   .onNetOutbound((frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
-      return FilterAction.Suspend(SuspendUntil.deadline(0));
+      return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
     }
     return FilterAction.Forward;
   })
@@ -107,8 +108,11 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   })
   // see: cans/04-terminal-plane.md#4.-Interposer-dispatch:-fires-ConsoleInterposer::on-console-output-for-in-place-masking
   .onConsoleOutput(async (_port, chunk) => {
-    const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
-    return Buffer.from(masked, "latin1");
+    const window = hookState.consoleTail + Buffer.from(chunk).toString("latin1");
+    const masked = maskTokens(window);
+    const out = masked.slice(masked.length - chunk.length);
+    hookState.consoleTail = masked.slice(-CARRYOVER);
+    return Buffer.from(out, "latin1");
   })
   .onExecStdout(async (_pid, _execId, chunk) => {
     hookState.execStdout += 1;

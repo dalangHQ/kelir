@@ -603,7 +603,9 @@ impl PySessionHandle {
         ))
     }
 
-    fn handle_ingress(&self) -> PyResult<()> {
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    #[pyo3(signature = (_options))]
+    fn handle_ingress(&self, _options: &Bound<'_, PyDict>) -> PyResult<()> {
         // TODO (L3) [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
         Err(missing(
             "handle_ingress: inbound connections park in the wire plane listeners (L3)",

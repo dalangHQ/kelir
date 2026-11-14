@@ -4,7 +4,7 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 
 import { kelir, LifecycleEvent, VetoEvent,
-         type Session } from "@kelir/core";
+         type LedgerHandle, type Session } from "@kelir/core";
 import { mesh, supplyChain, ledger } from "@kelir/core";
 
 const SWARM_REGION = "swarm-coordination";
@@ -78,7 +78,8 @@ async function main() {
     // TODO (L3): await the mesh winner announcement; MeshHandle exposes peers only, with no awaitWinner, so the first passing shard stands in as winner.
     console.error(`[kelir] mesh winner shard=${winner}`);
     console.error(`[kelir] ${passed}/8 shards passed; winner shard=${winner}`);
-    // TODO (L3): count supply-chain denials via the ledger handle once LedgerHandle grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API.
+    const denials = await session.ctx<LedgerHandle>("ledger").countDenials(process.pid);
+    console.error(`[kelir] supply-chain denials=${denials}`);
   } finally {
     await session.stop();
   }

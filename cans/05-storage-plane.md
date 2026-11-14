@@ -109,6 +109,11 @@
     - Pipeline exposes synchronous FsInterposer::on_fs_read hooks across offsets
     - Reads dispatch through the pipeline engine, threading the buffer across mounted interposers in order
     - Redaction and pattern replacement execute on the threaded buffer before guest VFS return
+  - Write snoops
+    - .storage() snoops field: rules firing on guest writes to matching path globs
+    - SnoopRule: path glob, sync: bool, on_write: Fn(path, raw, ctx)
+    - Py spells the field glob (SnoopRule); TS spells it path with onWrite
+    - Fires via FsInterposer on the guest write path; see: #Write-gating
   - Host inode lock broker
     - Cross-VM advisory file lock mediation native to storage plane
     - Intercepts FUSE SETLK and SETLKW requests on declared repository paths

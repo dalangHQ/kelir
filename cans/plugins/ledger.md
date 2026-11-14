@@ -32,7 +32,11 @@
         - This invariant is the reason the WAL exists separately from receipts
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
-        - c.ledger.flush() forces WAL flush and OTel export
+        - flush(): forces WAL flush and OTel export
+        - count_denials(ppid) -> u64; TS countDenials(ppid); Py count_denials(ppid)
+        - blake3_of_producing_process(path) -> str; TS blake3OfProducingProcess
+        - finalize(FinalizeRequest): see: #Finalize-pin-(SSOT-A1)
+        - get_causal_delta_from_parent(): see: #Causal-delta-access-(ledger)
         - Hook reachability: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
       - Merkle WAL specification
         - Record Schema (Packed Little-Endian):

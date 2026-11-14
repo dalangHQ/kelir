@@ -253,6 +253,10 @@
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
     - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
+    - default_vm_config builds a VmConfig from six optional params (RS)
+      - Params: vcpus, memory_mb, kernel, rootfs_erofs, tsc_locked, enable_watchdog
+      - All Option; defaults 1, 256, empty, empty, true, false
+      - Home: crates/kelir-interface/src/driver_interface.flow.rs:274
   - Host memory pressure watcher
     - Crate topology: kelir-host owns RealHostOps (pressure.run.rs, balloon.run.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
     - Trait seam: kelir-interface::host::HostOps (subscribe_pressure, poll_pressure_events, inflate_balloon, reclaim)

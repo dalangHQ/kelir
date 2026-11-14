@@ -256,6 +256,22 @@ def _plugin_instance_mount(host: KelirBuilder) -> Callable[..., KelirBuilder]:
     return mount
 
 
+# see: cans/03-sdk-architecture.md#Unified-builder-surface
+def _wrap_trap_deny(handler: Handler) -> Handler:
+    async def run(*args: Any, **kwargs: Any) -> Any:
+        try:
+            result = handler(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+        except EConfig:
+            raise
+        except Exception as exc:
+            raise EConfig(f"on_trap_deny callback failed: {exc}") from exc
+
+    return run
+
+
 class KelirBuilder:
     def __init__(
         self,
@@ -563,7 +579,7 @@ class KelirBuilder:
                 stage=HookStage.SINGLE,
                 ordinal=self._next_ordinal,
                 lifecycle_tag="trap-deny",
-                run=handler,
+                run=_wrap_trap_deny(handler),
             )
         )
         self._next_ordinal += 1

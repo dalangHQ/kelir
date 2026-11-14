@@ -5,10 +5,13 @@ pub mod fuse;
 pub mod io;
 #[path = "storage_reconciler.rs"]
 pub mod reconciler;
+#[path = "storage_snoop.rs"]
+pub mod snoop;
 #[path = "storage_synthetic.flow.rs"]
 pub mod synthetic;
 
 pub use fuse::{FuseDirEntry, FuseOpcode, FuseOps, FuseReply, FuseRequest, FuseResponse};
 pub use io::{HostFileLock, RootHandle, StorageIo};
 pub use reconciler::{CommitStats, FsReconcileRequest, ReconcilerOps, TraversalGuard};
+pub use snoop::{SnoopOnWrite, SnoopRule};
 pub use synthetic::{DynamicFile, DynamicFileGenerator, SyntheticFile};

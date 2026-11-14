@@ -35,6 +35,7 @@ from kelir import (
     TrapEvent,
     TrapFilter,
     Verdict,
+    WatchdogAction,
 )
 from kelir.model_plugin import BasePlugin, LifecycleCtx, PluginError
 from kelir.terminal_planes import PromptRule, TokenShield
@@ -294,7 +295,7 @@ async def build_runtime(
     )
     # see: cans/08-lifecycle.md#Watchdog
     async def _init(ctx: LifecycleCtx) -> None:
-        ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
+        ctx.set_watchdog(timeout=timedelta(minutes=5), action=WatchdogAction.REBOOT)
 
     # TODO: SSOT npm-ci via session.exec_in_guest dropped; live on_vm_ready delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
     async def _ready(_ctx: LifecycleCtx | None) -> None:

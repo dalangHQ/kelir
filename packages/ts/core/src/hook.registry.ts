@@ -3,6 +3,7 @@
 
 import type { LifecycleContext, TrapContext } from "./context.lifecycle.types.js";
 import { EConfig } from "./errors.sdk.js";
+import type { Buffer } from "node:buffer";
 import {
   LIFECYCLE_TAGS,
   RingEvent,
@@ -73,7 +74,7 @@ export interface FsScope<Ctx, Owner = unknown> {
   onFsWrite(
     handler: (
       path: string,
-      buffer: Uint8Array,
+      buffer: Buffer,
       pid: number,
       ctx: TrapContext & Ctx,
     ) => FilterAction,
@@ -595,7 +596,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsWrite(
     handler: (
       path: string,
-      buffer: Uint8Array,
+      buffer: Buffer,
       pid: number,
       ctx: TrapContext & Ctx,
     ) => FilterAction,

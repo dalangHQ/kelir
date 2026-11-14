@@ -32,6 +32,7 @@ const CARRYOVER: usize = TOKEN_LEN - 1;
 #[derive(Default)]
 struct HookState {
     tail: Vec<u8>,
+    console_tail: Vec<u8>,
     heartbeats: usize,
     last_uptime_ms: Option<u64>,
     stalls: usize,
@@ -369,8 +370,13 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
     }
 
     async fn on_console_output(&self, _port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
-        let mut out = chunk.to_vec();
-        mask_tokens(&mut out);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut window = state.console_tail.clone();
+        window.extend_from_slice(chunk);
+        mask_tokens(&mut window);
+        let chunk_start = window.len() - chunk.len();
+        let out = window[chunk_start..].to_vec();
+        state.console_tail = window[window.len().saturating_sub(CARRYOVER)..].to_vec();
         Ok(out)
     }
 

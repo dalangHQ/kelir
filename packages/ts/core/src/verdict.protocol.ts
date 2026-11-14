@@ -13,8 +13,8 @@ export const Verdict: {
   readonly Pass: Verdict;
   Drop(errno: string, reason?: string): Verdict;
   Patch(attr: PatchInput): Verdict;
-  Suspend(until: SuspendUntil): Verdict;
-  Abort(reason?: string): Verdict;
+  Suspend({ until }: { until: SuspendUntil }): Verdict;
+  Abort({ reason }: { reason?: string }): Verdict;
 } = {
   Pass: { kind: "pass" },
   Drop(errno: string, reason?: string): Verdict {
@@ -23,10 +23,10 @@ export const Verdict: {
   Patch(attr: PatchInput): Verdict {
     return { kind: "patch", patch: attr };
   },
-  Suspend(until: SuspendUntil): Verdict {
+  Suspend({ until }: { until: SuspendUntil }): Verdict {
     return { kind: "suspend", until };
   },
-  Abort(reason?: string): Verdict {
+  Abort({ reason }: { reason?: string }): Verdict {
     return { kind: "abort", reason };
   },
 };
@@ -41,17 +41,17 @@ export type FilterAction =
 export const FilterAction: {
   readonly Forward: FilterAction;
   Drop(errno?: string, reason?: string): FilterAction;
-  Suspend(until: SuspendUntil): FilterAction;
-  Abort(reason?: string): FilterAction;
+  Suspend({ until }: { until: SuspendUntil }): FilterAction;
+  Abort({ reason }: { reason?: string }): FilterAction;
 } = {
   Forward: { kind: "forward" },
   Drop(errno?: string, reason?: string): FilterAction {
     return { kind: "drop", errno, reason: reason ?? errno ?? "drop" };
   },
-  Suspend(until: SuspendUntil): FilterAction {
+  Suspend({ until }: { until: SuspendUntil }): FilterAction {
     return { kind: "suspend", until };
   },
-  Abort(reason?: string): FilterAction {
+  Abort({ reason }: { reason?: string }): FilterAction {
     return { kind: "abort", reason };
   },
 };

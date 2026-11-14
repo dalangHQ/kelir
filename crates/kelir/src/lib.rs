@@ -41,7 +41,7 @@ pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use kelir_interface::storage::CommitStats;
-pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
+pub use planes::storage_plane::{FsReconcileRequest, SnoopRule, SyntheticFile};
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]
 pub use builder_sdk::ToolGuardExt;

@@ -2,11 +2,19 @@
 // see: cans/05-storage-plane.md#Encapsulation-invariant
 // see: cans/05-storage-plane.md#In-flight-read-masking
 
-import { kelir, createPlugin } from "@kelir/core";
+import { kelir, createPlugin, FilterAction } from "@kelir/core";
 
 const PROTECTED = ["main", "master"];
 
 const gitGatePlugin = createPlugin("git-gate")
+  // see: cans/05-storage-plane.md#In-flight-read-masking
+  .onFsWrite((_path, buffer, _pid, _ctx) => {
+    // in-place masking: the bridge copies the mutated buffer back to the guest
+    const masked = buffer.toString("utf8")
+      .replace(/sk_live_[0-9a-zA-Z]{24}/g, (m) => "*".repeat(m.length));
+    buffer.set(Buffer.from(masked, "utf8"), 0);
+    return FilterAction.Forward;
+  })
   .onTrap(async (event, c) => {
     const binary = event.binaryPath.split("/").pop() ?? "";
     if (binary !== "git") return c.pass();

@@ -8,7 +8,15 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional
 
-from kelir import CtxT, FilterAction, HandlerContext, ParamsT, TrapEvent, Verdict
+from kelir import (
+    CtxT,
+    FilterAction,
+    HandlerContext,
+    ParamsT,
+    TrapEvent,
+    Verdict,
+    WatchdogAction,
+)
 from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 
@@ -85,9 +93,10 @@ class LifecycleCtx:
 
     def __init__(self) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
-        self._watchdog: tuple[int | timedelta, str] | None = None
+        self._watchdog: tuple[timedelta, WatchdogAction] | None = None
 
-    def set_watchdog(self, timeout: int | timedelta, action: str) -> None:
+    # see: cans/08-lifecycle.md#Watchdog
+    def set_watchdog(self, *, timeout: timedelta, action: WatchdogAction) -> None:
         # TODO (L3) [lc_18_watchdog_heartbeat_timeout_reboot]: arm the VM watchdog via the PyO3 _kelir bridge.; slop: watchdog never armed, deadlocked guest never reboots
         self._watchdog = (timeout, action)
 

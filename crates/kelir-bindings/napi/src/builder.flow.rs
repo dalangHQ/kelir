@@ -341,6 +341,7 @@ impl NativeKelirBuilder {
             fuse_ops: None,
             wire,
             storage,
+            snoops: Vec::new(),
         })
     }
 }

@@ -40,7 +40,7 @@ class GitGatePlugin(BasePlugin):
                 msg = ""
             if any(p in msg for p in PROTECTED):
                 return Verdict.abort(
-                    "EPOLICY: commit references protected branch",
+                    reason="EPOLICY: commit references protected branch",
                 )
             return Verdict.pass_()
         return Verdict.pass_()

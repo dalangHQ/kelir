@@ -1,5 +1,6 @@
 declare const process: {
   readonly arch: string;
+  readonly pid: number;
   getuid?: () => number;
 };
 

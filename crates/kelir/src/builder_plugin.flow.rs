@@ -630,6 +630,8 @@ where
         self.scope.clone()
     }
 
+    // see: cans/02-plugin-model.md#KelirPlugin-trait
+    // TODO (L2): fork_state is synchronous on the runtime thread; clone state without blocking_lock/block_on per cans/02-plugin-model.md#KelirPlugin-trait.
     fn fork_state(&self, child_session_id: &str) -> Box<dyn AnyPlugin> {
         match &self.fork {
             Some(fork) => fork(child_session_id),

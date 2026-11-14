@@ -8,6 +8,7 @@ import type {
   ExecutionReceipt,
   SnapshotDescriptor,
   TrapInfo,
+  WatchdogAction,
 } from "./types.core.js";
 import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.js";
 
@@ -95,6 +96,8 @@ export interface PolicyHandle {
 
 export interface MeshHandle {
   readonly peers?: readonly string[];
+  // TODO (L3) [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
+  awaitWinner(timeoutMs: number): Promise<number>;
 }
 
 export interface ChaosHandle {
@@ -102,7 +105,7 @@ export interface ChaosHandle {
 }
 
 export interface LifecycleContext {
-  setWatchdog(options: { timeoutMs: number; action: string }): void;
+  setWatchdog(options: { timeoutMs: number; action: WatchdogAction }): void;
   registerVeto(event: VetoEvent, predicate: () => boolean): void;
 }
 

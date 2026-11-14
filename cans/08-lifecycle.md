@@ -172,10 +172,12 @@
       - Timeout expiry records ExitKind::DirtyShutdown in ExecutionReceipt
     - Abrupt path
       - `session.kill()` skips the flush and issues SIGKILL to the hypervisor
+      - `session.terminate()` is the abrupt SDK verb; alias for `session.kill()`
       - Guest writes may be lost, exactly like a power cut
       - Records ExitKind::HardKilled in ExecutionReceipt
     - CLI and SDK
       - SDK exposes session.stop() and session.stop_with_timeout(d) for graceful exit
+      - SDK exposes session.terminate() for abrupt exit; alias for session.kill()
       - Draining is a superset of stop for pipelines that need to finish
         - queued work; see: #Hypervisor-primitives
   - Suspend and resume
@@ -183,6 +185,10 @@
       - Reason: SuspendReason::External or ResourcePressure
       - Canonical signature (SSOT-A1 pin)
         - Session.suspend(reason: SuspendReason) / Session.resume()
+        - Per-language SuspendReason shape (SSOT-A1)
+          - RS: SuspendReason::External(ExternalSuspendKind::...) / ::ResourcePressure
+          - TS: SuspendReason.external("...") / SuspendReason.resourcePressure
+          - Py: External(ExternalSuspendKind.X) / ResourcePressure(); both instantiated
         - The image path derives from session state, never user-supplied
         - Path: <session_dir>/suspend.img
       - VmHandle::suspend(reason, path) / VmHandle::resume(path) is the low-level primitive
@@ -442,6 +448,10 @@
     - Armed via LifecycleCtx.set_watchdog
       - Typically called from on_vm_init by a policy plugin
       - WatchdogAction: Reboot | Terminate
+      - Per-language shape (SSOT-A1 pin)
+        - RS: set_watchdog(timeout: Duration, action: WatchdogAction), positional
+        - TS: setWatchdog({ timeoutMs: number, action: "reboot" | "terminate" })
+        - Py: set_watchdog(timeout: timedelta, action: WatchdogAction), kwargs
     - Heartbeat
       - Shim emits GuestToHost::Heartbeat at driver-configured cadence
       - on_heartbeat fires per receipt; observation only

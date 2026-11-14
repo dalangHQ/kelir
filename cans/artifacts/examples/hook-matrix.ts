@@ -52,14 +52,14 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
   .onNetOutbound((frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
-      return FilterAction.Suspend(SuspendUntil.deadline(0));
+      return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
     }
     return FilterAction.Forward;
   })
   .onNetInbound((frame) => {
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(ABORT_MARKER)) {
-      return FilterAction.Abort("inbound abort marker");
+      return FilterAction.Abort({ reason: "inbound abort marker" });
     }
     return FilterAction.Forward;
   })
@@ -85,6 +85,9 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     return Buffer.from(chunk, "latin1");
   })
   .onFsWrite((_path, buffer, _pid, _ctx) => {
+    // in-place masking: the bridge copies the mutated buffer back to the guest
+    const masked = maskTokens(buffer.toString("latin1"));
+    buffer.set(Buffer.from(masked, "latin1"), 0);
     return FilterAction.Forward;
   })
   // see: cans/04-terminal-plane.md#1.-ANSI-strip:-drops-OSC-52-(clipboard-hijack)-and-strips-OSC-0/1/2-(title-spoof)
@@ -94,7 +97,6 @@ const hookMatrixPlugin = createPlugin("hook-matrix")
     return Buffer.from(stripped, "latin1");
   })
   // see: cans/04-terminal-plane.md#4.-Interposer-dispatch:-fires-ConsoleInterposer::on-console-output-for-in-place-masking
-  // TODO: live matrix.hook.test.ts masks console output cross-chunk via consoleTail + safeConsoleEmitLen; SSOT keeps single-chunk masking here, see cans/04-terminal-plane.md#Terminal-pipeline
   .onConsoleOutput(async (_port, chunk) => {
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
