@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
-use kelir_checkpoint::RealCheckpointOps;
 use kelir_engine::PluginRegistration;
 use kelir_engine::Session;
 use kelir_engine::dispatch_plugin::PipelineEngine;
@@ -46,27 +45,24 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
     let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
-    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
-        Arc::new(kelir_wire::RealDnsOps::new());
+    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     kelir_engine::session_lifecycle::PlaneWiring {
-        terminal_ops: Some(Arc::new(kelir_terminal::RealTerminalOps::new(metrics()))),
-        checkpoint_ops: Some(Arc::new(
-            kelir_checkpoint::RealCheckpointOps::new(metrics()),
-        )),
-        host_ops: Some(Arc::new(kelir_host::RealHostOps::new(metrics()))),
-        net_ops: Some(Arc::new(kelir_wire::RealNetOps::new(Arc::clone(&dns_ops)))),
+        terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
+        checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics())),
+        host_ops: Some(kelir_host::host_ops(metrics())),
+        net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
         dns_ops: Some(dns_ops),
-        udp_nat_ops: Some(Arc::new(kelir_wire::RealUdpNatOps::new())),
-        l4_ops: Some(Arc::new(kelir_wire::RealL4DivertOps::new())),
-        storage_io: Some(Arc::new(kelir_storage_io::RealStorageIo)),
+        udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
+        l4_ops: Some(kelir_wire::l4_ops()),
+        storage_io: Some(kelir_storage_io::storage_io()),
         ..Default::default()
     }
 }
 
 fn checkpoint_plane() -> Arc<CheckpointPlane> {
-    Arc::new(CheckpointPlane::new(Arc::new(RealCheckpointOps::new(
+    Arc::new(CheckpointPlane::new(kelir_checkpoint::checkpoint_ops(
         Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-    ))))
+    )))
 }
 
 struct DropTrap;

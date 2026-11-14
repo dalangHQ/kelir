@@ -19,7 +19,7 @@ pub(crate) struct TerminalConfig {
     pub(crate) prompts: Vec<PromptRuleConfig>,
 }
 
-pub struct RealTerminalOps {
+pub(crate) struct RealTerminalOps {
     pub(crate) session_id: Mutex<Option<[u8; 16]>>,
     pub(crate) state: Mutex<Vt100StateMachine>,
     pub(crate) segments: Mutex<HashMap<LogStream, LogSegment>>,
@@ -28,7 +28,7 @@ pub struct RealTerminalOps {
 }
 
 impl RealTerminalOps {
-    pub fn new(metrics: Arc<MetricRegistry>) -> Self {
+    pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         Self {
             session_id: Mutex::new(None),
             state: Mutex::new(Vt100StateMachine::new()),
@@ -71,6 +71,10 @@ impl RealTerminalOps {
             .map_err(|_| PluginError::Halt("terminal session lock poisoned".into()))?
             .ok_or_else(|| PluginError::Halt("terminal ops not bound to a session".into()))
     }
+}
+
+pub(crate) fn build_terminal_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn TerminalOps> {
+    Arc::new(RealTerminalOps::new(metrics))
 }
 
 impl TerminalOps for RealTerminalOps {

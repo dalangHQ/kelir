@@ -3,8 +3,13 @@
 // see: cans/05-storage-plane.md#Host-CoW-broker
 use kelir_interface::storage::{HostFileLock, RootHandle, StorageIo};
 use std::path::Path;
+use std::sync::Arc;
 
-pub struct RealStorageIo;
+pub(crate) struct RealStorageIo;
+
+pub(crate) fn build_storage_io() -> Arc<dyn StorageIo> {
+    Arc::new(RealStorageIo)
+}
 
 impl StorageIo for RealStorageIo {
     fn open_root(

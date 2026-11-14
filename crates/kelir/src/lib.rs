@@ -41,13 +41,6 @@ pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::HandlerCtx;
 pub use kelir_interface::protocol_wire::Verdict;
 pub use kelir_interface::storage::CommitStats;
-// see: cans/01-architecture.md#Host-runtime
-pub use kelir_checkpoint::RealCheckpointOps;
-pub use kelir_host::RealHostOps;
-pub use kelir_storage::RealFuseOps;
-pub use kelir_storage_io::RealStorageIo;
-pub use kelir_terminal::RealTerminalOps;
-pub use kelir_wire::{RealDnsOps, RealL4DivertOps, RealNetOps, RealUdpNatOps};
 pub use planes::storage_plane::{FsReconcileRequest, SyntheticFile};
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 #[cfg(feature = "plugin-tool-guard")]

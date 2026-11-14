@@ -1,10 +1,13 @@
 // see: cans/01-architecture.md#Codebase-invariants
 use crate::{CheckReport, ForbidMode, Level, Policy, crate_of, level_of, structure};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 const TODO_MARK: &str = concat!("/", "/ ", "TODO");
+// see: cans/01-architecture.md#Codebase-invariants
+const CONCERN_LEAK_MIN_RUN: usize = 3;
 
 pub fn read_allowed_levels(cargo_toml: &Path) -> Vec<Level> {
     let text = match fs::read_to_string(cargo_toml) {
@@ -57,11 +60,12 @@ pub fn rs_files(root: &Path) -> Vec<PathBuf> {
 
 pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
     let mut report = CheckReport::default();
-    for file in rs_files(root) {
+    let files = rs_files(root);
+    for file in &files {
         report.files += 1;
-        structure::check_file(&file, policy, &mut report);
-        let level = level_of(&file);
-        let krate = crate_of(&file);
+        structure::check_file(file, policy, &mut report);
+        let level = level_of(file);
+        let krate = crate_of(file);
         if krate.as_os_str().is_empty() {
             report.hard_fails += 1;
             report
@@ -81,7 +85,7 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
             ));
             continue;
         }
-        let src = match fs::read_to_string(&file) {
+        let src = match fs::read_to_string(file) {
             Ok(s) => s,
             Err(e) => {
                 report.hard_fails += 1;
@@ -128,5 +132,72 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
             ));
         }
     }
+    check_concern_leak(root, &files, policy, &mut report);
     report
+}
+
+// see: cans/01-architecture.md#Codebase-invariants
+fn check_concern_leak(root: &Path, files: &[PathBuf], policy: &Policy, report: &mut CheckReport) {
+    let mut by_crate: BTreeMap<PathBuf, (usize, usize, Vec<String>)> = BTreeMap::new();
+    for file in files {
+        if !is_lib_file(file) {
+            continue;
+        }
+        let krate = crate_of(file);
+        if krate.as_os_str().is_empty() {
+            continue;
+        }
+        if !read_allowed_levels(&krate.join("Cargo.toml")).contains(&Level::L3) {
+            continue;
+        }
+        let entry = by_crate.entry(krate).or_default();
+        match level_of(file) {
+            Level::L2 => entry.0 += 1,
+            Level::L3 => {
+                entry.1 += 1;
+                entry.2.push(
+                    file.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                );
+            }
+            Level::L1 => {}
+        }
+    }
+    for (krate, (flow, run, run_files)) in by_crate {
+        if flow != 0 || run < CONCERN_LEAK_MIN_RUN {
+            continue;
+        }
+        let at = krate
+            .strip_prefix(root)
+            .unwrap_or(&krate)
+            .display()
+            .to_string();
+        let detail = format!(
+            "concern leak: {run} .run.rs files with no .flow.rs seam ({})",
+            run_files.join(", ")
+        );
+        if policy.forbid_mode == ForbidMode::Error {
+            report
+                .fails
+                .push(format!("{at}: [concern-leak:C1] {detail}"));
+        } else {
+            report.warns.push(format!(
+                "{at}: {detail} (concern-leak:C1, warn-mode rollout)"
+            ));
+        }
+    }
+}
+
+// see: cans/01-architecture.md#Codebase-invariants
+fn is_lib_file(path: &Path) -> bool {
+    let mut under_src = false;
+    for part in path.components() {
+        match part.as_os_str().to_str() {
+            Some("src") => under_src = true,
+            Some("bin") if under_src => return false,
+            _ => {}
+        }
+    }
+    under_src
 }

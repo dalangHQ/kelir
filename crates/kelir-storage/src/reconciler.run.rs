@@ -41,6 +41,22 @@ impl Drop for StagingGuard {
     }
 }
 
+pub(crate) fn build_reconciler(
+    broker_dir: PathBuf,
+    host_target: PathBuf,
+    guard: TraversalGuard,
+    io: Arc<dyn StorageIo>,
+    tombstones: Arc<RwLock<HashSet<PathBuf>>>,
+) -> Arc<dyn ReconcilerOps> {
+    Arc::new(Reconciler::new(
+        broker_dir,
+        host_target,
+        guard,
+        io,
+        tombstones,
+    ))
+}
+
 pub struct Reconciler {
     broker_dir: PathBuf,
     host_target: PathBuf,

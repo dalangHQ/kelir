@@ -12,17 +12,11 @@ use kelir_interface::wire::dns::DnsOps;
 use kelir_interface::wire::net::{
     FrameClass, FrameDirection, LinkLocalRoute, classify_frame_directional, link_local_route,
 };
-use kelir_wire::{RealDnsOps, RealL4DivertOps, RealNetOps, RealUdpNatOps};
 
 fn test_wire() -> WirePlane {
-    let dns: Arc<dyn DnsOps> = Arc::new(RealDnsOps::new());
-    let net = Arc::new(RealNetOps::new(Arc::clone(&dns)));
-    WirePlane::with_ops(
-        net,
-        dns,
-        Arc::new(RealUdpNatOps::new()),
-        Arc::new(RealL4DivertOps::new()),
-    )
+    let dns: Arc<dyn DnsOps> = kelir_wire::dns_ops();
+    let net = kelir_wire::net_ops(Arc::clone(&dns));
+    WirePlane::with_ops(net, dns, kelir_wire::udp_nat_ops(), kelir_wire::l4_ops())
 }
 
 fn ipv4_frame(dst: [u8; 4], proto: u8, dst_port: u16) -> Vec<u8> {

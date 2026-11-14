@@ -21,7 +21,6 @@ kelir/
 ├── pyproject.toml                     # Root Python configuration (Ruff/Mypy/Hatchling)
 ├── repomix.config.json
 ├── vectors.json
-├── work-order-2.md
 ├── work-order.md
 │
 ├── .github/
@@ -130,6 +129,7 @@ kelir/
 │   ├── kelir-checkpoint/              # Checkpoint plane: RealCheckpointOps (manifest graph, step slots, compaction)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
 │   │   └── src/
+│   │       ├── checkpoint.flow.rs
 │   │       ├── compaction.run.rs      # Compaction + restore with clock watermark
 │   │       ├── lib.rs                 # L2 re-export RealCheckpointOps
 │   │       ├── manifest_graph.run.rs  # Manifest graph head/lineage
@@ -259,6 +259,7 @@ kelir/
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp, async-trait, libc
 │   │   └── src/
 │   │       ├── balloon.run.rs         # Balloon inflate/reclaim
+│   │       ├── host.flow.rs
 │   │       ├── lib.rs                 # L2 re-export RealHostOps
 │   │       ├── pressure.run.rs        # Pressure subscribe/poll
 │   │       ├── real_host.run.rs       # RealHostOps struct + HostOps impl
@@ -528,6 +529,7 @@ kelir/
 │   │   │   ├── main.rs                # Guest PID 1 reaper & loop
 │   │   │   ├── multiplexer_protocol.run.rs         # Raw VirtIO stream multiplexer (Control 0x0000, stream mux 0x0001, transport port 5252 & virtio-ports; Transport backend)
 │   │   │   ├── pty_terminal.run.rs                 # openpty() line discipline broker for console ring
+│   │   │   ├── shim.flow.rs
 │   │   │   ├── trap_protocol.run.rs                # seccomp-unotify trap forwarder
 │   │   │   └── introspect_trap/
 │   │   │       └── uapi_trap.rs            # Generated ELF UAPI constants (linux/elf.h oracle)
@@ -540,18 +542,20 @@ kelir/
 │   │       ├── lib.rs                 # Re-exports RealFuseOps, FuseWorker, Reconciler, LockBroker
 │   │       ├── lock_broker.run.rs     # LockBroker + HostFdCache
 │   │       ├── reconciler.run.rs      # Reconciler + StagingGuard
-│   │       └── storage_synthetic.run.rs # Re-exports kelir-interface::storage::synthetic
+│   │       └── storage.flow.rs
 │   ├── kelir-storage-io/              # Storage I/O L3 impl (RealStorageIo); .run.rs stub
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, libc
 │   │   └── src/
 │   │       ├── io.run.rs              # RealStorageIo (TODO (L3) shells, no meat)
-│   │       └── lib.rs                 # Re-exports RealStorageIo
+│   │       ├── lib.rs                 # Re-exports RealStorageIo
+│   │       └── storage_io.flow.rs
 │   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, token shield, log segments)
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # L2 re-export RealTerminalOps
 │   │   │   ├── log_segment.run.rs     # Append-only per-stream log segments
 │   │   │   ├── real_terminal.run.rs   # RealTerminalOps struct + TerminalOps impl
+│   │   │   ├── terminal.flow.rs
 │   │   │   ├── token_shield.run.rs    # Token shield + prompt wiring
 │   │   │   └── vt100.run.rs           # VT100 state machine, ANSI filter, export
 │   │   └── tests/
@@ -589,7 +593,8 @@ kelir/
 │           ├── l4.run.rs              # RealL4DivertOps
 │           ├── lib.rs                 # Re-exports RealNetOps, RealDnsOps, RealUdpNatOps, RealL4DivertOps
 │           ├── smoltcp.run.rs         # SmoltcpStack + RealNetOps
-│           └── udp_nat.run.rs         # RealUdpNatOps
+│           ├── udp_nat.run.rs         # RealUdpNatOps
+│           └── wire.flow.rs
 │
 ├── fixtures/
 │   └── smoke.txt

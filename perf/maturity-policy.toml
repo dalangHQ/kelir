@@ -4,9 +4,22 @@
 # std::net types with no IO, reads of a tool's own inputs (codegen, lockfile
 # probe), and session-directory lifecycle. Guest-affecting IO and domain-trait
 # impls are L3. The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3
-# bindings) is the one place that constructs Real* types.
+# bindings) calls the plane seams; it constructs no Real* type directly. Each
+# plane .run.rs file holds a pub(crate) build_* fn returning Arc<dyn Trait>;
+# the crate .flow.rs seam delegates to it. No .flow.rs file and no lib.rs
+# names a Real* type.
 # L2_max_delta_per_pr governs incremental PRs; the repo-wide rename wave
 # exceeded it once by design (66 new L2 files), it still bounds later PRs.
+# Concern-leak C1 (kelir-maturity check_tree): a crate with >=3 lib .run.rs
+# files and zero .flow.rs files has no L2 seam in-crate; its Real* types stay
+# pub-reachable past the composition root. src/bin/ entry points do not count.
+# It follows forbid_mode like the S-rules: warns while this file says "warn",
+# fails CI once forbid_mode flips to "error". Fixed by the seam wave
+# (2026-11-13): one .flow.rs seam per plane crate; current hits are zero.
+# The L3 virtqueue worker (FuseWorker, vr_10) and the RealFuseOps with_quota /
+# with_lock_broker setters were deleted as dead code in the same wave; the
+# worker returns when the L3 binding lands. Synthetic files already inject
+# through kelir_storage::fuse_ops_with_synthetic_files.
 [budget]
 # was 20 until the maturity wave; it adds ~53 .flow.rs by design, mirroring
 # the rename-wave precedent above; step back down once the wave lands.

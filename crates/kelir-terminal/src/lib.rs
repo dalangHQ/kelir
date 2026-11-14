@@ -2,12 +2,14 @@
 #![forbid(unsafe_code)]
 
 #[path = "log_segment.run.rs"]
-pub mod log_segment;
+mod log_segment;
 #[path = "real_terminal.run.rs"]
-pub mod real_terminal;
+mod real_terminal;
+#[path = "terminal.flow.rs"]
+pub mod terminal;
 #[path = "token_shield.run.rs"]
-pub mod token_shield;
+mod token_shield;
 #[path = "vt100.run.rs"]
-pub mod vt100;
+mod vt100;
 
-pub use real_terminal::RealTerminalOps;
+pub use crate::terminal::terminal_ops;

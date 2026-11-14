@@ -115,6 +115,11 @@
       - are governed by NG-01 (names, placement), not by filename level
     - A prepared .run.rs stub carrying // TODO (L3) warns, not fails, until
       - the L3 phase fills it; the markers are removed as bodies land
+    - Crate-shape rule concern-leak:C1: a crate with three or more lib
+      - .run.rs files and no .flow.rs file is a concern leak (its L3 bodies
+      - have no L2 seam in-crate); src/bin/ entry points do not count; it
+      - warns while forbid_mode is warn and fails once it flips to error
+      - the seam wave closed all six hits (2026-11-13); current hits zero
     - Runs in <2s; the only gate for body maturity
     - No path filter: a file move anywhere can break placement
     - Local mirror: `just check-maturity`

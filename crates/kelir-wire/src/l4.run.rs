@@ -1,11 +1,13 @@
 // see: cans/07-wire-plane.md#Wire-architecture
+use std::sync::Arc;
+
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
 
-pub struct RealL4DivertOps;
+pub(crate) struct RealL4DivertOps;
 
 impl RealL4DivertOps {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self
     }
 }
@@ -14,6 +16,10 @@ impl Default for RealL4DivertOps {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub(crate) fn build_l4_ops() -> Arc<dyn L4DivertOps> {
+    Arc::new(RealL4DivertOps::new())
 }
 
 impl L4DivertOps for RealL4DivertOps {
