@@ -22,7 +22,7 @@ from kelir import (
     VsockServiceEntry,
 )
 from kelir.service_caps import materialize_cap
-from kelir.model_plugin import (
+from kelir.plugin_model import (
     PluginError,
     plugin_error_to_filter_action,
     plugin_error_to_verdict,

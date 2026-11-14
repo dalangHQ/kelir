@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, TrapFilter, Verdict
-from kelir.model_plugin import (
+from kelir.plugin_model import (
     BasePlugin,
     WatchdogEvent,
     WatchdogVerdict,

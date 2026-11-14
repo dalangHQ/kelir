@@ -12,7 +12,7 @@ CtxT = TypeVar("CtxT")
 ParamsT = TypeVar("ParamsT")
 
 if TYPE_CHECKING:
-    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_model import BasePlugin
 
 from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
 from kelir.generated.attest_telemetry import (
@@ -667,6 +667,10 @@ class HandlerContext(Generic[CtxT, ParamsT]):
     # see: cans/02-plugin-model.md#Unified-verdict
     def abort(self, reason: str = "") -> Verdict:
         return Verdict.abort(reason)
+
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def cap_for(self, name: str) -> Any | None:
+        return getattr(self.cap, name, None)
 
 
 # see: cans/08-lifecycle.md#Detached-lifecycle

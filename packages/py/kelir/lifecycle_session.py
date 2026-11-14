@@ -67,6 +67,14 @@ class Session:
         native = kelir._require_native(self._native, "session fork")
         return Session.from_native(native.fork())
 
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def cap_for(self, name: str) -> Any | None:
+        return getattr(self.cap, name, None)
+
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def plane(self, name: str) -> Any | None:
+        return getattr(self, name, None)
+
     # see: cans/08-lifecycle.md#Clock-skew
     async def skew_clock(self, seconds: float) -> None:
         await self.vm.clock.skew(timedelta(seconds=seconds))

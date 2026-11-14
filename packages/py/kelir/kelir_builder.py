@@ -22,7 +22,7 @@ from kelir.plugin_fusion import (
 from kelir.sdk_errors import EConfig
 
 if TYPE_CHECKING:
-    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_model import BasePlugin
 
 from kelir import Session, TrapFilter
 
@@ -383,8 +383,8 @@ class KelirBuilder:
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     def use(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
-        from kelir.model_plugin import BasePlugin as _BasePlugin
-        from kelir.model_plugin import hook_descriptors
+        from kelir.plugin_model import BasePlugin as _BasePlugin
+        from kelir.plugin_model import hook_descriptors
 
         if isinstance(plugin, KelirBuilder):
             if plugin._mode != "plugin":

@@ -16,7 +16,7 @@ from kelir.generated.fusion_tables import (
 
 if TYPE_CHECKING:
     from kelir import KelirBuilder
-    from kelir.model_plugin import BasePlugin
+    from kelir.plugin_model import BasePlugin
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ class FusedTrampoline:
         if isinstance(hooks, list):
             descriptors: list[HookDescriptor] = hooks
         else:
-            from kelir.model_plugin import hook_descriptors
+            from kelir.plugin_model import hook_descriptors
 
             descriptors = hook_descriptors(hooks)
         by_ring: dict[RingEvent, list[HookDescriptor]] = {}

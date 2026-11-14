@@ -13,7 +13,7 @@ import kelir
 from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
 from kelir.sdk_errors import EConfig
 from kelir.plugin_fusion import HookStage, RingEvent
-from kelir.model_plugin import (
+from kelir.plugin_model import (
     BasePlugin,
     VetoEvent,
     WatchdogEvent,
