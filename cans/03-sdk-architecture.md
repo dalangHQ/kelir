@@ -31,12 +31,19 @@
       - capability struct materializes from the plugin's Context at boot
       - it is not a stub; it exists before the first handler invocation
       - Capability keys are plugin names (SSOT-A1 pin)
-        - Keys: ledger, db-proxy, policy, transaction, container
+        - Keys: ledger, db-proxy, repo-policy, transaction, container
         - The db key is "db-proxy", not "db"
+        - The policy key is "repo-policy", not "policy"
         - See: cans/plugins/db-proxy.md:5
       - Non-conforming: cans/artifacts/examples/db-backed-runtime.py:84
         - Reads c.cap.db; Py spells the hyphenated key db_proxy
       - No string-keyed service registry on any SDK
+      - Lifecycle hook capability reachability
+        - Lifecycle hooks receive LifecycleCtx; it carries no capability caps
+        - Canonical L1/L2 pattern: capture the capability handle at registration
+          - The builder closure captures the pre-boot ledger handle; the hook calls ledger.flush() on it
+          - See: artifacts/examples/db-backed-runtime.rs
+        - ctx.cap.ledger delivery through the fused lifecycle payload lands (L3)
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
       - Two-tier authoring model
@@ -74,7 +81,7 @@
           - Storage: session.storage.reconcile(), session.storage.discard()
           - Wire: session.wire.forward_port(guest_port, host_port)
             - Returns Result<u16, WireError> with allocated port
-          - Checkpoint: session.checkpoint.create(label), session.rollback()
+          - Checkpoint: session.checkpoint; per-language surfaces: see: #Session-control-surface
           - Composition root binds the plane bodies: crates/kelir constructs every Real*Ops and passes it in PlaneWiring; boot fails closed on any unbound required slot (TerminalOps, CheckpointOps, HostOps, NetOps, DnsOps, UdpNatOps, L4DivertOps, StorageIo)
           - FuseOps and ReconcilerOps ride PlaneWiring as optional slots: FuseOps needs Arc<PipelineEngine> while Session owns the engine by value, and the Reconciler needs a broker_dir the host broker journal has not anchored yet; an unbound FuseOps leaves the session with no FUSE dispatcher, and StoragePlane::reconcile fails closed without a Reconciler
         - Plugin extension pattern
@@ -121,29 +128,50 @@
             - see: 08-lifecycle.md#Lifecycle-vetoes
           - session.drain(ms) | control
             - see: 08-lifecycle.md#Hypervisor-primitives
-          - session.rollback() | control
-            - no socket-preserving flag; see: 08-lifecycle.md#Rollback
+          - Checkpoint and rollback surfaces | control
+            - Split per language (SSOT-A1)
+            - Rust
+              - Session derefs to the engine Session; session.checkpoint resolves to the engine's checkpoint: Arc<CheckpointPlane>
+              - session.lineage(root_pid) -> PidLineage
+              - session.checkpoint.create_step(lineage, SnapshotDescriptor) -> u64
+              - session.checkpoint.commit_step(lineage) -> u64
+              - session.checkpoint.rollback_step(lineage) -> SnapshotDescriptor
+              - session.checkpoint.branch_from(node_id, lineage)
+              - session.checkpoint.restore(node_id, guest_monotonic_ns) -> SnapshotDescriptor
+              - session.checkpoint.head(lineage) -> Option<u64>
+              - session.checkpoint.lineage(node_id) -> Vec<u64>
+              - session.checkpoint.compact(lineage)
+              - session.checkpoint.monotonic_watermark_ns()
+              - session.rollback(lineage: PidLineage) rolls back to the lineage head
+              - session.rollback_here(pid: u32) resolves the pid to its lineage first
+            - Py/TS
+              - session.checkpoint.create(label) -> SnapshotDescriptor; one-shot, wraps VmHandle::checkpoint
+              - session.vm.checkpoint(label) -> SnapshotDescriptor; low-level, same call
+              - session.vm.rollback(snapshot: SnapshotDescriptor)
+              - session.rollback(snapshot); convenience wrap of session.vm.rollback(snapshot)
+            - The step API is Rust-only
+            - No-arg rollback lands with PID tracking (L3)
+            - Rollback semantics: see: 08-lifecycle.md#Rollback
           - session.suspend(reason) / session.resume() | control
             - see: 08-lifecycle.md#Suspend-and-resume
             - Per-SDK spelling (SSOT-A1)
-              - Rust: Session.suspend(reason: SuspendReason) / resume()
-              - TS: Session.suspend(path) / resume(path)
-              - Python: Session.suspend() / resume(path)
+              - Rust / TS / Python: Session.suspend(reason: SuspendReason) / resume()
               - The pin takes a reason and derives the path
-              - TS suspend(path) / resume(path) are non-conforming
-              - Py resume(path) is non-conforming
-              - Py suspend() derives the path but takes no reason
-            - Sandbox.suspend() takes no argument in all SDKs
-              - It delegates to session suspend
+            - Sandbox.suspend(reason) delegates to session suspend
       - Multiplexed binary RPC for SDK consumers: session.vsock.channel(kind), binary framing
         - Stream kind registration: builder.register_stream_kind(kind, handler)
           - core kinds frozen; plugin kinds registered at boot
           - see: 11-protocol.md#Control-channel
-        - Programmatic exec surface: session.exec(cmd, limits?)
-          - Writes on stream kind EXEC; framing see: 11-protocol.md#Binary-exec-channel
-          - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
+        - Programmatic exec surface
+          - Primary: session.spawn(binary, argv)
+            - Writes on stream kind EXEC; framing see: 11-protocol.md#Binary-exec-channel
+            - Signal cancellation targets exec_id, not raw guest pid
+          - Variant: session.exec(binary, argv, limits) returns SpawnBuilder
+            - SpawnBuilder implements Future<Output = Result<SpawnResult, PluginError>>
+            - .await on the builder yields the SpawnResult
+            - Accepts optional ProcessLimits; see: 11-protocol.md#Trap-fast-path
           - Accepts optional allocPty flag; rides FLAG_ALLOC_PTY on EXEC_IO_SPEC
-          - Signal cancellation targets exec_id, not raw guest pid
+          - Py/TS spawn bridge lands with the shim wire protocol (L3)
       - Custom vsock RPC services: builder.vsock_service(spec, handler)
     - Cross-SDK guarantees
       - Three-tier binary distribution model
@@ -236,11 +264,10 @@
       - Python: Sandbox.from_config("kelir.toml")
       - Rust: Sandbox::from_config("kelir.toml")
     - Facade method delegations
-      - box.exec(cmd) routes through virtio-console and trap filters
-      - box.rollback() invokes driver rollback: see: artifacts/code/vmm-driver-trait.rs
+      - box.exec(binary, argv) delegates to session.spawn(binary, argv)
+      - box.rollback() delegates to session rollback: see: 08-lifecycle.md#Rollback
       - box.reconcile() invokes storage reconciler to host workspace
-      - box.suspend() delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
-      - box.suspend() takes no argument
+      - box.suspend(reason) delegates to session suspend: see: 08-lifecycle.md#Suspend-and-resume
       - the suspend image path derives from session state, never user-supplied
   - Params typed views
     - Host-side typed access on HandlerCtx
@@ -322,7 +349,7 @@
       - from the Pydantic v2 model class
     - Handlers remain fork-blind; microVM branch state clones automatically
     - Composite plugins unpack nested plugins atomically before boot
-    - Capabilities are static members of c.cap (c.cap.policy), never
+    - Capabilities are static members of c.cap (c.cap.ledger), never
       - c.service(ServiceType)
     - Mount scoping via kwargs: rings=..., binaries=..., paths=...
   - Full-surface examples

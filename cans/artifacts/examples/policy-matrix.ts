@@ -29,7 +29,7 @@ const policyPlugin = createPlugin("policy-matrix")
       case "policy-abort":
         return c.abort("EPOLICY: abort row");
       case "policy-yield":
-        await c.vm.checkpoint("policy-yield");
+        await c.checkpoint.create("policy-yield");
         return c.suspend(SuspendUntil.approval);
       case "policy-approval":
         return c.suspend(SuspendUntil.deadline(500));

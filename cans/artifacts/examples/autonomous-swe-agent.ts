@@ -2,7 +2,7 @@
 
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction,
          type KelirBuilder, type Session, type SnapshotDescriptor, type ExecutionReceipt,
-         type CausalDelta, type PolicyHandle } from "@kelir/core";
+         type CausalDelta, type PolicyHandle, type LedgerHandle } from "@kelir/core";
 import { chaos, ledger } from "@kelir/core";
 import crypto from "node:crypto";
 
@@ -177,7 +177,7 @@ const runtime = kelir({
     },
   })
 
-  // TODO: SSOT .on(VmReady) npm-ci via session.execInGuest and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
+  // TODO (L3): SSOT .on(VmReady) npm-ci via session.execInGuest and .on(VmShutdown) ledger.flush; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does, or LifecycleContext.cap.ledger once the fused lifecycle payload lands, see cans/08-lifecycle.md#Session-and-context-handles
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
   // see: cans/08-lifecycle.md#Break-glass
   .onTrapDeny(async (e, s) => {
@@ -194,7 +194,7 @@ async function main() {
 
   // see: cans/07-wire-plane.md#Port-forwarding
   await session.wire.forwardPort(3000, 8080);
-  const baseSnap = await session.vm.checkpoint("clean_base");
+  const baseSnap = await session.checkpoint.create("clean_base");
   let winningDelta: CausalDelta | null = null;
 
   try {
@@ -207,12 +207,12 @@ async function main() {
 
     const branches = await Promise.all(
       ["A", "B", "C", "D"].map(async (id) => {
-        const child = await session.vm.fork();
+        const child = await session.fork();
         // see: cans/08-lifecycle.md#Clock-skew
         await child.vm.clock.skew({ days: 24 * (id.charCodeAt(0) - 64) });
         const run = await child.spawn("npm", ["run", `verify-hypothesis-${id}`],
                                        { cwd: "/workspace/checkout-service" });
-        const delta = await child.getCausalDeltaFromParent();
+        const delta = await child.ctx<LedgerHandle>("ledger").getCausalDeltaFromParent();
         await child.terminate();
         return { id, run, delta };
       })

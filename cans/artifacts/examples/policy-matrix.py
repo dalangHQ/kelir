@@ -88,7 +88,7 @@ async def row_abort(c: HandlerContext) -> Verdict:
 
 # see: cans/09-snapshots.md#Snapshots
 async def row_yield(c: HandlerContext) -> Verdict:
-    await c.vm.checkpoint("policy-yield")
+    await c.checkpoint.create("policy-yield")
     return Verdict.suspend(until=Approval())
 
 

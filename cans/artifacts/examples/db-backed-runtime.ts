@@ -3,7 +3,7 @@
 // see: cans/plugins/transaction.md#Plugin-transaction
 
 import { kelir, t, TrapFilter, PostExecAction,
-         type ExecutionReceipt } from "@kelir/core";
+         type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
 import { dbProxy, ledger, transaction } from "@kelir/core";
 
 declare const env: {
@@ -77,7 +77,7 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
     .onPreCommit(async () => {
-      // TODO (L3): flush the ledger here; onPreCommit delivers a LifecycleContext only, and the booted session's ledger handle is not in reach at registration time.
+      // TODO (L3): flush the ledger here; capture the ledger handle at registration time as db-backed-runtime.rs does (LedgerPlugin.context()), or read LifecycleContext.cap.ledger once the fused lifecycle payload lands.
     })
     .onPostCommit(async (_ctx, committed) => {
       if (committed) {
@@ -113,9 +113,11 @@ async function main() {
     await writeSnapshot(LOCAL_SNAPSHOT, out);
 
     // see: cans/10-attestation.md#Execution-receipts
-    const final = await session.ledger.finalize({
+    // see: cans/plugins/ledger.md#Plugin-ledger
+    const ledgerHandle = session.ctx<LedgerHandle>("ledger");
+    const final = await ledgerHandle.finalize({
       includeMerkleRoot: true,
-      includeDelta: await session.getCausalDeltaFromParent(),
+      includeDelta: await ledgerHandle.getCausalDeltaFromParent(),
     });
     console.log(`[kelir] merkle=${final.merkleRoot} jws=${final.signedJws.slice(0, 64)}…`);
   } finally {

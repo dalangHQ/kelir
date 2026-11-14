@@ -35,6 +35,7 @@ export interface LedgerHandle {
     includeMerkleRoot?: boolean;
   }): Promise<{ merkleRoot: string; signedJws: string }>;
   blake3OfProducingProcess(path: string): Promise<string>;
+  getCausalDeltaFromParent(): Promise<CausalDelta>;
 }
 
 export interface WireHandle {
@@ -109,6 +110,7 @@ export interface LifecycleContext {
 export interface TrapContext {
   readonly trap: TrapInfo;
   readonly vm: VmHandle;
+  readonly checkpoint: CheckpointHandle;
   readonly fs: FsHandle;
   readonly step: StepHandle;
   readonly terminal: TerminalHandle;

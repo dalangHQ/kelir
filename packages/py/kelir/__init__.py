@@ -431,7 +431,7 @@ from kelir.service_caps import (
     DbCap as DbCap,
     LedgerCap as LedgerCap,
     LedgerFinalizeResult as LedgerFinalizeResult,
-    PolicyCap as PolicyCap,
+    RepoPolicyCap as RepoPolicyCap,
     Savepoint as Savepoint,
     TransactionCap as TransactionCap,
     TransactionScope as TransactionScope,
@@ -612,6 +612,7 @@ class HandlerContext(Generic[CtxT, ParamsT]):
     ) -> None:
         self.trap: TrapEvent = trap if trap is not None else TrapEvent()
         self.vm = VmHandle(Session())
+        self.checkpoint = CheckpointHandle()
         self.fs = FsHandle()
         self.terminal = TerminalHandle()
         self.ctx: CtxT | None = ctx
@@ -708,9 +709,9 @@ __all__ = [
     "MsgType",
     "ParamsT",
     "PhaseTimings",
-    "PolicyCap",
     "PostExecAction",
     "ReceiptExtension",
+    "RepoPolicyCap",
     "ResourcePressure",
     "CommitStats",
     "Sandbox",

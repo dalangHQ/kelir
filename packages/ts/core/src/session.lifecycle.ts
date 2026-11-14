@@ -103,8 +103,9 @@ export interface NativeSessionHandle {
     argv: string[],
     options?: SpawnOptions,
   ): Promise<SpawnResult>;
-  suspend(path: string): Promise<void>;
-  resume(path: string): Promise<void>;
+  fork(): Promise<NativeSessionHandle>;
+  suspend(reason: SuspendReason): Promise<void>;
+  resume(): Promise<void>;
   rollback(): Promise<void>;
   stop(): Promise<void>;
   terminate(): Promise<void>;
@@ -242,6 +243,24 @@ export class Session {
     return sessionDir;
   }
 
+  // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+  ctx<T>(plugin: string): T {
+    const found = this.native.pluginContexts?.find(
+      (entry) => entry.name === plugin,
+    )?.ctx;
+    if (found === undefined) {
+      throw new EConfig(
+        `kelir session has no registered plugin context '${plugin}'`,
+      );
+    }
+    return found as T;
+  }
+
+  // see: cans/08-lifecycle.md#CoW-fork
+  async fork(): Promise<Session> {
+    return new Session(await this.native.fork());
+  }
+
   async execInGuest(
     binary: string,
     argv: string[],
@@ -256,12 +275,12 @@ export class Session {
   }
 
   async suspend(reason: SuspendReason): Promise<void> {
-    await this.native.suspend(`${this.sessionDir}/suspend.img`);
+    await this.native.suspend(reason);
     this.suspendedReasonValue = reason;
   }
 
   async resume(): Promise<void> {
-    await this.native.resume(`${this.sessionDir}/suspend.img`);
+    await this.native.resume();
     this.suspendedReasonValue = undefined;
   }
 

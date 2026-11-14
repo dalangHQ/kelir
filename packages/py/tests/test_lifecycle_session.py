@@ -163,7 +163,7 @@ def test_session_surface_shapes() -> None:
     assert session.boot_ms == 0
     assert isinstance(session.cap, Caps)
     assert session.cap.db_proxy.rewrite_target == ""
-    assert session.cap.policy.violations == 0
+    assert session.cap.repo_policy.violations == 0
 
 
 def test_session_native_calls_raise_econfig() -> None:

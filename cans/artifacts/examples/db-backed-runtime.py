@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 import kelir
-from kelir import HandlerContext, KelirBuilder, PostExecAction, Session, TrapFilter, Verdict
+from kelir import HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
 from kelir.plugins.plugin_db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
@@ -49,10 +49,11 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         return PostExecAction.proceed()
 
     # see: cans/plugins/transaction.md#Plugin-transaction
-    async def _pre_commit(session: Session) -> None:
-        await session.cap.ledger.flush()
+    # TODO (L3): flush the ledger here; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does via LedgerPlugin.context(), but the Py LedgerPlugin exposes no such handle yet, so the flush is dropped.
+    async def _pre_commit(_ctx) -> None:
+        return None
 
-    async def _post_commit(session: Session, committed: bool) -> None:
+    async def _post_commit(_ctx, committed: bool) -> None:
         if committed:
             print("[kelir] commit: per-entry leaf commit, staged snapshot "
                   "is next cold-start fixture")

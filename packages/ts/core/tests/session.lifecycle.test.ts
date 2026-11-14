@@ -154,11 +154,15 @@ function fakeNativeSession(options?: {
       record("execInGuest", binary, argv, spawnOptions);
       return { exitCode: 3, stderr: `guest ${binary}` };
     },
-    suspend: async (path: string): Promise<void> => {
-      record("suspend", path);
+    suspend: async (reason: SuspendReason): Promise<void> => {
+      record("suspend", reason);
     },
-    resume: async (path: string): Promise<void> => {
-      record("resume", path);
+    resume: async (): Promise<void> => {
+      record("resume");
+    },
+    fork: async (): Promise<NativeSessionHandle> => {
+      record("fork");
+      return native;
     },
     rollback: async (): Promise<void> => {
       record("rollback");
@@ -597,8 +601,8 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   const reason = SuspendReason.external("human-authorization-hold");
   await session.suspend(reason);
   check(
-    callsOf(native, "suspend")[0].args[0] === "/tmp/test-session/suspend.img",
-    "suspend derives the snapshot path from sessionDir",
+    callsOf(native, "suspend")[0].args[0] === reason,
+    "suspend forwards the reason; the native bridge derives the snapshot path",
   );
   check(
     session.suspendedReason === reason,
@@ -606,8 +610,8 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   );
   await session.resume();
   check(
-    callsOf(native, "resume")[0].args[0] === "/tmp/test-session/suspend.img",
-    "resume derives the snapshot path from sessionDir",
+    callsOf(native, "resume")[0].args.length === 0,
+    "resume forwards no path; the native bridge derives the snapshot path",
   );
   check(
     session.suspendedReason === undefined,

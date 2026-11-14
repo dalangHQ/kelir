@@ -31,6 +31,7 @@
       - Context lifecycle configuration: set_watchdog, adjust_balloon, register_veto
       - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist on Session only
+      - Rollback surface set per language: see: 03-sdk-architecture.md#Session-control-surface
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
     - Driver-backed execution
       - All primitives execute via active VmmDriver backend without in-guest agents
@@ -78,7 +79,8 @@
       - Host registration re-hydrates from the parent engine
         - on_trap_deny, custom actions, stream-kind sinks, lock broker, token revoker
         - Shared by reference; callbacks are not Clone and never re-boxed
-      - session.vm.fork() returns full Session
+      - session.fork() -> Session returns the full child Session
+        - VmHandle has no fork(); fork rebinds plugin state, so it lives on Session only
       - spawn() and every other session API directly callable on child
     - Child handoff scope
       - Inherited
@@ -183,22 +185,13 @@
         - Session.suspend(reason: SuspendReason) / Session.resume()
         - The image path derives from session state, never user-supplied
         - Path: <session_dir>/suspend.img
-      - The vm-handle / native-bridge layer keeps suspend(path)
-        - And resume(path); the bridge supplies a fixed reason
+      - VmHandle::suspend(reason, path) / VmHandle::resume(path) is the low-level primitive
+        - VmControl::suspend(reason, path) carries both; see: crates/kelir-interface/src/handles_lifecycle.flow.rs
+        - The native session-handle bridge keeps the path form and supplies a fixed reason
         - Reason: External(HumanAuthorizationHold)
-        - See: crates/kelir-bindings/napi/src/lib.rs:70
-        - See: crates/kelir-bindings/pyo3/src/lib.rs:53
-      - Non-conforming sides
-        - TS Session.suspend(path) / resume(path) takes a caller path
-          - Where the pin takes a reason
-          - See: packages/ts/core/src/session.lifecycle.ts:271-276
-        - Py Session.suspend() derives the path but takes no reason
-          - And resume(path) takes a caller path
-          - See: packages/py/kelir/lifecycle_session.py:87-91
-        - RS Sandbox.resume(path) takes a caller path
-          - Where Session.resume() takes none
-          - See: crates/kelir/src/sandbox_runtime.flow.rs:365
-      - Sandbox.suspend() takes no argument and delegates to session suspend
+        - See: crates/kelir-bindings/napi/src/handles.flow.rs
+        - See: crates/kelir-bindings/pyo3/src/handles.flow.rs
+      - Sandbox.suspend(reason) delegates to session suspend
         - See: 03-sdk-architecture.md#Sandbox-high-level-facade
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
@@ -278,7 +271,7 @@
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):
         - StepVerdict::Commit: flushes staging delta, advances active step slot
-        - StepVerdict::Rollback(reason): calls session.rollback(); RAM reverts in <8ms
+        - StepVerdict::Rollback(reason): calls session.rollback(lineage); RAM reverts in <8ms
       - Tainted step verification
         - StepEvaluator validates causal deltas against declared task scopes
         - Unapproved filesystem writes or egress under tainted state force rollback
@@ -442,6 +435,7 @@
       - Non-blocking; cannot veto; no return value
     - Use for ledger / trace / metrics
     - Terminate flush belongs to on_vm_shutdown, not a subscriber
+    - Flush handle reachability: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
   - Watchdog
     - see: [1] (WatchdogAction)
     - Armed via LifecycleCtx.set_watchdog

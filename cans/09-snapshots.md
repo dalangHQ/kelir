@@ -12,7 +12,7 @@
     - Base snapshot (engine-internal)
       - Format: parent_digest: None
       - Cache path and lease row: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
-      - Not visible in session.lineage(); not exported by session.vm.export_snapshot
+      - Not visible in session.lineage(root_pid); not exported by session.vm.export_snapshot
       - Not included in user-visible CausalDelta chains
       - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability
@@ -52,3 +52,6 @@
       - SQLite stores zero child arrays; catalog tracks session leases only
       - A live head pins its full ancestor prefix; interior nodes with multiple
         - live descendants remain materialized
+    - SDK lineage surfaces
+      - Rust: session.lineage(root_pid) -> PidLineage; step surfaces: see: 03-sdk-architecture.md#Session-control-surface
+      - Py/TS: Session.rollback(snapshot) / VmHandle.rollback(snapshot) are the lineage-visible surfaces

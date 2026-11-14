@@ -33,6 +33,7 @@
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
         - c.ledger.flush() forces WAL flush and OTel export
+        - Reachability from lifecycle hooks: see: 03-sdk-architecture.md#Lifecycle-hook-capability-reachability
       - Merkle WAL specification
         - Record Schema (Packed Little-Endian):
           - seq: u64 (monotonic index)
@@ -87,3 +88,10 @@
     - Return errno and rejection behavior (ledger)
       - Pure observer: never returns Reject or blocks inline execution
       - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)
+  - Causal delta access (ledger)
+    - Canonical accessor (SSOT-A1 pin)
+      - ledger.get_causal_delta_from_parent() -> CausalDelta
+      - Capability-key home: c.cap.ledger (Py), c.ledger (TS), c.ctx::<LedgerCtx>() (RS)
+      - Session-level lookup: session.cap.ledger (Py), session.ctx<LedgerHandle>("ledger") (TS), session.ctx::<LedgerCtx>() (RS)
+      - Session-level facade access lands on the bindings (L3)
+    - Causal deltas are produced by plugin-ledger over the delta chain

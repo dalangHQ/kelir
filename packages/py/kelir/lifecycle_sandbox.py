@@ -13,7 +13,14 @@ from kelir.profile_config import ProfileConfig
 from kelir.sdk_errors import EConfig as EConfig
 
 if TYPE_CHECKING:
-    from kelir import CommitStats, KelirBuilder, Session, SpawnResult, SuspendReason
+    from kelir import (
+        CommitStats,
+        KelirBuilder,
+        Session,
+        SnapshotDescriptor,
+        SpawnResult,
+        SuspendReason,
+    )
 
 
 def _builder_kwargs(model: ProfileConfig) -> dict[str, Any]:
@@ -152,10 +159,10 @@ class Sandbox:
             raise EConfig("Sandbox.exec before boot")
         return await self._session.spawn(binary, argv)
 
-    async def rollback(self) -> None:
+    async def rollback(self, snapshot: SnapshotDescriptor | None = None) -> None:
         if self._session is None:
             raise EConfig("Sandbox.rollback before boot")
-        await self._session.rollback()
+        await self._session.rollback(snapshot)
 
     # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
     async def suspend(self, reason: SuspendReason) -> None:

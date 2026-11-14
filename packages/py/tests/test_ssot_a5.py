@@ -58,12 +58,12 @@ def test_plugin_rejects_non_name_and_instance_plugin() -> None:
 
 def test_caps_have_typed_service_skeletons() -> None:
     cap = Caps()
-    assert cap.policy.violations == 0
+    assert cap.repo_policy.violations == 0
     assert cap.db_proxy.rewrite_target == ""
     assert cap.ledger is not None
     assert cap.transaction is not None
     assert cap.container is not None
-    assert HandlerContext().cap.policy.violations == 0
+    assert HandlerContext().cap.repo_policy.violations == 0
 
 
 def test_cap_skeleton_methods_raise_econfig_l3() -> None:

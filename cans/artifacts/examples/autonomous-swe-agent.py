@@ -256,7 +256,7 @@ def make_verify_receipt(oracle: UserOracle) -> PostExecHandler:
 
 def make_commit_gate() -> PreExecHandler:
     async def commit_gate(c: HandlerContext) -> Verdict:
-        n = c.cap.policy.violations
+        n = c.cap.repo_policy.violations
         if n > 0:
             return Verdict.drop("EPERM", f"EPOLICY: {n} prior violation(s).")
         return Verdict.pass_()
@@ -300,7 +300,7 @@ async def build_runtime(
     async def _ready(_ctx: LifecycleCtx | None) -> None:
         return None
 
-    # TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
+    # TODO (L3): SSOT ledger.flush on shutdown; capture a pre-boot ledger handle at registration as db-backed-runtime.rs does, or LifecycleCtx.cap.ledger once the fused lifecycle payload lands, see cans/08-lifecycle.md#Session-and-context-handles
     async def _shutdown(_ctx: LifecycleCtx | None) -> None:
         return None
 
@@ -478,7 +478,7 @@ async def build_runtime(
 async def fork_and_verify(
     parent: Session, hypothesis_id: str,
 ) -> tuple[str, SpawnResult, CausalDelta]:
-    child = await parent.vm.fork()
+    child = await parent.fork()
     await child.vm.clock.skew(
         timedelta(days=24 * (ord(hypothesis_id) - ord("A") + 1)),
     )
@@ -488,7 +488,7 @@ async def fork_and_verify(
             ["run", f"verify-hypothesis-{hypothesis_id}"],
             cwd="/workspace/checkout-service",
         )
-        delta = await child.get_causal_delta_from_parent()
+        delta = await child.cap.ledger.get_causal_delta_from_parent()
         return hypothesis_id, run, delta
     finally:
         await child.terminate()
@@ -508,7 +508,7 @@ async def main() -> None:
                  session.driver_name, session.boot_ms)
 
         await session.wire.forward_port(3000, 8080)
-        base = await session.vm.checkpoint("clean_base")
+        base = await session.checkpoint.create("clean_base")
         winning_delta: Optional[CausalDelta] = None
 
         test = await session.spawn(

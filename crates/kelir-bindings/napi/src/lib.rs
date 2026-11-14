@@ -22,7 +22,7 @@ pub use handles::{
     NativeCheckpointHandle, NativeClockHandle, NativeClockSkewOptions, NativeCommitStatsRecord,
     NativeGuestClockRecord, NativeHostHandle, NativePluginContextRecord,
     NativePluginContextSurface, NativeReconcileOptions, NativeSessionHandle,
-    NativeSnapshotDescriptorRecord, NativeStepHandle, NativeStorageHandle, NativeTerminalHandle,
-    NativeTerminalReadRecord, NativeVmHandle, NativeVsockHandle, NativeWireHandle, abi_version,
-    relay_socket_path,
+    NativeSnapshotDescriptorRecord, NativeStepHandle, NativeStorageHandle,
+    NativeSuspendReasonRecord, NativeTerminalHandle, NativeTerminalReadRecord, NativeVmHandle,
+    NativeVsockHandle, NativeWireHandle, abi_version, relay_socket_path,
 };

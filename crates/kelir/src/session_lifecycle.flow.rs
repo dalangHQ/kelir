@@ -90,6 +90,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.vm().clock.skew(delta).await
     }
 
+    // see: cans/09-snapshots.md#Groups-and-lineage
+    pub fn lineage(&self, pid: u32) -> crate::PidLineage {
+        self.core.lineage(pid)
+    }
+
     // see: cans/08-lifecycle.md#Rollback
     pub async fn rollback_here(&mut self, pid: u32) -> Result<(), PluginError> {
         let lineage = self.core.lineage(pid);

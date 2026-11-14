@@ -24,6 +24,13 @@ from kelir import (
 )
 
 
+# see: cans/08-lifecycle.md#Suspend-and-resume
+def _suspend_reason_record(reason: SuspendReason) -> dict[str, str]:
+    if isinstance(reason, External):
+        return {"kind": "external", "detail": reason.kind.value}
+    return {"kind": "resource-pressure"}
+
+
 class Session:
     def __init__(self) -> None:
         self._native: Any = None
@@ -99,12 +106,12 @@ class Session:
                 f"got {type(reason).__name__}"
             )
         native = kelir._require_native(self._native, "session suspend")
-        native.suspend(str(self.session_dir() / "suspend.img"))
+        native.suspend(_suspend_reason_record(reason))
         self.suspended_reason = reason
 
     async def resume(self) -> None:
         native = kelir._require_native(self._native, "session resume")
-        native.resume(str(self.session_dir() / "suspend.img"))
+        native.resume()
         self.suspended_reason = None
 
     # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
@@ -130,5 +137,4 @@ class Session:
         raise EConfig("TODO: Session.attach (L3)")
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO (L3) [ar_09_causal_delta_aggregation_merkle]: fetch causal delta from parent session via the PyO3 _kelir bridge.; slop: delta omits tombstones, audit log desyncs from disk
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")
+        return await self.cap.ledger.get_causal_delta_from_parent()

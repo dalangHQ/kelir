@@ -67,6 +67,48 @@ fn u64_of(value: f64, what: &str) -> Result<u64> {
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
 
+// see: cans/08-lifecycle.md#Suspend-and-resume
+#[napi(object)]
+pub struct NativeSuspendReasonRecord {
+    pub kind: String,
+    pub detail: Option<String>,
+}
+
+// see: cans/08-lifecycle.md#Suspend-and-resume
+fn suspend_reason_of(record: NativeSuspendReasonRecord) -> Result<SuspendReason> {
+    match record.kind.as_str() {
+        "resource-pressure" => Ok(SuspendReason::ResourcePressure),
+        "external" => {
+            let detail = record
+                .detail
+                .ok_or_else(|| missing("suspend reason external detail is missing"))?;
+            let kind = match detail.as_str() {
+                "human-authorization-hold" => ExternalSuspendKind::HumanAuthorizationHold,
+                "wire-connection-parking" => ExternalSuspendKind::WireConnectionParking,
+                "step-evaluation-yield" => ExternalSuspendKind::StepEvaluationYield,
+                "host-power-event-snapshot" => ExternalSuspendKind::HostPowerEventSnapshot,
+                other => {
+                    return Err(missing(&format!(
+                        "suspend reason detail `{other}` is not an ExternalSuspendKind"
+                    )))
+                }
+            };
+            Ok(SuspendReason::External(kind))
+        }
+        other => Err(missing(&format!(
+            "suspend reason kind `{other}` is not external|resource-pressure"
+        ))),
+    }
+}
+
+// see: cans/08-lifecycle.md#Suspend-and-resume
+fn suspend_image_path(session_dir: &str) -> String {
+    std::path::Path::new(session_dir)
+        .join("suspend.img")
+        .display()
+        .to_string()
+}
+
 // see: cans/09-snapshots.md#Archives-and-portability
 #[napi(object)]
 pub struct NativeGuestClockRecord {
@@ -588,15 +630,17 @@ impl NativeSessionHandle {
     }
 
     #[napi]
-    pub async fn suspend(&self, path: String) -> Result<()> {
+    pub async fn suspend(&self, reason: NativeSuspendReasonRecord) -> Result<()> {
+        let path = suspend_image_path(&self.session_dir);
         self.vm
-            .suspend(SDK_SUSPEND_REASON, &path)
+            .suspend(suspend_reason_of(reason)?, &path)
             .await
             .map_err(halt)
     }
 
     #[napi]
-    pub async fn resume(&self, path: String) -> Result<()> {
+    pub async fn resume(&self) -> Result<()> {
+        let path = suspend_image_path(&self.session_dir);
         self.vm.resume(&path).await.map_err(halt)
     }
 
