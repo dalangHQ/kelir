@@ -24,7 +24,7 @@ from kelir.sdk_errors import EConfig
 if TYPE_CHECKING:
     from kelir.model_plugin import BasePlugin
 
-from kelir import Session, TrapFilter
+from kelir import Caps, Session, TrapFilter
 
 
 @dataclass
@@ -862,6 +862,7 @@ class KelirBuilder:
         self.seal()
         fused = self.fuse()
         descriptor = fused.describe()
+        caps = Caps()
         bridge = _load_native_bridge()
         native = bridge.PyKelirBuilder(
             vcpus=self._config["vcpus"],
@@ -887,9 +888,9 @@ class KelirBuilder:
             native.set_wire_config(_bridge_safe_config("wire", self._config["wire"]))
         for registration in self._plugin_registrations:
             native.use_plugin(registration.name, registration.enabled)
-        native.fuse_hooks(descriptor, fused.runs())
+        native.fuse_hooks(descriptor, fused.runs(caps))
         native_handle = native.boot()
-        session = Session.from_native(native_handle)
+        session = Session.from_native(native_handle, cap=caps)
         # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
         get_plugin_context = getattr(native_handle, "get_plugin_context", None)
         if get_plugin_context is None:

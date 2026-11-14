@@ -1,6 +1,7 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 import { Sandbox } from "../dist/index.js";
 import { EConfig } from "../dist/index.js";
+import type { SnapshotDescriptor } from "../dist/index.js";
 
 function check(condition: boolean, label: string): void {
   if (!condition) {
@@ -62,9 +63,35 @@ async function sandboxTerminateRoutesToTheAbruptSessionVerb(): Promise<void> {
   );
 }
 
+// see: cans/09-snapshots.md#Archives-and-portability
+async function sandboxRollbackForwardsTheSnapshotToTheBootedSession(): Promise<void> {
+  const box = await Sandbox.create();
+  const calls: unknown[] = [];
+  const snapshot: SnapshotDescriptor = {
+    id: "snap-rollback",
+    dirtyBytes: 10,
+    createdAtNs: 7,
+    parentDigest: null,
+    guestClock: null,
+  };
+  const booted = {
+    rollback: async (received?: SnapshotDescriptor): Promise<void> => {
+      calls.push(received);
+    },
+  };
+  (box as unknown as { booted: unknown }).booted = booted;
+  await box.rollback();
+  await box.rollback(snapshot);
+  check(
+    calls.length === 2 && calls[0] === undefined && calls[1] === snapshot,
+    "rollback forwards the optional snapshot to the booted session",
+  );
+}
+
 async function main(): Promise<void> {
   await sandboxFailsClosedBeforeBoot();
   await sandboxTerminateRoutesToTheAbruptSessionVerb();
+  await sandboxRollbackForwardsTheSnapshotToTheBootedSession();
 }
 
 main().catch((error: unknown): never => {

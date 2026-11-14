@@ -12,7 +12,9 @@
     - Base snapshot (engine-internal)
       - Format: parent_digest: None
       - Cache path and lease row: see: 08-lifecycle.md#Autonomous-fast-boot-hydration
-      - Not visible in session.lineage(); not exported by session.vm.export_snapshot
+      - Not visible in session.lineage(root_pid) (Rust); not exported by session.vm.export_snapshot
+      - Py/TS carry no lineage accessor; their lineage-visible surfaces are the
+        - one-shot session.checkpoint.create(label) / session.rollback(snapshot)
       - Not included in user-visible CausalDelta chains
       - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability

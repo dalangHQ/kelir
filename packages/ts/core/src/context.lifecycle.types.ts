@@ -30,6 +30,7 @@ export interface VmHandle {
 export interface LedgerHandle {
   flush(): Promise<void>;
   countDenials(ppid: number): Promise<number>;
+  getCausalDeltaFromParent(): Promise<CausalDelta>;
   finalize(options: {
     includeDelta?: CausalDelta | null;
     includeMerkleRoot?: boolean;
@@ -101,9 +102,11 @@ export interface ChaosHandle {
   readonly faults?: readonly string[];
 }
 
+// see: cans/08-lifecycle.md#Session-and-context-handles
 export interface LifecycleContext {
   setWatchdog(options: { timeoutMs: number; action: string }): void;
   registerVeto(event: VetoEvent, predicate: () => boolean): void;
+  readonly cap?: { readonly ledger?: LedgerHandle };
 }
 
 export interface TrapContext {

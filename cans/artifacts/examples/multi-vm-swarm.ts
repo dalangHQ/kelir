@@ -61,7 +61,7 @@ async function main() {
 
     const results = await Promise.all(
       Array.from({ length: 8 }, async (_, shardId) => {
-        const child = await session.vm.fork();
+        const child = await session.fork();
         return runShard(child, shardId, 8);
       }),
     );

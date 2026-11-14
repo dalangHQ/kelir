@@ -19,7 +19,7 @@ __all__ = [
     "DbCap",
     "LedgerCap",
     "LedgerFinalizeResult",
-    "PolicyCap",
+    "RepoPolicyCap",
     "Savepoint",
     "TransactionCap",
     "TransactionScope",
@@ -74,7 +74,7 @@ class LedgerCap:
         raise _missing("ledger finalize")
 
 
-class PolicyCap:
+class RepoPolicyCap:
     def __init__(self, violations: int = 0) -> None:
         self.violations = violations
 
@@ -134,13 +134,21 @@ class Caps:
     def __init__(self) -> None:
         self.db_proxy = DbCap()
         self.ledger = LedgerCap()
-        self.policy = PolicyCap()
+        self.repo_policy = RepoPolicyCap()
         self.transaction = TransactionCap()
         self.container = ContainerCap()
 
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    @property
+    def policy(self) -> RepoPolicyCap:
+        return self.repo_policy
+
 
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-_CAP_KEY_ALIASES: dict[str, str] = {"db-proxy": "db_proxy"}
+_CAP_KEY_ALIASES: dict[str, str] = {
+    "db-proxy": "db_proxy",
+    "repo-policy": "repo_policy",
+}
 
 
 def materialize_cap(cap: Caps, plugin_name: str, record: dict[str, Any]) -> None:

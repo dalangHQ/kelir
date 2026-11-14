@@ -76,8 +76,8 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       },
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
-    .onPreCommit(async () => {
-      // TODO (L3): flush the ledger here; onPreCommit delivers a LifecycleContext only, and the booted session's ledger handle is not in reach at registration time.
+    .onPreCommit(async (ctx) => {
+      await ctx.cap?.ledger?.flush();
     })
     .onPostCommit(async (_ctx, committed) => {
       if (committed) {
@@ -115,7 +115,7 @@ async function main() {
     // see: cans/10-attestation.md#Execution-receipts
     const final = await session.ledger.finalize({
       includeMerkleRoot: true,
-      includeDelta: await session.getCausalDeltaFromParent(),
+      includeDelta: await session.ledger.getCausalDeltaFromParent(),
     });
     console.log(`[kelir] merkle=${final.merkleRoot} jws=${final.signedJws.slice(0, 64)}…`);
   } finally {

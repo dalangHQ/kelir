@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from kelir.generated.attest_telemetry import CausalDelta, SnapshotDescriptor
+from kelir.generated.attest_telemetry import SnapshotDescriptor
 from kelir.sdk_errors import EConfig
 import kelir
 
@@ -41,9 +41,11 @@ class Session:
 
     # see: cans/03-sdk-architecture.md#Python-SDK
     @classmethod
-    def from_native(cls, handle: Any) -> Session:
+    def from_native(cls, handle: Any, cap: Caps | None = None) -> Session:
         # TODO (L3) [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
         session = cls()
+        if cap is not None:
+            session.cap = cap
         session._native = handle
         session.driver_name = str(handle.driver_name)
         session.boot_ms = int(handle.boot_ms)
@@ -99,12 +101,17 @@ class Session:
                 f"got {type(reason).__name__}"
             )
         native = kelir._require_native(self._native, "session suspend")
-        native.suspend(str(self.session_dir() / "suspend.img"))
+        record = (
+            {"kind": "resource-pressure"}
+            if isinstance(reason, ResourcePressure)
+            else {"kind": "external", "detail": reason.kind.value}
+        )
+        native.suspend(record)
         self.suspended_reason = reason
 
     async def resume(self) -> None:
         native = kelir._require_native(self._native, "session resume")
-        native.resume(str(self.session_dir() / "suspend.img"))
+        native.resume()
         self.suspended_reason = None
 
     # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
@@ -128,7 +135,3 @@ class Session:
         _ = relay
         # TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
         raise EConfig("TODO: Session.attach (L3)")
-
-    async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # TODO (L3) [ar_09_causal_delta_aggregation_merkle]: fetch causal delta from parent session via the PyO3 _kelir bridge.; slop: delta omits tombstones, audit log desyncs from disk
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session get_causal_delta_from_parent (L3)")

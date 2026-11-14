@@ -15,7 +15,7 @@ from kelir.generated.fusion_tables import (
 )
 
 if TYPE_CHECKING:
-    from kelir import KelirBuilder
+    from kelir import Caps, KelirBuilder
     from kelir.model_plugin import BasePlugin
 
 
@@ -114,13 +114,18 @@ class FusedTrampoline:
         return 0
 
     # see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    def runs(self) -> list[dict[str, Any]]:
+    # see: cans/08-lifecycle.md#Session-and-context-handles
+    def runs(self, cap: Caps | None = None) -> list[dict[str, Any]]:
+        from kelir.model_plugin import LifecycleCtx
+
         return [
             {
                 "ring": chain.ring.value,
                 "ordinal": hook.ordinal,
                 "run": lambda ring, ordinal, hook=hook: hook.run(
-                    {"ring": ring, "ordinal": ordinal}
+                    LifecycleCtx(cap=cap)
+                    if hook.ring is RingEvent.LIFECYCLE
+                    else {"ring": ring, "ordinal": ordinal}
                 ),
             }
             for chain in self.chains

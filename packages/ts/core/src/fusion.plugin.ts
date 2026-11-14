@@ -3,8 +3,9 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import { EConfig } from "./errors.sdk.js";
-import { LifecycleEvent } from "./verdict.protocol.js";
+import { LifecycleEvent, VetoEvent } from "./verdict.protocol.js";
 import type { NativeSessionHandle } from "./session.lifecycle.js";
+import type { LifecycleContext } from "./context.lifecycle.types.js";
 import {
   LIFECYCLE_TAGS,
   RingEvent,
@@ -56,6 +57,24 @@ export interface FusedHookRun {
   readonly ring: RingEvent;
   readonly ordinal: number;
   readonly run: (ring: RingEvent, ordinal: number) => unknown;
+}
+
+// see: cans/08-lifecycle.md#Session-and-context-handles
+// TODO (L3) [plugin_engine]: forward the recorded vetoes and watchdog arming to the engine lifecycle dispatch.; slop: recorded veto/watchdog never enforced
+export function createLifecycleContext(
+  cap?: LifecycleContext["cap"],
+): LifecycleContext {
+  const vetoes: Array<[VetoEvent, () => boolean]> = [];
+  let watchdog: { timeoutMs: number; action: string } | undefined;
+  return {
+    setWatchdog: (options) => {
+      watchdog = options;
+    },
+    registerVeto: (event, predicate) => {
+      vetoes.push([event, predicate]);
+    },
+    cap,
+  };
 }
 
 export interface FusedRingChain {
@@ -122,12 +141,16 @@ export class FusedTrampoline {
   }
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-  runs(): readonly FusedHookRun[] {
+  // see: cans/08-lifecycle.md#Session-and-context-handles
+  runs(cap?: LifecycleContext["cap"]): readonly FusedHookRun[] {
     return this.chains.flatMap((chain) =>
       chain.hooks.map((hook) => ({
         ring: chain.ring,
         ordinal: hook.ordinal,
-        run: (ring: RingEvent, ordinal: number) => hook.run({ ring, ordinal }),
+        run: (ring: RingEvent, ordinal: number) =>
+          hook.ring === RingEvent.Lifecycle
+            ? hook.run(createLifecycleContext(cap))
+            : hook.run({ ring, ordinal }),
       })),
     );
   }

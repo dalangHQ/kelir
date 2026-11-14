@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import pytest
 
-from kelir import KelirBuilder
+from kelir import Caps, KelirBuilder
 from kelir.sdk_errors import EConfig
 from kelir.plugin_fusion import (
     FusedTrampoline,
@@ -19,7 +19,13 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.generated.fusion_tables import LIFECYCLE_TAGS
-from kelir.model_plugin import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
+from kelir.model_plugin import (
+    BasePlugin,
+    LifecycleCtx,
+    WatchdogEvent,
+    WatchdogVerdict,
+    hook_descriptors,
+)
 
 
 async def _noop(event: Any) -> None:
@@ -119,6 +125,28 @@ def test_runs_threads_each_hook_callable_by_ring_and_ordinal() -> None:
     ]
     runs[1]["run"]("trap", 1)
     assert seen == [{"ring": "trap", "ordinal": 1}]
+
+
+def test_runs_delivers_lifecycle_ctx_with_cap_to_lifecycle_hooks() -> None:
+    seen: list[Any] = []
+    hooks = [
+        HookDescriptor(
+            ring=RingEvent.LIFECYCLE,
+            stage=HookStage.SINGLE,
+            ordinal=0,
+            lifecycle_tag="vm-ready",
+            run=lambda event: seen.append(event),
+        )
+    ]
+    cap = Caps()
+    runs = FusedTrampoline.fuse(hooks).runs(cap)
+    runs[0]["run"]("lifecycle", 0)
+    assert isinstance(seen[0], LifecycleCtx)
+    assert seen[0].cap is cap
+    bare = FusedTrampoline.fuse(hooks).runs()
+    bare[0]["run"]("lifecycle", 0)
+    assert isinstance(seen[1], LifecycleCtx)
+    assert seen[1].cap is None
 
 
 def test_fuse_orders_hooks_by_ordinal_within_ring() -> None:

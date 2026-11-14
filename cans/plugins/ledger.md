@@ -33,6 +33,15 @@
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
         - c.ledger.flush() forces WAL flush and OTel export
+          - Reachability from lifecycle hooks: see: 08-lifecycle.md#Session-and-context-handles
+      - Causal delta access
+        - Canonical home: ledger.get_causal_delta_from_parent() -> CausalDelta
+          - Rust: session.ctx::<LedgerCtx, _>() reaches plugin-ledger's LedgerCtx
+          - Py: session.cap.ledger.get_causal_delta_from_parent()
+          - TS: c.ledger.getCausalDeltaFromParent() on the plugin context
+          - The LedgerCtx method and the TS LedgerHandle accessor are TBD (L3)
+        - The Session facade does not carry it; session-handle stubs error toward plugin-ledger
+        - Causal deltas are produced by plugin-ledger over the delta chain
       - Merkle WAL specification
         - Record Schema (Packed Little-Endian):
           - seq: u64 (monotonic index)

@@ -13,7 +13,7 @@ from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 
 if TYPE_CHECKING:
-    from kelir import KelirBuilder
+    from kelir import Caps, KelirBuilder
 
 __all__ = [
     "BasePlugin",
@@ -81,9 +81,11 @@ class WatchdogVerdict(Enum):
     Suppress = "suppress"
 
 
+# see: cans/08-lifecycle.md#Session-and-context-handles
 class LifecycleCtx:
 
-    def __init__(self) -> None:
+    def __init__(self, cap: Caps | None = None) -> None:
+        self.cap = cap
         self._vetoes: list[tuple[VetoEvent, Callable[[], bool]]] = []
         self._watchdog: tuple[int | timedelta, str] | None = None
 

@@ -127,7 +127,7 @@ async def main() -> None:
     async with build_runtime() as session:
         # TODO (L3): serve webhooks across wake cycles via an ingress loop; the Py Session exposes no handle_ingress, so no WebhookRequest is served yet.
         served = 0
-        # TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
+        # TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; LifecycleCtx.cap.ledger is reachable in the fused runner (L2) — register the hooks, see cans/08-lifecycle.md#Session-and-context-handles
         print(f"[kelir] served {served} webhook(s) across wake cycles")
         await session.suspend(
             External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD),

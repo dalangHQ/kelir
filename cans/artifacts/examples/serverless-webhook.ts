@@ -71,7 +71,7 @@ const runtime = kelir({
     },
   });
 
-// TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
+// TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; the fused runner delivers LifecycleContext.cap.ledger (L2; native rendezvous at L3), see cans/08-lifecycle.md#Session-and-context-handles
 async function main() {
   runtime.seal();
   const session = await runtime.boot();

@@ -67,6 +67,35 @@ fn u64_of(value: f64, what: &str) -> Result<u64> {
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
 
+// see: cans/08-lifecycle.md#Suspend-and-resume
+#[napi(object)]
+pub struct NativeSuspendReasonRecord {
+    pub kind: String,
+    pub detail: Option<String>,
+}
+
+// see: cans/08-lifecycle.md#Suspend-and-resume
+fn suspend_reason(record: &NativeSuspendReasonRecord) -> Result<SuspendReason> {
+    match (record.kind.as_str(), record.detail.as_deref()) {
+        ("external", Some("human-authorization-hold")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::HumanAuthorizationHold,
+        )),
+        ("external", Some("wire-connection-parking")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::WireConnectionParking,
+        )),
+        ("external", Some("step-evaluation-yield")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::StepEvaluationYield,
+        )),
+        ("external", Some("host-power-event-snapshot")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::HostPowerEventSnapshot,
+        )),
+        ("resource-pressure", None) => Ok(SuspendReason::ResourcePressure),
+        _ => Err(missing(
+            "suspend reason is not external(kind) or resource-pressure",
+        )),
+    }
+}
+
 // see: cans/09-snapshots.md#Archives-and-portability
 #[napi(object)]
 pub struct NativeGuestClockRecord {
@@ -588,15 +617,15 @@ impl NativeSessionHandle {
     }
 
     #[napi]
-    pub async fn suspend(&self, path: String) -> Result<()> {
-        self.vm
-            .suspend(SDK_SUSPEND_REASON, &path)
-            .await
-            .map_err(halt)
+    pub async fn suspend(&self, reason: NativeSuspendReasonRecord) -> Result<()> {
+        let reason = suspend_reason(&reason)?;
+        let path = format!("{}/suspend.img", self.session_dir);
+        self.vm.suspend(reason, &path).await.map_err(halt)
     }
 
     #[napi]
-    pub async fn resume(&self, path: String) -> Result<()> {
+    pub async fn resume(&self) -> Result<()> {
+        let path = format!("{}/suspend.img", self.session_dir);
         self.vm.resume(&path).await.map_err(halt)
     }
 

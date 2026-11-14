@@ -4,7 +4,7 @@ import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
 import { Session } from "./session.lifecycle.js";
 import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
-import type { SpawnResult } from "./types.core.js";
+import type { SpawnResult, SnapshotDescriptor } from "./types.core.js";
 import {
   parseProfile,
   profileFormatForPath,
@@ -127,11 +127,11 @@ export class Sandbox {
     return this.booted.spawn(binary, argv);
   }
 
-  async rollback(): Promise<void> {
+  async rollback(snapshot?: SnapshotDescriptor): Promise<void> {
     if (this.booted === null) {
       throw new EConfig("Sandbox.rollback before boot");
     }
-    return this.booted.rollback();
+    return this.booted.rollback(snapshot);
   }
 
   // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade

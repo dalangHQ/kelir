@@ -174,6 +174,14 @@ impl LedgerCtx {
             "ledger finalize needs the Merkle WAL sink".into(),
         ))
     }
+
+    pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
+        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: delegate to compute_ledger::compute_causal_delta(storage, receipt) once LedgerCtx reaches the storage delta and parent receipt; slop: delta fabricated, no merkle aggregation
+        Err(PluginError::Halt(
+            "ledger get_causal_delta_from_parent needs the storage delta and parent receipt"
+                .into(),
+        ))
+    }
 }
 
 #[derive(Clone)]

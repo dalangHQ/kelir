@@ -47,6 +47,36 @@ fn u64_of(value: f64, what: &str) -> PyResult<u64> {
 const SDK_SUSPEND_REASON: SuspendReason =
     SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
 
+// see: cans/08-lifecycle.md#Suspend-and-resume
+fn suspend_reason(record: &Bound<'_, PyDict>) -> PyResult<SuspendReason> {
+    let kind: String = record
+        .get_item("kind")?
+        .ok_or_else(|| missing("suspend reason kind is missing"))?
+        .extract()?;
+    let detail: Option<String> = match record.get_item("detail")? {
+        Some(value) if !value.is_none() => Some(value.extract()?),
+        _ => None,
+    };
+    match (kind.as_str(), detail.as_deref()) {
+        ("external", Some("human-authorization-hold")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::HumanAuthorizationHold,
+        )),
+        ("external", Some("wire-connection-parking")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::WireConnectionParking,
+        )),
+        ("external", Some("step-evaluation-yield")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::StepEvaluationYield,
+        )),
+        ("external", Some("host-power-event-snapshot")) => Ok(SuspendReason::External(
+            ExternalSuspendKind::HostPowerEventSnapshot,
+        )),
+        ("resource-pressure", None) => Ok(SuspendReason::ResourcePressure),
+        _ => Err(missing(
+            "suspend reason is not external(kind) or resource-pressure",
+        )),
+    }
+}
+
 // see: cans/08-lifecycle.md#Detached-lifecycle
 #[pyfunction]
 pub(crate) fn relay_socket_path(session_id: String) -> PyResult<String> {
@@ -234,6 +264,14 @@ fn lock_session(
     session
         .lock()
         .map_err(|_| missing("kelir-engine session lock poisoned"))
+}
+
+// see: cans/08-lifecycle.md#Suspend-and-resume
+fn suspend_image(session: &Arc<std::sync::Mutex<Session>>) -> PyResult<String> {
+    Ok(format!(
+        "{}/suspend.img",
+        lock_session(session)?.session_dir().map_err(halt)?
+    ))
 }
 
 #[pymethods]
@@ -524,13 +562,16 @@ impl PySessionHandle {
         ))
     }
 
-    #[pyo3(signature = (path))]
-    fn suspend(&self, path: String) -> PyResult<()> {
-        block_on(self.vm.suspend(SDK_SUSPEND_REASON, &path)).map_err(halt)
+    #[pyo3(signature = (reason))]
+    fn suspend(&self, reason: &Bound<'_, PyDict>) -> PyResult<()> {
+        let reason = suspend_reason(reason)?;
+        let path = suspend_image(&self.session)?;
+        block_on(self.vm.suspend(reason, &path)).map_err(halt)
     }
 
-    #[pyo3(signature = (path))]
-    fn resume(&self, path: String) -> PyResult<()> {
+    #[pyo3(signature = ())]
+    fn resume(&self) -> PyResult<()> {
+        let path = suspend_image(&self.session)?;
         block_on(self.vm.resume(&path)).map_err(halt)
     }
 

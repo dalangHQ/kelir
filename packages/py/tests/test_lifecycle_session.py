@@ -26,6 +26,7 @@ from kelir import (
     PostExecAction,
     Sandbox,
     Session,
+    SnapshotDescriptor,
     TrapEvent,
     TrapFilter,
     Verdict,
@@ -163,7 +164,25 @@ def test_session_surface_shapes() -> None:
     assert session.boot_ms == 0
     assert isinstance(session.cap, Caps)
     assert session.cap.db_proxy.rewrite_target == ""
-    assert session.cap.policy.violations == 0
+    assert session.cap.repo_policy.violations == 0
+    assert session.cap.policy is session.cap.repo_policy
+
+
+def test_session_from_native_reuses_injected_caps() -> None:
+    caps = Caps()
+    handle = SimpleNamespace(
+        driver_name="qemu-microvm",
+        boot_ms=7,
+        vm=None,
+        terminal=None,
+        storage=None,
+        wire=None,
+        checkpoint=None,
+        host=None,
+    )
+    session = Session.from_native(handle, cap=caps)
+    assert session.cap is caps
+    assert Session.from_native(handle).cap is not caps
 
 
 def test_session_native_calls_raise_econfig() -> None:
@@ -659,6 +678,21 @@ def test_sandbox_terminate_routes_to_abrupt_session_verb() -> None:
     sandbox._session = cast(Any, _StubSession())
     asyncio.run(sandbox.terminate())
     assert calls == ["terminate"]
+
+
+def test_sandbox_rollback_routes_snapshot_to_session_rollback() -> None:
+    sandbox = Sandbox.from_profile({}, "profile.toml")
+    calls: list[Any] = []
+
+    class _StubSession:
+        async def rollback(self, snapshot: Any = None) -> None:
+            calls.append(snapshot)
+
+    sandbox._session = cast(Any, _StubSession())
+    asyncio.run(sandbox.rollback())
+    snapshot = SnapshotDescriptor(id="snap")
+    asyncio.run(sandbox.rollback(snapshot))
+    assert calls == [None, snapshot]
 
 
 def test_sandbox_boot_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -58,12 +58,13 @@ def test_plugin_rejects_non_name_and_instance_plugin() -> None:
 
 def test_caps_have_typed_service_skeletons() -> None:
     cap = Caps()
-    assert cap.policy.violations == 0
+    assert cap.repo_policy.violations == 0
+    assert cap.policy is cap.repo_policy
     assert cap.db_proxy.rewrite_target == ""
     assert cap.ledger is not None
     assert cap.transaction is not None
     assert cap.container is not None
-    assert HandlerContext().cap.policy.violations == 0
+    assert HandlerContext().cap.repo_policy.violations == 0
 
 
 def test_cap_skeleton_methods_raise_econfig_l3() -> None:
@@ -74,6 +75,8 @@ def test_cap_skeleton_methods_raise_econfig_l3() -> None:
         asyncio.run(cap.ledger.blake3_of_producing_process("/bin/git"))
     with pytest.raises(EConfig, match=r"L3"):
         asyncio.run(cap.ledger.count_denials(100))
+    with pytest.raises(EConfig, match=r"L3"):
+        asyncio.run(cap.ledger.get_causal_delta_from_parent())
     with pytest.raises(EConfig, match=r"L3"):
         asyncio.run(cap.container.ingest_image("./fixtures/oci-hello-world.tar"))
 
@@ -127,10 +130,12 @@ def test_vsock_service_takes_exactly_one_handler() -> None:
         builder.vsock_service(none)
 
 
-def test_materialize_cap_aliases_db_proxy_and_keeps_methods() -> None:
+def test_materialize_cap_aliases_hyphen_keys_and_keeps_methods() -> None:
     cap = Caps()
     materialize_cap(cap, "db-proxy", {"rewrite_target": "migrate_schema."})
     assert cap.db_proxy.rewrite_target == "migrate_schema."
+    materialize_cap(cap, "repo-policy", {"violations": 3})
+    assert cap.repo_policy.violations == 3
     materialize_cap(cap, "ledger", {"flush": "shadow", "store": "sqlite://x"})
     assert callable(cap.ledger.flush)
     assert cap.ledger.store == "sqlite://x"  # type: ignore[attr-defined]

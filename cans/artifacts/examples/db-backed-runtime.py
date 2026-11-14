@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 import kelir
-from kelir import HandlerContext, KelirBuilder, PostExecAction, Session, TrapFilter, Verdict
+from kelir import HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
 from kelir.plugins.plugin_db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,
@@ -48,11 +48,21 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
-    # see: cans/plugins/transaction.md#Plugin-transaction
-    async def _pre_commit(session: Session) -> None:
-        await session.cap.ledger.flush()
+    # see: cans/plugins/ledger.md#Merkle-WAL
+    ledger_plugin = LedgerPlugin(LedgerConfig(
+        store="sqlite://.kelir/migrate-audit.merkle.db",
+        merkle_chain=True,
+        otel=None,
+        receipts=ReceiptConfig(
+            include_syscall_count=False,
+        ),
+    ))
 
-    async def _post_commit(session: Session, committed: bool) -> None:
+    # see: cans/plugins/transaction.md#Plugin-transaction
+    async def _pre_commit(ctx) -> None:
+        await ctx.cap.ledger.flush()
+
+    async def _post_commit(_ctx, committed: bool) -> None:
         if committed:
             print("[kelir] commit: per-entry leaf commit, staged snapshot "
                   "is next cold-start fixture")
@@ -89,14 +99,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         )))
 
         # see: cans/plugins/ledger.md#Merkle-WAL
-        .use(LedgerPlugin(LedgerConfig(
-            store="sqlite://.kelir/migrate-audit.merkle.db",
-            merkle_chain=True,
-            otel=None,
-            receipts=ReceiptConfig(
-                include_syscall_count=False,
-            ),
-        )))
+        .use(ledger_plugin)
 
         # see: cans/plugins/transaction.md#Two-phase-commit-demonstration
         .use(TransactionPlugin(TransactionConfig(

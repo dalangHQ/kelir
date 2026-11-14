@@ -159,7 +159,7 @@
         - see: 08-lifecycle.md#Delta-chain-compaction
       - StepSlot managed natively by kelir-engine::checkpoint
       - Fork operations clone active StepSlot state into child sessions
-      - Post-hook failure triggers immediate session.rollback() to slot base
+      - Post-hook failure triggers immediate session.checkpoint.rollback_step(lineage) to slot base
     - Typical wiring
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process

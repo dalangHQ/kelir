@@ -32,6 +32,13 @@
       - Every item exposes one lifecycle point via LifecycleCtx
       - Typestate boundary: fork, suspend, rollback, skew_clock exist on Session only
       - Split by state-preservation, not by privilege: see: #Lifecycle-vetoes
+      - Cap reachability in lifecycle hooks (ledger.flush() contract)
+        - Rust: capture at registration
+          - Clone the ledger handle into the closure at builder time,
+            - as in artifacts/examples/db-backed-runtime.rs
+        - Py/TS: LifecycleCtx.cap.ledger / LifecycleContext.cap.ledger
+          - The fused runners deliver the ctx carrying the shared caps at boot (L2)
+          - Native verdict rendezvous stays L3
     - Driver-backed execution
       - All primitives execute via active VmmDriver backend without in-guest agents
       - Portable snapshots: see: #Portable-snapshot-bundles
@@ -78,7 +85,10 @@
       - Host registration re-hydrates from the parent engine
         - on_trap_deny, custom actions, stream-kind sinks, lock broker, token revoker
         - Shared by reference; callbacks are not Clone and never re-boxed
-      - session.vm.fork() returns full Session
+      - session.fork() -> Session returns the full forked Session
+        - VmHandle has no fork; fork rehydrates engine and plugin state at Session level
+        - Rust: Session::fork() rebinds plugins, registration, vetoes, catalog
+        - Py: session.fork(); TS: session.fork() (delegates to the VmHandle projection)
       - spawn() and every other session API directly callable on child
     - Child handoff scope
       - Inherited
@@ -181,24 +191,19 @@
       - Reason: SuspendReason::External or ResourcePressure
       - Canonical signature (SSOT-A1 pin)
         - Session.suspend(reason: SuspendReason) / Session.resume()
+        - All three SDKs conform (Rust, Python, TypeScript)
         - The image path derives from session state, never user-supplied
         - Path: <session_dir>/suspend.img
-      - The vm-handle / native-bridge layer keeps suspend(path)
-        - And resume(path); the bridge supplies a fixed reason
-        - Reason: External(HumanAuthorizationHold)
-        - See: crates/kelir-bindings/napi/src/lib.rs:70
-        - See: crates/kelir-bindings/pyo3/src/lib.rs:53
-      - Non-conforming sides
-        - TS Session.suspend(path) / resume(path) takes a caller path
-          - Where the pin takes a reason
-          - See: packages/ts/core/src/session.lifecycle.ts:271-276
-        - Py Session.suspend() derives the path but takes no reason
-          - And resume(path) takes a caller path
-          - See: packages/py/kelir/lifecycle_session.py:87-91
-        - RS Sandbox.resume(path) takes a caller path
-          - Where Session.resume() takes none
-          - See: crates/kelir/src/sandbox_runtime.flow.rs:365
-      - Sandbox.suspend() takes no argument and delegates to session suspend
+      - Low-level primitive: VmHandle::suspend(reason, path) / VmHandle::resume(path)
+        - Intentional: the vm-handle caller owns the image path
+        - See: crates/kelir-interface/src/handles_lifecycle.flow.rs
+      - The napi/pyo3 session handles take the reason record and derive <session_dir>/suspend.img
+        - Matches the SDK layer; the reason crosses the bridge
+        - See: crates/kelir-bindings/napi/src/handles.flow.rs
+        - See: crates/kelir-bindings/pyo3/src/handles.flow.rs
+      - The napi/pyo3 VmHandle projections keep suspend(path) / resume(path)
+        - The bridge supplies the fixed SDK reason External(HumanAuthorizationHold)
+      - Sandbox.suspend(reason) delegates to session suspend
         - See: 03-sdk-architecture.md#Sandbox-high-level-facade
       - Freezes vCPU registers
       - Page-dump engine: lz4_flex compression over io_uring direct I/O
@@ -278,7 +283,7 @@
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):
         - StepVerdict::Commit: flushes staging delta, advances active step slot
-        - StepVerdict::Rollback(reason): calls session.rollback(); RAM reverts in <8ms
+        - StepVerdict::Rollback(reason): calls session.checkpoint.rollback_step(lineage); RAM reverts in <8ms
       - Tainted step verification
         - StepEvaluator validates causal deltas against declared task scopes
         - Unapproved filesystem writes or egress under tainted state force rollback
@@ -344,7 +349,7 @@
     - Graceful host preemption window
       - In-process Tokio handler catches host SIGTERM; delays SIGKILL
       - Waits preemption_grace_ms; dispatches on_host_preempt() hook
-      - Android LMK hook: executes session.suspend() before OS termination
+      - Android LMK hook: executes session.suspend(ResourcePressure) before OS termination
       - Prevents session state corruption during mobile app backgrounding
     - Platform coverage
       - Linux: PR_SET_PDEATHSIG (kernel-enforced)

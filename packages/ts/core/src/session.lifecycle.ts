@@ -1,17 +1,13 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
 import type {
-  CausalDelta,
   NativeCausalDeltaRecord,
   NativeSnapshotDescriptorRecord,
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
 } from "./types.core.js";
-import {
-  fromNativeCausalDelta,
-  fromNativeSnapshotDescriptor,
-} from "./types.core.js";
+import { fromNativeSnapshotDescriptor } from "./types.core.js";
 import type {
   CheckpointHandle,
   HostHandle,
@@ -103,8 +99,8 @@ export interface NativeSessionHandle {
     argv: string[],
     options?: SpawnOptions,
   ): Promise<SpawnResult>;
-  suspend(path: string): Promise<void>;
-  resume(path: string): Promise<void>;
+  suspend(reason: SuspendReason): Promise<void>;
+  resume(): Promise<void>;
   rollback(): Promise<void>;
   stop(): Promise<void>;
   terminate(): Promise<void>;
@@ -157,6 +153,19 @@ function fallbackHost(): HostHandle {
     pressureLevel: (): Promise<number> =>
       Promise.reject(missingPlaneError("host")),
   };
+}
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+export function attachPluginContexts(
+  session: Session,
+  pluginContexts: readonly {
+    readonly name: string;
+    readonly ctx: unknown;
+  }[],
+): void {
+  for (const { name, ctx } of pluginContexts) {
+    (session as unknown as Record<string, unknown>)[name] = ctx;
+  }
 }
 
 export class Session {
@@ -256,12 +265,12 @@ export class Session {
   }
 
   async suspend(reason: SuspendReason): Promise<void> {
-    await this.native.suspend(`${this.sessionDir}/suspend.img`);
+    await this.native.suspend(reason);
     this.suspendedReasonValue = reason;
   }
 
   async resume(): Promise<void> {
-    await this.native.resume(`${this.sessionDir}/suspend.img`);
+    await this.native.resume();
     this.suspendedReasonValue = undefined;
   }
 
@@ -270,6 +279,13 @@ export class Session {
       return this.vm.rollback(snapshot);
     }
     return this.native.rollback();
+  }
+
+  // see: cans/08-lifecycle.md#CoW-fork
+  async fork(): Promise<Session> {
+    const child = await this.vm.fork();
+    attachPluginContexts(child, child.native.pluginContexts ?? []);
+    return child;
   }
 
   async stop(): Promise<void> {
@@ -290,12 +306,6 @@ export class Session {
     void relay;
     // TODO (L3) [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
     throw new EConfig("TODO: Session.attach (L3)");
-  }
-
-  async getCausalDeltaFromParent(): Promise<CausalDelta> {
-    return fromNativeCausalDelta(
-      await this.native.getCausalDeltaFromParent(),
-    );
   }
 
   async *handleIngress<Req, Resp>(options: {

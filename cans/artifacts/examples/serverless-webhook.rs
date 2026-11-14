@@ -121,7 +121,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = webhook_builder().seal()?.boot().await?;
 
     // TODO (L3): serve webhooks across wake cycles via an ingress loop; the Rust Session exposes no handle_ingress, so no WebhookRequest is served yet.
-    // TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
+    // TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; capture the ledger handle at builder time (as in db-backed-runtime.rs); LifecycleContext carries cap.ledger once the fused lifecycle payload lands (L3), see cans/08-lifecycle.md#Session-and-context-handles
     session
         .suspend(SuspendReason::External(
             ExternalSuspendKind::HumanAuthorizationHold,

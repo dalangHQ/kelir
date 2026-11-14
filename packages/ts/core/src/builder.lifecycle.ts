@@ -4,7 +4,12 @@
 
 import type { Schema, Infer } from "./schema.config.js";
 import { validateSchema } from "./schema.config.js";
-import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
+import type {
+  TrapContext,
+  LifecycleContext,
+  HandlerContext,
+  LedgerHandle,
+} from "./context.lifecycle.types.js";
 import { HookRegistry } from "./hook.registry.js";
 import type {
   KelirPlugin,
@@ -34,7 +39,7 @@ import type {
   HeartbeatEvent,
   ProcessExitEvent,
 } from "./types.core.js";
-import { Session } from "./session.lifecycle.js";
+import { Session, attachPluginContexts } from "./session.lifecycle.js";
 import { EConfig } from "./errors.sdk.js";
 import { TrapFilter } from "./trap.protocol.js";
 import {
@@ -900,7 +905,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
     }
-    nativeBuilder.fuseHooks(descriptor.rings, fused.runs());
+    const cap: { ledger?: LedgerHandle } = {};
+    nativeBuilder.fuseHooks(descriptor.rings, fused.runs(cap));
     if (nativeBuilder.trampolineEntryCount() !== descriptor.rings.length) {
       throw new EConfig(
         "kelir native NAPI trampoline table is not one entry per ring event",
@@ -916,8 +922,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         "kelir native bridge is missing the pluginContexts member: mounted plugin capability structs cannot be materialized at boot (B13)",
       );
     }
+    attachPluginContexts(session, pluginContexts ?? []);
     for (const { name, ctx } of pluginContexts ?? []) {
-      (session as unknown as Record<string, unknown>)[name] = ctx;
+      if (name === "ledger") {
+        cap.ledger = ctx as LedgerHandle;
+      }
     }
     return session as Session & Ctx;
   }

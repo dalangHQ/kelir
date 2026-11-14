@@ -9,6 +9,7 @@ import {
 import { EConfig } from "../dist/index.js";
 import type {
   CausalDelta,
+  LedgerHandle,
   NativeCausalDeltaRecord,
   NativeSnapshotDescriptorRecord,
   SnapshotDescriptor,
@@ -138,6 +139,21 @@ function fakeNativeSession(options?: {
     driverName: "qemu-microvm",
     bootMs: 1337,
     sessionDir: "/tmp/test-session",
+    pluginContexts: [
+      {
+        name: "ledger",
+        ctx: {
+          getCausalDeltaFromParent: async (): Promise<CausalDelta> => ({
+            memoryDiffBytes: 2048,
+            modifiedInodes: ["/tmp/a", "/tmp/b"],
+            spawnedPids: [7, 8],
+            egressBytes: 99,
+            storageDeltaRoot: "/var/lib/kelir/delta",
+            receiptLeafHash: "leaf-hash",
+          }),
+        },
+      },
+    ],
     spawn: async (
       binary: string,
       argv: string[],
@@ -154,11 +170,11 @@ function fakeNativeSession(options?: {
       record("execInGuest", binary, argv, spawnOptions);
       return { exitCode: 3, stderr: `guest ${binary}` };
     },
-    suspend: async (path: string): Promise<void> => {
-      record("suspend", path);
+    suspend: async (reason: SuspendReason): Promise<void> => {
+      record("suspend", reason);
     },
-    resume: async (path: string): Promise<void> => {
-      record("resume", path);
+    resume: async (): Promise<void> => {
+      record("resume");
     },
     rollback: async (): Promise<void> => {
       record("rollback");
@@ -597,8 +613,8 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   const reason = SuspendReason.external("human-authorization-hold");
   await session.suspend(reason);
   check(
-    callsOf(native, "suspend")[0].args[0] === "/tmp/test-session/suspend.img",
-    "suspend derives the snapshot path from sessionDir",
+    callsOf(native, "suspend")[0].args[0] === reason,
+    "suspend forwards the reason to the native session handle",
   );
   check(
     session.suspendedReason === reason,
@@ -606,8 +622,9 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   );
   await session.resume();
   check(
-    callsOf(native, "resume")[0].args[0] === "/tmp/test-session/suspend.img",
-    "resume derives the snapshot path from sessionDir",
+    callsOf(native, "resume").length === 1 &&
+      callsOf(native, "resume")[0].args.length === 0,
+    "resume reaches the native session handle without a path",
   );
   check(
     session.suspendedReason === undefined,
@@ -651,32 +668,39 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
     callsOf(native, "console").length === 1,
     "console delegates to native",
   );
-  const delta: CausalDelta = await session.getCausalDeltaFromParent();
+  const ledger = native.pluginContexts?.find((entry) => entry.name === "ledger")
+    ?.ctx as Pick<LedgerHandle, "getCausalDeltaFromParent"> | undefined;
+  if (ledger === undefined) {
+    throw new Error(
+      "session.lifecycle.test: pluginContexts carries the ledger cap",
+    );
+  }
+  const delta: CausalDelta = await ledger.getCausalDeltaFromParent();
   check(
     delta.memoryDiffBytes === 2048,
-    "getCausalDeltaFromParent maps memoryDiffBytes",
+    "ledger cap getCausalDeltaFromParent maps memoryDiffBytes",
   );
   check(
     delta.modifiedInodes.length === 2 &&
       delta.modifiedInodes[0] === "/tmp/a" &&
       delta.modifiedInodes[1] === "/tmp/b",
-    "getCausalDeltaFromParent maps modifiedInodes",
+    "ledger cap getCausalDeltaFromParent maps modifiedInodes",
   );
   check(
     delta.spawnedPids.length === 2 && delta.spawnedPids[1] === 8,
-    "getCausalDeltaFromParent maps spawnedPids",
+    "ledger cap getCausalDeltaFromParent maps spawnedPids",
   );
   check(
     delta.egressBytes === 99,
-    "getCausalDeltaFromParent maps egressBytes",
+    "ledger cap getCausalDeltaFromParent maps egressBytes",
   );
   check(
     delta.storageDeltaRoot === "/var/lib/kelir/delta",
-    "getCausalDeltaFromParent maps storageDeltaRoot",
+    "ledger cap getCausalDeltaFromParent maps storageDeltaRoot",
   );
   check(
     delta.receiptLeafHash === "leaf-hash",
-    "getCausalDeltaFromParent maps receiptLeafHash",
+    "ledger cap getCausalDeltaFromParent maps receiptLeafHash",
   );
   const yielded: unknown[] = [];
   for await (const value of session.handleIngress<number, number>({
