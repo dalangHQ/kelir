@@ -1,360 +1,623 @@
-# Misalignments Between `cans/artifacts/examples` and `cans/` Spec — with codebase changes
+# Misalignments: cans/artifacts/examples/ vs cans/ spec
 
-## 1. Suspend / Resume Signatures (Spec Contradicted by Artifacts)
-
-The spec's SSOT-A1 pin in `cans/08-lifecycle.md` says:
-
-> **Canonical:** `Session.suspend(reason: SuspendReason)` / `Session.resume()`
-> **Non-conforming sides:** TS `Session.suspend(path)` / `resume(path)`; Py `Session.suspend()` (no reason) / `resume(path)`
-
-**But every TS/Python example calls `suspend(reason)` and `resume()` (no path):**
-
-| File | Call | Spec says |
-|---|---|---|
-| `autonomous-swe-agent.py` | `session.suspend(External(...))` / `session.resume()` | Py suspend takes no reason; resume takes path |
-| `autonomous-swe-agent.ts` | `session.suspend(SuspendReason.external(...))` / `session.resume()` | TS suspend takes path; resume takes path |
-| `serverless-webhook.py` | `session.suspend(External(...))` | Py suspend takes no reason |
-| `serverless-webhook.ts` | `session.suspend(SuspendReason.external(...))` | TS suspend takes path |
-| `policy-matrix.py` | `session.suspend(ResourcePressure())` / `session.resume()` | Py suspend takes no reason |
-| `policy-matrix.ts` | `session.suspend(SuspendReason.resourcePressure)` / `session.resume()` | TS suspend takes path |
-
-The artifacts are actually conforming to the **canonical** reason-based form, which directly contradicts the spec's claim that TS/Py are non-conforming. Either the spec's "non-conforming sides" section is stale, or the artifacts were updated without the spec.
-
-### Changes Needed in Codebase
-
-- **`cans/08-lifecycle.md`**: delete the "Non-conforming sides" block. The artifacts and the shipped SDKs are already canonical:
-  - `crates/kelir/src/session_lifecycle.flow.rs` (`Session::suspend(reason)` / `Session::resume()`)
-  - `crates/kelir/src/sandbox_runtime.flow.rs` (`Sandbox::suspend(reason)` / `Sandbox::resume()`)
-  - `packages/py/kelir/lifecycle_session.py` (`Session.suspend(reason)` derives `session_dir()/suspend.img` internally)
-  - `packages/ts/core/src/session.lifecycle.ts` (`Session.suspend(reason)` does the same)
-- The only surface that still takes a path is the lower-level `VmHandle` (`NativeVmHandle::suspend(&self, path)`, `PyVmHandle::suspend(&self, path)` in `crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`). That is intentional because `VmControl::suspend(reason, path)` in `crates/kelir-interface/src/handles_lifecycle.flow.rs` takes both. Do **not** change `VmHandle` — fix the spec's language to describe `VmHandle::suspend(reason, path)` as the low-level primitive and `Session::suspend(reason)` as the SDK surface.
-- Optional: give `NativeSessionHandle::suspend`/`PySessionHandle::suspend` the reason-based form (deriving the path like the SDKs do) so the binding layer matches the SDK layer. Current stubs are `suspend(path)` calling `self.vm.suspend(SDK_SUSPEND_REASON, &path)` with a hard-coded reason — replace that with a real `reason` argument and path derivation.
+I cross-checked every example against the normative spec. Below are the concrete mismatches, ordered by severity.
 
 ---
 
-## 2. Capability Key Naming: `repo-policy` vs `policy`
+1. session.terminate() vs session.stop() — TS examples are non-conforming
 
-Spec (`cans/03-sdk-architecture.md`, SSOT-A1):
-> Capability keys are plugin names. Keys: `ledger`, `db-proxy`, `policy`, `transaction`, `container`.
+The spec only defines session.stop(), session.stop_with_timeout(d), session.kill(), session.drain(ms) (08-lifecycle.md#Pre-teardown-flush, 08-lifecycle.md#Hypervisor-primitives). Rust and Python examples correctly use stop() / async with:
 
-The plugin in `autonomous-swe-agent.py` is named `repo-policy`:
+· container.rs, hook-matrix.rs, hook-matrix-full.rs, policy-matrix.rs, git-gate.rs, replay.rs → session.stop()
+· hook-matrix.ts, hook-matrix-full.ts, container.ts, db-backed-runtime.ts, policy-matrix.ts, serverless-webhook.ts → session.terminate() (undefined on Session)
+
+git-gate.ts and replay.ts use stop() correctly — so TS is internally inconsistent as well as out of step with the spec.
+
+**Codebase changes needed:**
+- `crates/kelir-engine/src/session_lifecycle.flow.rs`: add `pub fn terminate(&mut self)` delegating to `kill()` so the native engine exposes the same verb Python/TS already call.
+- `crates/kelir/src/session_lifecycle.flow.rs`: re-export `terminate` on the SDK `Session`.
+- `packages/py/kelir/lifecycle_session.py`: already calls `native.terminate()`; keep. Align `stop()` (graceful) vs `terminate()` (abrupt = kill) in one place.
+- `packages/ts/core/src/session.lifecycle.ts`: `Session.terminate()` already calls `native.terminate()`; keep.
+- `cans/08-lifecycle.md#Pre-teardown-flush`: document `terminate()` explicitly as the abrupt variant (alias for `kill()`, no flush), alongside `stop()`, `stop_with_timeout()`, `drain()`, `kill()`.
+
+---
+
+2. Undocumented APIs used in the autonomous-swe-agent family
+
+These appear in RS/TS/Py but appear nowhere in the spec's HandlerCtx / Session surface:
+
+API File(s) Note
+c.step.last() autonomous-swe-agent.{rs,ts,py} HandlerCtx is pinned to c.trap, c.vm, c.receipt(), c.params::<T>() in 02-plugin-model.md#Core-context-keys; no c.step
+c.terminal.notice(...) autonomous-swe-agent.{rs,ts,py} Spec route is "publish TerminalNotice to EventBus" (04-terminal-plane.md#Disclosure); no .notice() API
+c.cap.ledger.blake3_of_producing_process(path) autonomous-swe-agent.py no such method in plugins/ledger.md
+session.cap.ledger.count_denials(pid) autonomous-swe-agent.py no such method in plugins/ledger.md
+session.handleIngress(...) serverless-webhook.ts RS/Py examples explicitly comment "exposes no handle_ingress"; TS calls it
+MeshCtx::await_winner(...) multi-vm-swarm.rs TS/Py examples explicitly comment "MeshHandle exposes peers only, with no awaitWinner"; RS calls it
+
+**Codebase changes needed (document, don't remove):**
+- `cans/02-plugin-model.md#Core-context-keys`: add `c.step` (StepHandle, `last() -> SnapshotDescriptor`) to the pinned HandlerCtx key list.
+- `cans/04-terminal-plane.md#Terminal-pipeline` (or #Disclosure): document `c.terminal.notice(msg)` as the canonical TerminalNotice publisher alongside the EventBus route; `crates/kelir-interface/src/handles_lifecycle.flow.rs` `TerminalHandle::notice` already exists — spec must reference it.
+- `cans/plugins/ledger.md#Ledger-handler-API`: add `blake3_of_producing_process(path) -> str` and `count_denials(ppid) -> int` — both already implemented in `crates/kelir-plugins/plugin-ledger/src/lib.rs` `LedgerCtx`. Spec has the anchor but omits these methods.
+- `cans/plugins/wire-ingress.md` + `cans/03-sdk-architecture.md#Session-surfaces`: document `session.handleIngress({cwd?, handler}) -> AsyncGenerator`; wire `PySessionHandle`/`NativeSessionHandle::handle_ingress` from the current `Err(Halt)` stub once `handleIngress` is spec'd.
+- `cans/plugins/mesh.md#CoW-swarm-mesh-federation`: document `MeshCtx::await_winner(timeout) -> u32`; the method exists in `crates/kelir-plugins/plugin-mesh/src/mesh_state.flow.rs` (currently `Err(Halt)` TODO), TS/Py need to add it once spec'd.
+
+---
+
+3. RepoPolicyPlugin prerequisite parity break
+
+The spec insists plugin prerequisites are 1:1 across languages (03-sdk-architecture.md#Cross-SDK-guarantees).
+
+· autonomous-swe-agent.py: class RepoPolicyPlugin: requires = ("ledger",)
+· autonomous-swe-agent.ts: createPlugin("repo-policy", ...).requires("ledger")
+· autonomous-swe-agent.rs: impl PluginDeps for RepoPolicyPlugin { type Deps = NoDeps; }
+
+Rust declares no dependency where Py/TS declare ledger. This is exactly the kind of divergence #Prerequisite-gating-across-languages forbids.
+
+**Codebase changes needed:**
+- `crates/kelir-plugins/` has no repo-policy crate — add `plugin-repo-policy` (or wire `RepoPolicyPlugin` in the example crate) with `type Deps = HCons<plugin_ledger::LedgerCtx, HNil>;` so the Rust side matches Py/TS.
+- `crates/kelir/src/lib.rs`: re-export the new plugin under the `all-plugins` feature.
+- `autonomous-swe-agent.rs` example: change `type Deps = NoDeps;` → `type Deps = HCons<LedgerCtx, HNil>;` and `.require::<LedgerPlugin>()` (or `.plugin(ledger_builder(...))`) at build time.
+- `crates/kelir-interface/src/plugin_model.flow.rs`: `Satisfies<Deps>` already supports this; no engine change.
+
+---
+
+4. Spec text contradicts current db-backed-runtime.py
+
+plugins/db-proxy.md (SSOT-A1 pin) states:
+
+The Py example reading c.cap.db is non-conforming
+See: cans/artifacts/examples/db-backed-runtime.py:84
+
+Line 84 of the current file reads c.cap.db_proxy.rewrite_target (conforming to 03-sdk-architecture.md#Service-lookup-across-languages, which says the capability key is db-proxy, Py-spelled db_proxy). The spec is stale — it describes a non-conforming usage that no longer exists in the artifact.
+
+**Codebase changes needed:**
+- `cans/plugins/db-proxy.md`: update the stale note to reference the conforming spelling `c.cap.db_proxy.rewrite_target` (Py) / `c.cap.dbProxy.rewriteTarget` (TS) / `c.cap.db_proxy.rewrite_target` (RS), and remove the claim that the example reads `c.cap.db`.
+- `cans/03-sdk-architecture.md#Service-lookup-across-languages`: reaffirm that `db-proxy` maps to `db_proxy` (Py) / `dbProxy` (TS) / `db_proxy` (RS) in the `cap` bag; the existing table covers this — the db-proxy.md note is the only contradiction.
+
+---
+
+5. Non-POSIX errno in db-backed-runtime.py
+
 ```python
-class RepoPolicyPlugin(BasePlugin):
-    name = "repo-policy"
-```
-And the fixture has `[plugins."repo-policy"]`.
-
-Yet Python accesses it as:
-```python
-c.cap.policy.violations          # autonomous-swe-agent.py
-```
-While TypeScript accesses it correctly by plugin name:
-```typescript
-c["repo-policy"].policy.violations   // autonomous-swe-agent.ts
+return Verdict.drop("EdbProxySchema", ...)
 ```
 
-This violates the SSOT-A1 rule ("the capability key is the plugin name") and is inconsistent across languages. The spec's key list including `policy` appears to be either describing a different plugin or codifying the Python bug.
+Verdict::Drop carries Option<Errno> per 02-plugin-model.md#Unified-verdict; Errno is the fixed POSIX-ish enum (Errno::Eperm, Errno::Enospc, Errno::Epolicy, …). EdbProxySchema is not a defined variant — no other language uses a free-form string errno.
 
-### Changes Needed in Codebase
-
-- **`packages/py/kelir/service_caps.py`**:
-  - Rename `class PolicyCap` → `class RepoPolicyCap` (keep `PolicyCap = RepoPolicyCap` as a deprecation alias, or drop).
-  - Change `Caps.__init__` from `self.policy = PolicyCap()` to `self.repo_policy = RepoPolicyCap()`.
-  - Add `"repo-policy": "repo_policy"` to `_CAP_KEY_ALIASES` so `materialize_cap(cap, "repo-policy", record)` lands on `cap.repo_policy`.
-  - If keeping `policy` as a convenience alias, make it a property returning `repo_policy` and document the alias in the class docstring.
-- **`packages/py/kelir/__init__.py`**: update the `from kelir.service_caps import (...)` re-export (`PolicyCap` → `RepoPolicyCap`).
-- **`cans/03-sdk-architecture.md`** SSOT-A1 key list: replace `policy` with `repo-policy` (or rename the plugin to `policy` — but the class name `RepoPolicyPlugin` and the fixture `[plugins."repo-policy"]` argue against that).
-- **`cans/artifacts/examples/autonomous-swe-agent.py`**: change `c.cap.policy.violations` to `c.cap.repo_policy.violations`. (The TS example is already correct.)
-- The TypeScript side (`packages/ts/core/src/plugins.registry.ts`) already generates `c["repo-policy"]` from the plugin name and requires no change.
+**Codebase changes needed:**
+- `cans/artifacts/examples/db-backed-runtime.py`: replace `Verdict.drop("EdbProxySchema", ...)` with `Verdict.drop("Epolicy", ...)` (or `Econfig` if it is a config-shaped failure). The frame-schema mismatch on the wire is an `Epolicy`/`Eproto` case per `crates/kelir-interface/src/errno_types.flow.rs`.
+- `crates/kelir-interface/src/errno_types.flow.rs`: do **not** add `EdbProxySchema` — the enum is deliberately POSIX-shaped. If a non-POSIX code is truly needed, the SSOT is `error_envelope.flow.rs` (`EConfig`, `EWXVIOLATION`, `EFFIQUEUESATURATED`, `EAMBIGUOUSMUTATION`, `EHALT`) — use one of those codes in the envelope, not in `Verdict::Drop`'s `errno`.
 
 ---
 
-## 3. Checkpoint / Lineage API: `create` vs `create_step` vs `vm.checkpoint`
+6. Ledger finalize asymmetry (same call, three shapes)
 
-Spec (`cans/03-sdk-architecture.md`):
-> Checkpoint: `session.checkpoint.create(label)`, `session.rollback()`
+plugins/ledger.md pins: finalize(FinalizeRequest { include_delta: CausalDelta, include_merkle_root }) and describes ledger.get_causal_delta_from_parent() as the canonical accessor.
 
-Spec (`cans/09-snapshots.md`):
-> Not visible in `session.lineage()`
+· db-backed-runtime.py: include_delta=await ledger.get_causal_delta_from_parent() ✅
+· db-backed-runtime.ts: includeDelta: await ledgerHandle.getCausalDeltaFromParent() ✅
+· db-backed-runtime.rs: include_delta: CausalDelta::new(0, vec![], vec![], 0, [0; 32], [0; 32]) with a // TODO (L3) that says the session facade has no get_causal_delta_from_parent "yet"
 
-**What the artifacts actually use:**
+The three examples demonstrate three different answers to the same spec pin. If Py/TS can call it, RS should either call it or all three should carry the same TODO.
 
-| File | Call | Conforms? |
-|---|---|---|
-| `git-gate.py` / `.ts` | `session.checkpoint.create("git-gate-base")` | ✅ `create(label)` |
-| `multi-vm-swarm.py` / `.ts` | `child.checkpoint.create(...)` | ✅ `create(label)` |
-| `replay.py` / `.ts` | `session.checkpoint.create(...)` | ✅ `create(label)` |
-| `autonomous-swe-agent.py` / `.ts` | `session.vm.checkpoint("clean_base")` | ❌ not `session.checkpoint.create` |
-| `policy-matrix.py` / `.ts` / `.rs` | `c.vm.checkpoint("policy-yield")` | ❌ not `session.checkpoint.create` |
-| `hook-matrix-full.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
-| `policy-matrix.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
-| `git-gate.rs` | `session.checkpoint.create_step(...)` | ❌ low-level `create_step` |
-| `replay.rs` | `session.checkpoint.create_step(...)` | ❌ low-level `create_step` |
-| `multi-vm-swarm.rs` | `child.checkpoint.create_step(child.lineage(1), …)` | ❌ low-level `create_step` |
-| `autonomous-swe-agent.rs` | `session.checkpoint.create_step(session.lineage(1), …)` | ❌ low-level `create_step` |
-
-**Every Rust example** uses `create_step`/`commit_step`/`lineage(1)`, while **every Python/TypeScript example** (except the `vm.checkpoint` ones) uses `create`. The spec's stated SDK surface is `create(label)` and `lineage()`. So:
-
-- Rust examples are systematically non-conforming to the SDK surface.
-- `autonomous-swe-agent` and `policy-matrix` (Py/TS) use `session.vm.checkpoint`, which is not the spec's stated surface.
-- `session.lineage(1)` appears in every Rust example; the spec says `session.lineage()` (no args).
-
-This is a cross-language API split: Rust exposes `create_step`/`lineage(1)`, Py/TS expose `create`/`vm.checkpoint`. The spec describes only one of these.
-
-### Changes Needed in Codebase
-
-- **`cans/03-sdk-architecture.md` "Session-surfaces" table**: split the single checkpoint row into two, matching the code:
-  - **Rust**: `session.lineage(root_pid) -> PidLineage`; `session.checkpoint.create_step(lineage, SnapshotDescriptor) -> u64`; `session.checkpoint.commit_step(lineage) -> u64`; `session.checkpoint.rollback_step(lineage) -> SnapshotDescriptor`; `session.checkpoint.branch_from(node_id, lineage)`; `session.checkpoint.restore(node_id, guest_monotonic_ns) -> SnapshotDescriptor`; `session.checkpoint.head(lineage) -> Option<u64>`; `session.checkpoint.lineage(node_id) -> Vec<u64>`; `session.checkpoint.compact(lineage)`; `session.checkpoint.monotonic_watermark_ns()`.
-  - **Py/TS**: `session.checkpoint.create(label) -> SnapshotDescriptor` (one-shot, wraps `VmHandle::checkpoint`); `session.vm.checkpoint(label) -> SnapshotDescriptor` (low-level, same call).
-- **`cans/09-snapshots.md`**: change `session.lineage()` to `session.lineage(root_pid)` for Rust; document the Py/TS `Session.rollback(snapshot)`/`VmHandle.rollback(snapshot)` surfaces as the only lineage-visible surface for those SDKs.
-- **`crates/kelir/src/session_lifecycle.flow.rs`**: add an explicit `pub fn lineage(&self, pid: u32) -> PidLineage` on `Session<Plugins, Params>` delegating to `self.core.lineage(pid)`. Right now every Rust example relies on `Deref` to `kelir_engine::Session::lineage(pid)` — the spec does not document that this is `Session`-visible, and `Session::rollback(lineage)` depends on it. Add it, or the Deref contract needs to be spelled out.
-- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: add `NativeCheckpointHandle::lineage(pid)` and `create_step`/`commit_step`/`rollback_step`/`head`/`compact` to `NativeCheckpointHandle` and `PyCheckpointHandle` — OR leave them Rust-only and document that the Py/TS SDKs use the one-shot `create`/`vm.checkpoint` surfaces only. Do not leave the examples using `vm.checkpoint` while claiming to use the spec's `session.checkpoint.create` surface.
-- **`cans/artifacts/examples/autonomous-swe-agent.py` / `.ts`** and **`policy-matrix.py` / `.ts`**: use `session.checkpoint.create("clean_base")` (or `c.checkpoint.create("policy-yield")`) rather than `session.vm.checkpoint(...)`. Both work through the bindings, but the examples should not teach the undocumented surface.
-- `crates/kelir-engine/src/session_lifecycle.flow.rs` already exposes `lineage(pid)` (engine `Session`) and `CheckpointPlane::create_step`/`commit_step`/`lineage(node_id)`/`compact` — those are the intended Rust low-level surfaces; the spec just does not name them.
+**Codebase changes needed:**
+- `crates/kelir-plugins/plugin-ledger/src/lib.rs` `LedgerCtx::get_causal_delta_from_parent`: currently returns `Err(Halt)`. Implement it — assemble the delta from the fork `StorageDelta` plus the parent `ExecutionReceipt` via `compute_ledger::compute_causal_delta`. Then `db-backed-runtime.rs` can call `ledger_handle.get_causal_delta_from_parent().await?`.
+- `crates/kelir/src/session_lifecycle.flow.rs` `Session`: add `pub async fn get_causal_delta_from_parent(&self)` delegating to the ledger context (parity with Py `Session.get_causal_delta_from_parent` and TS `NativeSessionHandle.getCausalDeltaFromParent`).
+- `crates/kelir-plugin-cli` / examples: drop the zeroed `CausalDelta::new(...)` stand-in; replace with the real accessor.
 
 ---
 
-## 4. Fork API: `session.fork()` vs `session.vm.fork()`
+7. Broken spec anchor in autonomous-swe-agent.rs
 
-Spec (`cans/08-lifecycle.md`):
-> `session.vm.fork()` returns full Session
-
-| File | Call | Conforms? |
-|---|---|---|
-| `autonomous-swe-agent.py` | `await parent.vm.fork()` | ✅ |
-| `autonomous-swe-agent.ts` | `await session.vm.fork()` | ✅ |
-| `autonomous-swe-agent.rs` | `session.fork().await?` | ❌ `session.fork()` |
-| `multi-vm-swarm.py` | `await session.fork()` | ❌ `session.fork()` |
-| `multi-vm-swarm.ts` | `await session.vm.fork()` | ✅ |
-| `multi-vm-swarm.rs` | `session.fork().await?` | ❌ `session.fork()` |
-
-`multi-vm-swarm.py` and both Rust examples use `session.fork()`, while the spec and TS examples use `session.vm.fork()`.
-
-### Changes Needed in Codebase
-
-- **`cans/08-lifecycle.md`**: change `session.vm.fork()` to `session.fork() -> Session`. The code only has `Session::fork()`:
-  - `crates/kelir/src/session_lifecycle.flow.rs`: `Session::fork() -> Session<Plugins, Params>` (rebinds plugins, registration, vetoes, catalog).
-  - `crates/kelir-bindings/napi/src/handles.flow.rs`: `NativeSessionHandle::fork() -> NativeSessionHandle` on the session handle.
-  - `crates/kelir-bindings/pyo3/src/handles.flow.rs`: `PySessionHandle::fork() -> PySessionHandle`.
-  - `crates/kelir-interface/src/handles_lifecycle.flow.rs`: `VmHandle` has **no** `fork()` method — only `checkpoint`/`rollback`/`suspend`/`resume`/`export_snapshot`/`import_snapshot`/`adjust_balloon`/`set_vcpus`/`map_shared_region`/`clock`.
-- If the spec genuinely wants `session.vm.fork()`, add a `fork()` to `VmHandle`/`NativeVmHandle`/`PyVmHandle` that returns a full `Session`. That would require plumbing plugin state into the VM handle (currently the fork logic lives on `Session` in `crates/kelir/src/session_lifecycle.flow.rs`, not on `VmHandle`), so the correct fix is the other way: the spec changes to `session.fork()`.
-- Update the TS example (`autonomous-swe-agent.ts`, `multi-vm-swarm.ts`) and the Python `autonomous-swe-agent.py` to `session.fork()` — no code change, just the examples (they're not in the live tree, but the spec should match the code that ships).
-
----
-
-## 5. Rollback API: No-Arg vs `vm.rollback(snapshot)` vs `rollback(lineage)`
-
-Spec (`cans/03-sdk-architecture.md`, `cans/08-lifecycle.md`):
-> `session.rollback()` — no socket-preserving flag
-
-| File | Call | Conforms? |
-|---|---|---|
-| `autonomous-swe-agent.py` | `await session.vm.rollback(base)` | ❌ |
-| `autonomous-swe-agent.ts` | `await session.vm.rollback(baseSnap)` | ❌ |
-| `autonomous-swe-agent.rs` | `session.rollback(lineage).await?` | ❌ |
-| `policy-matrix.py` | `await c.vm.rollback(pre)` | ❌ |
-| `policy-matrix.ts` | `await c.vm.rollback(pre)` | ❌ |
-| `policy-matrix.rs` | `session.rollback(lineage).await?` | ❌ |
-| `replay.py` / `.ts` | `await session.rollback(snapshot)` | ❌ |
-| `replay.rs` | `session.rollback(lineage).await?` | ❌ |
-
-Three different surfaces (`session.rollback()`, `session.vm.rollback(snap)`, `session.rollback(lineage)`), none of which match the spec's no-arg `session.rollback()`. The spec is contradicted by all three artifacts.
-
-### Changes Needed in Codebase
-
-- **`cans/03-sdk-architecture.md` / `cans/08-lifecycle.md`**: replace the single `session.rollback()` row with the actual surface set:
-  - **Rust**: `session.rollback(lineage: PidLineage)` — rolls back to the head of `lineage` (implemented in `crates/kelir/src/session_lifecycle.flow.rs`, delegates through `self.checkpoint.head(lineage)` + `self.checkpoint.restore(...)` + `self.rollback_to(...)`).
-  - **Rust convenience**: `session.rollback_here(pid: u32)` — resolves `pid` to a lineage and calls `session.rollback(lineage)` (same file).
-  - **Py/TS**: `session.vm.rollback(snapshot: SnapshotDescriptor)` — `VmHandle::rollback(&SnapshotDescriptor)` in `crates/kelir-interface/src/handles_lifecycle.flow.rs`; bindings in `crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs` take the snapshot.
-  - **Py/TS convenience**: `session.rollback(snapshot: SnapshotDescriptor)` — currently in `packages/py/kelir/lifecycle_session.py` (`Session.rollback` delegates to `self.vm.rollback(snapshot)` when a snapshot is passed; the no-arg branch raises the missing-native error). Same in `packages/ts/core/src/session.lifecycle.ts`.
-- If the spec's no-arg `session.rollback()` is intended, implement it. The cleanest implementation:
-  - Rust: `Session::rollback_here(pid)` already exists — surface it as `session.rollback()` with `pid` inferred from the current `HandlerCtx` (or add `session.rollback()` as "roll back to head of session root lineage").
-  - Py/TS: `Session.rollback()` (no arg) should resolve to the session's root lineage head. The Py/TS bindings currently error on `rollback()` no-arg — either implement head-of-lineage rollback in `NativeSessionHandle::rollback`/`PySessionHandle::rollback`, or remove the no-arg stub and update the spec.
-
----
-
-## 6. Rollback API Shape: Three Different Signatures, Spec Says None Takes Arguments
-
-**Spec** (`cans/03-sdk-architecture.md`, "Session control surface"):
-> `session.rollback()` — no socket-preserving flag
-
-**Artifacts:**
-
-| File | Call | Shape |
-|---|---|---|
-| `autonomous-swe-agent.py` | `await session.vm.rollback(base)` / `await c.vm.rollback(pre)` | takes `SnapshotDescriptor` |
-| `autonomous-swe-agent.ts` | `await session.vm.rollback(baseSnap)` / `await c.vm.rollback(pre)` | takes `SnapshotDescriptor` |
-| `autonomous-swe-agent.rs` | `session.rollback(lineage).await?` | takes lineage |
-
-Three different surfaces (`session.rollback()`, `session.vm.rollback(snap)`, `session.rollback(lineage)`), none of which match the spec's no-arg `session.rollback()`. The spec is contradicted by all three artifacts.
-
-### Changes Needed in Codebase
-
-(Consolidated with item 5.)
-
-- **`crates/kelir/src/session_lifecycle.flow.rs`**: `Session::rollback(lineage)` exists; `Session::rollback_here(pid)` exists. Neither takes no args. If the spec's no-arg `session.rollback()` is to survive, add `Session::rollback()` that resolves the head of the session's *root* lineage (`root_pid = 1` or a `session.root_lineage()` helper) and calls `rollback_here`. Otherwise remove the no-arg from the spec.
-- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::rollback` and `PySessionHandle::rollback` are `fn rollback(&self)` no-arg stubs that always return an error with the message `"rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking (L3)"`. Either:
-  - Implement them to mean "roll back to the head of the session's root lineage", or
-  - Remove the no-arg binding methods and require callers to go through `session.vm.rollback(snapshot)`.
-- **`crates/kelir/src/sandbox_runtime.flow.rs`**: `Sandbox::rollback(&mut self, lineage: PidLineage)` takes a lineage and delegates to `session.rollback(lineage)`. Fine — keep.
-- **`packages/py/kelir/lifecycle_sandbox.py`**: `Sandbox.rollback()` no-arg calls `self._session.rollback()` (no snapshot) and currently errors. Either add a `snapshot: SnapshotDescriptor | None = None` parameter (matching `Session.rollback(snapshot=None)`) or implement no-arg head-of-lineage rollback in the binding.
-- **`packages/ts/core/src/sandbox.runtime.ts`**: `Sandbox.rollback()` no-arg calls `this.booted.rollback()` — same mismatch. Add a snapshot parameter or implement the no-arg form.
-- **`cans/03-sdk-architecture.md`**: document the actual signatures per language, not the single no-arg form.
-
----
-
-## 7. `session.spawn(...)` Used Everywhere, but the Only Documented Exec Surface Is `session.exec(cmd, limits?)`
-
-**Spec** (`cans/03-sdk-architecture.md`, "Multiplexed binary RPC for SDK consumers"):
-> `session.exec(cmd, limits?)`
-
-The Session-surfaces table lists no `spawn`. But **every** example spawns via `session.spawn(...)`:
-
-| File | Call |
-|---|---|
-| `container.py` / `.ts` / `.rs` | `await session.spawn("podman", [...])` |
-| `hook-matrix.py` / `.ts` / `.rs` | `await session.spawn("cat", [IDENTITY_PATH], cwd="/workspace")` |
-| `autonomous-swe-agent.py` / `.ts` | `await session.spawn(...)` |
-| `db-backed-runtime.py` | `await session.spawn(...)` |
-| `policy-matrix.py` / `.ts` | `await session.spawn(binary, [...])` |
-| `multi-vm-swarm.py` / `.ts` | `child.spawn(...)` |
-
-`session.exec(...)` is never called on a Session in any example. `Sandbox::exec(...)` is used (in `profile.rs` / `profile.py` / `profile.ts`), but `Sandbox` is a different facade. The `Session` exec surface is `spawn(...)` in all practice and `exec(...)` in the spec. This is a systematic contradiction across all 13 plugin examples.
-
-### Changes Needed in Codebase
-
-- **`cans/03-sdk-architecture.md`**: list `session.spawn(binary, argv)` as the primary exec surface on the Session-surfaces table. Keep `session.exec(binary, argv, limits)` as a `SpawnBuilder`-returning variant, and document that it implements `Future<Output = Result<SpawnResult, PluginError>>` (it does — see `impl Future for SpawnBuilder` at the bottom of `crates/kelir/src/session_lifecycle.flow.rs`). The spec's `session.exec(cmd, limits?)` currently reads as returning a `SpawnResult`; it doesn't.
-- **`crates/kelir/src/session_lifecycle.flow.rs`**: the doc comment on `Session::spawn` already says "Idiomatic-Surfaces-Law"; add a doc comment on `Session::exec` clarifying it returns `SpawnBuilder` and is `.await`-ed. Consider renaming `exec` to `spawn_builder` or `exec_builder` so the surface names align with the examples, or keep `exec` and document the difference.
-- **`crates/kelir/src/sandbox_runtime.flow.rs`**: `Sandbox::exec(&mut self, binary, argv)` delegates to `session.spawn(binary, argv)`. Keep as-is; the spec's `Sandbox.exec(cmd, limits?)` should be updated to `Sandbox.exec(binary, argv)`.
-- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::spawn` and `PySessionHandle::spawn` are stubs that error with `"spawn: EXEC stream dispatch lands with the shim wire protocol (L3)"`. The spec should not advertise `session.exec` as the shipped surface while the actual `spawn` is a stub — either:
-  - Implement `spawn` (preferred), or
-  - Document the surface as `session.exec` in all examples.
-- Update `cans/artifacts/examples/*` that call `session.spawn(...)` — no code change needed on the Rust side (`Session::spawn` exists and works), but the spec's "no `spawn`" claim needs to be corrected to match every example.
-
----
-
-## 8. `get_causal_delta_from_parent()` — Called on Session in Some Examples, on Ledger in Others, and Documented Nowhere
-
-**Spec** (`cans/plugins/ledger.md`, SSOT-A1 pin):
-> `finalize(FinalizeRequest { include_delta, include_merkle_root })` — the sole documented `finalize`.
-
-The spec never says where `get_causal_delta_from_parent()` lives. Artifacts disagree:
-
-| File | Call site | Conforms? |
-|---|---|---|
-| `autonomous-swe-agent.py` | `await child.get_causal_delta_from_parent()` | on **Session** |
-| `autonomous-swe-agent.ts` | `await child.getCausalDeltaFromParent()` | on **Session** |
-| `db-backed-runtime.py` | `await ledger.get_causal_delta_from_parent()` | on **Ledger** |
-| `db-backed-runtime.ts` | `await session.getCausalDeltaFromParent()` | on **Session** |
-| `db-backed-runtime.rs` | `// TODO (L3): ... session facade exposes no get_causal_delta_from_parent yet` | **does not exist** in Rust |
-
-`db-backed-runtime.py` calls it on `ledger`; every TS example calls it on `session`; and the Rust artifact's TODO explicitly states **the session facade does not expose it**. The spec needs to name one home; the artifacts currently name three (session, ledger, absent).
-
-### Changes Needed in Codebase
-
-- **`cans/plugins/ledger.md`**: add a "Causal delta access" section naming `ledger.get_causal_delta_from_parent() -> CausalDelta` as canonical (aligns with the Rust TODO comment `"causal deltas are produced by plugin-ledger over the delta chain"`).
-- **`packages/ts/core/src/context.lifecycle.types.ts`**: add `getCausalDeltaFromParent(): Promise<CausalDelta>` to `LedgerHandle`. Currently `LedgerHandle` has `flush`, `countDenials`, `finalize`, `blake3OfProducingProcess` — no causal-delta accessor. `Session.getCausalDeltaFromParent()` in `session.lifecycle.ts` delegates to `native.getCausalDeltaFromParent()`, which is a stub — the canonical path should be `session.cap.ledger.getCausalDeltaFromParent()`.
-- **`packages/py/kelir/service_caps.py`**: `LedgerCap.get_causal_delta_from_parent()` already exists (as a stub with `"kelir native PyO3 bridge (_kelir) is missing: ledger get_causal_delta_from_parent (L3)"`). Keep as the canonical home. `Session.get_causal_delta_from_parent()` in `lifecycle_session.py` should either delegate to `session.cap.ledger.get_causal_delta_from_parent()` or be removed.
-- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeSessionHandle::get_causal_delta_from_parent` / `PySessionHandle::get_causal_delta_from_parent` currently error with `"get_causal_delta_from_parent: causal deltas come from plugin-ledger (L3)"` — that is correct behavior, but it contradicts the spec (which does not mention it) and the examples (which call it on Session). Update the examples to call `session.cap.ledger.get_causal_delta_from_parent()` (Py/TS) or `session.get_causal_delta_from_parent()` (Rust — once the Rust session facade gains it, or keep the ledger handle as the source).
-- **`crates/kelir-plugins/plugin-ledger/src/lib.rs`**: add a `pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError>` on `LedgerCtx` (currently `finalize`, `flush`, `count_denials`, `blake3_of_producing_process`). This is the Rust side of the canonical home; today the only surface is `compute_ledger::compute_causal_delta(storage, receipt)` — a free function, not a `LedgerCtx` method.
-- **`db-backed-runtime.rs`**: its TODO says "session facade exposes no `get_causal_delta_from_parent` yet" — that is still true of `crates/kelir/src/session_lifecycle.flow.rs` (the only `get_causal_delta_from_parent` stubs are on the bindings' session handles). Keep the TODO but point at `plugin-ledger`'s `LedgerCtx` as the intended home rather than the session facade.
-
----
-
-## 9. `ledger.flush()` Reachability Contradicts Itself Between Python (works) and TypeScript/Rust (dropped)
-
-**Spec** (`cans/plugins/ledger.md`, "Ledger handler API"):
-> `c.ledger.flush()` forces WAL flush and OTel export
-
-`db-backed-runtime.py` claims this is reachable from `session.cap.ledger`:
-```python
-async def _pre_commit(session: Session) -> None:
-    await session.cap.ledger.flush()
-```
-
-`db-backed-runtime.ts` says the same thing is **not reachable** from the equivalent hook:
-```typescript
-// TODO (L3): flush the ledger here; onPreCommit delivers a LifecycleContext only,
-// and the booted session's ledger handle is not in reach at registration time.
-```
-
-`autonomous-swe-agent.py` and `.ts` both say the shutdown-time flush is dropped:
-```python
-# TODO: SSOT ledger.flush on shutdown dropped; live on_vm_shutdown delivers
-# LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
-```
-
-`db-backed-runtime.rs` sidesteps the problem by capturing `ledger_ctx` outside the closure:
 ```rust
-.on_pre_commit({
-    let ledger = ledger_ctx.clone();
-    move |_ctx| Box::pin(async move { ledger.flush().await })
+// see: cans/10-attestation.md#ExecutionReceipt-records-final-binary-blake3
+```
+
+10-attestation.md has no #ExecutionReceipt-records-final-binary-blake3 anchor. Existing anchors are #Execution-receipts and #binary_blake3-identity. This will fail cans check --refs-only.
+
+The file also references artifacts/code/execution-receipt.rs (and many examples reference artifacts/code/*.rs), but the directory tree listed in the repo dump contains no artifacts/code/ directory at all — those targets are missing.
+
+**Codebase changes needed:**
+- `cans/10-attestation.md`: either add the anchor `#ExecutionReceipt-records-final-binary-blake3` to the existing `#Execution-receipts` node (rename/split), or fix the example to point at the existing anchor `#binary_blake3-identity` / `#Execution-receipts`.
+- `cans/artifacts/code/`: **create the missing directory** and add the referenced artifacts (`execution-receipt.rs`, `vmm-driver-trait.rs`, `plugin-trait.rs`, `wire-protocol.rs`, `messages.rs`, `transaction-service.rs`, `container-service.rs`, `causal-delta.rs`) — every `// see: cans/artifacts/code/...` ref in the tree currently resolves to a non-existent path; the artifacts are the SSOT and must exist. Keep them byte-identical to the spec.
+- `cans/_rules.yaml`: add an exclusion or fix so `cans check --refs-only` resolves the anchor once added.
+
+---
+
+8. Console-output masking drops cross-chunk carryover (spec violation)
+
+04-terminal-plane.md#Terminal-pipeline (step 4):
+
+Interposer dispatch: fires ConsoleInterposer::on_console_output for in-place masking
+Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries
+
+Yet every hook-matrix variant masks on_console_output per chunk, with no carryover:
+
+· hook-matrix-full.rs → let mut out = chunk.to_vec(); mask_tokens(&mut out);
+· hook-matrix-full.ts → maskTokens(chunk) (no consoleTail)
+· hook-matrix-full.py → mask_tokens(chunk)
+
+Their on_fs_read implementations do implement carryover (hookState.tail, state.tail, self._state.tail) — so the omission is specific to console output. hook-matrix.ts carries a TODO acknowledging it ("live matrix.hook.test.ts masks console output cross-chunk … SSOT keeps single-chunk masking here"), which contradicts the spec text.
+
+**Codebase changes needed:**
+- `cans/artifacts/examples/hook-matrix-full.rs`: add a `console_tail: String` (or `Vec<u8>`) on the plugin state; prepend it to `chunk`, run `mask_tokens`, retain the trailing `MAX_PLACEHOLDER_LEN - 1` bytes for the next chunk.
+- `cans/artifacts/examples/hook-matrix-full.ts`: add `consoleTail`; prepend, mask, trim to `MAX_PLACEHOLDER_LEN - 1`.
+- `cans/artifacts/examples/hook-matrix-full.py`: add `self._console_tail`; same pattern.
+- `cans/artifacts/examples/hook-matrix.rs`/`.ts`/`.py`: remove the contradictory TODO; if the short variant is intentionally single-chunk, the spec text must say so (or drop the short variant).
+- `cans/04-terminal-plane.md#Terminal-pipeline`: reaffirm `MAX_PLACEHOLDER_LEN - 1` carryover applies to *both* `on_console_output` and `on_fs_read`; the existing text says it does — examples are the bug.
+
+---
+
+9. session.vm vs session.vm()
+
+Spec is internally split:
+
+· 03-sdk-architecture.md#Session-surfaces: session.vm.export_snapshot(), session.vm.adjust_balloon(...), session.vm.set_vcpus(n) — property-style
+· 09-snapshots.md#Archives-and-portability: session.vm().export_snapshot() — method
+
+Examples follow both:
+
+· db-backed-runtime.rs: session.vm().import_snapshot(...) / session.vm().export_snapshot() (method)
+· autonomous-swe-agent.rs, policy-matrix.rs: session.vm.checkpoint(...), session.vm.rollback(...) (property) — via c.vm in handlers
+
+This is a Session surface ambiguity that at least one example will violate no matter what the real API is.
+
+**Codebase changes needed:**
+- `cans/03-sdk-architecture.md#Session-surfaces`: pin `session.vm` as a **property** (matching TS `readonly vm` and Py attribute). Change the one method-style call in 09-snapshots.md (`session.vm().export_snapshot()`) to `session.vm.export_snapshot()`.
+- `crates/kelir/src/session_lifecycle.flow.rs` `Session`: currently exposes `pub fn vm(&self)` — add a `pub vm: VmHandle` field (or a `Deref` shim) so `session.vm.export_snapshot()` compiles; keep `vm()` as a deprecated alias if needed. Same treatment for `terminal`, `storage`, `wire`, `checkpoint`, `host`, `vsock`, `step`.
+- `crates/kelir-engine/src/session_lifecycle.flow.rs`: same property surface.
+- `cans/artifacts/examples/db-backed-runtime.rs`: change `session.vm().export_snapshot()` → `session.vm.export_snapshot()`.
+
+---
+
+10. trap_async / post_exec string-filter form (minor)
+
+autonomous-swe-agent.rs:
+
+```rust
+.trap_async("*", { ... })
+.post_exec("*", { ... })
+```
+
+Passes a raw "*" where every other call site (RS/TS/Py) uses TrapFilter::binary(...) or TrapFilter.binary(...). Same pattern in serverless-webhook.{rs,ts,py} (trap("dispatch-webhook", ...)). If trap/trap_async accept impl Into<TrapFilter>, fine — but the spec's #Chainable-verbs / #Verbs-in-both-modes section doesn't pin this coercion, and the RS comment ("Rust trap filters only match binary/pattern, so the string filter stands in for the action") admits it's a stand-in, not the intended API.
+
+**Codebase changes needed:**
+- `cans/02-plugin-model.md#Chainable-verbs` (and `#Verbs-in-both-modes`): document that `trap`/`trap_async`/`post_exec` accept `impl Into<TrapFilter>`, where `&str` is coerced (`"*"` = match-all, other strings = `TrapFilter::pattern(str)`).
+- `crates/kelir/src/builder_sdk.flow.rs`: the `impl From<&str> for TrapFilter` already exists — ensure it treats `"*"` as wildcard (`binary: None, pattern: None, args: []`) and any other string as `binary: Some(s)`. Current code sets `pattern: None` for both; document the `"*"` behavior explicitly.
+- `crates/kelir-engine/src/dispatch_plugin/engine.flow.rs` / `trap_gate.flow.rs`: confirm `"*"`-shaped `TrapFilter` falls through the gate rather than short-circuiting; no code change if the coercion is correct.
+
+---
+
+11. snoops config field is undocumented and Rust-only-missing
+
+.storage() is documented in 05-storage-plane.md with: idmap, shared_caches, lock_broker, synthetic_files, mask_read, encapsulation, scan_engine, carryover_bytes, quotas, cow_broker, reconciler, ephemeral_scratch. There is no snoops field.
+
+Yet:
+
+```python
+# autonomous-swe-agent.py
+.storage(
+    idmap=IdmapConfig(...),
+    shared_caches=[...],
+    lock_broker=True,
+    synthetic_files=[...],
+    mask_read=[...],
+    snoops=[
+        SnoopRule(
+            glob="~/.claude/sessions/*.json",
+            sync=True,
+            on_write=make_snoop(oracle),
+        ),
+    ],
+)
+```
+
+```ts
+// autonomous-swe-agent.ts
+.storage({
+  idmap: {...},
+  sharedCaches: [...],
+  lockBroker: true,
+  syntheticFiles: [...],
+  maskRead: [...],
+  snoops: [
+    { path: "~/.claude/sessions/*.json", sync: true,
+      onWrite: async (path, raw, c) => {...} },
+  ],
 })
 ```
 
-So `flush()` exists on the ledger context (Rust proves it), the Python example calls it, and two TS examples say the hook can't reach it. The spec doesn't specify whether the session or the lifecycle context exposes `flush()`, nor when. This is either three different bugs or three different specs.
+But autonomous-swe-agent.rs has no snoops field at all:
 
-### Changes Needed in Codebase
+```rust
+.storage(StoragePlaneConfig {
+    idmap: IdmapConfig {...},
+    shared_caches: vec![...],
+    lock_broker: true,
+    synthetic_files: vec![...],
+    mask_read: vec![...],
+    encapsulation: WorkspaceEncapsulation::Passthrough,
+    scan_engine: ReadMaskEngine::FastRegex,
+    carryover_bytes: 1024,
+})
+```
 
-- **`cans/03-sdk-architecture.md` / `cans/08-lifecycle.md`**: state the reachability contract for `ledger.flush()`:
-  - `LifecycleCtx` / `LifecycleContext` must carry the plugin capability struct (or a `session` reference), so `on_pre_commit`/`on_vm_shutdown` handlers can call `ctx.cap.ledger.flush()`.
-  - The Rust example's capture pattern is valid but should be documented as the alternative (for handlers that hold a pre-boot ledger handle).
-- **`packages/py/kelir/model_plugin.py`**: add `cap: Caps` to `LifecycleCtx` (currently `_vetoes` and `_watchdog` only). Update `__init__` signature to accept `cap` and `set_watchdog`/`register_veto` unchanged. `handler` in the fused `LifecycleCtx` gets populated by the fused `run` — which currently calls `hook.run(event)` with the raw payload; the runtime must wrap lifecycle payloads in a `LifecycleCtx` that already carries `cap`.
-- **`packages/ts/core/src/context.lifecycle.types.ts`**: extend `LifecycleContext` with `readonly cap?: { readonly ledger?: LedgerHandle }` (or a `session` field). Currently `LifecycleContext` is `{ setWatchdog, registerVeto }` only — no path to the ledger handle.
-- **`packages/py/kelir/plugin_fusion.py`**: `FusedTrampoline.runs()` currently calls `hook.run({"ring": ring, "ordinal": ordinal})` — for lifecycle hooks the payload must be the `LifecycleCtx` (with `cap` populated), not the ring/ordinal dict. Update the fused runner to distinguish lifecycle hooks and pass the correct ctx.
-- **`packages/ts/core/src/fusion.plugin.ts`**: same — `FusedTrampoline.runs()` passes `{ ring, ordinal }`; for lifecycle hooks, pass the `LifecycleContext` (carrying `cap`).
-- **`crates/kelir-engine/src/dispatch_plugin/lifecycle_dispatch.flow.rs`**: `dispatch_pre_commit` and `dispatch_lifecycle` call `fused_crossing(TrampolineRing::Lifecycle)` but do not pass `ctx` to the fused callbacks (`FusedTrampolineCallback::run(ring, ordinal)` takes only the ring and ordinal). Either:
-  - Change `FusedTrampolineCallback::run` to accept an optional serialized event payload (so lifecycle hooks get `ctx`), or
-  - Document the capture-at-registration pattern (as `db-backed-runtime.rs` does) as the canonical answer for lifecycle hooks that need pre-boot handles, and leave the fused path event-payload-free.
-- **`db-backed-runtime.py`**: the `_pre_commit(session: Session)` signature is wrong — the fused runner does not pass `Session`. Change to `_pre_commit(ctx)` and capture the ledger handle via the builder (or via a `LifecycleCtx.cap.ledger` once that lands), matching the Rust capture pattern.
-- **`db-backed-runtime.ts`**: keep the comment as a TODO but change it to say "capture the ledger handle at builder time (as in `db-backed-runtime.rs`); `onPreCommit` delivers `LifecycleContext` (which carries `cap.ledger` once the fused lifecycle payload lands)". Today it says "`LifecycleContext` only, and the booted session's ledger handle is not in reach at registration time" — that is accurate today but the spec needs to resolve the design, not preserve the limitation.
-- **`autonomous-swe-agent.py` / `.ts`**: same `_pre_commit(session)`/`on_vm_shutdown` capture issue — the shutdown flush is currently dropped. Either capture the ledger handle at builder time or wait for `LifecycleCtx.cap.ledger` to land.
+Three-way parity break: Py and TS demonstrate a config feature (SnoopRule) that is (a) absent from the spec and (b) absent from the Rust SDK. This is exactly what the parity gate should catch — either the spec needs a snoops section and RS needs the field, or Py/TS need to drop the feature.
+
+**Codebase changes needed (document + implement in Rust):**
+- `cans/05-storage-plane.md#Storage-architecture`: add a `snoops` subsection — `SnoopRule { path: glob, sync: bool, on_write: Fn(path, raw, ctx) }` — firing on guest writes to matching paths.
+- `crates/kelir-interface/src/storage/mod.rs`: add `SnoopRule` (path glob, sync flag, callback trait `SnoopCallback`) alongside `SyntheticFile`.
+- `crates/kelir/src/planes/storage_plane.rs`: add `pub snoops: Vec<SnoopRule>` to `StoragePlaneConfig`.
+- `crates/kelir-engine/src/planes/storage/plane.flow.rs`: consume `snoops` — register them as `FsInterposer` hooks on the write path (per `02-plugin-model.md#Unified-interposition-pipeline`) so `on_write` fires with `(path, raw, ctx)`.
+- `crates/kelir-bindings/napi/src/storage_bridge.rs` and `crates/kelir-bindings/pyo3/src/storage_bridge.rs`: the Py/TS paths already accept the field; wire it through to the new Rust `SnoopRule`.
+- `autonomous-swe-agent.rs` example: add the `snoops: vec![...]` field matching Py/TS.
 
 ---
 
-## 10. Checkpoint API: `session.vm.checkpoint(label)` vs `session.checkpoint.create(label)` vs `session.checkpoint.create_step(lineage, descriptor)` — Three Surfaces, One Spec
+12. SuspendReason has three different shapes
 
-**Spec** (`cans/03-sdk-architecture.md`):
-> Checkpoint: `session.checkpoint.create(label)`, `session.rollback()`
+08-lifecycle.md#Suspend-and-resume pins the canonical form:
 
-**Spec** (`cans/09-snapshots.md`):
-> `session.lineage()` (no argument) — enumerated as an SDK accessor
+Canonical signature (SSOT-A1 pin)
+Session.suspend(reason: SuspendReason) / Session.resume()
 
-**Artifacts:**
+And #Hypervisor-primitives pins the enum:
 
-| File | Checkpoint API used | Conforms? |
-|---|---|---|
-| `git-gate.py` / `.ts` | `session.checkpoint.create("git-gate-base")` | ✅ `create(label)` |
-| `multi-vm-swarm.py` / `.ts` | `child.checkpoint.create(...)` | ✅ `create(label)` |
-| `replay.py` / `.ts` | `session.checkpoint.create(...)` | ✅ `create(label)` |
-| `autonomous-swe-agent.py` | `session.vm.checkpoint("clean_base")` | ❌ `session.vm.checkpoint(label)` |
-| `autonomous-swe-agent.ts` | `session.vm.checkpoint("clean_base")` | ❌ `session.vm.checkpoint(label)` |
-| `policy-matrix.py` | `c.vm.checkpoint("policy-yield")` | ❌ `c.vm.checkpoint(label)` |
-| `policy-matrix.ts` | `c.vm.checkpoint("policy-yield")` | ❌ `c.vm.checkpoint(label)` |
-| `hook-matrix-full.rs` | `session.checkpoint.create_step(session.lineage(1), SnapshotDescriptor { … })` + `commit_step(lineage(1))` | ❌ `create_step`/`commit_step` pair |
-| `hook-matrix.rs` (RS) | same `create_step` + `commit_step` | ❌ |
-| `git-gate.rs` | same `create_step` + `commit_step` | ❌ |
-| `replay.rs` | same `create_step` + `commit_step` | ❌ |
-| `multi-vm-swarm.rs` | same `create_step` + `commit_step` | ❌ |
-| `autonomous-swe-agent.rs` | same `create_step` + `commit_step` | ❌ |
-| `policy-matrix.rs` | same `create_step` + `commit_step` | ❌ |
+SuspendReason: External(ExternalSuspendKind) | ResourcePressure
 
-Two distinct divergences under one surface:
+Yet the examples construct it three different ways:
 
-- **Host vs vm facade:** `session.checkpoint.create(...)` (documented) vs `session.vm.checkpoint(...)` (used by two plugin examples). The spec's surface table lists `session.checkpoint`, never `session.vm.checkpoint`.
-- **Two-phase step API vs one-shot:** Every Rust example uses `create_step(lineage, descriptor)` + `commit_step(lineage)` — a two-phase API taking a `SnapshotDescriptor` — while every Py/TS example uses the documented one-shot `create(label)`. The spec documents only `create(label)` and does not mention `create_step`/`commit_step` or `SnapshotDescriptor` as construction inputs.
-- **`session.lineage(1)`** is used in every Rust example (with argument `1`); the spec says `session.lineage()` (no argument).
+· Rust (serverless-webhook.rs, autonomous-swe-agent.rs):
+  ```rust
+  session.suspend(SuspendReason::External(
+      ExternalSuspendKind::HumanAuthorizationHold,
+  )).await?;
+  session.suspend(SuspendReason::ResourcePressure).await?;
+  ```
+  Proper enum syntax.
+· TypeScript (serverless-webhook.ts, policy-matrix.ts):
+  ```ts
+  await session.suspend(SuspendReason.external("human-authorization-hold"));
+  await session.suspend(SuspendReason.resourcePressure);
+  ```
+  A factory class — SuspendReason is a static namespace, not a value.
+· Python (policy-matrix.py, serverless-webhook.py):
+  ```python
+  await session.suspend(ResourcePressure())
+  await session.suspend(External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD))
+  ```
+  Two peers: ResourcePressure looks like a class instantiation, External(...) looks like a function call. Within Python itself the two forms don't look alike — one takes (), the other takes a payload.
 
-### Changes Needed in Codebase
+"Same concept, per-SDK spelling" doesn't cover this. These are three different value shapes for the same parameter, and Py is internally inconsistent (ResourcePressure() vs External(...)).
 
-(Consolidated with item 3.)
+**Codebase changes needed:**
+- `cans/08-lifecycle.md#Suspend-and-resume`: pin the *shape* per language:
+  - RS: `SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold)` / `SuspendReason::ResourcePressure` (unit variant).
+  - TS: `SuspendReason.external("human-authorization-hold")` / `SuspendReason.resourcePressure` (factory class — match `packages/ts/core/src/verdict.protocol.ts`).
+  - Py: `External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD)` / `ResourcePressure()` — **fix the inconsistency** by making `ResourcePressure` an instance used as `ResourcePressure` (no parens) or `External(...)` a class instantiation; pick one and pin it.
+- `packages/py/kelir/__init__.py`: reconcile `class ResourcePressure: pass` (bare class) vs `@dataclass class External: kind` — make both consistently instantiated (`ResourcePressure()` and `External(kind)`) and update the docstring/`__all__` to reflect the pinned shape.
+- `packages/ts/core/src/verdict.protocol.ts` already has the factory form; no change.
 
-- **`cans/03-sdk-architecture.md`** "Session-surfaces" table: split into the two surfaces, as described in item 3.
-- **`cans/09-snapshots.md`**: change `session.lineage()` to `session.lineage(root_pid)` for Rust; document `session.checkpoint.create(label)` as the Py/TS one-shot surface.
-- **`crates/kelir/src/session_lifecycle.flow.rs`**: add `pub fn lineage(&self, pid: u32) -> PidLineage` on `Session` (delegate to `self.core.lineage(pid)`). The Rust examples already rely on this through `Deref`, but the spec doesn't mention it.
-- **`crates/kelir-bindings/{napi,pyo3}/src/handles.flow.rs`**: `NativeCheckpointHandle::create`/`PyCheckpointHandle::create` already exist and delegate to `VmHandle::checkpoint(label)`. For Rust parity on the Py/TS side, either:
-  - Add `create_step`/`commit_step`/`lineage(pid)`/`head`/`compact` to the checkpoint handles, or
-  - Document that Rust's two-phase step API is Rust-only (it is `CheckpointPlane` on the engine, not a `Session` method exposed through the bindings).
-- **`crates/kelir/src/session_lifecycle.flow.rs`**: note that `Session` derefs to `kelir_engine::Session`, so `session.checkpoint.create_step(...)` resolves through `Deref` to `engine::Session::checkpoint: Arc<CheckpointPlane>`. That is the surface the Rust examples use — keep it, but document the Deref contract explicitly (the spec does not today).
-- **`cans/artifacts/examples/autonomous-swe-agent.py` / `.ts`** and **`policy-matrix.py` / `.ts`**: replace `session.vm.checkpoint(...)` / `c.vm.checkpoint(...)` with `session.checkpoint.create(...)` / `c.checkpoint.create(...)`. Both resolve through the bindings, but the examples should not teach the undocumented `vm.checkpoint` facade for the one-shot path.
-- **`cans/artifacts/examples/*.rs`**: keep `create_step`/`commit_step`/`lineage(1)` but update the spec to name them as the Rust low-level surface (the engine `CheckpointPlane` is the SSOT for the two-phase API; `CheckpointOps` in `crates/kelir-interface/src/checkpoint/ops.flow.rs` is the trait).
+---
+
+13. FilterAction constructors diverge — and diverge within the same SDK
+
+Spec 02-plugin-model.md#Unified-verdict:
+
+FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
+
+SuspendUntil is pinned in 11-protocol.md#Verdict-method-mapping:
+
+SuspendUntil: Deadline(ms) | Approval | Handshake
+
+Examples:
+
+hook-matrix-full.{rs,ts,py} (the "canonical" hook surface):
+
+· RS: FilterAction::Suspend { until: SuspendUntil::Deadline(0) }
+· TS: FilterAction.Suspend(SuspendUntil.deadline(0))
+· Py: FilterAction.suspend(until=Deadline(0))
+
+hook-matrix.{ts,py} (the short variant):
+
+· TS: FilterAction.Abort("inbound abort marker") — single-argument positional
+· Py: FilterAction.abort(reason="inbound abort marker") — kwarg
+
+hook-matrix-full.ts (short variant of the same op):
+
+· FilterAction.Suspend(SuspendUntil.deadline(0)) — positional argument
+
+So within TS: FilterAction.Suspend(x) takes positional, but FilterAction.Abort(x) — the interface pinned in spec has fields {until} and {reason}, not positional. The TS example erases both field names. Same for Py — one call uses until=, another uses reason=.
+
+The spec pins field names. The examples erase them inconsistently.
+
+**Codebase changes needed:**
+- `cans/02-plugin-model.md#Unified-verdict`: pin `FilterAction.Suspend({ until })` and `FilterAction.Abort({ reason })` as object-shaped constructors in TS/Py (field names visible at call site).
+- `packages/ts/core/src/verdict.protocol.ts`: change `Suspend(until: SuspendUntil)` → `Suspend({ until }: { until: SuspendUntil })` and `Abort(reason?: string)` → `Abort({ reason }: { reason?: string })`. Same for `Verdict.Suspend`/`Verdict.Abort`. Update `hook-matrix-full.ts` and `hook-matrix.ts` call sites.
+- `packages/py/kelir/__init__.py` `Verdict`/`FilterAction`: `suspend(cls, until=None)` and `abort(cls, reason="")` — change to require/accept object-shaped payloads consistently (`FilterAction.suspend(until=...)` vs `FilterAction.abort(reason=...)` is fine as kwargs; the bug is TS dropping names).
+- `hook-matrix.{ts,py}`: make the short and full variants use the same shape.
+
+---
+
+14. on_fs_write — mutable vs immutable buffers breaks the "in-place mutation" contract
+
+02-plugin-model.md#Read/console-pin says:
+
+Write/net hooks mutate the passed buffer and return FilterAction
+RS mutates in place and returns () here; it is the outlier
+
+But the buffer types diverge:
+
+· Rust (autonomous-swe-agent.rs, hook-matrix-full.rs, hook-matrix.rs, git-gate.rs):
+  ```rust
+  fn on_fs_write(&self, path: &Path, data: &mut [u8], _pid: u32, _ctx: &HandlerCtx) -> Result<FilterAction, PluginError>
+  ```
+  &mut [u8] — mutable slice, mutation is possible.
+· Python (hook-matrix-full.py):
+  ```python
+  def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> FilterAction:
+  ```
+  bytes — immutable. Nothing can be mutated.
+· TypeScript (hook-matrix-full.ts, hook-matrix.ts, unified-builder-surface.ts, fluent-builder-chaos.ts):
+  ```ts
+  .onFsWrite((_path, buffer, _pid, _ctx) => FilterAction.Forward)
+  ```
+  buffer: Buffer — technically mutable, but no example mutates it.
+
+So the "mutate the passed buffer" model works only in Rust. In Py, the type system precludes it. The spec's claim that Py/TS mutate in place is not implementable given bytes/Buffer semantics.
+
+If bytes is meant to be bytearray for mutation, examples are wrong. If Buffer is meant to be mutated, no example demonstrates it. Either way, spec and examples disagree on whether "in-place mutation" is a capability.
+
+**Codebase changes needed:**
+- `cans/02-plugin-model.md#Read/console-pin`: pin the buffer type per language — RS `&mut [u8]`, TS `Buffer` (mutable; document that the bridge copies back on return), Py **`bytearray`** (mutable; `bytes` is read-only).
+- `cans/artifacts/examples/hook-matrix-full.py`: change `data: bytes` → `data: bytearray` and add a `data[:] = ...` mutation in the example.
+- `cans/artifacts/examples/hook-matrix.ts`/`autonomous-swe-agent.ts`/`git-gate.ts`: add at least one example that mutates `buffer` in place to demonstrate the capability.
+- `crates/kelir-bindings/pyo3/src/handles.flow.rs`: the Py↔Rust bridge already exposes `&mut [u8]` on the Rust side; document that Py receives `bytearray` (writable) and returns a `bytes` snapshot per call.
+- `crates/kelir-bindings/napi/src/handles.flow.rs`: `Buffer` is already `Uint8Array`-mutable; document copy-back semantics.
+
+---
+
+15. set_watchdog arguments differ three ways — and no cross-language shape is pinned
+
+Spec 08-lifecycle.md#Watchdog:
+
+Armed via LifecycleCtx.set_watchdog … WatchdogAction: Reboot | Terminate
+
+Signature is not pinned beyond the verb name. Examples build three different shapes:
+
+· Rust (autonomous-swe-agent.rs):
+  ```rust
+  ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
+  ```
+  (Duration, WatchdogAction) positional.
+· Python (autonomous-swe-agent.py):
+  ```python
+  ctx.set_watchdog(timeout=timedelta(minutes=5), action="reboot")
+  ```
+  (timeout=timedelta, action=str) kwargs.
+· TypeScript (autonomous-swe-agent.ts):
+  ```ts
+  driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" })
+  ```
+  Single object with timeoutMs: number.
+
+Three different times: Duration vs timedelta vs number. Three different action types: enum variant vs string vs string. Three different parameter shapes: positional vs kwargs vs object.
+
+The spec has one name and zero argument shape. This is the kind of thing #Multi-language-parity-gate should catch via the AST surface manifest, but the spec must first say what the shape is.
+
+**Codebase changes needed:**
+- `cans/08-lifecycle.md#Watchdog`: pin the per-language shape:
+  - RS: `set_watchdog(timeout: Duration, action: WatchdogAction)` (positional, `Duration` native).
+  - TS: `setWatchdog({ timeoutMs: number, action: WatchdogAction })` (object; `timeoutMs` is the wire unit; `action` is `"reboot" | "terminate"`).
+  - Py: `set_watchdog(timeout: timedelta, action: WatchdogAction)` (kwargs; `timedelta` native).
+- `crates/kelir-interface/src/plugin_model.flow.rs` `LifecycleCtx::set_watchdog`: already `(Duration, WatchdogAction)` — matches RS.
+- `packages/ts/core/src/context.lifecycle.types.ts`: already object-shaped `{ timeoutMs, action }` — matches TS.
+- `packages/py/kelir/model_plugin.py` `LifecycleCtx.set_watchdog`: currently accepts `(timeout: int | timedelta, action: str)` — accept `timedelta` only, `action: WatchdogAction` (add the enum), and pin the shape in the docstring.
+- `packages/py/kelir/__init__.py`: export `WatchdogAction` (Reboot / Terminate) so the type matches RS/TS.
+
+---
+
+16. on_trap_deny returns Result in Rust, void in TS/Py
+
+03-sdk-architecture.md#Unified-builder-surface says .on_trap_deny is host-only, but does not pin return type.
+
+· Rust (autonomous-swe-agent.rs):
+  ```rust
+  .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) })
+  ```
+  Returns Result<(), PluginError> — the hook can fail.
+· Python (autonomous-swe-agent.py):
+  ```python
+  async def _deny(event: TrapEvent, session: Session) -> None:
+      ...
+  ```
+  Returns None — cannot fail.
+· TypeScript (autonomous-swe-agent.ts):
+  ```ts
+  .onTrapDeny(async (e, s) => { ... })
+  ```
+  Returns Promise<void> — cannot fail.
+
+The Rust form can propagate PluginError, e.g. if await s.vm.suspend(...) inside the callback fails. The TS/Py forms silently swallow errors, or would need throw/raise. If the callback's whole purpose is to await s.console() after a quarantine suspend (as in autonomous-swe-agent.{py,ts,rs}), a failure inside s.console() has different consequences per language.
+
+Parity gate needs the spec to pin the return type. Currently the three examples demonstrate three different failure contracts.
+
+**Codebase changes needed:**
+- `cans/03-sdk-architecture.md#Unified-builder-surface`: pin `on_trap_deny` return type — `Result<(), PluginError>` in RS, `Promise<void>` in TS (throws on failure), `Awaitable[None]` in Py (raises on failure). Failures propagate as session errors, not silent no-ops.
+- `packages/ts/core/src/builder.lifecycle.ts` `onTrapDeny`: callback type already `Promise<void> | void`; add a wrapper that rethrows on error (`EConfig.fromNative` for envelope-shaped rejects).
+- `packages/py/kelir/kelir_builder.py` `on_trap_deny`: same — wrap in `try/except` and re-raise as `EConfig`.
+- `crates/kelir-engine/src/dispatch_plugin/registration.flow.rs` `TrapDenyCallback`: already `Result<(), PluginError>` — matches RS; document that Py/TS bridge to `raise`/`reject`.
+
+---
+
+17. fluent-builder-chaos.rs uses undocumented default_vm_config helper
+
+```rust
+pub fn build_chaos_host(config: ChaosConfig) -> ChaosHostBuilder {
+    KelirBuilder::new(default_vm_config(None, None, None, None, None, None))
+        .plugin_instance(ChaosPlugin::new(config))
+}
+```
+
+default_vm_config is not mentioned anywhere in the spec. KelirBuilder::new(VmConfig) is the pinned form (02-plugin-model.md#Unified-builder), and every other example across all three languages constructs a VmConfig explicitly:
+
+```rust
+// hook-matrix.rs
+KelirBuilder::new(VmConfig {
+    vcpus: 2,
+    memory_mb: 2048,
+    kernel_path: ...,
+    ...
+})
+
+// fluent-builder-chaos.py
+kelir.builder(vcpus=1, memory_mb=256, kernel=..., rootfs_erofs=..., ...)
+```
+
+Only fluent-builder-chaos.rs uses the default_vm_config(None, None, None, None, None, None) form, and the six None arguments have no documented semantics. If it is a convenience helper it must be spec'd (or removed). As written, the "canonical chaos example" is demonstrating an undocumented alternate entry path that neither sibling language has.
+
+**Codebase changes needed (document + mirror in Py/TS):**
+- `cans/03-sdk-architecture.md` (or `01-architecture.md#Embedded-profile`): document `default_vm_config(vcpus, memory_mb, kernel, rootfs_erofs, tsc_locked, enable_watchdog) -> VmConfig` — it's already public in `crates/kelir-interface/src/driver_interface.flow.rs`.
+- `cans/artifacts/examples/fluent-builder-chaos.rs`: replace the six `None`s with a named helper call (e.g. `default_vm_config()` with defaults) or construct `VmConfig` explicitly. If `default_vm_config` is kept, add a `see:` to the spec node.
+- `packages/py/kelir/kelir_builder.py` `builder()`: already accepts `vcpus=None, memory_mb=None, ...` — document that it forwards to `default_vm_config` with the same defaults, so Py is parity-equal.
+- `packages/ts/core/src/builder.config.ts` `KelirConfig`: optional fields already parity-equal to `default_vm_config`; add a `see:` in `session.lifecycle.ts`.
+
+---
+
+18. RepoPolicyPlugin::fork_state calls blocking_lock() inside a synchronous function — Tokio panic hazard
+
+```rust
+// autonomous-swe-agent.rs
+impl KelirPlugin for RepoPolicyPlugin {
+    fn fork_state(&self, _child_session_id: &str) -> Box<dyn AnyPlugin> {
+        Box::new(Self {
+            opts: self.opts.clone(),
+            state: Arc::new(Mutex::new(self.state.blocking_lock().clone())),
+        })
+    }
+}
+```
+
+fork_state is synchronous (02-plugin-model.md#KelirPlugin-trait: "Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state"). Its body runs on whatever thread invoked it. tokio::sync::Mutex::blocking_lock() panics when called from within a Tokio runtime context:
+
+Cannot block the current thread from within a runtime. This happens because a function attempted to block the current thread while the thread is being used to drive asynchronous tasks.
+
+session.fork() is itself async and is called from inside #[tokio::main] in main(). If fork_state runs on the same task thread (it will, in the canonical implementation), the example panics at the first fork.
+
+The example's own policy-matrix.rs handles this correctly by copying the state manually (AtomicBool::new(self.state.ready.load(...))) without blocking_lock. Either RepoPolicyPlugin should do the same, or the spec should mandate that fork_state runs outside the runtime — which it currently doesn't say.
+
+**Codebase changes needed:**
+- `cans/artifacts/examples/autonomous-swe-agent.rs`: replace `Arc::new(Mutex::new(self.state.blocking_lock().clone()))` with a non-blocking copy — either drop the `Mutex` around the copied state (`Arc::new(self.state.try_lock().map(|s| s.clone()).unwrap_or_default())`) or, better, restructure the state to `AtomicBool` (like `policy-matrix.rs`) so `fork_state` is sync-safe.
+- `cans/02-plugin-model.md#KelirPlugin-trait`: add a one-line note — `fork_state` runs on the async runtime thread; plugin state must be cloned without blocking (`try_lock`, atomics, `Arc::clone`), never `blocking_lock`/`block_on`.
+- `crates/kelir-engine/src/session_lifecycle.flow.rs` `Session::fork`: it calls `plugin.fork_state(...)` inside an `async` block; document that `fork_state` must not block. Optionally assert the current thread is not a runtime worker.
+- `crates/kelir/src/builder_plugin.flow.rs` `fork_state` impl: same — currently `self.clone_box()`; safe.
+
+---
+
+19. unified-builder-surface.rs — return type doesn't grow with mount
+
+```rust
+pub type SurfaceHostBuilder = KelirBuilder<
+    Host, Unsealed, (), HNil, HCons<LedgerCtx, HNil>, NoParams
+>;
+
+pub fn build_host() -> SurfaceHostBuilder {
+    KelirBuilder::new(VmConfig { ... })
+        .plugin_instance(LedgerPlugin::new(true))     // → LedgerCtx into Plugins
+        .plugin(build_surface_plugin())               // → SurfaceCtx into Plugins
+        .r#use(build_plain_plugin())                  // → ??? into Plugins
+        .trap(...)
+        ...
+}
+```
+
+SurfaceHostBuilder claims Plugins = HCons<LedgerCtx, HNil>, but the body mounts three things:
+
+1. LedgerPlugin → contributes LedgerCtx
+2. build_surface_plugin() → returns a builder with Ctx = SurfaceCtx and Deps = HCons<LedgerCtx, HNil>
+3. build_plain_plugin() → returns a builder with Ctx = ()
+
+After mount, Plugins should be at least HCons<SurfaceCtx, HCons<LedgerCtx, HNil>> (per #Unified-builder's type-level growth contract and Satisfies<Deps>). The return type says otherwise.
+
+This example is the pinned reference for the "mount is a merge" contract. If the declared type doesn't match the body, either:
+
+· .plugin() and .use() in the example don't actually grow Plugins — breaking Satisfies<Deps> checking — or
+· SurfaceHostBuilder is wrong.
+
+Neither matches the spec. The Rust compile would either fail with SurfaceHostBuilder mismatch, or .plugin(build_surface_plugin()) wouldn't type-check against Plugins: Satisfies<Deps> because LedgerCtx ∈ Deps requires LedgerCtx ∈ Plugins, which holds only if the mount grew the list.
+
+Compare unified-builder-surface.ts:
+
+```ts
+export function buildSurfaceHost() {
+  return kelir({...})
+    .use(buildLedgerPlugin())
+    .plugin(buildSurfacePlugin())
+    .use(buildPlainPlugin())
+    ...
+}
+```
+
+Return type is inferred, no annotation to break. Same Py example. Only the Rust reference has the mismatch.
+
+**Codebase changes needed:**
+- `cans/artifacts/examples/unified-builder-surface.rs`: fix `SurfaceHostBuilder` to the actual post-mount type — `HCons<(), HCons<SurfaceCtx, HCons<LedgerCtx, HNil>>>` (and `Deps` = `HCons<LedgerCtx, HNil>` per `build_surface_plugin`).
+- `crates/kelir/src/builder_sdk.flow.rs`: `plugin()` / `r#use()` already return `Self` (no `Plugins` growth); the spec's "type-level growth" is a `Satisfies<Deps>` check at the call site, not a return-type change. Verify `Plugins: Satisfies<PDeps>` accepts `HCons<SurfaceCtx, HCons<LedgerCtx, HNil>>` when `PDeps = HCons<LedgerCtx, HNil>` — the `Satisfies` impl in `hlist_sdk.flow.rs` needs an `HNil`-tail + `HCons`-tail case; ensure the impl that matches `HCons<Head, Tail> for HCons<Head, OtherTail>` is reachable for this list (it is, provided `LedgerCtx` is `Clone + Send + Sync`).
+- `crates/kelir/src/hlist_sdk.flow.rs`: the `Satisfies` TODO notes the order-insensitive form is `E0207`-blocked; the witness-threaded arity-2 form compiles but callers can't name the witness. This example will only type-check if the mounted order matches the declared `Deps` order (`LedgerCtx` first) — pin that in the spec and add a `compile_error!` test in `crates/kelir/tests/`.
+
+---
+
+20. Broken spec anchor: #Ledger-handler-API
+
+multi-vm-swarm.py:
+
+```python
+# TODO (L3): count supply-chain denials via session.cap.ledger once LedgerCap grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API.
+```
+
+plugins/ledger.md contains these anchors: #Pure-reactive-observer, #Merkle-WAL, #OpenTelemetry, #Receipts-(ledger), #OTLP-defaults-(ledger), #Causal-delta-access-(ledger), #Canonical-accessor-(SSOT-A1-pin), #Causal-deltas-are-produced-by-plugin-ledger-over-the-delta-chain, #Ledger-handler-API.
+
+Actually — re-reading the spec dump: plugins/ledger.md has:
+
+· Ledger handler API
+  · c.ledger.flush() forces WAL flush and OTel export
+
+So #Ledger-handler-API exists as a node title but has only a single item under it (c.ledger.flush()). It does not define "by-kind counter" for supply-chain denials. The TODO expects a node that enumerates by-kind counters; the actual node only says flush(). So the TODO's target anchor resolves (cans check --refs-only will pass) but references semantics that aren't there.
+
+Same pattern as item 7 (#ExecutionReceipt-records-final-binary-blake3), but subtler: this one resolves structurally and fails semantically. multi-vm-swarm.rs carries the identical TODO — "once LedgerCtx grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API" — so both RS and Py point to a node that doesn't answer their question. multi-vm-swarm.ts doesn't have the TODO at all.
+
+The gate --unified-builder-coverage counts the anchor as good; the actual semantic reference is dead.
+
+**Codebase changes needed:**
+- `cans/plugins/ledger.md#Ledger-handler-API`: expand the node from the single `flush()` bullet to a full method table — `flush()`, `count_denials(ppid)`, `blake3_of_producing_process(path)`, `finalize(FinalizeRequest)`, `get_causal_delta_from_parent()` — each with the per-SDK spelling (RS `count_denials`, TS `countDenials`, Py `count_denials`). All five exist in `crates/kelir-plugins/plugin-ledger/src/lib.rs`.
+- `cans/artifacts/examples/multi-vm-swarm.py` / `.rs`: after the node is expanded, change the TODO to `session.cap.ledger.count_denials(pid)` (Py) / `ledger_ctx.count_denials(pid)` (RS) and drop the "once … grows" caveat.
+- `cans/artifacts/examples/multi-vm-swarm.ts`: add the same `countDenials` call the Py/RS examples use, so all three demonstrate the capability.
+- `crates/kelir-plugins/plugin-ledger/src/lib.rs` `LedgerCtx::count_denials`: already returns `Result<u64, PluginError>` — expose it on the session facade (`crates/kelir/src/session_lifecycle.flow.rs` `Session`) for parity with Py `session.cap.ledger.count_denials` / TS `ledgerHandle.countDenials`.
+
+---
+
+## Severity ranking for 1–20
+
+# Severity Issue
+2 High 5 undocumented APIs (c.step, c.terminal.notice, await_winner, handleIngress, blake3_of_producing_process, count_denials)
+3 High Rust RepoPolicyPlugin drops the ledger prerequisite
+1 High session.terminate() in 6 TS examples
+4 Medium Spec note about c.cap.db no longer matches db-backed-runtime.py
+6 Medium Ledger finalize demonstrated three different ways
+8 Medium Console-output masking lacks carryover required by 04-terminal-plane.md
+5 Medium EdbProxySchema non-POSIX errno
+7 Medium Broken #ExecutionReceipt-records-final-binary-blake3 anchor + missing artifacts/code/
+9 Low session.vm vs session.vm() ambiguity
+10 Low String-trap-filter stand-ins
+11 High snoops undocumented, present in Py/TS, absent in RS
+14 High on_fs_write can't transform bytes in Py/TS but spec says it does
+19 High unified-builder-surface.rs return type doesn't match body after mount
+18 High RepoPolicyPlugin::fork_state will panic at fork under Tokio
+12 Medium SuspendReason three different value shapes
+15 Medium set_watchdog three different argument shapes
+16 Medium on_trap_deny returns Result (RS) vs void (TS/Py) — different failure contracts
+13 Medium FilterAction::Suspend/Abort erases pinned field names
+17 Low default_vm_config is an undocumented RS-only entry helper
+20 Low #Ledger-handler-API resolves but doesn't answer the referenced question
+
+Items 11, 14, and 18 are the ones a cargo check/mypy/tsc run over examples would not necessarily catch but a live test would — the parity gate and the "canonical examples compile and run" gate both need to see these.

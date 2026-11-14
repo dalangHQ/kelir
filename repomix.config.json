@@ -29,8 +29,9 @@
   },
   "include": [
         "AGENTS.md",
-  //   "cans/",
-       "crates",
+    // "cans/",
+   //   "cans/artifacts/examples",
+      "crates",
         "packages"
   ],
   "ignore": {

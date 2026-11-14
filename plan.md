@@ -49,7 +49,7 @@ wrong shape — caught by the content pass.
 |---|---|---|
 | **L1** (`foo.rs`) | any `impl` block (derive attrs are source-invisible, so they are fine); `libc`, `std::fs`, `std::net`, `std::process`, `std::os`, `tokio::fs/net/process`, `block_on`; `unsafe`; `dyn Trait` (trait objects are wiring, not contract) | the name of any concrete impl type (`RealFuseOps`, `RealStorageIo`) — if L1 can name it, the seam is fake |
 | **L2** (`foo.flow.rs`) | `impl DomainTrait for Type` (the L2 façade holds `Arc<dyn FuseOps>` and *delegates*; the body lives in L3 as `impl FuseOps for RealFuseOps`); `libc`, `std::fs`, `std::net`, `std::process`, `std::os`; `unsafe`; a body over ~30 lines (proxy for "algorithm leaked out of L3") | constructing the L3 type directly (`RealFuseOps::new(...)`) — the seam must go through `Arc<dyn FuseOps>` |
-| **L3** (`foo.run.rs`) | `trait Foo { ... }` (traits are L1); `pub use`/`pub mod` that re-exports an L1 interface item (crate-level re-exports belong in `lib.rs`, which is L2 by convention) | a `// TODO` comment in a filled body — L3 is zero unwritten logic, and `todo`/`unimplemented` are already denied by workspace lints; a prepared stub carrying only `// TODO (L3)` markers warns until L3 fills it |
+| **L3** (`foo.run.rs`) | `trait Foo { ... }` (traits are L1); `pub use`/`pub mod` that re-exports an L1 interface item (crate-level re-exports belong in `lib.rs`, which is L2 by convention) | a `// TODO` comment — L3 is zero unwritten logic, and `todo`/`unimplemented` are already denied by workspace lints |
 
 Three concrete seam breaks this contract names:
 
@@ -242,9 +242,9 @@ fn check(root: &Path, policy: &Policy) -> Result<(), Vec<Fail>> {
                 }
             }
         }
-        // 3. L3 carries no TODO (prepared stubs warn, not fail, until L3 fills them)
+        // 3. L3 carries no TODO
         if level == Level::L3 && src.contains("// TODO") {
-            warns.push(Warn::TodoInBody { file });
+            fails.push(Fail::TodoInBody { file });
         }
     }
     // 4. budget: L2 file delta per PR ≤ budget
@@ -389,9 +389,8 @@ L2**. Same comment, one token lighter.
   via `domain-trait-impl`.
 - A `trait Foo { ... }` written into an L3 file fails `check` via
   `trait-decl`.
-- A `// TODO` written into a prepared L3 stub file warns via `TodoInBody`
-  until the L3 phase fills it (and fails workspace lints if it becomes
-  `todo!()`).
+- A `// TODO` written into an L3 file fails `check` via `TodoInBody` (and
+  fails workspace lints if it becomes `todo!()`).
 - An agent given *"fix <plane> <verb>"* finds the file in one `rg --glob
   '*.run.rs'` and opens it.
 ```
