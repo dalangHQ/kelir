@@ -148,26 +148,23 @@ impl Reconciler {
             .components()
             .any(|component| matches!(component, Component::ParentDir))
         {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("path traversal rejected: {target:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: path traversal rejected: {target:?}"
+            )));
         }
         if !target.starts_with(&self.host_target) {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("target escapes workspace root: {target:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: target escapes workspace root: {target:?}"
+            )));
         }
         for ancestor in target.ancestors() {
             if ancestor == self.host_target.as_path() {
                 break;
             }
             if fs::symlink_metadata(ancestor).is_ok_and(|meta| meta.is_symlink()) {
-                return Err(kelir_interface::plugin_model::PluginError::reject(
-                    kelir_interface::protocol_wire::Errno::Exdev,
-                    format!("symlink component rejected: {ancestor:?}"),
-                ));
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "EXDEV: symlink component rejected: {ancestor:?}"
+                )));
             }
         }
         // TODO (L3) [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
@@ -180,10 +177,9 @@ impl Reconciler {
         }
         let resolved = prefix.canonicalize()?;
         if !resolved.starts_with(&root) {
-            return Err(kelir_interface::plugin_model::PluginError::reject(
-                kelir_interface::protocol_wire::Errno::Exdev,
-                format!("resolved target escapes workspace root: {resolved:?}"),
-            ));
+            return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                "EXDEV: resolved target escapes workspace root: {resolved:?}"
+            )));
         }
         Ok(())
     }

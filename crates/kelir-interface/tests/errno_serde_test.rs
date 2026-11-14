@@ -2,10 +2,11 @@
 use std::str::FromStr;
 
 use kelir_interface::errno_types::Errno;
+use kelir_interface::error_envelope::config_envelope;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::Verdict;
 
-const WIRE: [(Errno, &str); 22] = [
+const WIRE: [(Errno, &str); 24] = [
     (Errno::Eperm, "EPERM"),
     (Errno::Eacces, "EACCES"),
     (Errno::Enoent, "ENOENT"),
@@ -28,6 +29,8 @@ const WIRE: [(Errno, &str); 22] = [
     (Errno::Esecurityviolation, "ESecurityViolation"),
     (Errno::Eunknownkind, "EUnknownKind"),
     (Errno::Eclockregress, "EClockRegress"),
+    (Errno::PathTraversal, "PathTraversal"),
+    (Errno::Etoolquota, "ETOOLQUOTA"),
 ];
 
 #[test]
@@ -45,7 +48,7 @@ fn errno_serializes_as_bare_wire_string() -> Result<(), String> {
 #[test]
 fn verdict_drop_round_trips_errno_as_string() -> Result<(), String> {
     let verdict = Verdict::Drop {
-        errno: Some(Errno::Eperm),
+        errno: Errno::Eperm,
         reason: "denied".to_string(),
     };
     let json = serde_json::to_string(&verdict).map_err(|err| err.to_string())?;
@@ -65,14 +68,14 @@ fn unknown_errno_string_is_rejected_at_deserialization() -> Result<(), String> {
 }
 
 #[test]
-fn reject_display_keeps_wire_code() -> Result<(), String> {
+fn halt_display_keeps_wire_code() -> Result<(), String> {
     assert_eq!(
-        PluginError::reject(Errno::Econfig, "bad config").to_string(),
-        "EConfig: bad config"
+        config_envelope("bad config").to_string(),
+        "Plugin halted: EConfig: bad config"
     );
     assert_eq!(
-        PluginError::reject(Errno::Esecurityviolation, "denied").to_string(),
-        "ESecurityViolation: denied"
+        PluginError::Halt("ESecurityViolation: denied".to_string()).to_string(),
+        "Plugin halted: ESecurityViolation: denied"
     );
     Ok(())
 }

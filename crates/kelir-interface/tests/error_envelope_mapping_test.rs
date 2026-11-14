@@ -5,6 +5,7 @@ use kelir_interface::error_envelope::{
     EAMBIGUOUSMUTATION_CODE, ECONFIG_CODE, EFFIQUEUESATURATED_CODE, EHALT_CODE, EWXVIOLATION_CODE,
     ErrorEnvelope,
 };
+use kelir_interface::error_envelope::config_envelope;
 use kelir_interface::plugin_model::PluginError;
 
 #[test]
@@ -54,21 +55,18 @@ fn io_failure_maps_to_errno_envelope() -> Result<(), String> {
 }
 
 #[test]
-fn reject_maps_errno_to_envelope_code() -> Result<(), String> {
-    let envelope = ErrorEnvelope::from(PluginError::reject(Errno::Eacces, "git push denied"));
-    assert_eq!(envelope.code, "EACCES");
-    assert_eq!(envelope.errno, Some(Errno::Eacces));
-    assert_eq!(envelope.message, "git push denied");
+fn deny_halt_keeps_errno_in_message() -> Result<(), String> {
+    let envelope = ErrorEnvelope::from(PluginError::Halt("EACCES: git push denied".to_string()));
+    assert_eq!(envelope.code, EHALT_CODE);
+    assert_eq!(envelope.errno, None);
+    assert_eq!(envelope.message, "EACCES: git push denied");
     assert_eq!(envelope.pid, None);
     Ok(())
 }
 
 #[test]
-fn reject_econfig_still_maps_to_econfig_code() -> Result<(), String> {
-    let envelope = ErrorEnvelope::from(PluginError::reject(
-        Errno::Econfig,
-        "profile JSON parse failed: bad syntax",
-    ));
+fn config_envelope_maps_to_econfig_code() -> Result<(), String> {
+    let envelope = ErrorEnvelope::from(config_envelope("profile JSON parse failed: bad syntax"));
     assert_eq!(envelope.code, ECONFIG_CODE);
     assert_eq!(envelope.errno, Some(Errno::Econfig));
     assert!(envelope.message.contains("profile JSON parse failed"));

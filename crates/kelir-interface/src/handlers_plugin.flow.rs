@@ -11,7 +11,7 @@ use crate::errno_types::Errno;
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
 use crate::protocol_wire::{
-    FilterAction, PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
+    PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
 };
 use crate::telemetry::ExecutionReceipt;
 
@@ -249,7 +249,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         Verdict::Patch(payload)
     }
 
-    pub fn drop(&self, errno: Option<Errno>, reason: String) -> Verdict {
+    pub fn drop(&self, errno: Errno, reason: String) -> Verdict {
         Verdict::Drop { errno, reason }
     }
 
@@ -259,19 +259,6 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
 
     pub fn abort(&self, reason: String) -> Verdict {
         Verdict::Abort { reason }
-    }
-
-    // see: cans/11-protocol.md#Verdict-method-mapping
-    pub fn forward(&self) -> FilterAction {
-        FilterAction::Forward
-    }
-
-    pub fn filter_drop(&self, errno: Option<Errno>, reason: String) -> FilterAction {
-        FilterAction::Drop { errno, reason }
-    }
-
-    pub fn filter_suspend(&self, until: SuspendUntil) -> FilterAction {
-        FilterAction::Suspend { until }
     }
 
     // see: cans/10-attestation.md#Execution-receipts

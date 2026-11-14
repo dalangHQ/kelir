@@ -219,7 +219,7 @@ impl WirePlane {
         match link_local_route(frame, FrameDirection::Outbound) {
             Some(LinkLocalRoute::Drop) => {
                 let action = FilterAction::Drop {
-                    errno: None,
+                    errno: Errno::Eperm,
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
                 };
                 self.record_drop(&action);

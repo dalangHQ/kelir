@@ -214,15 +214,8 @@ impl FuseOps for RealFuseOps {
                         guest_inode: request.guest_inode,
                         reply: FuseReply::Written(request.size),
                     }),
-                    // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-                    FilterAction::Drop { errno: None, .. } => Ok(FuseResponse {
-                        guest_inode: request.guest_inode,
-                        reply: FuseReply::Written(request.size),
-                    }),
                     // see: cans/05-storage-plane.md#Write-gating
-                    FilterAction::Drop {
-                        errno: Some(errno), ..
-                    } => {
+                    FilterAction::Drop { errno, .. } => {
                         let errno = drop_errno(errno)?;
                         Ok(FuseResponse {
                             guest_inode: request.guest_inode,
@@ -290,30 +283,6 @@ impl FuseOps for RealFuseOps {
 // see: cans/05-storage-plane.md#Write-gating
 // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
 fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
-    match errno {
-        Errno::Eperm => Ok(libc::EPERM),
-        Errno::Enxio => Ok(libc::ENXIO),
-        Errno::Ewouldblock => Ok(libc::EWOULDBLOCK),
-        Errno::Eacces => Ok(libc::EACCES),
-        Errno::Efault => Ok(libc::EFAULT),
-        Errno::Ebusy => Ok(libc::EBUSY),
-        Errno::Exdev => Ok(libc::EXDEV),
-        Errno::Enospc => Ok(libc::ENOSPC),
-        Errno::Erofs => Ok(libc::EROFS),
-        Errno::Econnrefused => Ok(libc::ECONNREFUSED),
-        Errno::Enoent => Ok(libc::ENOENT),
-        Errno::Einval => Ok(libc::EINVAL),
-        Errno::Enodata => Ok(libc::ENODATA),
-        Errno::Epipe => Ok(libc::EPIPE),
-        Errno::Eproto => Ok(libc::EPROTO),
-        Errno::Econfig
-        | Errno::Epolicy
-        | Errno::Etoolquota
-        | Errno::Ewxviolation
-        | Errno::Eclockregress
-        | Errno::Esecurityviolation
-        | Errno::Eunknownkind => Err(PluginError::Halt(format!(
-            "FUSE errno {errno} has no POSIX mapping on the storage plane"
-        ))),
-    }
+    // see: cans/02-plugin-model.md#Unified-verdict
+    Ok(errno.to_os_errno())
 }

@@ -16,7 +16,7 @@ impl PipelineEngine {
                     || interceptor.on_host_pressure(level),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -24,7 +24,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -47,7 +47,7 @@ impl PipelineEngine {
                     || interceptor.on_host_keyring_access(key),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -55,7 +55,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);

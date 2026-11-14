@@ -15,7 +15,6 @@ use crate::driver_interface::{
     BalloonConvergence, EntropyBackend, EntropyStreamPosition, PmuSampler, VmConfig, VmmDriver,
     VmmError, WatchdogAction, WatchdogEvent, WatchdogVerdict,
 };
-use crate::errno_types::Errno;
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
@@ -49,8 +48,6 @@ pub enum PluginError {
     WxViolation { pid: u32, operation: String },
     #[error("Ambiguous mutation detected across plugins on resource '{resource}': {conflict}")]
     AmbiguousMutation { resource: String, conflict: String },
-    #[error("{errno}: {reason}")]
-    Reject { errno: Errno, reason: String },
     #[error("Internal I/O failure: {0}")]
     Io(#[from] std::io::Error),
     #[error("Plugin halted: {0}")]
@@ -84,16 +81,6 @@ impl PartialEq for PluginError {
                     conflict: right_conflict,
                 },
             ) => left_resource == right_resource && left_conflict == right_conflict,
-            (
-                Self::Reject {
-                    errno: left_errno,
-                    reason: left_reason,
-                },
-                Self::Reject {
-                    errno: right_errno,
-                    reason: right_reason,
-                },
-            ) => left_errno == right_errno && left_reason == right_reason,
             (Self::Io(left), Self::Io(right)) => {
                 match (left.raw_os_error(), right.raw_os_error()) {
                     (Some(left), Some(right)) => left == right,
@@ -115,13 +102,6 @@ impl PluginError {
         Self::AmbiguousMutation {
             resource: resource.into(),
             conflict: conflict.into(),
-        }
-    }
-
-    pub fn reject(errno: Errno, reason: impl Into<String>) -> Self {
-        Self::Reject {
-            errno,
-            reason: reason.into(),
         }
     }
 }

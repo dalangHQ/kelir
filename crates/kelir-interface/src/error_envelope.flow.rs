@@ -46,7 +46,6 @@ impl ErrorEnvelope {
             errno: None,
         }
     }
-
     // see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
     fn mapped(code: &str, message: String, pid: Option<u32>, errno: Option<Errno>) -> Self {
         Self {
@@ -59,6 +58,12 @@ impl ErrorEnvelope {
             errno,
         }
     }
+}
+
+// see: cans/02-plugin-model.md#Declarative-error-mapping
+// see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
+pub fn config_envelope(message: impl Into<String>) -> PluginError {
+    PluginError::Halt(format!("EConfig: {}", message.into()))
 }
 
 // see: cans/02-plugin-model.md#Declarative-error-mapping
@@ -85,16 +90,13 @@ impl From<PluginError> for ErrorEnvelope {
                 binary: None,
                 errno: io.raw_os_error().and_then(Errno::from_raw_os_error),
             },
-            PluginError::Reject { errno, reason } => Self {
-                code: errno.as_str().to_string(),
-                message: reason,
-                driver: None,
-                ring: None,
-                pid: None,
-                binary: None,
-                errno: Some(errno),
-            },
-            PluginError::Halt(message) => Self::mapped(EHALT_CODE, message, None, None),
+            PluginError::Halt(message) => {
+                if message.starts_with("EConfig: ") {
+                    Self::mapped(ECONFIG_CODE, message, None, Some(Errno::Econfig))
+                } else {
+                    Self::mapped(EHALT_CODE, message, None, None)
+                }
+            }
         }
     }
 }

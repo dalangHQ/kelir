@@ -114,13 +114,14 @@ pub enum SuspendUntil {
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict
+// see: cans/11-protocol.md#Verdict-method-mapping
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub enum Verdict {
+pub enum Action {
     Pass,
-    Patch(PatchPayload),
+    Forward,
     Drop {
-        errno: Option<Errno>,
+        errno: Errno,
         reason: String,
     },
     Suspend {
@@ -129,24 +130,14 @@ pub enum Verdict {
     Abort {
         reason: String,
     },
+    Patch(PatchPayload),
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-pub enum FilterAction {
-    Forward,
-    Drop {
-        errno: Option<Errno>,
-        reason: String,
-    },
-    Suspend {
-        until: SuspendUntil,
-    },
-    Abort {
-        reason: String,
-    },
-}
+pub type Verdict = Action;
+
+// see: cans/02-plugin-model.md#Unified-verdict
+pub type FilterAction = Action;
 
 // see: cans/10-attestation.md#Step-evaluation-loop
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

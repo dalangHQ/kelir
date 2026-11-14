@@ -343,12 +343,12 @@ impl PipelineEngine {
                 || callback.run(ring, *ordinal),
                 || {
                     Ok(Verdict::Drop {
-                        errno: Some(Errno::Efault),
+                        errno: Errno::Efault,
                         reason: "Plugin panicked".into(),
                     })
                 },
             );
-            verdict = map_reject_to_verdict(outcome)?;
+            verdict = outcome?;
             if !matches!(verdict, Verdict::Pass) {
                 break;
             }
@@ -606,7 +606,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
@@ -686,7 +686,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_filter_action(outcome)?
+                outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -725,7 +725,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_filter_action(outcome)?
+                outcome?
             };
             if !matches!(action, FilterAction::Forward) {
                 return Ok(action);
@@ -763,7 +763,7 @@ impl PipelineEngine {
                     || interceptor.on_host_lsm_exec(path, pid),
                     || {
                         Ok(Verdict::Drop {
-                            errno: Some(Errno::Efault),
+                            errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
                         })
                     },
@@ -771,7 +771,7 @@ impl PipelineEngine {
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
-                map_reject_to_verdict(outcome)?
+                outcome?
             };
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);

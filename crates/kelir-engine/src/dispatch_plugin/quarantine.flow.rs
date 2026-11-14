@@ -47,7 +47,7 @@ where
     match Quarantined::new(future).await {
         Ok(output) => output,
         Err(_) => Ok(Verdict::Drop {
-            errno: Some(Errno::Efault),
+            errno: Errno::Efault,
             reason: "Plugin panicked".into(),
         }),
     }
@@ -64,31 +64,5 @@ pub(crate) fn quarantine_sync<T>(run: impl FnOnce() -> T, on_panic: impl FnOnce(
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)) {
         Ok(output) => output,
         Err(_) => on_panic(),
-    }
-}
-
-// see: cans/02-plugin-model.md#Unified-verdict
-pub(crate) fn map_reject_to_verdict(
-    result: Result<Verdict, PluginError>,
-) -> Result<Verdict, PluginError> {
-    match result {
-        Err(PluginError::Reject { errno, reason }) => Ok(Verdict::Drop {
-            errno: Some(errno),
-            reason,
-        }),
-        other => other,
-    }
-}
-
-// see: cans/02-plugin-model.md#Unified-verdict
-pub(crate) fn map_reject_to_filter_action(
-    result: Result<FilterAction, PluginError>,
-) -> Result<FilterAction, PluginError> {
-    match result {
-        Err(PluginError::Reject { errno, reason }) => Ok(FilterAction::Drop {
-            errno: Some(errno),
-            reason,
-        }),
-        other => other,
     }
 }
