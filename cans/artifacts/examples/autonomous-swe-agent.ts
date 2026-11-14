@@ -7,7 +7,6 @@ import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, Sus
          type KelirBuilder, type Session, type SnapshotDescriptor, type ExecutionReceipt,
          type CausalDelta, type PolicyHandle, type LedgerHandle } from "@kelir/core";
 import { chaos, ledger } from "@kelir/core";
-import crypto from "node:crypto";
 
 declare const oracle: {
   currentTraceId(): string;
@@ -76,7 +75,7 @@ const runtime = kelir({
     lockBroker: true,
     syntheticFiles: [
       { path: "/workspace/.env.local", content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
-      { path: "/workspace/identity.jwt", content: () => `Bearer ${crypto.randomBytes(32).toString("hex")}`, mode: 0o400 },
+      { path: "/workspace/identity.jwt", content: () => "Bearer demo-static-token-00000000000000000000000000000000", mode: 0o400 },
     ],
     maskRead: [
       { glob: "**/secrets/**", pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
@@ -164,7 +163,7 @@ const runtime = kelir({
                        env: { KELIR_DISARMED: "1" } });
     return c.patch({
       binary: "/bin/git",
-      argv: [...c.trap.argv, `HEAD:refs/heads/agent/${crypto.randomUUID().slice(0, 8)}`],
+      argv: [...c.trap.argv, "HEAD:refs/heads/agent/demo-branch"],
       env:  { KELIR_REWRITTEN: "1" },
     });
   })

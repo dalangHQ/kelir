@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use async_trait::async_trait;
+use kelir::async_trait;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
@@ -490,8 +490,11 @@ impl SystemTelemetryParticipant for HookMatrixFullPlugin {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plugin = HookMatrixFullPlugin::new();
     let handle = plugin.handle();
 
@@ -568,7 +571,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
     // TODO (L3): spawn cat IDENTITY_PATH in the guest and drive the hook matrix over it.
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    kelir::time::sleep(Duration::from_millis(100)).await;
     eprintln!(
         "[kelir] heartbeats={} stalls={} exits={} failures={} traps={} fs_locks={} net_inbound={} exec_stdout={} exec_stderr={} host_preempts={} vm_shutdowns={} memory_pressures={}",
         handle.heartbeats(),

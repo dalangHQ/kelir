@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use kelir::Deserialize;
 
 use kelir::{
     HCons, HNil, HandlerCtx, Host, IngressRoutingService, KelirBuilder, LedgerConfig,
@@ -23,13 +23,14 @@ use kelir::{
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
 #[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", crate = "kelir::serde")]
 struct DispatchWebhookParams {
     action: String,
     webhook_id: String,
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(crate = "kelir::serde")]
 struct WebhookRequest {
     id: String,
     headers: HashMap<String, String>,
@@ -37,6 +38,7 @@ struct WebhookRequest {
 }
 
 #[derive(Clone, Deserialize)]
+#[serde(crate = "kelir::serde")]
 struct WebhookResponse {
     status: u16,
     headers: HashMap<String, String>,
@@ -120,8 +122,11 @@ fn webhook_builder() -> KelirBuilder<
     })
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = webhook_builder().seal()?.boot().await?;
 
     // TODO (L3): serve webhooks across wake cycles via an ingress loop; the Rust Session exposes no handle_ingress, so no WebhookRequest is served yet.

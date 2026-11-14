@@ -9,10 +9,8 @@ import asyncio
 import os
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 import kelir
-from kelir import HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
+from kelir import BaseModel, Field, HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
     PgWireRewrite, SqliteOverVsock,

@@ -191,7 +191,7 @@
         - Asserts every hook in the segregated traits is implemented by some
           - custom plugin in cans/artifacts/examples
         - Hook home: see: 02-plugin-model.md#Segregated-ring-traits
-        - hook-matrix enumerates the full hook surface; the CI parity job diffs its vectors
+        - hook-matrix-full enumerates the full hook surface; the CI parity job diffs its vectors
       - --action-coverage
         - Asserts every Verdict variant is used at least once in cans/artifacts/examples
         - Action home: see: 11-protocol.md#Verdict-method-mapping

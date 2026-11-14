@@ -13,13 +13,13 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Literal
 
-from pydantic import BaseModel, Field
-
 import kelir
 from kelir import (
+    BaseModel,
     ExecutionReceipt,
     External,
     ExternalSuspendKind,
+    Field,
     HandlerContext,
     KelirBuilder,
     PostExecAction,

@@ -444,10 +444,12 @@
       - Every plugin
       - Every primitive
       - Coverage is per-plugin, not per-example
-    - Not transliterations: each uses language-idiomatic constructs
-      - Rust: async-trait, JoinSet, Arc<Mutex<>> states
-      - TypeScript: Promise.all fan-out, generic inference
-      - Python: asyncio.gather, async with, Pydantic v2
+    - Thin consumers: examples import only the SDK surface plus stdlib
+      - Rust: kelir, kelir-interface, std
+      - TypeScript: @kelir/core
+      - Python: kelir plus the standard library
+      - Language-idiomatic constructs come through the SDK, not through external crates
+      - Gate: `scripts/check-examples-thin.sh`
   - Unified builder surface
     - One builder per SDK; creation, mount, host-only list, validation
       - Surface home: see: 02-plugin-model.md#Unified-builder

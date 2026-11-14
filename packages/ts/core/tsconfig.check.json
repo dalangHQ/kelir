@@ -13,6 +13,7 @@
   "include": [
     "src/**/*",
     "tests/*.test.ts",
+    "node-shims.d.ts",
     "../../../cans/artifacts/examples/*.ts"
   ]
 }

@@ -18,7 +18,7 @@
 // console/exec, Ok(()) for lifecycle and telemetry. L1/L2: descriptors
 // only, no execution, no boot().
 
-use async_trait::async_trait;
+use kelir::async_trait;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
@@ -285,7 +285,7 @@ pub fn build_host() -> SurfaceHostBuilder {
     // register_stream_kind, vsock_service, params, on_trap_deny verbs
     // delete; these scopes are the one surface.
     .actions(|a| {
-        a.register("quarantine", serde_json::json!({}), |payload| {
+        a.register("quarantine", kelir::serde_json::json!({}), |payload| {
             async move {
                 let _ = payload;
                 Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
@@ -294,7 +294,7 @@ pub fn build_host() -> SurfaceHostBuilder {
         .end()
     })
     .streams(|s| {
-        s.register(0x0013, serde_json::json!({}), |request| {
+        s.register(0x0013, kelir::serde_json::json!({}), |request| {
             async move {
                 Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request)
             }
@@ -345,8 +345,8 @@ pub fn host_only_verbs_rejected_on_plugin(
     // plugin.trap_async("*", |_| async move { Ok::<Verdict, PluginError>(Verdict::Pass) });
     // plugin.post_exec("*", |_| async move { Ok::<PostExecAction, PluginError>(PostExecAction::Proceed) });
     // plugin.deny(|d| d.on_trap_deny(|_, _, _| async move { Ok::<(), PluginError>(()) }).end());
-    // plugin.actions(|a| a.register("quarantine", serde_json::json!({}), |payload| async move { Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()) }).end());
-    // plugin.streams(|s| s.register(0x0013, serde_json::json!({}), |request| async move { Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request) }).end());
+    // plugin.actions(|a| a.register("quarantine", kelir::serde_json::json!({}), |payload| async move { Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()) }).end());
+    // plugin.streams(|s| s.register(0x0013, kelir::serde_json::json!({}), |request| async move { Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request) }).end());
     // plugin.lifecycle_mut();
     plugin
 }

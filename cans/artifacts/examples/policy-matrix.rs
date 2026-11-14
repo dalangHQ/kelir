@@ -9,9 +9,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use async_trait::async_trait;
-use ciborium::value::Value as CborValue;
-use serde::{Deserialize, Serialize};
+use kelir::async_trait;
+use kelir::CborValue;
+use kelir::{Deserialize, Serialize};
 use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::HandlerCtx;
@@ -275,6 +275,7 @@ type PolicyPlugins = HCons<(), HCons<(), HNil>>;
 type PolicyBuilder = KelirBuilder<Host, Unsealed, (), HNil, PolicyPlugins, NoParams>;
 
 #[derive(Deserialize, Serialize)]
+#[serde(crate = "kelir::serde")]
 struct QuarantinePayload {
     pid: u32,
     reason: String,
@@ -350,7 +351,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
     .plugin_instance(WatchdogSilencerPlugin::new(shared))
     .register_custom_action(
         "quarantine",
-        serde_json::json!({
+        kelir::serde_json::json!({
             "type": "object",
             "properties": {
                 "pid": { "type": "integer" },
@@ -382,8 +383,11 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
     Ok(builder)
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = build_runtime()?.seal()?.boot().await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());

@@ -54,13 +54,6 @@ rs_check() {
         echo '[dependencies]'
         echo "kelir = { path = \"$ROOT/crates/kelir\", features = [\"all-plugins\"] }"
         echo "kelir-interface = { path = \"$ROOT/crates/kelir-interface\" }"
-        echo 'tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util", "net"] }'
-        echo 'serde = { version = "1.0", features = ["derive"] }'
-        echo 'serde_json = "1.0"'
-        echo 'libc = "0.2"'
-        echo 'async-trait = "0.1"'
-        echo 'ciborium = "0.2"'
-        echo '# NOTE: an example importing a new external crate needs it added here.'
     } > "$workdir/Cargo.toml"
     if [ -f "$ROOT/Cargo.lock" ]; then
         cp "$ROOT/Cargo.lock" "$workdir/Cargo.lock"

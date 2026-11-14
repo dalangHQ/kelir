@@ -16,7 +16,7 @@ kelir-terminal = { path = "../kelir-terminal" }
 kelir-checkpoint = { path = "../kelir-checkpoint" }
 kelir-host = { path = "../kelir-host" }
 async-trait = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 ciborium = { workspace = true }

@@ -449,7 +449,7 @@
     - Non-plugin surface examples
       - Exercises raw traits or SDK surfaces; no catalog plugin
       - Terminal and trap interposition: see: artifacts/examples/git-gate.rs
-      - Full hook surface: see: artifacts/examples/hook-matrix.rs
+      - Full hook surface: see: artifacts/examples/hook-matrix-full.rs
       - Full Action lattice: see: artifacts/examples/policy-matrix.rs
       - Each maps to a spec surface, not a plugin
     - Coverage invariant
@@ -466,7 +466,7 @@
         - Hook families: see: #Segregated-ring-traits
         - An unhit hook fails --hook-coverage
         - Hook-coverage gate: see: [3]
-        - Exercises via hook-matrix and policy-matrix, not via
+        - Exercises via hook-matrix-full and policy-matrix, not via
           - autonomous-swe-agent
       - Action-coverage: every Action variant
         - Action variants: see: 11-protocol.md#Verdict-method-mapping

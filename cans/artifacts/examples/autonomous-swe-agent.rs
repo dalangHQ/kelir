@@ -13,11 +13,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use async_trait::async_trait;
+use kelir::async_trait;
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
-use serde::{Deserialize, Serialize};
+use kelir::{Deserialize, Serialize};
 
 use kelir::{
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
@@ -43,7 +43,7 @@ use kelir::{
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "action", rename_all = "kebab-case")]
+#[serde(tag = "action", rename_all = "kebab-case", crate = "kelir::serde")]
 pub enum SpawnAction {
     FixStripeWebhook {
         repo: String,
@@ -53,7 +53,7 @@ pub enum SpawnAction {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "lowercase", crate = "kelir::serde")]
 pub enum Env {
     Staging,
     Production,
@@ -256,6 +256,12 @@ async fn build_runtime(
         protected_branches: vec!["main".into(), "master".into(), "release/*".into()],
     });
     let policy_handle = policy_plugin.handle();
+    let host_uid = {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata("/proc/self").map(|m| m.uid()).map_err(|e| {
+            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+        })?
+    };
 
     let builder = KelirBuilder::new(VmConfig {
         vcpus: 4,
@@ -310,7 +316,7 @@ async fn build_runtime(
     .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
             guest_uid: 0,
-            host_uid: unsafe { libc::getuid() },
+            host_uid,
         },
         shared_caches: vec![
             "~/.npm".into(),
@@ -350,7 +356,7 @@ async fn build_runtime(
                     let path = path.to_path_buf();
                     let raw = raw.to_vec();
                     Box::pin(async move {
-                        let evt: serde_json::Value = serde_json::from_slice(&raw).map_err(|err| {
+                        let evt: kelir::serde_json::Value = kelir::serde_json::from_slice(&raw).map_err(|err| {
                             PluginError::Halt(format!("snoop payload decode failed: {err}"))
                         })?;
                         if evt
@@ -636,8 +642,11 @@ async fn build_runtime(
     Ok(builder)
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let oracle: Arc<UserOracle> = Arc::new(UserOracle::new());
 
     let builder = build_runtime(
@@ -668,7 +677,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] checkpoint base node={base}");
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
-        let mut joins = tokio::task::JoinSet::new();
+        let mut joins = kelir::JoinSet::new();
         for id in ['A', 'B', 'C', 'D'] {
             let mut child = session.fork().await?;
             joins.spawn(async move {
@@ -821,7 +830,7 @@ impl UserOracle {
     async fn ingest_harness_event(
         &self,
         path: &Path,
-        event: &serde_json::Value,
+        event: &kelir::serde_json::Value,
         _blake3: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -848,7 +857,7 @@ impl UserOracle {
         {
             return Err("human approval denied: harness falsification on record".into());
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        kelir::time::sleep(Duration::from_millis(50)).await;
         Ok(())
     }
 }

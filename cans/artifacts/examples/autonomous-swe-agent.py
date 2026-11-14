@@ -19,15 +19,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal, Optional, Self
 
-from pydantic import BaseModel, Field
-
 import kelir
 from kelir import (
+    BaseModel,
     CausalDelta,
     Errno,
     ExecutionReceipt,
     External,
     ExternalSuspendKind,
+    Field,
     FilterAction,
     HandlerContext,
     KelirBuilder,

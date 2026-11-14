@@ -39,6 +39,10 @@ from kelir.plugin_fusion import (
 
 
 # see: cans/03-sdk-architecture.md#Python-SDK
+from pydantic import BaseModel as BaseModel, Field as Field
+
+
+# see: cans/03-sdk-architecture.md#Python-SDK
 KELIR_ADDON_ABI_VERSION = 1
 
 # see: cans/03-sdk-architecture.md#Python-SDK
@@ -803,7 +807,7 @@ from kelir.kelir_builder import (
 
 __all__ = [
     "Approval",
-    "Errno",
+    "BaseModel",
     "Caps",
     "CausalDelta",
     "Channel",
@@ -812,12 +816,14 @@ __all__ = [
     "CtxT",
     "DbCap",
     "Deadline",
+    "Errno",
     "ExecStream",
     "ExecveMutation",
     "ExecutionReceipt",
     "ExitKind",
     "External",
     "ExternalSuspendKind",
+    "Field",
     "FilterAction",
     "GuestClock",
     "Handshake",

@@ -1,4 +1,8 @@
 // see: cans/08-lifecycle.md#State-machine
+// STATUS: aspirational; see §4 of work-order
+//   L3-GAP: no WebhookRequest is served — handleWebhook is only declared,
+//   unimplemented; the builder, trap gating, and suspend path below are
+//   real and stay.
 
 import { kelir, t, PostExecAction, SuspendReason,
          type ExecutionReceipt } from "@kelir/core";

@@ -52,8 +52,11 @@ fn container_builder(
     }))
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = container_builder().seal()?.boot().await?;
 
     let _container = session.cap::<ContainerCtx>();    let image = OCI_TARBALL;

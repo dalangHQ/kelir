@@ -115,9 +115,9 @@ def test_autonomous_swe_agent_build_runtime_executes() -> None:
     assert isinstance(builder.fuse().describe(), dict)
 
 
-def test_hook_matrix_main_executes_with_stubbed_boot(
+def test_hook_matrix_full_main_executes_with_stubbed_boot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _stub_boot(monkeypatch)
-    module = _load_example("hook-matrix")
+    module = _load_example("hook-matrix-full")
     asyncio.run(module.main())

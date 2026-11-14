@@ -2,7 +2,7 @@
 // see: cans/05-storage-plane.md#Encapsulation-invariant
 // see: cans/05-storage-plane.md#In-flight-read-masking
 
-use async_trait::async_trait;
+use kelir::async_trait;
 use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{
@@ -78,8 +78,11 @@ impl TrapInterposer for GitGatePlugin {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = KelirBuilder::new(VmConfig {
         vcpus: 2,
         memory_mb: 1024,

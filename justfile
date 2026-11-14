@@ -76,6 +76,10 @@ check-examples-canonical:
 check-examples:
     ./scripts/check-examples.sh
 
+# --examples-thin: the canonical examples import only the public SDK surface plus the standard library.
+check-examples-thin:
+    ./scripts/check-examples-thin.sh
+
 # --builder-parity: the unified KelirBuilder chain is identical in Rust/TS/Python.
 check-builder-parity:
     ./scripts/check-builder-parity.sh
@@ -358,4 +362,4 @@ check-types:
 check-gates: check-manifest check-tests
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
-check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-examples-thin check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon

@@ -9,7 +9,7 @@
 
 use std::env;
 
-use serde::Deserialize;
+use kelir::Deserialize;
 
 use kelir::{
     DbProxyConfig, DbProxyPlugin, FinalizeRequest, HCons, HNil, HandlerCtx, Host, KelirBuilder,
@@ -22,6 +22,7 @@ use kelir::{
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
 #[derive(Clone, Deserialize)]
+#[serde(crate = "kelir::serde")]
 struct MigrateParams {
     action: String,
     schema_name: String,
@@ -141,15 +142,18 @@ fn build_runtime(
     })
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pg_host = env::var("KELIR_PG_HOST")?;
     let pg_secret = env::var("KELIR_PG_SECRET")?;
 
     let mut session = build_runtime(&pg_host, &pg_secret).seal()?.boot().await?;
 
     // see: cans/09-snapshots.md#Snapshots
-    let snapshot = tokio::fs::read(LOCAL_SNAPSHOT).await?;
+    let snapshot = kelir::fs::read(LOCAL_SNAPSHOT).await?;
     session.vm.import_snapshot(&snapshot).await?;
 
     let params = MigrateParams {
@@ -173,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     let out = session.vm.export_snapshot().await?;
-    tokio::fs::write(LOCAL_SNAPSHOT, out).await?;
+    kelir::fs::write(LOCAL_SNAPSHOT, out).await?;
 
     // see: cans/10-attestation.md#Execution-receipts
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages

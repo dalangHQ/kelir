@@ -48,13 +48,29 @@ pub use kelir_interface::storage::CommitStats;
 pub use planes::storage_plane::{FsReconcileRequest, SnoopRule, SyntheticFile};
 pub use trap_filter::TrapFilter;
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
+pub use async_trait::async_trait;
 #[cfg(feature = "plugin-tool-guard")]
 pub use builder_sdk::ToolGuardExt;
+pub use ciborium::value::Value as CborValue;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
+pub use serde;
+pub use serde::{Deserialize, Serialize};
+pub use serde_json;
 pub use session_lifecycle::{
     ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
     VsockHandle,
 };
+pub use tokio::fs;
+pub use tokio::task::JoinSet;
+pub use tokio::time;
+
+// see: cans/03-sdk-architecture.md#Full-surface-examples
+pub fn block_on<F: Future<Output = T>, T>(future: F) -> std::io::Result<T> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    Ok(runtime.block_on(future))
+}
 
 // see: cans/plugins/chaos.md#Plugin-chaos
 #[cfg(feature = "plugin-chaos")]

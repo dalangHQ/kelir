@@ -8,8 +8,8 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use serde::Deserialize;
-use tokio::task::JoinSet;
+use kelir::Deserialize;
+use kelir::JoinSet;
 
 use kelir::{
     HCons, HNil, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, MeshConfig, MeshCtx,
@@ -25,7 +25,7 @@ type SwarmPlugins = HCons<LedgerCtx, HCons<SupplyChainCtx, HCons<MeshCtx, HNil>>
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
 #[derive(Clone, Deserialize)]
-#[serde(tag = "action", rename_all = "kebab-case")]
+#[serde(tag = "action", rename_all = "kebab-case", crate = "kelir::serde")]
 enum WorkerAction {
     RunShard {
         shard_id: u32,
@@ -157,8 +157,11 @@ async fn run_shard(
     Ok((shard_id, 0))
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = boot_swarm().await?;
 
     let mut joins = JoinSet::new();

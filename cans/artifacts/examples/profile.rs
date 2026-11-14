@@ -3,8 +3,11 @@
 
 use kelir::Sandbox;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    kelir::block_on(async_main())?
+}
+
+async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut box_ = Sandbox::from_config("./fixtures/kelir.toml")
         .await?
         .boot()
