@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use kelir_interface::storage::{
-    CommitStats, FsReconcileRequest, ReconcilerOps, StorageIo, SyntheticFile,
+    CommitStats, FsReconcileRequest, ReconcilerOps, SnoopRule, StorageIo, SyntheticFile,
 };
 
 use super::config::StorageConfig;
@@ -21,6 +21,7 @@ pub struct StoragePlane {
     wiring: StorageConfig,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     synthetic_files: Vec<SyntheticFile>,
+    snoops: Vec<SnoopRule>,
 }
 
 impl StoragePlane {
@@ -40,6 +41,7 @@ impl StoragePlane {
             wiring: StorageConfig::default(),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             synthetic_files: Vec::new(),
+            snoops: Vec::new(),
         }
     }
 
@@ -71,6 +73,17 @@ impl StoragePlane {
 
     pub fn synthetic_files(&self) -> &[SyntheticFile] {
         &self.synthetic_files
+    }
+
+    // see: cans/02-plugin-model.md#Unified-interposition-pipeline
+    // TODO (L3) [storage_plane]: snoop rules register as write-path FsInterposer hooks so on_write fires with (path, raw, ctx) per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: snoops held but never dispatched, writes unobserved
+    pub fn with_snoops(mut self, snoops: Vec<SnoopRule>) -> Self {
+        self.snoops = snoops;
+        self
+    }
+
+    pub fn snoops(&self) -> &[SnoopRule] {
+        &self.snoops
     }
 
     pub fn with_io(mut self, storage_io: Arc<dyn StorageIo>) -> Self {

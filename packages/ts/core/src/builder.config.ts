@@ -3,6 +3,7 @@
 import type { TrapContext } from "./context.lifecycle.types.js";
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+// see: cans/01-architecture.md#Embedded-profile
 export interface KelirConfig {
   readonly vcpus?: number;
   readonly memoryMb?: number;

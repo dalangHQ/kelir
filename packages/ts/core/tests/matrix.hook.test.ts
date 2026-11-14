@@ -105,7 +105,7 @@ const hookMatrixPlugin = createPlugin<"hook-matrix", Record<string, never>>("hoo
     const text = Buffer.from(frame).toString("latin1");
     if (text.includes(DENY_MARKER)) {
 
-      return FilterAction.Suspend(SuspendUntil.deadline(0));
+      return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
     }
     return FilterAction.Forward;
   })

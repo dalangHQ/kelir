@@ -14,8 +14,7 @@
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
     - Key pin (SSOT-A1): the capability key is the plugin name
       - The key is "db-proxy", not "db"
-      - The Py example reading c.cap.db is non-conforming
-      - See: cans/artifacts/examples/db-backed-runtime.py:84
+      - Py reads c.cap.db_proxy.rewrite_target; TS c.cap.dbProxy.rewriteTarget
   - Invariants and policy (db-proxy)
     - L7 pgwire rewrite and 2PC commit: see: artifacts/examples/db-backed-runtime.py
     - Mediates relational protocol traffic

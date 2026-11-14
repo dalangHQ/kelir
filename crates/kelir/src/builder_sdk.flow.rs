@@ -51,6 +51,7 @@ pub struct TrapFilter {
     pub pattern: Option<String>,
 }
 
+// see: cans/02-plugin-model.md#Chainable-verbs
 impl From<&str> for TrapFilter {
     fn from(value: &str) -> Self {
         Self {
@@ -758,6 +759,11 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             .as_ref()
             .map(|cfg| cfg.synthetic_files.clone())
             .unwrap_or_default();
+        let snoops = registration
+            .storage_cfg
+            .as_ref()
+            .map(|cfg| cfg.snoops.clone())
+            .unwrap_or_default();
         // see: cans/01-architecture.md#Host-runtime
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
         // TODO (L3) [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
@@ -819,6 +825,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             reconciler: None,
             fuse_ops: None,
             storage,
+            snoops,
         };
         let mut core = kelir_engine::Session::boot_with_engine(
             config,

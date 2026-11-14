@@ -5,6 +5,7 @@
 import type { Schema, Infer } from "./schema.config.js";
 import { validateSchema } from "./schema.config.js";
 import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
+import type { Buffer } from "node:buffer";
 import { HookRegistry } from "./hook.registry.js";
 import type {
   KelirPlugin,
@@ -441,10 +442,14 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         const args = Array.isArray(payload)
           ? (payload as readonly unknown[])
           : [payload, undefined];
-        return (handler as (a: unknown, b: unknown) => Promise<void> | void)(
-          args[0],
-          args[1],
-        );
+        return Promise.resolve(
+          (handler as (a: unknown, b: unknown) => Promise<void> | void)(
+            args[0],
+            args[1],
+          ),
+        ).catch((error: unknown): never => {
+          throw EConfig.fromNative(error);
+        });
       },
     });
     return this;
@@ -548,7 +553,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.checkVerb(".onFsRead"); this.registry.onFsRead(handler); return this;
   }
 
-  onFsWrite(handler: (path: string, buffer: Uint8Array, pid: number, ctx: TrapContext & Ctx) => FilterAction): this {
+  onFsWrite(handler: (path: string, buffer: Buffer, pid: number, ctx: TrapContext & Ctx) => FilterAction): this {
     this.checkVerb(".onFsWrite"); this.registry.onFsWrite(handler); return this;
   }
 

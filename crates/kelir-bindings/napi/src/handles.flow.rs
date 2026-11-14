@@ -2,7 +2,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use napi::bindgen_prelude::Buffer;
+use napi::bindgen_prelude::{Buffer, Object};
 use napi::{Error, Result, Status};
 use napi_derive::napi;
 use tokio::sync::Mutex as AsyncMutex;
@@ -690,8 +690,9 @@ impl NativeSessionHandle {
         ))
     }
 
+    // see: cans/03-sdk-architecture.md#Session-surfaces
     #[napi]
-    pub async fn handle_ingress(&self) -> Result<()> {
+    pub fn handle_ingress(&self, _options: Object) -> Result<()> {
         // TODO (L3) [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent
         Err(missing(
             "handle_ingress: inbound connections park in the wire plane listeners (L3)",

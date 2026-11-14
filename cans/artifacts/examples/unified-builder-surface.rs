@@ -46,6 +46,12 @@ pub type SurfaceBuilder =
     KelirBuilder<Plugin, Unsealed, SurfaceCtx, HCons<LedgerCtx, HNil>, HNil, NoParams>;
 
 // see: cans/02-plugin-model.md#Unified-builder
+// Post-mount type: only .plugin_instance() grows Plugins (prepending the
+// plugin's Context); .plugin()/.r#use() merge the builder's registration
+// and check Plugins: Satisfies<PDeps> without changing Plugins. After the
+// three mounts below, Plugins = HCons<LedgerCtx, HNil> — the surface
+// plugin's Deps HCons<LedgerCtx, HNil> is satisfied positionally by the
+// ledger instance mounted first.
 type SurfaceHostBuilder = KelirBuilder<Host, Unsealed, (), HNil, HCons<LedgerCtx, HNil>, NoParams>;
 
 // see: cans/11-protocol.md#Control-channel
@@ -172,6 +178,10 @@ pub fn build_plain_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, No
 // ledger trait instance first (it satisfies the surface plugin's require
 // at compile time via Satisfies), then the surface plugin via plugin(),
 // then the plain plugin via use(), the same verb under its second name.
+// The .plugin()/.r#use() mounts do not grow Plugins (they return Self and
+// only check Satisfies against their Deps), so the declared return type
+// stays HCons<LedgerCtx, HNil> — the single Context contributed by the
+// ledger .plugin_instance() mount.
 pub fn build_host() -> SurfaceHostBuilder {
     KelirBuilder::new(VmConfig {
         vcpus: 2,
@@ -219,6 +229,7 @@ pub fn build_host() -> SurfaceHostBuilder {
         encapsulation: WorkspaceEncapsulation::Passthrough,
         scan_engine: ReadMaskEngine::FastRegex,
         carryover_bytes: 1024,
+        snoops: Vec::new(),
     })
     .wire(WireConfig {
         sinkhole: SinkholeConfig {

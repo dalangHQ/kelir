@@ -113,6 +113,8 @@
     - see: [1]
     - Typed lifecycle: name, default_scope, is_enabled, opt-in fork_state
     - fork_state() specializes child state; defaults to clone_box()
+    - fork_state runs on the async runtime thread; clone without blocking
+      - try_lock, atomics, Arc::clone only; never blocking_lock or block_on
     - Stateless and pure-data plugins omit fork_state() with zero boilerplate
     - Typed registration: register_interceptors, register_subscribers
     - Inter-plugin linkage is direct Cargo crate imports, not string tokens
@@ -146,6 +148,9 @@
         - Rings: Fs write, Net outbound, Net inbound, pgwire
         - A FilterAction mutates the payload in place, then forwards or gates
         - FilterAction = { Forward, Drop{errno,reason}, Suspend{until}, Abort{reason} }
+        - Constructor pin (SSOT-A1): field names visible at the call site
+          - TS: FilterAction.Suspend({ until }) / FilterAction.Abort({ reason })
+          - Py: FilterAction.suspend(until=...) / FilterAction.abort(reason=...)
         - No Patch variant: the transformed buffer IS the payload
       - Variants
         - Verdict::Pass = proceed untouched
@@ -177,6 +182,9 @@
         - Read, console, and exec-stream hooks return the buffer
         - The buffer may be new or the same one passed in
         - Write/net hooks mutate the passed buffer and return FilterAction
+        - on_fs_write buffer (SSOT-A1): RS &mut [u8]; TS Buffer; Py bytearray
+        - TS Buffer is mutable; the bridge copies the buffer back on return
+        - Py bytearray is mutable; bytes is read-only and cannot mutate
         - RS mutates in place and returns () here; it is the outlier
         - See: crates/kelir-interface/src/plugin_model.flow.rs:783-808
         - See: crates/kelir-interface/src/plugin_model.flow.rs:838
@@ -319,6 +327,8 @@
     - Core context primitives (invariable across all handlers):
       - c.trap: immutable syscall inspection payload
       - c.vm: restricted lifecycle actuation handle
+      - c.step: active step surface; last() -> SnapshotDescriptor
+        - RS StepStack::last() -> Option<SnapshotDescriptor>; TS StepHandle.last()
       - c.receipt(): hardware execution proof generation
     - Scoped domain contexts:
       - FsContext: scoped to virtio-fs operations (inode, path, journal)
@@ -599,6 +609,7 @@
     - Verbs in both modes
       - 24 ring verbs and 8 scopes exist in host mode and plugin mode
       - trap(filter, handler) and trap_scope(closure) exist in both modes
+      - The filter argument may be a bare string in all three SDKs
       - Rust: the scope form is trap_scope; the filter form is trap
       - TypeScript and Python: one overloaded trap name carries both forms
       - Same signatures as the DX-round plugin builder; the host gains them
@@ -618,6 +629,10 @@
       - Repeat calls append, never replace
         - A second call to the same ring verb registers a second handler
         - Handlers fire in registration order
+      - Trap filter string form (SSOT-A1)
+        - RS: trap, trap_async, post_exec accept impl Into<TrapFilter>
+        - RS &str coerces: "*" is match-all; other strings are TrapFilter::binary(s)
+        - TS trap accepts string | TrapFilter; Py trap accepts str | TrapFilter
       - .context(fn) in Rust, TypeScript, and Python
       - .require::<P>() in Rust; .requires<P>() in TypeScript; .require(P) in Python
       - .scope(MountScope) in Rust; .scope(scope) in TypeScript and Python
@@ -716,6 +731,8 @@
       - Mounting a name twice is EConfig: plugin already mounted: <name>
         - The duplicate is recorded at mount; seal() rejects it
       - Rust mount requires Plugins: Satisfies<Deps> at compile time
+        - Satisfies is order-sensitive: Deps order must match the mounted order
+        - Canonical example mounts LedgerCtx first; E0207 blocks reordering
       - Mount does not validate; validation is a seal and boot concern
       - Plugin-of-plugin: see: #Chain-decisions
       - Mount form per SDK: see: 03-sdk-architecture.md#Unified-builder-surface

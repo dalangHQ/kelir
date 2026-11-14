@@ -31,6 +31,10 @@ const repoPolicyPlugin = (
         ctx.policy.recordViolation();
         return FilterAction.Drop("ENOSPC", "diff exceeds policy ceiling");
       }
+      // in-place redaction: the bridge copies the mutated buffer back to the guest
+      const redacted = buffer.toString("utf8")
+        .replace(/sk_live_[0-9a-zA-Z]{24}/g, (m) => "*".repeat(m.length));
+      buffer.set(Buffer.from(redacted, "utf8"), 0);
       return FilterAction.Forward;
     });
 

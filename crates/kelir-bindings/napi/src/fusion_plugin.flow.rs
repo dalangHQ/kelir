@@ -47,7 +47,8 @@ impl FusedTrampolineCallback for NapiFusedCallback {
                 ring.as_tag()
             )));
         }
-        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+        // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
+        // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; TS write hooks receive a mutable Uint8Array Buffer copied back on return; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
         Ok(Verdict::Pass)
     }
 }

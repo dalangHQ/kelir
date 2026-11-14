@@ -64,8 +64,19 @@ pub type ChaosHostBuilder = KelirBuilder<
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/plugins/chaos.md#Plugin-chaos
 pub fn build_chaos_host(config: ChaosConfig) -> ChaosHostBuilder {
-    KelirBuilder::new(default_vm_config(None, None, None, None, None, None))
-        .plugin_instance(ChaosPlugin::new(config))
+    // see: cans/01-architecture.md#Embedded-profile
+    KelirBuilder::new(default_vm_config(
+        Some(1),
+        Some(256),
+        Some(format!(
+            "./fixtures/vmlinux-6.6-{}-kelir",
+            std::env::consts::ARCH
+        )),
+        Some("./fixtures/rootfs-chaos.erofs".into()),
+        Some(true),
+        Some(false),
+    ))
+    .plugin_instance(ChaosPlugin::new(config))
 }
 
 // see: cans/02-plugin-model.md#Unified-builder

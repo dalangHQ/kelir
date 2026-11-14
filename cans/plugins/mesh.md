@@ -13,6 +13,8 @@
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries
     - Propagates call-hop counters across routines
+    - MeshCtx::await_winner(timeout) -> u32: winning peer shard id
+      - Resolves after mesh election settles; TS/Py spelling awaitWinner(timeout)
     - SPIFFE identity (mesh)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.trust_domain
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.workload_prefix

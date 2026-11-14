@@ -40,6 +40,8 @@
       - session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts
   - Disclosure
     - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
+    - c.terminal.notice(msg) is the canonical TerminalNotice publisher
+      - Publishes to the EventBus like any host mutation; same notice in all SDKs
     - Injects formatted ANSI box into host-to-guest console Port 0 stream
     - Disclosures render inline on workload TTY without corrupting cursor state
   - Binary exec channel (terminal plane)

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 
 import kelir
@@ -114,7 +115,8 @@ async def main() -> None:
         # TODO (L3): await the mesh winner announcement; the Py Caps expose no mesh handle with await_winner, so the first passing shard stands in as winner.
         print(f"[kelir] mesh winner shard={winner}")
         print(f"[kelir] {passed}/8 shards passed; winner shard={winner}")
-        # TODO (L3): count supply-chain denials via session.cap.ledger once LedgerCap grows the by-kind counter per cans/plugins/ledger.md#Ledger-handler-API.
+        denials = await session.cap.ledger.count_denials(os.getpid())
+        print(f"[kelir] supply-chain denials={denials}")
 
 
 if __name__ == "__main__":

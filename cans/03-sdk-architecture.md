@@ -35,8 +35,8 @@
         - The db key is "db-proxy", not "db"
         - The policy key is "repo-policy", not "policy"
         - See: cans/plugins/db-proxy.md:5
-      - Non-conforming: cans/artifacts/examples/db-backed-runtime.py:84
-        - Reads c.cap.db; Py spells the hyphenated key db_proxy
+      - Non-conforming claim withdrawn: db-backed-runtime.py conforms today
+        - Py c.cap.db_proxy.rewrite_target; TS c.cap.dbProxy.rewriteTarget
       - No string-keyed service registry on any SDK
       - Lifecycle hook capability reachability
         - Lifecycle hooks receive LifecycleCtx; it carries no capability caps
@@ -115,11 +115,15 @@
           - No per-SDK aliases; one name across languages
       - Session surfaces
         - One table over one surface; rows marked data | control
+          - session.vm is a property, not vm(); TS readonly vm, Py attribute
+          - Same property form: terminal, storage, wire, checkpoint, host, vsock, step
         - Session data operations
           - session.vm.map_shared_region(tag, size_bytes) | data
             - see: 01-architecture.md#Shared-memory-channel
           - session.vm.export_snapshot() / import_snapshot() | data
             - see: 09-snapshots.md#Archives-and-portability
+          - session.handleIngress({ cwd?, handler }) -> AsyncGenerator | data
+            - TS spelling; Py/RS handle_ingress; see: cans/plugins/wire-ingress.md
         - Session control surface
           - session.vm.adjust_balloon(target_mb) | control
             - see: 08-lifecycle.md#Balloon-convergence
@@ -399,6 +403,10 @@
         - lifecycle 5, telemetry 3; names as in the verb home
     - Scopes, all three SDKs, both modes
       - trap, fs, net, console, exec, host, lifecycle, telemetry
+    - on_trap_deny return pin (SSOT-A1)
+      - RS: Result<(), PluginError>; TS: Promise<void>, throws on failure
+      - Py: Awaitable[None], raises on failure; failures are session errors
+      - Never a silent no-op: a failed deny hook surfaces as a session error
     - Rust
       - Entry: KelirBuilder::new(config) is the host
       - Entry: KelirBuilder::named(name) is a plugin-mode builder

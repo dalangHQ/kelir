@@ -95,6 +95,8 @@ export interface PolicyHandle {
 
 export interface MeshHandle {
   readonly peers?: readonly string[];
+  // TODO (L3): awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.
+  awaitWinner(timeoutMs: number): Promise<number>;
 }
 
 export interface ChaosHandle {

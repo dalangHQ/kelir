@@ -54,6 +54,7 @@ def mask_tokens(window: bytes) -> bytes:
 @dataclass
 class HookState:
     tail: bytes = b""
+    console_tail: bytes = b""
     heartbeats: int = 0
     last_uptime_ms: Optional[int] = None
     stalls: int = 0
@@ -123,8 +124,9 @@ class HookMatrixFullPlugin(BasePlugin):
         return chunk
 
     def on_fs_write(
-        self, path: Path, data: bytes, pid: int, ctx: HandlerContext,
+        self, path: Path, data: bytearray, pid: int, ctx: HandlerContext,
     ) -> FilterAction:
+        data[:] = mask_tokens(bytes(data))
         return FilterAction.forward()
 
     def on_fs_lock(
@@ -168,7 +170,11 @@ class HookMatrixFullPlugin(BasePlugin):
 
     # see: cans/04-terminal-plane.md#Terminal-pipeline
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        return mask_tokens(chunk)
+        window = self._state.console_tail + chunk
+        masked = mask_tokens(window)
+        out = masked[len(masked) - len(chunk):] if chunk else b""
+        self._state.console_tail = masked[-CARRYOVER:] if masked else b""
+        return out
 
     async def on_exec_stdout(
         self, pid: int, exec_id: int, chunk: bytes,

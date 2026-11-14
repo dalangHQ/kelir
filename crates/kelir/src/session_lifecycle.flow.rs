@@ -28,6 +28,9 @@ where
     core: kelir_engine::Session,
     plugins: Plugins,
     registration: Registration,
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub vm: VmHandle,
+    pub vsock: VsockHandle,
     _params: PhantomData<fn() -> Params>,
 }
 
@@ -38,6 +41,8 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         registration: Registration,
     ) -> Self {
         Self {
+            vm: core.vm(),
+            vsock: VsockHandle,
             core,
             plugins,
             registration,
@@ -69,7 +74,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
 
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub fn vm(&self) -> VmHandle {
-        self.core.vm()
+        self.vm.clone()
     }
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
@@ -102,6 +107,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Session-surfaces
+    // TODO (L2): surface the step handle as a Session property per cans/03-sdk-architecture.md#Session-surfaces.
     pub fn vsock(&self) -> VsockHandle {
         VsockHandle
     }
@@ -137,6 +143,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.core.shutdown().await
     }
 
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    pub fn terminate(&mut self) -> Result<(), PluginError> {
+        self.core.terminate()
+    }
+
     // see: cans/03-sdk-architecture.md#Rust-SDK
     // see: cans/08-lifecycle.md#CoW-fork
     pub async fn fork(&self) -> Result<Session<Plugins, Params>, PluginError> {
@@ -158,6 +169,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             detached: self.registration.detached,
         };
         for (plugin, scope) in &self.registration.instances {
+            // TODO (L2): fork_state is synchronous on the runtime thread; clone state without blocking_lock/block_on per cans/02-plugin-model.md#KelirPlugin-trait.
             let forked = plugin.fork_state(&child_session_id);
             if forked.is_enabled() {
                 child.pipeline_mut().set_active_scope(scope.clone());
@@ -190,6 +202,8 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         // see: cans/08-lifecycle.md#Watchdog
         child.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
         Ok(Self {
+            vm: child.vm(),
+            vsock: VsockHandle,
             core: child,
             plugins: self.plugins.clone(),
             registration,
@@ -203,6 +217,32 @@ impl Session<HNil, NoParams> {
     pub async fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
         let core = kelir_engine::Session::attach(session_id)?;
         Ok(Self::from_parts(core, HNil, Registration::default()))
+    }
+}
+
+// see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
+#[cfg(feature = "plugin-ledger")]
+impl<Plugins: HList, Params> Session<Plugins, Params> {
+    // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
+    pub async fn get_causal_delta_from_parent<Index>(
+        &self,
+    ) -> Result<kelir_interface::telemetry::CausalDelta, PluginError>
+    where
+        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+    {
+        self.ctx::<plugin_ledger::LedgerCtx, Index>()
+            .get_causal_delta_from_parent()
+            .await
+    }
+
+    // see: cans/plugins/ledger.md#Ledger-handler-API
+    pub async fn count_denials<Index>(&self, ppid: u32) -> Result<u64, PluginError>
+    where
+        Plugins: Has<plugin_ledger::LedgerCtx, Index>,
+    {
+        self.ctx::<plugin_ledger::LedgerCtx, Index>()
+            .count_denials(ppid)
+            .await
     }
 }
 
