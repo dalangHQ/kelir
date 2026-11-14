@@ -18,7 +18,7 @@ use kelir::{
     TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{LockBrokerConfig, LockScope},
-    plugin_model::VetoEvent,
+    plugin_model::{Veto, VetoEvent},
 };
 
 type SwarmPlugins = HCons<LedgerCtx, HCons<SupplyChainCtx, HCons<MeshCtx, HNil>>>;
@@ -115,7 +115,7 @@ async fn boot_swarm(
     let mut builder = swarm_builder();
     builder.lifecycle_mut().register_veto(
         VetoEvent::Fork,
-        Box::new(move || veto_flag.load(Ordering::SeqCst)),
+        Box::new(move || Veto::allowed(veto_flag.load(Ordering::SeqCst))),
     );
     let session = builder.seal()?.boot().await?;
 
@@ -183,7 +183,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     match session
-        .ctx::<MeshCtx, _>()
+        .cap::<MeshCtx>()
+        .ok_or("mesh capability missing")?
         .await_winner(Duration::from_secs(2))
         .await
     {
@@ -193,6 +194,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner:?}");
     let denials = session
         .cap::<LedgerCtx>()
+        .ok_or("ledger capability missing")?
         .count_denials(std::process::id())
         .await?;
     eprintln!("[kelir] supply-chain denials={denials}");

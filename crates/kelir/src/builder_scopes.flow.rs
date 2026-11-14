@@ -844,10 +844,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     }
 
     // see: cans/02-plugin-model.md#Nested-scopes
-    pub fn retyped_params<T, F>(
-        self,
-        configure: F,
-    ) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T>
+    pub fn params<T, F>(self, configure: F) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T>
     where
         T: Default + Send + Sync + 'static,
         F: FnOnce(

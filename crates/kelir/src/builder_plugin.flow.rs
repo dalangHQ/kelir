@@ -91,7 +91,8 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub(crate) fn fork_with(
+    // see: cans/02-plugin-model.md#Chainable-verbs
+    pub fn fork_with(
         mut self,
         fork: impl Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
     ) -> Self {

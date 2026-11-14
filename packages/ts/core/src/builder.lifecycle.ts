@@ -515,7 +515,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
   fs(fn: (scope: FsScope<Ctx, this>) => FsScope<Ctx, this> | void): this {
     this.checkVerb(".fs");
-    this.registry.fs(fn, () => this);
+    this.registry.fs(fn, () => this, this.mode === "plugin");
+    const forkFn = this.registry.fsScopeForkFn;
+    if (forkFn !== undefined) {
+      this.forkFn = forkFn;
+    }
     return this;
   }
 

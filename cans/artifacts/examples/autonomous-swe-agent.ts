@@ -183,7 +183,7 @@ const runtime = kelir({
       // see: cans/10-attestation.md#Typed-extensions
       const vfsExt = receipt.fsVfs();
       console.log(vfsExt
-        ? `[kelir] commit fs:vfs extension present, payload_len=${vfsExt.payload.length}`
+        ? `[kelir] commit fs:vfs extension present, served_inodes=${vfsExt.servedInodes} roots=${vfsExt.roots.length}`
         : "[kelir] commit fs:vfs extension absent");
       return PostExecAction.Proceed;
     },

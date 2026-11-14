@@ -13,6 +13,8 @@ import {
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 import type { Schema } from "./schema.config.js";
+import type { LockBrokerConfig, StorageConfig } from "./builder.config.js";
+import type { KelirBuilder } from "./builder.lifecycle.js";
 import { unknownSchema, validateSchema } from "./schema.config.js";
 import type {
   FilterAction,
@@ -67,6 +69,20 @@ export interface TrapScope<Ctx, Owner = unknown> {
   end(): Owner;
 }
 
+// see: cans/02-plugin-model.md#Nested-scopes
+export interface FsScopeConfig<Ctx = unknown> {
+  readonly lockBroker?: LockBrokerConfig;
+  readonly carryoverBytes?: number;
+  readonly scanEngine?: string;
+  readonly snoops?: StorageConfig<Ctx>["snoops"];
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+export interface ScopeRules {
+  readonly read: { readonly allow: readonly string[]; readonly deny: readonly string[] };
+  readonly write: { readonly mask: readonly string[] };
+}
+
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 export interface FsScope<Ctx, Owner = unknown> {
   onFsLookup(handler: (path: string) => Verdict): FsScope<Ctx, Owner>;
@@ -89,6 +105,18 @@ export interface FsScope<Ctx, Owner = unknown> {
       pid: number,
     ) => Verdict,
   ): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  config(cfg: FsScopeConfig<Ctx>): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  forkWith(fn: () => KelirBuilder<any, any, any, any>): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  timeout(seconds: number): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  priority(i: number): FsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  rules(rules: ScopeRules): FsScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -276,6 +304,11 @@ export class HookRegistry<Ctx = unknown> {
   readonly deriveFns: Array<(c: unknown) => unknown> = [];
   readonly contextFns: Array<(c: unknown) => unknown> = [];
   readonly vsockEntries: VsockServiceEntry[] = [];
+  fsScopeConfig?: FsScopeConfig<Ctx>;
+  fsScopeForkFn?: () => KelirBuilder<any, any, any, any>;
+  fsScopeTimeoutSeconds?: number;
+  fsScopePriority?: number;
+  fsScopeRules?: ScopeRules;
 
   constructor(pluginName?: string) {
     this.pluginName = pluginName;
@@ -371,6 +404,11 @@ export class HookRegistry<Ctx = unknown> {
     copy.deriveFns.push(...this.deriveFns);
     copy.contextFns.push(...this.contextFns);
     copy.vsockEntries.push(...this.vsockEntries);
+    copy.fsScopeConfig = this.fsScopeConfig;
+    copy.fsScopeForkFn = this.fsScopeForkFn;
+    copy.fsScopeTimeoutSeconds = this.fsScopeTimeoutSeconds;
+    copy.fsScopePriority = this.fsScopePriority;
+    copy.fsScopeRules = this.fsScopeRules;
     return copy;
   }
 
@@ -401,6 +439,7 @@ export class HookRegistry<Ctx = unknown> {
   fs<Owner>(
     fn: (scope: FsScope<Ctx, Owner>) => FsScope<Ctx, Owner> | void,
     endTarget: () => Owner,
+    pluginMode?: boolean,
   ): HookRegistry<Ctx> {
     const registry = this;
     const scope: FsScope<Ctx, Owner> = {
@@ -418,6 +457,35 @@ export class HookRegistry<Ctx = unknown> {
       },
       onFsLock(handler) {
         registry.onFsLock(handler);
+        return scope;
+      },
+      config(cfg) {
+        if (pluginMode === true) {
+          throw new EConfig(`${registry.owner} called host-only verb fs.config`);
+        }
+        registry.fsScopeConfig = cfg;
+        return scope;
+      },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      forkWith(fn) {
+        registry.fsScopeForkFn = fn;
+        return scope;
+      },
+      timeout(seconds) {
+        registry.fsScopeTimeoutSeconds = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.fsScopePriority = i;
+        return scope;
+      },
+      rules(rules) {
+        registry.fsScopeRules = rules;
         return scope;
       },
       end() {

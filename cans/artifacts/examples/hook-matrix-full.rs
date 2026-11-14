@@ -11,16 +11,14 @@ use kelir::async_trait;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
+    KelirBuilder, SnapshotDescriptor, TrapFilter, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
         LifecycleCtx, LifecycleParticipant, NetInterposer, NoDeps, PluginDeps, PluginError,
         SystemTelemetryParticipant, TrapInterposer, Verdict, WatchdogEvent, WatchdogVerdict,
     },
-    protocol_wire::{
-        Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent, TrapFilter,
-    },
-    KelirBuilder, SnapshotDescriptor, VmConfig,
+    protocol_wire::{Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent},
 };
 
 const IDENTITY_PATH: &str = "/workspace/.policy/identity";
@@ -435,10 +433,12 @@ impl TrapInterposer for HookMatrixFullPlugin {
         event: &ProcessExit,
         ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.exits += 1;
-        if event.exit_code != 0 {
-            state.failures += 1;
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.exits += 1;
+            if event.exit_code != 0 {
+                state.failures += 1;
+            }
         }
         // see: cans/10-attestation.md#Hook-trace
         // hook_trace read: every hook that fired for the trapped process
@@ -529,7 +529,12 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // filter, not in the handler body (AND-ed predicates; a handler-body
     // guard duplicating them is redundant and should not be written).
     .trap(
-        TrapFilter::binary("git").with_arg("push").with_cwd("/workspace/**").with_env("CI", "1").with_uid(0).argv_matches(r"^--force$"),
+        TrapFilter::binary("git")
+            .with_arg("push")
+            .with_cwd("/workspace/**")
+            .with_env("CI", "1")
+            .with_uid(0)
+            .argv_matches(r"^--force$"),
         |_, _| {
             // Handler body carries no cwd/argv guard: the filter already
             // pinned those predicates before the handler was admitted.

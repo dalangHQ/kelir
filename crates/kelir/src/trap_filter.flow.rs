@@ -10,7 +10,7 @@ pub struct TrapFilter {
     pub cwd: Option<String>,
     pub env: Vec<(String, String)>,
     pub uid: Option<u32>,
-    pub argv_matches: Option<regex::Regex>,
+    pub argv_matches: Option<String>,
 }
 
 // see: cans/02-plugin-model.md#Chainable-verbs
@@ -82,8 +82,8 @@ impl TrapFilter {
     }
 
     // see: cans/02-plugin-model.md#TrapFilter-predicates
-    pub fn argv_matches(mut self, re: regex::Regex) -> Self {
-        self.argv_matches = Some(re);
+    pub fn argv_matches(mut self, pattern: &str) -> Self {
+        self.argv_matches = Some(pattern.to_string());
         self
     }
 }
@@ -98,10 +98,7 @@ impl From<&TrapFilter> for FilterSnapshot {
             cwd: filter.cwd.clone(),
             env: filter.env.clone(),
             uid: filter.uid,
-            argv: filter
-                .argv_matches
-                .as_ref()
-                .map(|re| re.as_str().to_string()),
+            argv: filter.argv_matches.clone(),
         }
     }
 }

@@ -22,7 +22,7 @@ use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
-        PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict, VetoEvent,
+        PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict, Veto, VetoEvent,
         WatchdogEvent, WatchdogVerdict,
     },
     protocol_wire::{Errno, ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
@@ -143,12 +143,12 @@ impl LifecycleParticipant for PolicyMatrixPlugin {
         let ready = Arc::clone(&self.state);
         ctx.register_veto(
             VetoEvent::Suspend,
-            Box::new(move || ready.ready.load(Ordering::SeqCst)),
+            Box::new(move || Veto::allowed(ready.ready.load(Ordering::SeqCst))),
         );
         let ready = Arc::clone(&self.state);
         ctx.register_veto(
             VetoEvent::ClockSkew,
-            Box::new(move || ready.ready.load(Ordering::SeqCst)),
+            Box::new(move || Veto::allowed(ready.ready.load(Ordering::SeqCst))),
         );
         Ok(())
     }
@@ -349,36 +349,42 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
     })
     .plugin_instance(policy)
     .plugin_instance(WatchdogSilencerPlugin::new(shared))
-    .register_custom_action(
-        "quarantine",
-        kelir::serde_json::json!({
-            "type": "object",
-            "properties": {
-                "pid": { "type": "integer" },
-                "reason": { "type": "string" },
+    .actions(|a| {
+        a.register(
+            "quarantine",
+            kelir::serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pid": { "type": "integer" },
+                    "reason": { "type": "string" },
+                },
+                "required": ["pid", "reason"],
+            }),
+            move |payload: QuarantinePayload| {
+                let quarantine_state = Arc::clone(&quarantine_state);
+                async move {
+                    quarantine_state
+                        .quarantined_pids
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(payload.pid);
+                    Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+                }
             },
-            "required": ["pid", "reason"],
-        }),
-        move |payload: QuarantinePayload| {
-            let quarantine_state = Arc::clone(&quarantine_state);
-            async move {
-                quarantine_state
-                    .quarantined_pids
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .push(payload.pid);
-                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-            }
-        },
-    )
-    .vsock_service(
-        VsockServiceSpec {
-            port: 0x0013,
-            service: "echo".to_string(),
-            schema: None,
-        },
-        EchoVsock,
-    );
+        )
+        .end()
+    })
+    .vsock(|v| {
+        v.service(
+            VsockServiceSpec {
+                port: 0x0013,
+                service: "echo".to_string(),
+                schema: None,
+            },
+            EchoVsock,
+        )
+        .end()
+    });
 
     Ok(builder)
 }

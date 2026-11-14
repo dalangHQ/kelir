@@ -728,7 +728,6 @@ dependencies = [
  "plugin-transaction",
  "plugin-vault",
  "plugin-wire-ingress",
- "regex",
  "serde",
  "serde_json",
  "serde_yaml",

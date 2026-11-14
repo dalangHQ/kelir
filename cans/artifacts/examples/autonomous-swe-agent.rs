@@ -183,7 +183,7 @@ impl TrapInterposer for RepoPolicyPlugin {
         if h.is_protected().await {
             h.record_violation().await;
             return Ok(Verdict::Drop {
-                errno: Some(Errno::Eperm),
+                errno: Errno::Eperm,
                 reason: format!("EPOLICY: '{}' is protected.", h.branch().await),
             });
         }
@@ -218,7 +218,7 @@ impl FsInterposer for RepoPolicyPlugin {
                 .unwrap_or_else(|e| e.into_inner())
                 .violations += 1;
             return Ok(FilterAction::Drop {
-                errno: Some(Errno::Enospc),
+                errno: Errno::Enospc,
                 reason: "diff exceeds policy ceiling".into(),
             });
         }
@@ -364,10 +364,10 @@ async fn build_runtime(
                             .and_then(|value| value.as_bool())
                             .unwrap_or(false)
                         {
-                            return Err(PluginError::reject(
-                                Errno::Eperm,
-                                format!("harness hallucination at {}", path.display()),
-                            ));
+                            return Err(PluginError::Halt(format!(
+                                "harness hallucination at {} (EPERM)",
+                                path.display()
+                            )));
                         }
                         // TODO (L3): resolve blake3_of_producing_process once the snoop ctx carries the ledger cap per cans/plugins/ledger.md#Ledger-handler-API.
                         oracle
@@ -479,7 +479,7 @@ async fn build_runtime(
                             })?;
                         if !intent.is_hypothesis_valid {
                             return Ok(Verdict::Drop {
-                                errno: Some(Errno::Eperm),
+                                errno: Errno::Eperm,
                                 reason: format!(
                                     "Verification Reject: {}",
                                     intent.falsification_reason.unwrap_or_default()
@@ -601,7 +601,7 @@ async fn build_runtime(
                         let n = policy.violations().await;
                         if n > 0 {
                             return Ok(Verdict::Drop {
-                                errno: Some(Errno::Eperm),
+                                errno: Errno::Eperm,
                                 reason: format!("EPOLICY: {n} prior violation(s)."),
                             });
                         }
@@ -622,22 +622,31 @@ async fn build_runtime(
                 // see: cans/10-attestation.md#Typed-extensions
                 match receipt.fs_vfs() {
                     Some(ext) => eprintln!(
-                        "[kelir] commit fs:vfs extension present, payload_len={}",
-                        ext.payload.len(),
+                        "[kelir] commit fs:vfs extension present, served_inodes={} roots={}",
+                        ext.served_inodes,
+                        ext.roots.len(),
                     ),
                     None => eprintln!("[kelir] commit fs:vfs extension absent"),
                 }
                 Ok(PostExecAction::Proceed)
             },
         )
-        .on_vm_init(|ctx| {
-            Box::pin(async move {
-                ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
-                    .await
+        .lifecycle(|l| {
+            l.on_vm_init(|ctx| {
+                Box::pin(async move {
+                    ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
+                        .await
+                })
             })
+            .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+            .end()
         })
-        .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
-        .on_trap_deny(|_event, _session| async move { Ok::<(), PluginError>(()) });
+        .deny(|d| {
+            d.on_trap_deny(|_event, _verdict, _session| async move {
+                Ok::<(), PluginError>(())
+            })
+            .end()
+        });
 
     Ok(builder)
 }

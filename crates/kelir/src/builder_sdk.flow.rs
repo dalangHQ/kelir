@@ -540,23 +540,6 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self.registration.detached
     }
 
-    pub(crate) fn params<T>(self) -> KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, T> {
-        KelirBuilder {
-            config: self.config,
-            plugins: self.plugins,
-            registration: self.registration,
-            fast_boot: self.fast_boot,
-            dax_window: self.dax_window,
-            name: self.name,
-            context_factory: self.context_factory,
-            scope: self.scope,
-            fork: self.fork,
-            registry: self.registry,
-            seal: PhantomData,
-            deps: PhantomData,
-        }
-    }
-
     pub(crate) fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
     where
         F: Fn(&TrapEvent, &Verdict, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,

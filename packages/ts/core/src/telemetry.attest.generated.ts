@@ -82,6 +82,10 @@ export interface ExecutionReceipt {
   readonly hookTrace: readonly HookSpan[];
   readonly fsVfsExt?: FsVfsExt | null;
   readonly netL7SqlExt?: NetL7SqlExt | null;
+  // see: cans/10-attestation.md#Typed-extensions
+  fsVfs(): FsVfsExt | null;
+  // see: cans/10-attestation.md#Typed-extensions
+  netL7Sql(): NetL7SqlExt | null;
 }
 
 export interface CausalDelta {
@@ -210,6 +214,12 @@ export function fromNativeExecutionReceipt(raw: NativeExecutionReceiptRecord): E
     hookTrace: raw.hookTrace,
     fsVfsExt: raw.fsVfsExt ?? null,
     netL7SqlExt: raw.netL7SqlExt ?? null,
+    fsVfs(): FsVfsExt | null {
+      return raw.fsVfsExt ?? null;
+    },
+    netL7Sql(): NetL7SqlExt | null {
+      return raw.netL7SqlExt ?? null;
+    },
   };
 }
 

@@ -119,26 +119,29 @@ fn build_runtime(
         }
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
-    .on_pre_commit({
-        let ledger = ledger_ctx.clone();
-        move |_ctx| {
-            let ledger = ledger.clone();
-            Box::pin(async move { ledger.flush().await })
-        }
-    })
-    .on_post_commit(|_ctx, committed| {
-        Box::pin(async move {
-            if committed {
-                eprintln!(
-                    "[kelir] commit: per-entry leaf commit, staged snapshot is next cold-start fixture"
-                );
-            } else {
-                eprintln!(
-                    "[kelir] commit aborted: staging unlinked, broker upper and tombstones dropped, last good snapshot kept"
-                );
+    .lifecycle(|l| {
+        l.on_pre_commit({
+            let ledger = ledger_ctx.clone();
+            move |_ctx| {
+                let ledger = ledger.clone();
+                Box::pin(async move { ledger.flush().await })
             }
-            Ok::<(), PluginError>(())
         })
+        .on_post_commit(|_ctx, committed| {
+            Box::pin(async move {
+                if committed {
+                    eprintln!(
+                        "[kelir] commit: per-entry leaf commit, staged snapshot is next cold-start fixture"
+                    );
+                } else {
+                    eprintln!(
+                        "[kelir] commit aborted: staging unlinked, broker upper and tombstones dropped, last good snapshot kept"
+                    );
+                }
+                Ok::<(), PluginError>(())
+            })
+        })
+        .end()
     })
 }
 
@@ -181,7 +184,9 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // see: cans/10-attestation.md#Execution-receipts
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-    let ledger = session.cap::<LedgerCtx>();
+    let ledger = session
+        .cap::<LedgerCtx>()
+        .ok_or("ledger capability missing")?;
 
     let final_receipt = ledger
         .finalize(FinalizeRequest {

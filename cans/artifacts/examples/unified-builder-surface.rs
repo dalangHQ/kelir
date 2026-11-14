@@ -24,8 +24,8 @@ use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use kelir::{
-    HCons, HNil, Host, KelirBuilder, LedgerCtx, LedgerPlugin, NoParams, Plugin, TrapFilter,
-    Unsealed, VmConfig,
+    FsScopeConfig, HCons, HNil, Host, KelirBuilder, LedgerCtx, LedgerPlugin, NoParams, Plugin,
+    TrapFilter, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
@@ -259,23 +259,23 @@ pub fn build_host() -> SurfaceHostBuilder {
     // timeout / priority / rules pin the shared scope shape. The
     // standalone lock_broker verb folds into this config.
     .fs(|f| {
-        f.config(
-            Some(LockBrokerConfig {
+        f.config(FsScopeConfig {
+            lock_broker: Some(LockBrokerConfig {
                 scope: LockScope::Globs(vec![
                     "**/Cargo.lock".into(),
                     "**/package-lock.json".into(),
                 ]),
                 non_blocking: true,
             }),
-            Some(1024),
-            Some(ReadMaskEngine::FastRegex),
-            Vec::new(),
-        )
+            carryover_bytes: Some(1024),
+            scan_engine: Some(ReadMaskEngine::FastRegex),
+            snoops: Vec::new(),
+        })
         .requires::<LedgerPlugin>()
         .fork_with(|_id| Box::new(build_plain_plugin()) as Box<dyn AnyPlugin>)
         .timeout(std::time::Duration::from_millis(5))
         .priority(0)
-        .rules(Default::default())
+        .rules(|_| {})
         .on_fs_lookup(|_| Ok(Verdict::Pass))
         .end()
     })
@@ -285,7 +285,7 @@ pub fn build_host() -> SurfaceHostBuilder {
     // register_stream_kind, vsock_service, params, on_trap_deny verbs
     // delete; these scopes are the one surface.
     .actions(|a| {
-        a.register("quarantine", kelir::serde_json::json!({}), |payload| {
+        a.register("quarantine", kelir::serde_json::json!({}), |payload: kelir::serde_json::Value| {
             async move {
                 let _ = payload;
                 Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())

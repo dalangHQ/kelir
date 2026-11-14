@@ -203,6 +203,18 @@ pub struct Veto {
     pub recovery: Option<String>,
 }
 
+// see: cans/08-lifecycle.md#Lifecycle-vetoes
+impl Veto {
+    pub fn allowed(allowed: bool) -> Self {
+        Self {
+            allowed,
+            by: String::new(),
+            reason: String::new(),
+            recovery: None,
+        }
+    }
+}
+
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
 pub type VetoList = Vec<(VetoEvent, Box<dyn Fn() -> Veto + Send + Sync>)>;
 

@@ -65,6 +65,24 @@ fn ts_native_type(ty: &Ty, native_skip: &[&str]) -> String {
     }
 }
 
+// see: cans/10-attestation.md#Typed-extensions
+fn ext_accessors(def: &StructDef) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for field in &def.fields {
+        let Some(base) = field.name.strip_suffix("_ext") else {
+            continue;
+        };
+        let Ty::Option(inner) = &field.ty else {
+            continue;
+        };
+        let Ty::Custom(name) = &**inner else {
+            continue;
+        };
+        out.push((camel(base), name.clone(), camel(&field.name)));
+    }
+    out
+}
+
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 fn emit_struct_interface(
     def: &StructDef,
@@ -93,6 +111,12 @@ fn emit_struct_interface(
             let _ = writeln!(out, "  readonly {field_name}?: {inner_ty} | null;");
         } else {
             let _ = writeln!(out, "  readonly {field_name}: {ty};");
+        }
+    }
+    if !native {
+        for (method, custom, _) in ext_accessors(def) {
+            let _ = writeln!(out, "  // see: cans/10-attestation.md#Typed-extensions");
+            let _ = writeln!(out, "  {method}(): {custom} | null;");
         }
     }
     out.push_str("}\n\n");
@@ -271,6 +295,11 @@ pub fn emit_telemetry(
                 camel(&field.name),
                 ts_convert_expr(&field.ty, &native_field, native_skip)
             );
+        }
+        for (method, custom, camel_field) in ext_accessors(def) {
+            let _ = writeln!(out, "    {method}(): {custom} | null {{");
+            let _ = writeln!(out, "      return raw.{camel_field} ?? null;");
+            out.push_str("    },\n");
         }
         out.push_str("  };\n}\n\n");
     }
