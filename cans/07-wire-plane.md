@@ -124,17 +124,19 @@
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
     - Exposes raw duplex stream to registered NetInterposer proxies
-    - Carrier is L4-only by default
-      - Bytes are relayed to the upstream host through the dial transport
-      - No protocol sniff, no L7 parsing, no HTTP rewriting in the supervisor
-      - TLS between guest and peer passes through byte-for-byte
-    - L7 interposition is off by default
-      - Enabled only when the builder mounts a NetInterposer with an L7 scope
-      - L7 scopes are declared at mount; no implicit sniff-and-promote
-      - Interposer receives reassembled stream bytes; it never terminates TLS
+    - Carrier supports in-ring L7 protocol inspection and TLS stream parsing
+    - In-ring TLS inspection decrypts and validates streams via host keyring
+    - Eliminates out-of-process proxy sidecars to preserve attestation chain
+    - L7 interposition evaluates HTTP headers, SSE frames, and JSON-RPC bodies
+    - Stream mutations apply in-place without breaking client keep-alive
+  - Egress side-effect outbox
+    - Buffers outbound frames on declared irreversible network operations
+    - Holds physical egress until step verification succeeds: see: 08-lifecycle.md
+    - Step rollback silently purges buffered frames before wire transmission
+    - Compensating sagas trigger registered undo webhooks on step failure
     - Vault and credential flow
       - Default path: guest fetches scoped token from plugin-vault, presents it
-      - No host-side TLS termination; no CA injection
+      - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
       - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
     - Diverted endpoints configured via MountScope port and CIDR allowlists
   - Upstream dial transport    - Dial policy

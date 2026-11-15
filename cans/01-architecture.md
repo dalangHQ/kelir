@@ -14,11 +14,16 @@
           - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
           - No dockerd, containerd, background root socket, daemon maintenance
         - Fallback policy
-          - Unprivileged fallbacks (driver-bwrap, driver-proot) banned by default
-          - Silent driver downgrade is an uncatchable fatal error: E_NOHARDWAREVMM
-          - Emulation tiers require explicit granular opt-in in DriverPolicy
-          - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver (bwrap/proot)
-            - DriverPolicy.driver is Option<String> (SSOT-A1 pin)
+          - Hardware virtualization is the default execution tier
+          - Emulated fallback requires explicit opt-in via allow_emulated_fallback
+          - Rootless container fallback exposes driver-bwrap and driver-proot
+          - Emulated runs report Class 2 attestation: see: 10-attestation.md
+          - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver
+            - DriverPolicy.driver is Option<String> naming backend backend
+      - Multi-tenant isolation envelope
+          - Every session binds an immutable OrgScope tenant identity
+          - Storage, cgroups, and virtqueues partition by (tenant_id, session_id)
+          - Cross-tenant directory traversal fails closed at host VFS layer
               - Names the selected backend, None for default
               - Live: crates/kelir-interface/src/driver_interface.flow.rs:50-59
               - The artifact DriverPolicy lacks the field (non-conforming here)
@@ -31,6 +36,9 @@
           - Rate limits evaluated in native memory before FFI queue insertion
           - Filter-before-FFI stops thrash; budget: see: 02-plugin-model.md#Latency-ceiling
           - Foreign async handlers (V8/Python) evaluate out-of-band; synchronous hot-paths
+          - Zero-copy virtio-shm streaming for payloads exceeding 64KB ceiling
+          - FFI boundary max buffer budget scales to 16MB per ring transaction
+          - Async worker pool offloads slow handlers without virtqueue stalls
             - execute native Rust interposers or require explicit YieldToHost
         - Isolation mechanics
           - Native linear capability isolation: zero-WASM, zero-JIT overhead
@@ -47,6 +55,9 @@
         - Instruction integrity zero-trust
           - Workload instructions and reasoning paths are untrusted by default
           - Authority containment enforced at physical boundaries, not prompt filters
+          - MMU and W^X invariants remain strictly monotonic and immutable
+          - Dynamic policy rules permit signed operator lease overrides
+          - Operator leases relax runtime gates without tearing down sessions
           - Semantic prompt inspection is banned; policy gates act on side-effects
         - Hardware memory execution policy: strict W^X enforced at MMU boundary
         - Guest kernel traps anonymous PROT_EXEC mmap and mprotect allocations
@@ -133,10 +144,6 @@
         - Config-default invariant
           - Every VmConfig, StoragePlaneConfig, WireConfig, PtyConfig, DriverPolicy,
             and plugin `*Config` struct derives `Default`; adding a field is not
-            a breaking change to callers
-          - The `default_vm_config(...)` helper in #Embedded-profile is deprecated
-            in favor of typestate setters on KelirBuilder; the deprecation note
-            stays for one release
           - Field sets and typestate-setter spellings: see: artifacts/code/vm-config-defaults.rs
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device
@@ -220,6 +227,8 @@
     - Single-producer single-consumer semantics across host/guest boundary
     - Guest doorbell: MMIO/PCI write triggers host eventfd read
     - Host doorbell: paravirtual virtual interrupt injected into guest vCPU
+    - SPSC and MPMC shared rings link sibling microVMs in swarm topologies
+    - Cross-VM regions enforce hardware vector clock attribution on write
     - No CPU spin-polling on memory flags
     - Fence provides coherency; doorbell provides notification
   - Transport engine abstraction
@@ -260,13 +269,6 @@
   - Embedded profile
     - Low-footprint preset: 1 vCPU, 256MB RAM, virtio-balloon armed
     - Designed for SBCs (Raspberry Pi 4/5) and constrained mobile runtimes (Termux)
-    - DEPRECATED (one release): the `default_vm_config(...)` helper that fills this
-      - preset is deprecated in favor of `Default` on VmConfig plus typestate
-      - setters on KelirBuilder (.vcpus(n), .memory_mb(n), .kernel(p), .rootfs(p),
-      - .tsc_locked(b), .watchdog(b), .driver(DriverPolicy)); the helper's callers
-      - migrate during the deprecation window, then the helper is removed
-    - Host memory preservation: see: 08-lifecycle.md#Suspend-and-resume
-    - default_vm_config builds a VmConfig from six optional params (RS)
       - Params: vcpus, memory_mb, kernel, rootfs_erofs, tsc_locked, enable_watchdog
       - All Option; defaults 1, 256, empty, empty, true, false
       - Home: crates/kelir-interface/src/driver_interface.flow.rs:274

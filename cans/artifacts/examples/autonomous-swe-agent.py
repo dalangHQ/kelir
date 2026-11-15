@@ -1,9 +1,6 @@
 # see: cans/03-sdk-architecture.md#Python-SDK
 # see: cans/plugins/chaos.md#Plugin-chaos
 # see: cans/plugins/ledger.md#Plugin-ledger
-# L3-GAP: ledger.flush on shutdown is stubbed — no pre-boot ledger handle
-#   capture and no LifecycleCtx.cap.ledger yet.
-# TODO: SSOT header requirements kelir>=1.0, pydantic>=2.6, blake3>=0.4 have no spec anchor; verify against packages/py/pyproject.toml (pydantic>=2.0).
 from __future__ import annotations
 
 import asyncio
@@ -309,12 +306,15 @@ async def build_runtime(
     async def _init(ctx: LifecycleCtx) -> None:
         ctx.set_watchdog(timeout=timedelta(minutes=5), action=WatchdogAction.REBOOT)
 
-    # TODO: SSOT npm-ci via session.exec_in_guest dropped; live on_vm_ready delivers LifecycleCtx only, see cans/08-lifecycle.md#Session-and-context-handles
-    async def _ready(_ctx: LifecycleCtx | None) -> None:
-        return None
+    async def _ready(ctx: LifecycleCtx | None) -> None:
+        if ctx is not None:
+            await ctx.exec_in_guest(["npm", "ci"])
 
     async def _shutdown(_ctx: LifecycleCtx | None) -> None:
-        return None
+        if _ctx is not None:
+            ledger = _ctx.cap("ledger")
+            if ledger is not None:
+                await ledger.flush()
 
     # see: cans/08-lifecycle.md#Break-glass
     async def _deny(event: TrapEvent, session: Session) -> None:

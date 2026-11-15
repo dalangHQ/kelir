@@ -1,7 +1,4 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-// L3-GAP: .on(VmReady) npm-ci via session.execInGuest and .on(VmShutdown)
-//   ledger.flush are stubbed — no pre-boot ledger handle capture and no fused
-//   LifecycleContext.cap.ledger yet.
 
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction,
          type KelirBuilder, type Session, type SnapshotDescriptor, type ExecutionReceipt,
@@ -190,6 +187,8 @@ const runtime = kelir({
   })
 
   .on(LifecycleEvent.VmInit,     async (driver) => driver.setWatchdog({ timeoutMs: 5 * 60_000, action: "reboot" }))
+  .on(LifecycleEvent.VmReady,    async (ctx) => { await ctx.execInGuest(["npm", "ci"]); })
+  .on(LifecycleEvent.VmShutdown, async (ctx) => { await ctx.cap<LedgerHandle>("ledger")?.flush(); })
   // see: cans/08-lifecycle.md#Break-glass
   .onTrapDeny(async (e, s) => {
     if (await s.cap<LedgerHandle>("ledger")!.countDenials(e.ppid) > 5) {

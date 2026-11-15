@@ -3,10 +3,6 @@
 # see: cans/plugins/mcp.md#Plugin-mcp
 # see: cans/plugins/tool-guard.md#Plugin-tool-guard
 # see: cans/plugins/ledger.md#Plugin-ledger
-# STATUS: aspirational; see §4 of work-order
-#   L3-GAP: no WebhookRequest is served — the Py Session exposes no
-#   handle_ingress (the binding is an Err(missing) L3 stub); the builder,
-#   trap gating, and suspend path below are real and stay.
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +18,7 @@ from kelir import (
     Field,
     HandlerContext,
     KelirBuilder,
+    LifecycleEvent,
     PostExecAction,
     Verdict,
 )
@@ -63,9 +60,16 @@ class DispatchWebhook(BaseModel, frozen=True):
     model_config = {"populate_by_name": True, "extra": "forbid"}
 
 
-async def handle_webhook(req: WebhookRequest) -> WebhookResponse:
-    # TODO (L3): dispatch the webhook to the guest handler and return its response.
-    return WebhookResponse(status=200, body=b"")
+async def handle_webhook(req: WebhookRequest, session: kelir.Session) -> WebhookResponse:
+    res = await session.spawn(
+        "/usr/bin/webhook-worker",
+        ["--request-id", req.id],
+        input=req.body,
+    )
+    return WebhookResponse(
+        status=200 if res.exit_code == 0 else 500,
+        body=res.stdout,
+    )
 
 
 def build_runtime() -> KelirBuilder:
@@ -123,15 +127,26 @@ def build_runtime() -> KelirBuilder:
         )))
         .params(DispatchWebhook)
         .trap("dispatch-webhook", pre=pre_dispatch, post=post_dispatch)
+        .on(LifecycleEvent.VmReady, lambda ctx: ctx.vm.adjust_balloon(384))
+        .on(LifecycleEvent.VmShutdown, lambda ctx: ctx.cap("ledger").flush())
         .seal()
     )
 
 
 async def main() -> None:
     async with build_runtime() as session:
-        # TODO (L3): serve webhooks across wake cycles via an ingress loop; the Py Session exposes no handle_ingress, so no WebhookRequest is served yet.
         served = 0
-        # TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
+        async for stream in session.handle_ingress(
+            port=8443,
+            request_type=WebhookRequest,
+            response_type=WebhookResponse,
+        ):
+            response = await handle_webhook(stream.request, session)
+            await stream.respond(response)
+            served += 1
+            if served >= 1:
+                break
+
         print(f"[kelir] served {served} webhook(s) across wake cycles")
         await session.suspend(
             External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD),

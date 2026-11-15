@@ -11,6 +11,8 @@
         - Finalized EROFS data and directory blocks emitted from Phase 1 map
       - Emits a session-ready EROFS image; workspace CoW is host-broker state
         - No overlay or union driver is materialized by kelir-pack
+      - Runtime integration exposes dynamic OCI layer streaming to microVMs
+      - Dynamically grafted EROFS layers mount without hypervisor restarts
       - Zero intermediate tarballs on disk; zero unfixable EROFS metadata rewrites
       - Phase 1 RAM cost bounded by 500k inode ceiling (<30MB typical)
       - Streaming unpack admission clamps maximum expansion ratio to 15:1

@@ -8,8 +8,8 @@
     - Crate topology
       - `kelir-interface::storage` (L1): `FuseOps`, `StorageIo`, `ReconcilerOps` traits + wire types
       - `kelir-engine::planes::storage` (L2): `StoragePlane` façade, `FuseDispatcher` delegating to `Arc<dyn FuseOps>`, `StorageQuota`
-      - `kelir-storage` (L3): `RealFuseOps`, `Reconciler`, `LockBroker`, synthetic inodes (`.run.rs` stubs, TODO (L3) shells, no meat yet)
-      - `kelir-storage-io` (L3): `RealStorageIo` (`.run.rs` stub, TODO (L3) shells, no meat yet)
+      - `kelir-storage` (L3): `RealFuseOps`, `Reconciler`, `LockBroker`, synthetic inodes
+      - `kelir-storage-io` (L3): `RealStorageIo`
     - Trait seam
       - `FuseOps` and `StorageIo` live in `kelir-interface::storage`; the L2 façade holds `Arc<dyn FuseOps>`; the L3 impl is `RealFuseOps`; `kelir-engine` cannot name `RealFuseOps`
       - `ReconcilerOps` lives in `kelir-interface::storage`; the composition root binds the `Reconciler` at seal
@@ -65,11 +65,8 @@
     - Sparse upper file bytes counted toward the session quota
   - FUSE opcode table
     - Broker data ops: `lookup`, `getattr`, `read`, `write`, `readdir`
-      - getattr and readdir replies: TBD (L3 broker stat and dir merge)
     - Broker mutation ops: `unlink`, `mkdir`, `rename`
-      - Mutation replies: TBD (L3 broker tombstone, upper create, move)
     - Mediation ops: `statfs`, `setlk`, `setlkw`
-      - statfs quota reply and setlk flock grants: TBD (L3)
     - Opcode numbers mirror the kernel FUSE UAPI
     - lookup=1, getattr=3, read=15, write=16, readdir=28, unlink=10
     - mkdir=9, rename=12, statfs=17, setlk=32, setlkw=33
@@ -93,6 +90,8 @@
     - Whole commit is idempotent: replaying after crash converges
   - Containment
     - Strict containment: rejects symlink hops and traversals outside host root
+    - Multi-tenant root isolation partitions workspaces by tenant organization
+    - Host containment engine resolves paths rooted at tenant workspace directory
     - Host containment engine resolves via platform-native root handle
       - Linux: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)
       - macOS: iterative openat(O_NOFOLLOW) with st_dev/st_ino root verification

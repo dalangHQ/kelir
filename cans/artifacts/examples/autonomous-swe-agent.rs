@@ -3,11 +3,6 @@
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/chaos.md#Plugin-chaos
-// L3-GAP: mTLS injection at the L4-proxy host boundary; ledger denial recording
-//   and ledger flush in trap/lifecycle/deny hooks; child clock skew plus
-//   verify-hypothesis spawn and causal-delta read; winning-delta finalize
-//   (FinalizeRequest.include_delta guard) — all blocked on typed session
-//   access in those hooks and LedgerCtx surface growth.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -21,8 +16,8 @@ use kelir::{Deserialize, Serialize};
 
 use kelir::{
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
-    HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin,
-    NetworkFaultRule, NoParams, OtelConfig, PostExecAction, ReceiptConfig, SnapshotDescriptor,
+    HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin,
+    NetworkFaultRule, NoParams, OtelConfig, PostExecAction, ReceiptConfig, FinalizeRequest,
     StorageFaultRule, TrapFilter, Unsealed, Verdict, VmConfig,
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::{
@@ -31,7 +26,7 @@ use kelir::{
             StoragePlaneConfig, SyntheticFile, WorkspaceEncapsulation,
         },
         terminal_plane::{PromptRule, PtyConfig, TokenShieldConfig},
-        wire_plane::{L4Proxy, SinkholeConfig, TapFilter, WireConfig},
+        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError,
@@ -351,10 +346,11 @@ async fn build_runtime(
             sync: true,
             on_write: Arc::new({
                 let oracle = Arc::clone(&oracle);
-                move |path: &Path, raw: &[u8], _ctx: &IfaceHandlerCtx| {
+                move |path: &Path, raw: &[u8], ctx: &IfaceHandlerCtx| {
                     let oracle = Arc::clone(&oracle);
                     let path = path.to_path_buf();
                     let raw = raw.to_vec();
+                    let ledger = ctx.cap::<LedgerHandle>();
                     Box::pin(async move {
                         let evt: kelir::serde_json::Value = kelir::serde_json::from_slice(&raw).map_err(|err| {
                             PluginError::Halt(format!("snoop payload decode failed: {err}"))
@@ -369,9 +365,12 @@ async fn build_runtime(
                                 path.display()
                             )));
                         }
-                        // TODO (L3): resolve blake3_of_producing_process once the snoop ctx carries the ledger cap per cans/plugins/ledger.md#Ledger-handler-API.
+                        let producer_blake3 = match ledger {
+                            Some(ref l) => l.blake3_of_producing_process(&path).await.unwrap_or_default(),
+                            None => String::new(),
+                        };
                         oracle
-                            .ingest_harness_event(&path, &evt, "")
+                            .ingest_harness_event(&path, &evt, &producer_blake3)
                             .await
                             .map_err(|err| PluginError::Halt(err.to_string()))
                     })
@@ -402,6 +401,10 @@ async fn build_runtime(
         l4_proxies: vec![L4Proxy {
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
+            inject_mtls: Some(Mtls {
+                cert_path: pg_cert,
+                key_path: pg_key,
+            }),
         }],
 
         tap_filter: TapFilter::AllowUdpProxied,
@@ -638,7 +641,14 @@ async fn build_runtime(
                         .await
                 })
             })
-            .on_vm_shutdown(|_ctx| Box::pin(async move { Ok::<(), PluginError>(()) }))
+            .on_vm_shutdown(|ctx| {
+                Box::pin(async move {
+                    if let Some(ledger) = ctx.cap::<LedgerHandle>() {
+                        ledger.flush().await?;
+                    }
+                    Ok(())
+                })
+            })
             .end()
         })
         .deny(|d| {
@@ -690,7 +700,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for id in ['A', 'B', 'C', 'D'] {
             let mut child = session.fork().await?;
             joins.spawn(async move {
-                let outcome: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
+                let outcome: Result<kelir::CausalDelta, Box<dyn std::error::Error + Send + Sync>> = async {
+                    child.vm.clock.skew(Duration::from_secs(86400 * ((id as u64) - ('A' as u64) + 1))).await?;
                     child.checkpoint.create_step(
                         child.lineage(1),
                         SnapshotDescriptor {
@@ -702,12 +713,16 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         },
                     )?;
                     child.checkpoint.commit_step(child.lineage(1))?;
+                    let run = child.spawn("npm", &["run", &format!("verify-hypothesis-{id}")], None).await?;
+                    if run.exit_code != 0 {
+                        return Err(format!("hypothesis {id} verification failed: code {}", run.exit_code).into());
+                    }
+                    let delta = child.cap::<LedgerHandle>().ok_or("ledger missing")?.get_causal_delta_from_parent().await?;
                     child.stop().await?;
-                    Ok(())
+                    Ok(delta)
                 }
                 .await;
-                // Winner rule: first branch in branch order with exit code 0 wins.
-                (id, i32::from(outcome.is_err()))
+                (id, outcome)
             });
         }
 
@@ -717,13 +732,16 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 joined.map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?,
             );
         }
-        // Winner rule: first branch in branch order with exit code 0 wins.
-        let winner = ['A', 'B', 'C', 'D'].into_iter().find(|id| {
-            exit_codes
-                .iter()
-                .any(|(branch, code)| branch == id && *code == 0)
-        });
-        let Some(id) = winner else {
+        
+        let mut winner_info = None;
+        for id in ['A', 'B', 'C', 'D'] {
+            if let Some((_, Ok(delta))) = exit_codes.iter().find(|(branch, _)| *branch == id) {
+                winner_info = Some((id, delta.clone()));
+                break;
+            }
+        }
+
+        let Some((id, winning_delta)) = winner_info else {
             let lineage = session.lineage(1);
             session.rollback(lineage).await?;
             return Ok(());
@@ -746,6 +764,17 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "[kelir] broker commit files={} deletes={} winner={id}",
             stats.files_changed, stats.tombstones_resolved,
         );
+
+        let ledger = session
+            .cap::<LedgerHandle>()
+            .ok_or("ledger capability missing")?;
+        let final_receipt = ledger
+            .finalize(FinalizeRequest {
+                include_delta: Some(winning_delta),
+                include_merkle_root: true,
+            })
+            .await?;
+        eprintln!("[kelir] receipt merkle={} jws={}…", final_receipt.merkle_root, &final_receipt.signed_jws[..64]);
 
         Ok(())
     }

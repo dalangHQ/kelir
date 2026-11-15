@@ -14,6 +14,7 @@
     - Stepped instruction replay: see: artifacts/examples/replay.rs
     - Cycle-exact instruction clock stepping
       - Decouples guest paravirtual clock from host physical TSC
+      - Configured via compute invariants: network_off, ns_per_instruction
       - Arms host PMU counters as a metrics drive for clock stepping
       - Clock advance mechanics: see: 08-lifecycle.md#Clock-skew
         - In replay mode, advanced on retired-instruction windows

@@ -18,6 +18,9 @@
   - Archives and portability
     - Live home: compaction and restore live in crates/kelir-checkpoint/src/compaction.run.rs; export archive assembly in crates/kelir-checkpoint/src/real_checkpoint.run.rs
     - Export format: single Content-Addressed .kelir-snap binary stream
+      - Step DAGs retain signed reviewer authorizations across archives
+      - Attestation manifests record causal step dependencies and lineages
+      - Merkle roots verify state consistency across branched step head nodes
       - SDK accessor: session.vm.export_snapshot(); session.vm is a property
         - Property pin: see: 03-sdk-architecture.md#Session-surfaces
       - Archive header: magic, format version, feature flags, entry table

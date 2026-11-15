@@ -12,10 +12,9 @@
     - Builder consumption model across languages
       - Rust: affine typestate; .plugin() consumes self by value
       - TypeScript: accumulation monad; each .use() returns a new typed builder
-      - Python: fluent builder returning self; async context management
-      - Inline closures: trap and lifecycle handlers are fully fork-blind
+      - Python: fluent builder returning self with async context management
     - Prerequisite gating across languages
-      - Rust: compile-time, via Has<T> trait bounds and typestate
+      - Rust: compile-time, via Satisfies capability bounds and typestate
       - TypeScript: compile-time, via generic accumulation and requires constraint
       - Python: inspects dependency registry at builder.boot() prior to vCPU start
       - Rust and TS fail at compile-time; Python raises boot-time EConfig
@@ -28,39 +27,22 @@
         - Signatures and sugar spellings: see: artifacts/code/session-accessors.ts
         - Signatures and sugar spellings: see: artifacts/code/session-accessors.py
       - session.plane(): the one plane accessor
-        - Rust: session.plane::<P>() resolves by plane handle type
-        - TypeScript / Python: session.plane("vm") resolves by plane name
-        - session.vm, session.terminal, session.storage, session.wire,
-          - session.checkpoint, session.host, session.vsock are sugar
-          - on the accessor; each equals session.plane("<name>")
+        - Resolves plane handles: vm, terminal, storage, wire, checkpoint, host
       - session.cap(): the one capability accessor on Session
-        - Rust: session.cap::<T>() infallible where Plugins: Has<T>
-        - TypeScript / Python: session.cap("ledger") returns
-          - the capability object, or None/undefined if not mounted
+        - Resolves mounted plugin capability handles via dynamic DAG registry
+        - Infallible in Rust where registered; returns Option in TS and Python
       - c.cap(): the one capability accessor inside a hook
-        - Rust: c.cap::<T>() infallible via Has<T>
-        - TypeScript / Python: c.cap("repo-policy") returns
-          - the capability object, or None/undefined if not mounted
-      - Deleted accessor forms (SSOT-A1 pin: accessor unification)
-        - session.ctx::<T, _>() and session.ctx::<T>("name") delete
-        - session.ledger and session.cap.ledger attribute access delete
-        - c.ctx::<T>() deletes; c.cap.<key> attribute access deletes
-        - c.<pluginKey> members (TS) and c["<key>"] indexing delete
+        - Accessible across all ring hooks, lifecycle handlers, and snoop filters
+        - Resolves peer capabilities without compile-time positional ordering
       - .use(plugin) populates session.cap()/c.cap() at boot, not before
-        - capability struct materializes from the plugin's Context at boot
-        - it is not a stub; it exists before the first handler invocation
-      - Capability keys are plugin names (SSOT-A1 pin)
-        - Keys: ledger, db-proxy, repo-policy, transaction, container
-        - The db key is "db-proxy", not "db"
-        - The policy key is "repo-policy", not "policy"
-        - See: cans/plugins/db-proxy.md:5
-      - Non-conforming claim withdrawn: db-backed-runtime.py conforms today
-        - Unified accessor c.cap("db-proxy") (see Naming and deprecation table); the pre-sweep c.cap.db read was non-conforming and is fixed
-
-      - No string-keyed service registry on any SDK
-      - Naming and deprecation table (SSOT-A1; one form per concept)
+        - Capability struct materializes from plugin Context at boot
+      - Capability keys match plugin identifiers exactly
+        - Keys: ledger, db-proxy, tool-guard, transaction, container, mesh
+      - Lifecycle hook capability reachability
+        - LifecycleCtx delivers full capability lookup via ctx.cap("<name>")
+        - Handlers access ledger and driver controls during init and shutdown
+      - Naming table: one form per concept
         - Python module: kelir.plugin_model is the public name
-          - kelir.model_plugin is the deprecated pre-rename path
           - Rust keeps kelir::plugin_model; naming parity is per-SDK idiom
         - session.terminate() / session.stop(): terminate is primary
           - stop is sugar, an alias; both stay, neither removes
@@ -75,13 +57,6 @@
           - .plugin_instance(P) is Rust-only sugar for the trait path
             - P: KelirPlugin + PluginDeps; the three documented in one table
             - Rust .plugin(builder) stays the builder-merge verb
-      - Lifecycle hook capability reachability
-        - Lifecycle hooks receive LifecycleCtx; it carries no capability caps
-        - Canonical L1/L2 pattern: capture the capability handle at registration
-          - The builder closure captures the pre-boot ledger handle
-          - The hook calls ledger.flush() on it
-          - See: artifacts/examples/db-backed-runtime.rs
-        - LifecycleCtx.cap.ledger delivery through the fused lifecycle payload lands (L3)
     - Authoring model
       - Plugin authorship contract: see: 02-plugin-model.md#Plugin-ownership
       - Two-tier authoring model

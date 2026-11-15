@@ -20,15 +20,17 @@
         - execution shims without passing tool-guard
     - Taint tracking and mutation gating
       - Ingestion tools consuming untrusted payloads mark trace as tainted
+      - Byte-range taint labels propagate into downstream tool call arguments
       - Mutating tools under tainted state require Action::Suspend for approval
       - Host approval binds strictly to canonical arguments and payload hash
       - Model-controlled flags or parameters cannot bypass approval gates
       - In-guest instructions cannot clear host-tracked taint flags
-    - Immutable schema locking
+    - Schema locking and rug-pull prevention
       - Intercepts initial "tools/list" advertisement at on_vm_ready
       - Computes BLAKE3 hash over all tool schemas, signatures, and descriptions
-      - Locks the catalog: dynamic schema mutation or description injection
-        - post-boot halts with ESecurityViolation
+      - Interposes dynamic tools/list updates and performs semantic AST diff
+      - Description rewriting or smuggled parameters halt with ESecurityViolation
+      - Schema drift events emit structured audit telemetry before VM panic
     - Host extensible hook pipeline
       - Exposes typed pre-call and post-call interception to host runtimes
       - Mount via builder.use(toolGuard()) decorates builder with .tool()

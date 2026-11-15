@@ -26,10 +26,11 @@
     - Ingress stream framing on stream kind L4_FORWARD (mux 0x0001):
       - see: 11-protocol.md#Control-channel
       - Frame header: target_port: u16, connection_id: u64, payload_len: u32
-      - Guest shim ingress forwarder connects to 127.0.0.1:target_port and splices duplex bytes
+      - Ingress routing splices directly to guest shim via vsock stream
     - Zero-downtime webhook and interactive terminal connection continuity
-      - Continuity applies to suspend/resume alone
-      - Rollback terminates parked connections; retry is client-side
+      - Parked connections survive human authorization holds and task pauses
+      - Client TCP handshakes complete host-side and resume on VM wake
+      - Rollback purges parked connection buffers and issues clean TCP RST
   - Error and return semantics (wire-ingress)
     - Hook signature (wire-ingress): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (wire-ingress)

@@ -65,7 +65,17 @@ async function main() {
     await session.terminal.resize(120, 40);
     const slot = await session.checkpoint.create("git-gate-base");
     console.error(`[kelir] checkpoint id=${slot.id}`);
-    // TODO (L3): spawn git push --force origin main in the guest and gate it via the git-gate plugin.
+
+    // Test 1: Verify forced push argument stripping and disarm
+    const push = await session.spawn("git", ["push", "--force", "origin", "main"]);
+    console.error(`[kelir] git push -> exit=${push.exitCode}`);
+    if (push.exitCode !== 0) throw new Error("patched git push failed unexpectedly");
+
+    // Test 2: Verify protected branch commit drop
+    const commit = await session.spawn("git", ["commit", "-m", "bypassing review on main"]);
+    console.error(`[kelir] git commit -> exit=${commit.exitCode}`);
+    if (commit.exitCode === 0) throw new Error("commit to protected branch unexpectedly succeeded");
+
   } finally {
     await session.stop();
   }

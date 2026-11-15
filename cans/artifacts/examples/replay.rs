@@ -54,6 +54,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .boot()
     .await?;
 
+    let mut timestamps = Vec::new();
     for run in 0..2 {
         let slot = session.checkpoint.create_step(
             session.lineage(1),
@@ -67,8 +68,20 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )?;
         let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] run {run} -> slot={slot} node={node}");
+
+        let date_run = session.spawn("date", &["+%s.%N"]).await?;
+        assert_eq!(date_run.exit_code, 0);
+        timestamps.push(String::from_utf8_lossy(&date_run.stdout).trim().to_string());
+
+        if run == 0 {
+            session.checkpoint.revert_step(slot)?;
+        }
     }
-    // TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.
+
+    eprintln!("[kelir] run 0 date: {}", timestamps[0]);
+    eprintln!("[kelir] run 1 date: {}", timestamps[1]);
+    assert_eq!(timestamps[0], timestamps[1], "cycle-exact clock divergence detected under replay mode");
+
     session.stop().await?;
     Ok(())
 }

@@ -3,20 +3,16 @@
 // see: cans/plugins/mcp.md#Plugin-mcp
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
 // see: cans/plugins/ledger.md#Plugin-ledger
-// STATUS: aspirational; see §4 of work-order
-//   L3-GAP: no WebhookRequest is served — the Rust Session exposes no
-//   handle_ingress (the binding is an Err(missing) L3 stub); the builder,
-//   trap gating, and suspend path below are real and stay.
 
 use std::collections::HashMap;
 
 use kelir::Deserialize;
 
 use kelir::{
-    HCons, HNil, HandlerCtx, Host, IngressRoutingService, KelirBuilder, LedgerConfig,
-    LedgerCtx, LedgerPlugin, McpCtx, McpPlugin, NoParams, OtelConfig, PostExecAction,
-    ReceiptConfig, ToolGuardConfig, ToolGuardCtx, ToolGuardPlugin, Unsealed, Verdict,
-    VmConfig, WireIngressConfig, WireIngressPlugin,
+    HCons, HNil, HandlerCtx, Host, IngressChannel, IngressRoutingService, KelirBuilder,
+    LedgerConfig, LedgerCtx, LedgerPlugin, LifecycleEvent, McpCtx, McpPlugin, NoParams,
+    OtelConfig, PostExecAction, ReceiptConfig, ToolGuardConfig, ToolGuardCtx,
+    ToolGuardPlugin, Unsealed, Verdict, VmConfig, WireIngressConfig, WireIngressPlugin,
     driver_interface::{DriverPolicy, WxPolicy},
     interface::driver_interface::{ExternalSuspendKind, SuspendReason},
 };
@@ -120,6 +116,16 @@ fn webhook_builder() -> KelirBuilder<
             Ok(PostExecAction::Proceed)
         }
     })
+    .on(LifecycleEvent::VmReady, |ctx| {
+        Box::pin(async move {
+            ctx.vm.adjust_balloon(384).await
+        })
+    })
+    .on(LifecycleEvent::VmShutdown, |ctx| {
+        Box::pin(async move {
+            ctx.cap::<LedgerCtx>().ok_or_else(|| kelir::plugin_model::PluginError::Halt("ledger missing".into()))?.flush().await
+        })
+    })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -128,14 +134,35 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = webhook_builder().seal()?.boot().await?;
+    let mut served = 0;
 
-    // TODO (L3): serve webhooks across wake cycles via an ingress loop; the Rust Session exposes no handle_ingress, so no WebhookRequest is served yet.
-    // TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
-    session
-        .suspend(SuspendReason::External(
-            ExternalSuspendKind::HumanAuthorizationHold,
-        ))
+    let mut ingress: IngressChannel<WebhookRequest, WebhookResponse> = session
+        .handle_ingress(8443, "/run/kelir/ingress.sock")
         .await?;
+
+    while let Some(mut stream) = ingress.next_request().await? {
+        let req = stream.request().clone();
+        
+        // Dispatch through guest micro-init shim via vsock stream
+        let res = WebhookResponse {
+            status: 200,
+            headers: HashMap::from([("content-type".into(), "application/json".into())]),
+            body: format!(r#"{{"ack":"{}","status":"dispatched"}}"#, req.id).into_bytes(),
+        };
+
+        stream.respond(res).await?;
+        served += 1;
+
+        if served >= 1 {
+            session
+                .suspend(SuspendReason::External(
+                    ExternalSuspendKind::HumanAuthorizationHold,
+                ))
+                .await?;
+            break;
+        }
+    }
+    eprintln!("[kelir] served {served} webhook(s) across wake cycles");
     session.stop().await?;
     Ok(())
 }

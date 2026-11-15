@@ -1,12 +1,15 @@
 - Storage catalog schema
   - Entity model
     - Minimal 2-table ledger: sessions, cas_leases
-    - Single Source of Truth for runtime persistence schema
+    - Pluggable catalog engine: embedded SQLite or clustered PostgreSQL
+    - Single Source of Truth for multi-tenant runtime persistence schema
       - sessions table tracks every session: ephemeral and detached
+      - sessions row binds tenant_id: 64-char tenant organizational scope
       - Ephemeral rows carry expires_at_unix = NULL and lease_kind = 'ephemeral'
       - Detached rows carry expires_at_unix and lease_kind = 'lease'
       - Both row kinds are the sole SSOT for session identity and liveness
       - sessions row carries incarnation_id: 128-bit UUIDv7 minted per spawn
+      - Composite unique index on (tenant_id, session_id) enforces isolation
       - sessions row carries boot_id, start_time_ns, pid for OS-native proof
       - cas_leases tracks blob_hash, holder_pid, expires_at_unix with 30s TTL
       - Lineage parent_digest edges are stored inside immutable snapshot manifests

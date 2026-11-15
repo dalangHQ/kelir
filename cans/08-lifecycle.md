@@ -5,12 +5,11 @@
       - Centralized Hypervisor Lifecycle State Machine:
         - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
         - SuspendReason: External(ExternalSuspendKind) | ResourcePressure
-        - ExternalSuspendKind variants (SSOT-A1 pin)
-          - HumanAuthorizationHold | WireConnectionParking
+        - ExternalSuspendKind: HumanAuthorizationHold | WireConnectionParking
           - StepEvaluationYield | HostPowerEventSnapshot
-          - See: crates/kelir-interface/src/driver_interface.flow.rs:350-363
-        - The spec's former External(u32) is withdrawn
-          - Code and artifact already carry External(ExternalSuspendKind)
+        - Approval holds freeze the trapped task cgroup, keeping peer tasks alive
+        - Inbound network connections remain parked during approval holds
+        - Rejections return synthetic refusal frames, allowing agent recovery
         - Eliminates independent suspend implementations outside core
         - Cycle-exact resume via Channel 0 control frame or wire ingress frame
         - Draining is a first-class state
@@ -268,12 +267,9 @@
     - Autonomous step verification loop
       - Host registers StepEvaluator closure through CheckpointPlane
         - Session handle: session.checkpoint
-      - SPEC CORRECTION (SSOT-A1)
-        - The former "CheckpointService" named here never existed
-        - The live surface is CheckpointPlane plus session.checkpoint
-        - See: crates/kelir-checkpoint/src/real_checkpoint.run.rs
-        - See: crates/kelir-engine/src/planes/checkpoint/mod.rs
-        - See: crates/kelir-engine/src/session_lifecycle.flow.rs:32
+      - StepSlot supports branching DAGs with Ed25519 reviewer attribution
+      - Approvals commit signed reviewer identities into snapshot manifests
+      - Separation of duties enforces distinct actor identities across steps
       - Captures atomic pre-step SnapshotDescriptor before workload execution
       - Evaluates physical ExecutionReceipt upon trapped process exit
       - Step outcomes (StepVerdict):
@@ -424,8 +420,6 @@
           - are populated only on denial
         - by names the vetoing plugin; reason says why; recovery names the
           - operator action that would re-permit, if one exists
-      - The former Box<dyn Fn() -> bool> callback shape is superseded;
-        - a bare bool no longer reaches the registration
     - Scope: hard vetoes only
       - Fork, Suspend, ClockSkew
     - Registration

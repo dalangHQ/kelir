@@ -422,8 +422,41 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let node = session.checkpoint.commit_step(session.lineage(1))?;
         eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
-    // TODO (L3): spawn each policy binary in the guest and drive the policy matrix over it.
-    // TODO (L3): open a vsock channel on port 0x0013 and echo policy-matrix:ping through it.
+
+    // 1. Multiplexed binary vsock ping-pong
+    let mut channel = session.vsock.channel(0x0013).await?;
+    channel.write_all(b"policy-matrix:ping").await?;
+    let mut reply = vec![0u8; 18];
+    channel.read_exact(&mut reply).await?;
+    eprintln!("[kelir] vsock channel 0x0013 reply: {}", String::from_utf8_lossy(&reply));
+    assert_eq!(&reply, b"policy-matrix:ping");
+
+    // 2. Drive the unified Verdict lattice through guest execve traps
+    for binary in [
+        "policy-allow",
+        "policy-deny",
+        "policy-rewrite",
+        "policy-abort",
+        "policy-yield",
+        "policy-approval",
+        "policy-custom",
+    ] {
+        let run = session.spawn(binary, &["--policy-matrix"]).await?;
+        eprintln!("[kelir] {binary} -> exit={}", run.exit_code);
+        match binary {
+            "policy-allow" => assert_eq!(run.exit_code, 0),
+            "policy-deny" => assert_ne!(run.exit_code, 0),
+            "policy-rewrite" => assert_eq!(run.exit_code, 0),
+            "policy-abort" => assert_ne!(run.exit_code, 0),
+            "policy-yield" => assert_eq!(run.exit_code, 0),
+            "policy-approval" => assert_eq!(run.exit_code, 0),
+            "policy-custom" => assert_eq!(run.exit_code, 0),
+            _ => {}
+        }
+    }
+
+    // Verify Custom action triggered and recorded state
+    assert!(!shared.quarantined_pids.lock().unwrap().is_empty(), "custom quarantine action failed to fire");
 
     session.suspend(SuspendReason::ResourcePressure).await?;
     session.resume().await?;

@@ -1,23 +1,18 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/transaction.md#Plugin-transaction
-// L3-GAP: pre-migrate rewrite-target check, migrate-42 transaction scope with
-//   savepoint/rollback, and the live causal delta into FinalizeRequest are
-//   stubbed — SqlProxyCtx exposes no rewrite_target accessor, TransactionCtx
-//   exposes no scope/savepoint API, and the session facade exposes no
-//   get_causal_delta_from_parent.
 
 use std::env;
 
 use kelir::Deserialize;
 
 use kelir::{
-    DbProxyConfig, DbProxyPlugin, FinalizeRequest, HCons, HNil, HandlerCtx, Host, KelirBuilder,
-    LedgerConfig, LedgerCtx, LedgerPlugin, NoParams, PostExecAction, ReceiptConfig,
-    SqlProxyCtx, TransactionConfig, TransactionCtx, TransactionPlugin, TrapFilter, Unsealed,
-    Verdict, VmConfig,
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil,
+    HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin,
+    NoParams, PostExecAction, ReceiptConfig, SqlProxyHandle, TransactionConfig,
+    TransactionHandle, TransactionPlugin, TrapFilter, Unsealed, Verdict, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
-    plugin_model::{KelirPlugin, PluginError},
+    plugin_model::{Errno, KelirPlugin, PluginError},
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
@@ -50,7 +45,10 @@ fn build_runtime(
     db_config.postgres.rewrite_rules = vec![("public.".into(), "migrate_schema.".into())];
     db_config.sqlite.guest_socket = "/run/kelir/db.sock".into();
     db_config.sqlite.host_path = "/var/lib/app/migrations.sqlite".into();
-    // TODO: the ephemeral credentials (vault://pg/app_migrate, 300s) are not set: EphemeralCredentials is not re-exported by the kelir facade and has no Default, so the port cannot name it.
+    db_config.credentials = Some(EphemeralCredentials {
+        placeholder: "vault://pg/app_migrate".into(),
+        ttl_seconds: 300,
+    });
     let db_plugin = DbProxyPlugin::new().with_config(db_config);
 
     // see: cans/plugins/ledger.md#Merkle-WAL
@@ -106,7 +104,14 @@ fn build_runtime(
     .plugin_instance(tx_plugin)
     .plugin_instance(ledger_plugin)
     // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-    .trap_async(TrapFilter::binary("migrate"), |_c: HandlerCtx<_, _>| async move {
+    .trap_async(TrapFilter::binary("migrate"), |c: HandlerCtx<_, _>| async move {
+        let proxy = c.cap::<SqlProxyHandle>().ok_or_else(|| PluginError::Halt("db-proxy handle missing".into()))?;
+        if proxy.rewrite_target().await != "migrate_schema." {
+            return Ok(Verdict::Drop {
+                errno: Errno::Epolicy,
+                reason: "schema mismatch: expected 'migrate_schema.'".into(),
+            });
+        }
         Ok(Verdict::Pass)
     })
     .post_exec(TrapFilter::binary("migrate"), |c: HandlerCtx<_, _>| async move {
@@ -120,12 +125,11 @@ fn build_runtime(
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
     .lifecycle(|l| {
-        l.on_pre_commit({
-            let ledger = ledger_ctx.clone();
-            move |_ctx| {
-                let ledger = ledger.clone();
-                Box::pin(async move { ledger.flush().await })
-            }
+        l.on_pre_commit(|ctx| {
+            Box::pin(async move {
+                let ledger = ctx.cap::<LedgerHandle>().ok_or_else(|| PluginError::Halt("ledger missing".into()))?;
+                ledger.flush().await
+            })
         })
         .on_post_commit(|_ctx, committed| {
             Box::pin(async move {
@@ -169,6 +173,16 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "[kelir] migrate action={} schema={} target={} dry_run={}",
         params.action, params.schema_name, params.target_version, params.dry_run
     );
+
+    let tx_handle = session
+        .cap::<TransactionHandle>()
+        .ok_or("transaction capability missing")?;
+
+    let mut tx = tx_handle
+        .scope("migrate-42", vec!["/workspace/migrations".into()], vec!["migrate_schema".into()])
+        .await?;
+    let savepoint = tx.savepoint().await?;
+
     let run = session
         .spawn(
             "python",
@@ -176,8 +190,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .await?;
     if run.exit_code != 0 {
+        tx.rollback_to_savepoint(savepoint).await?;
         return Err(format!("migration failed: {}", run.exit_code).into());
     }
+    tx.commit().await?;
 
     let out = session.vm.export_snapshot().await?;
     kelir::fs::write(LOCAL_SNAPSHOT, out).await?;
@@ -185,12 +201,12 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // see: cans/10-attestation.md#Execution-receipts
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     let ledger = session
-        .cap::<LedgerCtx>()
+        .cap::<LedgerHandle>()
         .ok_or("ledger capability missing")?;
 
     let final_receipt = ledger
         .finalize(FinalizeRequest {
-            include_delta: ledger.get_causal_delta_from_parent().await?,
+            include_delta: Some(ledger.get_causal_delta_from_parent().await?),
             include_merkle_root: true,
         })
         .await?;

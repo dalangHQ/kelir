@@ -140,7 +140,21 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )?;
     let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
-    // TODO (L3): spawn git push --force origin main in the guest and gate it via GitGatePlugin.
+
+    // Test 1: Forced push gets stripped and disarmed via Verdict::Patch
+    let push_run = session
+        .spawn("git", &["push", "--force", "origin", "main"])
+        .await?;
+    eprintln!("[kelir] git push --force -> exit={}", push_run.exit_code);
+    assert_eq!(push_run.exit_code, 0);
+
+    // Test 2: Commit directly mentioning protected branch gets aborted via Verdict::Abort
+    let commit_run = session
+        .spawn("git", &["commit", "-m", "illegal change to master"])
+        .await?;
+    eprintln!("[kelir] git commit protected -> exit={}", commit_run.exit_code);
+    assert_ne!(commit_run.exit_code, 0, "protected branch commit was not gated");
+
     session.stop().await?;
     Ok(())
 }

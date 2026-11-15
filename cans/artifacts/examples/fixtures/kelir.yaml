@@ -20,10 +20,11 @@ invariants:
   # Lattice inheritance law: Effective = min(Base, Overlay).
   # Overlays and environment forks can strictly tighten limits; attempts to widen
   # ceilings fail validation at boot with ESecurityViolation.
-  inheritance_lattice: monotonic
+  inheritance_lattice: monotonic_with_signed_operator_lease
 
   # Strict memory isolation policy: forbids unsafe memory traversal and ambient host leaks.
   memory_safety: forbid_unsafe
+  policy_plane_mutability: dynamic_signed
 
 # ------------------------------------------------------------------------------
 # 2. VMM DRIVER ENGINE (Host Hypervisor Interface & Hardware Enclaves)
@@ -35,10 +36,11 @@ driver:
 
   # Hardware virtualization requirement. If true, missing KVM/HVF/AVF halts launch
   # immediately with E_NOHARDWAREVMM. Silent fallback to emulation is forbidden.
-  require_hardware_vmm: true
+  require_hardware_vmm: false
 
   # Emulated unprivileged fallbacks (bwrap/proot) must be explicitly opted into.
-  allow_emulated_fallback: false
+  allow_emulated_fallback: true
+  emulated_tier_classification: Class2_RootlessUserNS
 
   # Asserts physical host integrity lockfile (/etc/kelir/hw.lock) before vCPU init.
   verify_hw_lockfile: true
@@ -54,10 +56,12 @@ driver:
 
   # Foreign language FFI execution gate (NAPI / PyO3 trampoline isolation).
   ffi_boundary:
-    worker_threads: 2
-    max_ops_per_second: 10000
-    queue_capacity: 4096
-    max_buffer_bytes: 65536
+    worker_threads: 8
+    max_ops_per_second: 50000
+    queue_capacity: 16384
+    max_buffer_bytes: 16777216
+    zero_copy_shm_threshold_bytes: 65536
+    allow_async_worker_yield: true
 
 # ------------------------------------------------------------------------------
 # 3. SESSION COMPUTE PHYSICALITY (vCPU, Memory, Topology & Kernel Anatomy)
@@ -65,7 +69,11 @@ driver:
 session:
   # MicroVM identification and lifecycle lease model.
   id: "ses_swe_bench_primary"
+  tenant_id: "org_enterprise_aegis_prod"
   topology: local                     # local | hub | spoke_thin | spoke_fat | spoke_ephemeral
+  isolation_envelope:
+    enforce_openat2_beneath: true
+    cgroup_parent: "aegis/org_enterprise_aegis_prod"
 
   # Compute allocations.
   compute:
@@ -124,6 +132,8 @@ session:
     max_exec_slots: 4096              # Concurrent exec allocations before MSG_EXEC_REJECT(ENOMEM)
     hide_pid: 2                       # Remounts /proc with hidepid=2 to conceal peer processes
     anti_toctou_cgroups: true         # Freezes task group via cgroup v2 during syscall traps
+    granular_task_freeze: true
+    rejection_mode: synthetic_refusal
 
   # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
   driver:
@@ -235,12 +245,20 @@ wire:
   # Stack initialization: embedded userspace smoltcp stack in host memory.
   # Zero TAP devices, zero CAP_NET_ADMIN, zero host iptables mutations.
   userspace_netstack: true
+  l7_protocol_inspection: true
 
   # Default-zero network admission posture.
   # Dropped frames emit ICMP Port Unreachable or TCP RST into guest ingress ring.
   default_egress: drop
   allow_ipv6: false                   # IPv6 dropped unconditionally at L3 ingress ring
   allow_raw_sockets: false            # Raw and ICMP sockets denied at virtio-net layer
+
+  outbox_deferral:
+    enabled: true
+    buffer_capacity_bytes: 67108864
+    release_on_step_verification: true
+    drop_on_rollback: true
+    compensator_webhook_timeout_ms: 5000
 
   # Pre-Policy Link-Local Quarantine.
   quarantine:
@@ -367,6 +385,11 @@ checkpoint:
     sentinel_path: "/dev/kelir-gate"  # Traps access to virtual sentinel FUSE inodes
     detect_pty_quiescence: true       # Triggers boundary when foreground process exits & PTY idles
     pre_checkpoint_dentry_trim: true  # Issues active FUSE forget pass to evict unreferenced dentries
+  step_dag:
+    enabled: true
+    require_signed_attribution: true
+    require_separation_of_duties: true
+    storage: content_addressed
 
   # Autonomous Step Verification Loop (StepSlot Engine).
   step_evaluation:
@@ -425,11 +448,19 @@ host:
 
   # Catalog Database & Session Lease Janitor (~/.kelir/catalog.db).
   catalog:
-    db_path: "~/.kelir/catalog.db"
+    backend: postgres
+    endpoint: "postgres://kelir_admin@pg.internal.net:5432/kelir_catalog"
+    schema_tenant_partitioning: true
+    fallback_sqlite_path: "~/.kelir/catalog.db"
     wal_mode: true
     busy_timeout_ms: 5000
     lease_ttl_seconds: 30             # Detached session runner lease heartbeat refresh interval
     prune_unreferenced_cas_blobs: true
+
+  telemetry_ring:
+    feature_extraction: true
+    sliding_window_depth: 300
+    export_feature_vector: true
 
 # ==============================================================================
 # KELIR CANONICAL SPECIFICATION PROFILE: kelir.yaml
@@ -448,9 +479,12 @@ plugins:
     merkle_wal:
       enabled: true                   # Opt-in compliance ledger (default OTLP-only)
       store_path: ".kelir/audit.merkle.db"
-      hashing_standard: "RFC_6962_BLAKE3"
+      hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256"
       sign_leaves: true               # Signs leaves via host session Ed25519 private key
       fsync_on_reap: true             # Guarantees durability before process trap returns
+      record_pre_redaction_hash: true
+      include_hook_spans_in_root: true
+      witness_cosigning_endpoint: "https://witness.internal.net/v1/sth"
 
     # OpenTelemetry (OTLP) Native Wire Exporter.
     otel:
@@ -503,7 +537,10 @@ plugins:
     mcp_interposition:
       pin_schemas: true               # BLAKE3 hash over all tool schemas locked at boot
       halt_on_schema_drift: true      # Dynamic runtime tool injection triggers ESecurityViolation
+      detect_semantic_rug_pull: true
+      strict_ast_parameter_validation: true
       max_invocations_per_trace: 50   # Anti-recursion governor (rejects ECYCLICREWRITE)
+      max_frame_bytes: 16777216
 
     # Context Taint Tracking & Out-of-Band Human Approvals.
     taint_governance:
@@ -615,7 +652,7 @@ plugins:
     transport: "stream_mux"           # JSON-RPC 2.0 bridged via Stream Kind MCP_CONSOLE (0x0012)
     socket_path: "/run/kelir/mcp.sock"
     framing: "json_lines"             # Strict newline-delimited JSON (no Content-Length header)
-    max_frame_bytes: 65536
+    max_frame_bytes: 16777216
 
   # ─── PLUGIN: REPO-POLICY (Branch Protection & Diff Limits) ───────
   repo-policy:

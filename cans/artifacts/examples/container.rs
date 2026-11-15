@@ -2,15 +2,12 @@
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 // see: cans/plugins/container.md#Rootless-container-execution
 // see: cans/01-architecture.md#VirtIO-Device-Complex
-// STATUS: aspirational; see §4 of work-order
-//   L3-GAP: ContainerService::ingest_image cannot be invoked yet — the trait
-//   takes &mut self, ContainerCtx::service only hands out a shared Arc, and
-//   the trait is not re-exported by the kelir facade; the boot/spawn path
-//   below is real and stays.
+
+use std::path::Path;
 
 use kelir::{
-    ContainerConfig, ContainerCtx, ContainerPlugin, HCons, HNil, Host, KelirBuilder, NoParams,
-    Unsealed, VmConfig,
+    ContainerConfig, ContainerCtx, ContainerHandle, ContainerPlugin, HCons, HNil, Host,
+    KelirBuilder, NoParams, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
 };
 
@@ -59,7 +56,12 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = container_builder().seal()?.boot().await?;
 
-    let _container = session.cap::<ContainerCtx>();    let image = OCI_TARBALL;
+    let container = session
+        .cap::<ContainerHandle>()
+        .ok_or_else(|| "container capability missing from session")?;
+
+    // Dynamically unpacks OCI image into host VirtIO-FS layer with EROFS backing
+    let image = container.ingest_image(Path::new(OCI_TARBALL)).await?;
 
     let run = session
         .spawn(

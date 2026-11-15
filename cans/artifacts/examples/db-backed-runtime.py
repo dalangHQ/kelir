@@ -1,8 +1,6 @@
 # see: cans/plugins/db-proxy.md#Plugin-db-proxy
 # see: cans/plugins/ledger.md#Plugin-ledger
 # see: cans/plugins/transaction.md#Plugin-transaction
-# L3-GAP: on_pre_commit ledger flush is stubbed — the Py LedgerPlugin exposes
-#   no pre-boot handle capture (LedgerPlugin.context() as in the Rust example).
 from __future__ import annotations
 
 import asyncio
@@ -53,8 +51,10 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         return PostExecAction.proceed()
 
     # see: cans/plugins/transaction.md#Plugin-transaction
-    async def _pre_commit(_ctx) -> None:
-        return None
+    async def _pre_commit(ctx) -> None:
+        ledger = ctx.cap("ledger")
+        if ledger is not None:
+            await ledger.flush()
 
     async def _post_commit(_ctx, committed: bool) -> None:
         if committed:

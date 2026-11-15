@@ -35,6 +35,9 @@
         - Host max_exec_slots default 4096; configurable per session
       - Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band
       - waitpid(-1, WNOHANG) updates slot exit status without blocking
+      - Granular task freeze isolates individual task cgroups during review
+      - Unapproved tool invocations return MSG_EXEC_REFUSAL synthetic bodies
+      - Rejected actions disarm guest traps without aborting the microVM
       - Unmatched reaped PIDs discard into a zero-allocation sink
       - Exit frames on EXEC stream kind defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
@@ -201,14 +204,16 @@
         - 0x8000-0xFFFF plugin-framed
           - channel_id carries scope
       - Flags registry: see: #Stream-mux-framing
-      - Max frame size: 64KB strict
+      - Frame payload bounds: 64KB default MTU; 16MB maximum via continuation
+      - Payloads exceeding 64KB stream across virtio-shm buffers with 0x20 bit
       - CBOR limits
         - Nest depth ≤ 16
-        - String length ≤ 1MB
+        - String length ≤ 16MB
         - No indefinite-length items
-        - Payload bounded by 64KB frame budget
+        - Payload bounded by negotiated stream buffer size
       - Version negotiation
         - Handshake struct: version: u16 (0x01), capabilities: u64
+        - Capabilities bit 0x08 advertises 16MB streaming SHM support
         - Handshake validates version == 0x01; mismatches reject with E_INCOMPATIBLE_SHIM_VERSION
         - negotiated_capabilities = host.capabilities & guest.capabilities
         - Mandatory feature bit missing: abort with E_INCOMPATIBLE_SHIM_VERSION
@@ -254,8 +259,8 @@
         - Action::Patch(ExecveMutation): c.patch(mutation)
       - SuspendUntil pin (SSOT-A1)
         - SuspendUntil: Deadline(ms) | Approval | Handshake | Condition(f)
-          - Condition(f) is the boxed predicate hold:
-            - Rust: SuspendUntil::Condition(Box<dyn Fn(&SessionContext) -> bool + Send + Sync>)
+          - Approval holds freeze the trapped task cgroup, not the whole VM
+          - Condition(f) is the boxed predicate hold across session state
             - TS / Py: .condition(fn); one spelling, no per-SDK alias
           - The predicate polls on a host-driven cadence: default 100 ms,
             - configurable per session
@@ -293,7 +298,8 @@
       - 0x04 CLOSE
       - 0x08 RST (peer aborted)
       - 0x10 WINDOW_UPDATE (backpressure)
-      - 0x20 RESERVED (continuation bit; split semantics TBD at L3)
+      - 0x20 CONTINUATION: frame payload continues in next virtqueue slice
+      - 0x40 SHM_OFFLOAD: payload body references zero-copy virtio-shm extent
     - Per-stream credit windows; credit exhausted parks sender
     - Backpressure inherits ring/transport semantics, not new framing
     - Zero-copy splice between mux and ring backends on supported platforms

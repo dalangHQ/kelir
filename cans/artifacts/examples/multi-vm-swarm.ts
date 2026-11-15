@@ -4,7 +4,7 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 
 import { kelir, LifecycleEvent, VetoEvent,
-         type LedgerHandle, type Session } from "@kelir/core";
+         type LedgerHandle, type MeshHandle, type Session } from "@kelir/core";
 import { mesh, supplyChain, ledger } from "@kelir/core";
 
 const SWARM_REGION = "swarm-coordination";
@@ -46,9 +46,14 @@ const runtime = kelir({
 
 async function runShard(child: Session, shardId: number, total: number) {
   await child.checkpoint.create(`swarm-shard-${shardId}/${total}`);
-  // TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via the mesh handle.
+  const _shm = await child.shm(SWARM_REGION);
+  const run = await child.spawn("cargo", ["test", "--", `--shard=${shardId}`]);
+  if (run.exitCode === 0) {
+    const meshHandle = child.cap("mesh") as MeshHandle;
+    if (meshHandle) await meshHandle.broadcastWinner(shardId);
+  }
   await child.stop();
-  return { shardId, exitCode: 0 };
+  return { shardId, exitCode: run.exitCode };
 }
 
 async function main() {
@@ -75,9 +80,10 @@ async function main() {
       }
     }
 
-    // TODO (L3): await the mesh winner announcement; MeshHandle exposes peers only, with no awaitWinner, so the first passing shard stands in as winner.
-    console.error(`[kelir] mesh winner shard=${winner}`);
-    console.error(`[kelir] ${passed}/8 shards passed; winner shard=${winner}`);
+    const meshHandle = session.cap("mesh") as MeshHandle;
+    const meshWinner = await meshHandle.awaitWinner(2000);
+    console.error(`[kelir] mesh winner shard=${meshWinner}`);
+    console.error(`[kelir] ${passed}/8 shards passed; winner shard=${meshWinner}`);
     const denials = await (session.cap("ledger") as LedgerHandle).countDenials(process.pid);
     console.error(`[kelir] supply-chain denials=${denials}`);
   } finally {

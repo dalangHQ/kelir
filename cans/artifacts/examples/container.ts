@@ -2,12 +2,8 @@
 // see: cans/plugins/container.md#Non-nested-OCI-container-execution
 // see: cans/plugins/container.md#Rootless-container-execution
 // see: cans/01-architecture.md#VirtIO-Device-Complex
-// STATUS: aspirational; see §4 of work-order
-//   L3-GAP: the OCI tarball cannot be ingested yet — @kelir/core exposes no
-//   container cap handle, so the image id is not available; the boot/spawn
-//   path below is real and stays.
 
-import { kelir, container } from "@kelir/core";
+import { kelir, container, type ContainerHandle } from "@kelir/core";
 
 const OCI_TARBALL = "./fixtures/oci-hello-world.tar";
 
@@ -27,7 +23,10 @@ async function main() {
   runtime.seal();
   const session = await runtime.boot();
   try {
-    const image = OCI_TARBALL;
+    const containerCap = session.cap("container") as ContainerHandle;
+    if (!containerCap) throw new Error("container capability handle not found");
+
+    const image = await containerCap.ingestImage(OCI_TARBALL);
 
     const run = await session.spawn("podman",
       ["run", "--rm", "--rootless", image, "echo", "hello from the microVM"]);

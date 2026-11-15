@@ -12,8 +12,10 @@
     - Sovereign cross-hypervisor peer transport
     - Routes point-to-point peer streams via vsock listener services
     - Injects and validates mTLS framing across hypervisor boundaries
-    - Propagates call-hop counters across routines
-    - MeshCtx::await_winner(timeout) -> u32: winning peer shard id
+    - Inter-VM shared memory regions (virtio_shm) enable zero-copy peer rings
+    - Propagates vector clocks across cross-hypervisor communication channels
+    - MeshCtx::broadcast_winner(shard_id) broadcasts winner election
+    - MeshCtx::await_winner(timeout) -> u32 awaits consensus across peers
       - Resolves after mesh election settles; TS/Py spelling awaitWinner(timeout)
     - SPIFFE identity (mesh)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.mesh.spiffe_identity.trust_domain

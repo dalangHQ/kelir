@@ -25,6 +25,8 @@
   - Invariants and policy (transaction)
     - Multi-resource 2PC coordination
       - Synchronizes commit/abort across host CoW broker, db-proxy, and lock broker
+      - Manages the wire plane egress outbox deferral buffer during transactions
+      - Discards buffered network side-effects on transaction abort or rollback
       - Coordinates with hypervisor lifecycle: pauses vCPUs during commit evaluation
       - flush_fuse_before_commit defaults to true, never silently disabled
         - a false value rejects on_pre_commit with ESecurityViolation

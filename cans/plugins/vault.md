@@ -12,16 +12,16 @@
     - Exports CredentialBrokerService via PipelineBinder for scoped token issuance
   - Invariants and policy (vault)
     - Out-of-band credential brokerage
-      - Host keyring is the sole secret store; secrets never enter guest memory
+      - Host keyring is the sole secret store; secrets never enter guest physical RAM
       - In-guest metadata service issues scoped, short-lived credentials on demand
         - Guest-visible endpoint: virtio-vsock 169.254.169.254 equivalents:
         - http://169.254.169.254/kelir/credentials/<name> (HTTP over vsock)
         - Response body: { token, ttl_seconds, scope, audience }
-      - Token TTL default 60s; configurable to 900s ceiling
+      - Token TTL default 60s; configurable up to 900s ceiling
       - Scope is the declared MountScope capability from the builder profile
       - Audience is the destination host pattern (e.g. api.openai.com)
       - Token is a signed opaque bearer; host keyring never exposed raw
-      - No in-process TLS MITM; no host-side CA; no HTTP body rewriting
+      - In-ring wire carrier injects bearer tokens directly into outbound TLS
     - Metadata service (vault)
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.zeroize_on_drop
@@ -45,17 +45,10 @@
       - vault:// placeholder in profiles resolves to a metadata path at boot
       - Guest cert store is untouched; no CA injection
       - Guest env vars are workload-owned; no forced CA env pointers
-    - Optional external egress rewriting
-      - External egress rewriting is opt-in; the metadata broker is the default
-      - Selected via vault.external_egress = { kind: "envoy" | "squid", ... }
-      - Sidecar process owns TLS termination, HTTP rewriting, and secret
-        - substitution; runs outside the supervisor binary
-      - Wire plane forwards marked egress through the sidecar via L4 diversion
-      - Supervisor memory never sees plaintext secrets or HTTP bodies
-      - Required when a workload cannot fetch tokens itself (legacy HTTP clients with
-        - no ability to set Authorization headers)
-      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar.enabled
-      - see: artifacts/examples/fixtures/kelir.yaml#plugins.vault.external_sidecar
+    - In-ring carrier secret injection
+      - Wire plane natively interposes outbound L7 streams matching vault rules
+      - Substitutes vault:// placeholders with real bearer tokens in flight
+      - Eliminates external sidecar daemons, preserving strict Class 1 attestation
     - Memory isolation and zeroization
       - Host keyring memory pinned with mlock(2); excluded from swap
       - Issued token buffers zeroized on drop; TTL expiry revokes host-side

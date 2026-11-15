@@ -574,7 +574,14 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )?;
     let node = session.checkpoint.commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
-    // TODO (L3): spawn cat IDENTITY_PATH in the guest and drive the hook matrix over it.
+
+    // Drive the 24-ring hook matrix by accessing the synthetic FUSE inode
+    let probe = session
+        .spawn("cat", &[IDENTITY_PATH])
+        .await?;
+    eprintln!("[kelir] cat identity -> exit={}", probe.exit_code);
+    assert_eq!(probe.exit_code, 0);
+    assert_eq!(&probe.stdout, IDENTITY_CONTENT);
 
     kelir::time::sleep(Duration::from_millis(100)).await;
     eprintln!(
@@ -592,6 +599,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         handle.vm_shutdowns(),
         handle.memory_pressures(),
     );
+
+    assert!(handle.traps() > 0, "no traps recorded across execution");
+    assert!(handle.fs_locks() > 0 || handle.exec_stdout() > 0, "fs/exec interposers failed to record telemetry");
+    assert_eq!(handle.failures(), 0, "unexpected step failures occurred");
 
     session.stop().await?;
     Ok(())

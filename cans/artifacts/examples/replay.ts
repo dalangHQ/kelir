@@ -13,8 +13,10 @@ const runtime = kelir({
   tscLocked: true, enableWatchdog: true,
   deterministicClock: true,
   pinnedClocksource: "kvm-clock",
+  networkOff: true,
+  nsPerInstruction: 1,
+  entropySeed: 0x5EED,
   preemptionGraceMs: 0,
-  // TODO: network isolation, ns-per-instruction, and the entropy seed ride the replay plugin config here; KelirConfig has no networkOff, nsPerInstruction, or entropySeed fields.
 })
   .use(replay({
     stepWindow: 1_000_000,
@@ -31,11 +33,25 @@ async function main() {
   runtime.seal();
   const session = await runtime.boot();
   try {
+    const timestamps: string[] = [];
     for (let run = 0; run < 2; run++) {
       const slot = await session.checkpoint.create(`replay-run-${run}`);
       console.error(`[kelir] run ${run} -> slot=${slot.id}`);
+
+      const dateRes = await session.spawn("date", ["+%s.%N"]);
+      if (dateRes.exitCode !== 0) throw new Error("date spawn failed");
+      timestamps.push(new TextDecoder().decode(dateRes.stdout).trim());
+
+      if (run === 0) {
+        await session.checkpoint.rollback(slot.id);
+      }
     }
-    // TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.
+
+    console.error(`[kelir] run 0 date: ${timestamps[0]}`);
+    console.error(`[kelir] run 1 date: ${timestamps[1]}`);
+    if (timestamps[0] !== timestamps[1]) {
+      throw new Error(`clock divergence in deterministic replay: ${timestamps[0]} !== ${timestamps[1]}`);
+    }
   } finally {
     await session.stop();
   }

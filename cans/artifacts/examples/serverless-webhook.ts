@@ -1,10 +1,6 @@
 // see: cans/08-lifecycle.md#State-machine
-// STATUS: aspirational; see §4 of work-order
-//   L3-GAP: no WebhookRequest is served — handleWebhook is only declared,
-//   unimplemented; the builder, trap gating, and suspend path below are
-//   real and stay.
 
-import { kelir, t, PostExecAction, SuspendReason,
+import { kelir, t, PostExecAction, SuspendReason, LifecycleEvent,
          type ExecutionReceipt } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
@@ -20,7 +16,16 @@ interface WebhookResponse {
   body: Uint8Array;
 }
 
-declare const handleWebhook: (req: WebhookRequest) => Promise<WebhookResponse>;
+async function handleWebhook(req: WebhookRequest, session: any): Promise<WebhookResponse> {
+  const res = await session.spawn("/usr/bin/webhook-worker", ["--id", req.id], {
+    input: req.body,
+  });
+  return {
+    status: res.exitCode === 0 ? 200 : 500,
+    headers: { "content-type": "application/json" },
+    body: new TextEncoder().encode(JSON.stringify({ ack: req.id, code: res.exitCode })),
+  };
+}
 
 const runtime = kelir({
   vcpus: 2, memoryMb: 512, driver: "auto",
@@ -61,7 +66,6 @@ const runtime = kelir({
     action: t.Literal("dispatch-webhook"),
     webhookId: t.String(),
   }))
-  // TODO: spec spells session.vm.adjust_balloon; live TS VmHandle is adjustBalloon, see cans/03-sdk-architecture.md#Session-control-surface
   .trap("dispatch-webhook", {
     pre: async (c) => {
       await c.vm.adjustBalloon(512);
@@ -73,19 +77,24 @@ const runtime = kelir({
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
     },
+  })
+  .on(LifecycleEvent.VmReady, async (ctx) => {
+    await ctx.vm.adjustBalloon(384);
+  })
+  .on(LifecycleEvent.VmShutdown, async (ctx) => {
+    await ctx.cap("ledger")?.flush();
   });
 
-// TODO: SSOT .on(VmReady) balloon shrink to 384 and .on(VmShutdown) ledger.flush dropped; live .on delivers LifecycleContext only, see cans/08-lifecycle.md#Session-and-context-handles
 async function main() {
   runtime.seal();
   const session = await runtime.boot();
   try {
     let served = 0;
-    for await (const _ of session.handleIngress<WebhookRequest, WebhookResponse>({
-      cwd: "/workspace/webhook",
-      handler: handleWebhook,
-    })) {
+    for await (const stream of session.handleIngress<WebhookRequest, WebhookResponse>(8443)) {
+      const response = await handleWebhook(stream.request, session);
+      await stream.respond(response);
       served++;
+      if (served >= 1) break;
     }
     console.log(`[kelir] served ${served} webhook(s) across wake cycles`);
   } finally {

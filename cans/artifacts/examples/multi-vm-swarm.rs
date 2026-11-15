@@ -152,9 +152,19 @@ async fn run_shard(
         },
     )?;
     child.checkpoint.commit_step(child.lineage(1))?;
-    // TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via MeshCtx.
+
+    // Map paravirtual virtio_shm region shared across child microVMs
+    let mut _shm = child.shm(SWARM_REGION).await?;
+    let run = child
+        .spawn("cargo", &["test", "--", &format!("--shard={shard_id}")])
+        .await?;
+
+    if run.exit_code == 0 {
+        let mesh = child.cap::<MeshCtx>().ok_or("mesh missing")?;
+        mesh.broadcast_winner(shard_id).await?;
+    }
     child.stop().await?;
-    Ok((shard_id, 0))
+    Ok((shard_id, run.exit_code))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -182,16 +192,13 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    match session
+    let mesh_winner = session
         .cap::<MeshCtx>()
         .ok_or("mesh capability missing")?
         .await_winner(Duration::from_secs(2))
-        .await
-    {
-        Ok(mesh_winner) => eprintln!("[kelir] mesh winner shard={mesh_winner}"),
-        Err(err) => eprintln!("[kelir] mesh await_winner pending (L3): {err}"),
-    }
-    eprintln!("[kelir] {passed}/8 shards passed; winner shard={winner:?}");
+        .await?;
+    eprintln!("[kelir] mesh winner shard={mesh_winner}");
+    eprintln!("[kelir] {passed}/8 shards passed; winner shard={mesh_winner}");
     let denials = session
         .cap::<LedgerCtx>()
         .ok_or("ledger capability missing")?

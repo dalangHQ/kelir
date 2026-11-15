@@ -17,6 +17,12 @@
     - OTLP is the default export surface
       - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),
+  - Online statistical feature extraction
+    - Telemetry ring buffers extract normalized 16-dimensional feature vectors
+    - Sliding window (300 entries) tracks syscall rate, argument entropy, burst
+    - Zero-copy shared memory exports vector directly to host anomaly filters
+    - High-surprisal actions trigger policy escalation without foreign FFI hops
+      - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
       - Traces: one span per receipt phase (trap_ingress, ffi_hop, policy,
         - verdict_egress); see: 10-attestation.md#Execution-receipts

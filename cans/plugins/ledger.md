@@ -48,10 +48,11 @@
           - timestamp_ns: u64 (host wall-clock timestamp)
           - signature: [u8; 64] (Ed25519 signature by host session key)
         - No PMU samples: see: 10-attestation.md#Field-semantics
-          - Determinism: see: 10-attestation.md#Identity
-        - Merkle Hashing: RFC 6962 rules using BLAKE3:
-          - Leaf: BLAKE3(0x00 || record_bytes)
-          - Node: BLAKE3(0x01 || left_child || right_child)
+        - Dual hashing standard: RFC 6962 rules with BLAKE3 and SHA-256
+          - Leaf: HASH(0x00 || record_bytes)
+          - Node: HASH(0x01 || left_child || right_child)
+        - Leaf commitments record pre-redaction payload hashes
+        - STH witness cosigning API validates signed tree heads across nodes
         - LMDB persistence appends, with immediate fsync after each process reap
         - WAL is opt-in (ledger.merkle.enabled = true); default off
         - When off, receipts flow to OTLP alone; no on-disk audit is written

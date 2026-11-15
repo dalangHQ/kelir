@@ -217,7 +217,14 @@
         - Mount home: see: 02-plugin-model.md#Unified-builder
         - Vector family: see: #Unified-builder-parity-vectors
         - Enforcement: kelir-plugin-cli parity run; gate spec only
-        - Execution lands with Agent 2 codegen; unexecuted cases report not-executable
+      - --l7-stream-coverage
+        - Asserts in-ring L7 HTTP/TLS parsing and stream transformations execute
+      - --outbox-coverage
+        - Asserts network outbox holds irreversible egress and purges on rollback
+      - --step-dag-coverage
+        - Asserts branching step DAGs evaluate with signed reviewer attribution
+      - --swarm-mesh-coverage
+        - Asserts virtio_shm ring coordination and winner election consensus
       - --trapfilter-coverage
         - Asserts every TrapFilter predicate method has at least one vector
         - Predicate set: with_arg, with_cwd, with_env, with_uid, argv_matches
@@ -389,7 +396,6 @@
           (8 scopes x config/requires/fork/timeout/priority/rules)
           + 5 chain + 5 predicate; arithmetic mirrors
           #--unified-builder-coverage
-        - The 58 live vectors.json cases stay until the vectors regenerate
       - Chain cases pin the fixed chain: seal, trap filter form, trap scope form, fs config, chaos-only
       - Each chain case pins builder name, requires list, and ring set with ordinals
       - Chain cases are built by the parity run as one expression per SDK
@@ -404,9 +410,6 @@
       - Divergent outputs block CI; unexecuted verdicts report not-executable
       - Case schema: see: artifacts/code/plugin-builder-vectors.rs
       - Builder contract: see: 02-plugin-model.md#Unified-builder
-    - Fluent-builder parity vectors
-      - Superseded by the unified builder vectors: see: #Unified-builder-parity-vectors
-      - History: the DX round shipped a 38-case plugin_builder family
   - Developer CLI
     - Scope rule: only what types cannot encode
       - Anything a compile error enforces is not shipped

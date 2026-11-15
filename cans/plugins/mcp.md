@@ -35,7 +35,9 @@
     - MCP contract
       - Transport: JSON-RPC 2.0 over MCP_CONSOLE mux stream
       - Framing: JSON Lines; one object for each \n, no Content-Length
-      - Max frame: 64 KB (see 11-protocol.md#Wire-framing); split via reserved 0x20 bit
+      - Max frame: 16 MB via streaming continuation frames and virtio-shm
+      - Carrier tracks JSON-RPC transaction IDs across request and response
+      - AST parser validates JSON types before dispatching to ring hooks
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mcp)

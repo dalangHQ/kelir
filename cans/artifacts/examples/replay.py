@@ -21,8 +21,10 @@ def build_runtime() -> KelirBuilder:
             tsc_locked=True, enable_watchdog=True,
             deterministic_clock=True,
             pinned_clocksource="kvm-clock",
+            network_off=True,
+            ns_per_instruction=1,
+            entropy_seed=0x5EED,
             preemption_grace_ms=0,
-            # TODO: network isolation, ns-per-instruction, and the entropy seed ride the replay plugin config here; kelir.builder has no network_off, ns_per_instruction, or entropy_seed fields.
         )
         .use(ReplayPlugin(ReplayConfig(
             step_window=1_000_000,
@@ -40,10 +42,21 @@ def build_runtime() -> KelirBuilder:
 
 async def main() -> None:
     async with build_runtime() as session:
+        timestamps = []
         for run in range(2):
             slot = await session.checkpoint.create(f"replay-run-{run}")
             print(f"[kelir] run {run} -> slot={slot.id}")
-        # TODO (L3): spawn date +%s.%N in the guest twice and replay both runs deterministically.
+
+            res = await session.spawn("date", ["+%s.%N"])
+            assert res.exit_code == 0
+            timestamps.append(res.stdout.decode().strip())
+
+            if run == 0:
+                await session.checkpoint.rollback(slot.id)
+
+        print(f"[kelir] run 0 date: {timestamps[0]}")
+        print(f"[kelir] run 1 date: {timestamps[1]}")
+        assert timestamps[0] == timestamps[1], "replay clock desynchronization detected"
 
 
 if __name__ == "__main__":

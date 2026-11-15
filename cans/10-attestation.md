@@ -118,7 +118,9 @@
         - verdict_kind is the Action variant the hook returned
           - Action enum home: see: artifacts/code/action-algebra.rs
         - ordinal is the registration ordinal within the ring
-          - Ordering rule: see: 02-plugin-model.md#Hook-ordering
+      - Merkle leaves include HookSpan policy descriptors for audit verification
+      - In-place read masking commits raw pre-redaction digests before rewrite
+      - Inclusion proofs verify policy rule execution without payload leakage
       - Populated for every hook that fired for the trapped process
         - Firing order is execution order (descending priority, then
           - registration order), not mount order
@@ -157,8 +159,8 @@
   - Attestation provenance classification
     - Invariant: A higher classification never falls back to a lower classification
     - Class 1 (Hardware-Anchored): vmlinux BLAKE3, EROFS BLAKE3, session token,
-      - guest clock reads, guest exit codes. Unforgeable from guest space.
-    - Class 2 (Paravirtual Interception): FUSE buffers, virtqueue frames,
+    - Class 2 (Paravirtual Interception & Rootless Containers): FUSE buffers,
+      - virtqueue frames, character rings, unprivileged bwrap namespaces.
       - character rings. Observed at the hypervisor boundary.
     - Class 3 (Guest Unverified Data): workload stdout/stderr, memory buffers.
       - Tainted by default; cannot satisfy hardware assertions.

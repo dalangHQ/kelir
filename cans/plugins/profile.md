@@ -14,10 +14,11 @@
     - Profile schema fixture: see: artifacts/examples/fixtures/kelir.toml
     - Canonical profile artifact: see: [1]
     - Declarative profile execution: see: artifacts/examples/profile.rs
-    - Inversion-of-Control configuration router:
+    - Inversion-of-Control configuration router
       - Ingests canonical kelir.toml and kelir.yaml specification files
       - Plugins register target schema namespaces dynamically via ConfigurablePlugin
       - Routes unparsed configuration fragments to registered namespace owners
+      - Hot-reloads dynamic policy fragments received on PROFILE_SYNC stream
       - Profile contains zero hardcoded child domain logic or expansion rules
       - Monotonic limits enforced uniformly across scalar budget fields
     - Monotonic limits
@@ -25,6 +26,8 @@
       - Overlays cannot widen execution duration, memory, or instruction ceilings
       - Violations of monotonic limits fail validation with ESecurityViolation
     - Default-zero capability invariant
+      - Hardware invariants strictly monotonic; MMU rules cannot loosen
+      - Operator capability leases may selectively relax policy-level blocks
       - Undeclared subsystems receive zero physical hardware allocations
       - Omitted network section allocates zero userspace network stacks
         - and drops all L2 frames at the ingress ring
@@ -86,19 +89,20 @@
     - Driver FFI boundary (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.worker_threads
       - see: artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.max_ops_per_second
-      - driver.ffi_boundary.queue_capacity and max_buffer_bytes: TBD (no DriverPolicy fields yet)
-      - FFI keys map to DriverPolicy ffi_worker_threads, ffi_max_ops_per_sec
+      - driver.ffi_boundary.max_buffer_bytes scales to 16777216 for large context
+      - driver.ffi_boundary.worker_threads defaults to 8 for async worker offload
+      - Buffers above 64KB route across zero-copy virtio-shm window
       - driver.fast_boot: auto | enabled | off (default: off)
       - driver.fast_boot routes to KelirBuilder::fast_boot at boot; no struct field
   - Session compute schema (profile)
     - Session compute semantics: see: artifacts/code/vmm-driver-trait.rs
     - Session identity (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.id
+      - session.tenant_id binds the immutable enterprise OrgScope
+      - session.isolation_envelope configures cgroup parent and openat2 rules
       - see: artifacts/examples/fixtures/kelir.yaml#session.topology
-      - session.topology consumption: TBD (no builder/Session surface yet)
     - Session compute (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.vcpus
-      - session.compute.max_vcpus: TBD (set_vcpus exists, no VmConfig field yet)
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.memory_mb
       - Canonical fixture values (SSOT-A1): vcpus 4, memory_mb 4096
         - The YAML fixture wins

@@ -8,25 +8,30 @@ version = 1
 [invariants]
 default_zero_capability = true
 physicality_check = "strict"
-inheritance_lattice = "monotonic"
+inheritance_lattice = "monotonic_with_signed_operator_lease"
 memory_safety = "forbid_unsafe"
+policy_plane_mutability = "dynamic_signed"
 
 [driver]
 backend = "auto"
 require_hardware_vmm = true
-allow_emulated_fallback = false
+allow_emulated_fallback = true
+emulated_tier_classification = "Class2_RootlessUserNS"
 verify_hw_lockfile = true
 wx_enforcement = "Strict"
 fast_boot = "off"
 
 [driver.ffi_boundary]
-worker_threads = 2
-max_ops_per_second = 10000
-queue_capacity = 4096
-max_buffer_bytes = 65536
+worker_threads = 8
+max_ops_per_second = 50000
+queue_capacity = 16384
+max_buffer_bytes = 16777216
+zero_copy_shm_threshold_bytes = 65536
+allow_async_worker_yield = true
 
 [session]
 id = "ses_swe_bench_primary"
+org_id = "org_enterprise_aegis_prod"
 topology = "local"
 
 [session.budget]
@@ -93,9 +98,12 @@ enabled = true
 [plugins.ledger.merkle_wal]
 enabled = true
 store_path = ".kelir/audit.merkle.db"
-hashing_standard = "RFC_6962_BLAKE3"
+hashing_standard = "RFC_6962_DUAL_BLAKE3_SHA256"
 sign_leaves = true
 fsync_on_reap = true
+record_pre_redaction_hash = true
+include_hook_spans_in_root = true
+witness_cosigning_endpoint = "https://witness.internal.net/v1/sth"
 
 [plugins.ledger.otel]
 endpoint = "http://localhost:4318/v1/traces"
@@ -142,10 +150,14 @@ enabled = true
 [plugins.tool_guard.mcp_interposition]
 pin_schemas = true
 halt_on_schema_drift = true
+detect_semantic_rug_pull = true
+strict_ast_parameter_validation = true
 max_invocations_per_trace = 50
+max_frame_bytes = 16777216
 
 [plugins.tool_guard.taint_governance]
 untrusted_ingress_taints = true
+propagate_byte_range_taints = true
 mutating_verbs_require_approval = true
 
 [plugins.tool_guard.sanitization]
@@ -245,7 +257,7 @@ enabled = true
 transport = "stream_mux"
 socket_path = "/run/kelir/mcp.sock"
 framing = "json_lines"
-max_frame_bytes = 65536
+max_frame_bytes = 16777216
 
 [plugins.wire_ingress]
 enabled = true
@@ -336,9 +348,17 @@ non_blocking = true
 
 [wire]
 userspace_netstack = true
+l7_protocol_inspection = true
 default_egress = "drop"
 allow_ipv6 = false
 allow_raw_sockets = false
+
+[wire.outbox_deferral]
+enabled = true
+buffer_capacity_bytes = 67108864
+release_on_step_verification = true
+drop_on_rollback = true
+compensator_webhook_timeout_ms = 5000
 
 [wire.quarantine]
 drop_link_local = true
@@ -470,7 +490,10 @@ quarantine_host_keyring = true
 max_interposer_latency_us = 2
 
 [host.catalog]
-db_path = "~/.kelir/catalog.db"
+backend = "postgres"
+endpoint = "postgres://kelir_admin@pg.internal.net:5432/kelir_catalog"
+schema_tenant_partitioning = true
+fallback_sqlite_path = "~/.kelir/catalog.db"
 wal_mode = true
 busy_timeout_ms = 5000
 lease_ttl_seconds = 30

@@ -46,8 +46,10 @@ def build_runtime() -> KelirBuilder:
             rootfs_erofs="./fixtures/rootfs-swarm.erofs",
             tsc_locked=True, enable_watchdog=True,
         )
-        # TODO: the lock-broker glob scope (**/Cargo.lock, **/package-lock.json) and non-blocking mode have no Py builder surface; .lock_broker() only takes an enabled flag.
-        .lock_broker()
+        .lock_broker(
+            globs=["**/Cargo.lock", "**/package-lock.json"],
+            non_blocking=True,
+        )
         # see: cans/plugins/mesh.md#Plugin-mesh
         .use(MeshPlugin(MeshConfig(
             peer_identity=PeerIdentity(
@@ -87,9 +89,14 @@ async def run_shard(
     child: Session, shard_id: int, total: int,
 ) -> tuple[int, int]:
     await child.checkpoint.create(f"swarm-shard-{shard_id}/{total}")
-    # TODO (L3): map the shard-exchange shared region, spawn cargo test --shard, and publish the result via the mesh handle.
+    shm = await child.shm(SWARM_REGION)
+    run = await child.spawn("cargo", ["test", "--", f"--shard={shard_id}"])
+    if run.exit_code == 0:
+        mesh = child.cap("mesh")
+        if mesh is not None:
+            await mesh.broadcast_winner(shard_id)
     await child.stop()
-    return shard_id, 0
+    return shard_id, run.exit_code
 
 
 async def main() -> None:
@@ -112,9 +119,11 @@ async def main() -> None:
                 if winner is None:
                     winner = shard_id
 
-        # TODO (L3): await the mesh winner announcement; the Py Caps expose no mesh handle with await_winner, so the first passing shard stands in as winner.
-        print(f"[kelir] mesh winner shard={winner}")
-        print(f"[kelir] {passed}/8 shards passed; winner shard={winner}")
+        mesh = session.cap("mesh")
+        assert mesh is not None, "mesh capability missing"
+        mesh_winner = await mesh.await_winner(timeout_secs=2.0)
+        print(f"[kelir] mesh winner shard={mesh_winner}")
+        print(f"[kelir] {passed}/8 shards passed; winner shard={mesh_winner}")
         denials = await session.cap("ledger").count_denials(os.getpid())
         print(f"[kelir] supply-chain denials={denials}")
 

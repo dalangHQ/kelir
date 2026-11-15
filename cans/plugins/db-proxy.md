@@ -12,12 +12,8 @@
     - Lifecycle attachment (db-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (db-proxy)
     - Exports SqlProxyService via PipelineBinder for statement and dialect queries
-    - Key pin (SSOT-A1): the capability key is the plugin name
-      - The key is "db-proxy", not "db"
-      - The accessor is c.cap("db-proxy"); the pre-sweep c.cap.db read was non-conforming and is fixed
-      - SDK attr sugar: Py c.cap.db_proxy.rewrite_target; TS c.cap.dbProxy.rewriteTarget
-      - See: cans/artifacts/examples/db-backed-runtime.py
-
+    - Capability key is db-proxy across all SDKs
+    - Coordinates with plugin-transaction for 2PC savepoints and outbox holds
   - Invariants and policy (db-proxy)
     - L7 pgwire rewrite and 2PC commit: see: artifacts/examples/db-backed-runtime.py
     - Mediates relational protocol traffic

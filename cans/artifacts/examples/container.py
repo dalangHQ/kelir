@@ -8,7 +8,7 @@ import asyncio
 import os
 
 import kelir
-from kelir import KelirBuilder, Session
+from kelir import ContainerHandle, KelirBuilder, Session
 from kelir.plugins.container import ContainerConfig, ContainerPlugin
 
 
@@ -36,7 +36,9 @@ def build_runtime() -> KelirBuilder:
 async def main() -> None:
     async with build_runtime() as session:
         # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-        image = await session.cap("container").ingest_image(OCI_TARBALL)
+        container: ContainerHandle = session.cap("container")
+        assert container is not None, "container plugin capability not mounted"
+        image = await container.ingest_image(OCI_TARBALL)
 
         run = await session.spawn(
             "podman", ["run", "--rm", "--rootless", image,

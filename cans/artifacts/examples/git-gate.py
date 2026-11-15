@@ -74,8 +74,16 @@ async def main() -> None:
         await session.terminal.resize(120, 40)
         slot = await session.checkpoint.create("git-gate-base")
         print(f"[kelir] checkpoint id={slot.id}")
-        # TODO (L3): spawn git push --force origin main in the guest and gate it via the git-gate plugin.
 
+        # Test 1: Verify force-push mutation stripping
+        push = await session.spawn("git", ["push", "--force", "origin", "main"])
+        print(f"[kelir] git push -> exit={push.exit_code}")
+        assert push.exit_code == 0
+
+        # Test 2: Verify protected branch commit abort
+        commit = await session.spawn("git", ["commit", "-m", "direct commit to main"])
+        print(f"[kelir] git commit main -> exit={commit.exit_code}")
+        assert commit.exit_code != 0, "protected commit should have aborted"
 
 if __name__ == "__main__":
     asyncio.run(main())

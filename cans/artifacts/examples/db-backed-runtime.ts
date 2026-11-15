@@ -1,13 +1,10 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/transaction.md#Plugin-transaction
-// L3-GAP: pre-migrate rewrite-target check, onPreCommit ledger flush, and the
-//   migrate-42 transaction scope with savepoint/rollback are stubbed — no
-//   db-proxy cap handle in @kelir/core, no pre-boot ledger capture, and no
-//   transaction scope API yet.
 
-import { kelir, t, TrapFilter, PostExecAction,
-         type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
+import { kelir, t, TrapFilter, PostExecAction, Errno,
+         type ExecutionReceipt, type LedgerHandle, type TransactionHandle,
+         type DbProxyHandle } from "@kelir/core";
 import { dbProxy, ledger, transaction } from "@kelir/core";
 
 declare const env: {
@@ -69,6 +66,10 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
     }))
     .trap(TrapFilter.binary("migrate"), {
       pre: async (c) => {
+        const proxy = c.cap<DbProxyHandle>("db-proxy");
+        if (!proxy || proxy.rewriteTarget !== "migrate_schema.") {
+          return c.drop(Errno.EPOLICY, "schema mismatch: expected 'migrate_schema.'");
+        }
         return c.pass();
       },
       post: async (c) => {
@@ -80,7 +81,8 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       },
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
-    .onPreCommit(async () => {
+    .onPreCommit(async (ctx) => {
+      await ctx.cap<LedgerHandle>("ledger")?.flush();
     })
     .onPostCommit(async (_ctx, committed) => {
       if (committed) {
@@ -105,11 +107,24 @@ async function main() {
     // see: cans/09-snapshots.md#Snapshots
     await session.vm.importSnapshot(await readSnapshot(LOCAL_SNAPSHOT));
 
-    const run = await session.spawn("python", ["-m", "app.migrate", "--schema", "migrate"], {
-      cwd: "/workspace/migrations",
-      params: { action: "migrate", schemaName: "migrate", targetVersion: 42, dryRun: false },
+    const txHandle = session.cap<TransactionHandle>("transaction")!;
+    const tx = await txHandle.scope("migrate-42", {
+      paths: ["/workspace/migrations"],
+      schemas: ["migrate_schema"],
     });
-    if (run.exitCode !== 0) throw new Error(`migration failed: ${run.exitCode}`);
+    const savepoint = await tx.savepoint();
+
+    try {
+      const run = await session.spawn("python", ["-m", "app.migrate", "--schema", "migrate"], {
+        cwd: "/workspace/migrations",
+        params: { action: "migrate", schemaName: "migrate", targetVersion: 42, dryRun: false },
+      });
+      if (run.exitCode !== 0) throw new Error(`migration failed: ${run.exitCode}`);
+      await tx.commit();
+    } catch (err) {
+      await tx.rollbackToSavepoint(savepoint);
+      throw err;
+    }
 
     const out = await session.vm.exportSnapshot();
     await writeSnapshot(LOCAL_SNAPSHOT, out);

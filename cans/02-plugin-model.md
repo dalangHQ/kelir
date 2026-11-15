@@ -62,8 +62,10 @@
       - Evaluates unified verdict Actions in monotonic order: see: #Unified-verdict
       - Single mutator owns target byte slice at any stage
       - Trait dispatch: see: #Static-dispatch
-      - Compiled into contiguous zero-cost dispatch tables
-      - Latency bounded by #Latency-ceiling; foreign FFI filter-gated
+      - Compiled into contiguous dispatch tables with dynamic DAG lookup
+      - Fast-path evaluations complete within native Gate 2 latency ceiling
+      - Heavy policy evaluators offload to async worker queue with deadline
+      - Offloaded evaluations preserve virtqueue progress on sibling rings
       - Foreign plane is local-only: see: #Foreign-plugin-proxy
     - Authority lattice invariance
       - Guest-side instruction changes cannot weaken registered pipeline verdicts
@@ -140,6 +142,8 @@
         - ConsoleInterposer: console input, console output, window resize, disclosure
           - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
           - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
+        - Dynamic byte-level taint tracking propagates labels across ring boundaries
+        - Taint tags set on FUSE reads follow data into process arguments and wire egress
           - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
         - FsInterposer: fs lookup, read, write, lock; synchronous hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
@@ -150,8 +154,8 @@
         - Plugins implement only traits for rings they touch; rest default no-op
         - Dispatch: taxonomy rings register into ring-specific contiguous arrays
         - Unused rings cost zero vtable lookups
-      - TrapFilter predicates
-        - TrapFilter grammar: constructor plus five predicate builders
+      - TrapFilter grammar
+        - Constructor plus typed predicate builders for binaries and schemas
           - Constructor: TrapFilter::binary(name); non-empty by the seal() triple
           - Predicate set: with_arg (repeatable), with_cwd, with_env (repeatable),
             with_uid, argv_matches; spellings in the artifact
@@ -159,6 +163,8 @@
           - Py/TS spellings: with_cwd / withCwd, with_env / withEnv,
             with_uid / withUid, argv_matches / argvMatches; with_arg is
             with_arg / withArg in all three SDKs
+        - with_params: matches structured JSON arguments on MCP tool traps
+        - Parameter matching verifies types via precompiled schema validators
         - AND semantics: every populated predicate on one filter must hold
           - Predicates are AND-ed, never OR-ed; each narrows the match
           - Repeatable predicates (with_arg, with_env) accumulate; all entries must match
@@ -185,10 +191,10 @@
       - Per-ring timeouts
         - Every hook can carry .timeout(Duration) (scope-level config verb: see: #Nested-scopes)
           - Default: none, i.e., the ring's own ceiling governs
-          - Hot-path rings (Fs, Net, Host — the synchronous rings) default to 5 ms
+          - Hot-path synchronous rings (Fs, Net, Host) default to 5 ms
+          - Asynchronous policy inspection hooks default to 200 ms timeout
         - On timeout the ring returns Action::Drop { errno: Errno::Ewouldblock,
           - reason: "hook timeout" } and the trap is released host-side
-          - The closed Errno set has no ETIMEDOUT-style member; Ewouldblock
             - (EWOULDBLOCK on the wire) is the closest existing member — see
             - the conflicts entry in cans/_collab/conflicts.md; ETIMEDOUT
             - membership is an Errno-set change owned by the enum's home
@@ -321,13 +327,14 @@
     - Dispatch pruning: no-op hooks completely omitted from C-dispatch table
     - Zero-cost null objects: disabled plugins retain types, cost zero in core
     - fork_state() customizes state branching; default clone runs unattended
-      - Inline builder closures remain fork-blind; StepSlot manages engine state
     - Native zero-WASM isolation: compile-time crate linkage
     - Immutable &[u8] slice views prevent cross-plugin heap tampering
     - Hardware MPK page keys (x86_64) isolate per-plugin memory domains
     - Missing declared dependency aborts boot with EConfig
-    - Dispatch tables are immutable after seal; zero atomic loads on the ring path
+    - Hardware MMU dispatch tables remain immutable and sealed post-boot
     - Panic quarantine boundary
+    - Policy plane supports dynamic hot-reload via signed operator leases
+    - Operator leases safely adjust rules without restarting guest microVMs
       - Interposer dispatches wrap in catch_unwind at the engine perimeter
       - Escaped hook panics convert to Action::Drop with EFAULT
       - Supervisor microkernel stays resident; active StepSlot rolls back
