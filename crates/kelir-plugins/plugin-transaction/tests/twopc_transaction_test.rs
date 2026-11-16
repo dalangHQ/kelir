@@ -3,7 +3,7 @@ use kelir_interface::plugin_model::LifecycleParticipant;
 use kelir_interface::plugin_model::PluginError;
 use kelir_plugin_testkit::block_on;
 use plugin_transaction::{
-    Savepoint, TransactionConfig, TransactionHandle, TransactionPlugin, TransactionScope,
+    Savepoint, TransactionConfig, TransactionPlugin, TransactionScope, TransactionScopeHandle,
     TransactionService,
 };
 
@@ -42,7 +42,7 @@ fn rt_05_2pc_post_commit_false_rollback_sync() -> Result<(), String> {
     let second =
         block_on(ctx.begin_scope(TransactionScope::default())).map_err(|err| format!("{err:?}"))?;
     assert_eq!(second.id, 1);
-    match block_on(ctx.savepoint(&TransactionHandle { id: 99 })) {
+    match block_on(ctx.savepoint(&TransactionScopeHandle { id: 99 })) {
         Err(PluginError::Halt(msg)) if msg.starts_with("EINVAL:") => (),
         Err(err) => {
             return Err(format!(

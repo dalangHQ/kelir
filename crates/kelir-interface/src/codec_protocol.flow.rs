@@ -2,14 +2,24 @@
 // see: cans/artifacts/code/wire-protocol.rs#MuxFrameHeader
 use std::fmt;
 
-use crate::protocol_wire::{Channel, MsgType};
+use crate::protocol_wire::{Channel, Handshake, MsgType};
 
 // see: cans/11-protocol.md#Wire-framing
 pub const MAX_FRAME_PAYLOAD: usize = 64 * 1024;
+// see: cans/11-protocol.md#Wire-framing
+pub const MAX_STREAM_BUFFER_BYTES: usize = 16_777_216;
+// see: cans/11-protocol.md#Wire-framing
+pub const ZERO_COPY_SHM_THRESHOLD_BYTES: usize = 65_536;
+// see: cans/11-protocol.md#Wire-framing
+pub const CBOR_MAX_STRING_BYTES: usize = 16_777_216;
 // see: cans/11-protocol.md#Control-channel
 pub const MAX_CONTROL_PAYLOAD: usize = 4 * 1024;
 // see: cans/11-protocol.md#Wire-framing
 pub const MAX_STREAM_ID: u32 = 0x00FF_FFFF;
+// see: cans/11-protocol.md#Wire-framing
+pub const HANDSHAKE_VERSION: u16 = 0x01;
+// see: cans/11-protocol.md#Wire-framing
+pub const HANDSHAKE_CAP_SHM_STREAMING: u64 = 0x08;
 
 // see: cans/11-protocol.md#Wire-framing
 pub const HEADER_LEN: usize = 9;
@@ -33,16 +43,20 @@ pub const FLAG_RST: u8 = 0x08;
 pub const FLAG_WINDOW_UPDATE: u8 = 0x10;
 // see: cans/plugins/mcp.md#MCP-contract
 // see: cans/11-protocol.md#Stream-mux-framing
-pub const FLAG_CONTINUATION_RESERVED: u8 = 0x20;
+pub const FLAG_CONTINUATION: u8 = 0x20;
+// see: cans/11-protocol.md#Stream-mux-framing
+pub const FLAG_SHM_OFFLOAD: u8 = 0x40;
 
 // see: cans/11-protocol.md#Wire-framing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodecError {
     StreamIdOutOfRange { stream_id: u32 },
     FrameTooLarge { len: usize },
+    StreamTooLarge { len: usize },
     BufferTooSmall { needed: usize, have: usize },
     LengthOverflow,
     UnknownMsgType { msg_type: u16 },
+    IncompatibleShimVersion { version: u16 },
 }
 
 impl fmt::Display for CodecError {
@@ -53,6 +67,12 @@ impl fmt::Display for CodecError {
             }
             CodecError::FrameTooLarge { len } => {
                 write!(f, "frame payload {len} exceeds the 64KB frame budget")
+            }
+            CodecError::StreamTooLarge { len } => {
+                write!(f, "stream payload {len} exceeds the 16MB stream buffer")
+            }
+            CodecError::IncompatibleShimVersion { version } => {
+                write!(f, "shim handshake version {version:#06x} is not 0x01")
             }
             CodecError::BufferTooSmall { needed, have } => {
                 write!(
@@ -78,6 +98,59 @@ impl MuxFrameHeader {
             .checked_add(len)
             .ok_or(CodecError::LengthOverflow)
     }
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn is_continuation(flags: u8) -> bool {
+    flags & FLAG_CONTINUATION != 0
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn is_shm_offload(flags: u8) -> bool {
+    flags & FLAG_SHM_OFFLOAD != 0
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn validate_stream_len(len: usize) -> Result<(), CodecError> {
+    if len > MAX_STREAM_BUFFER_BYTES {
+        return Err(CodecError::StreamTooLarge { len });
+    }
+    Ok(())
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn negotiate_capabilities(host: &Handshake, guest: &Handshake) -> Result<u64, CodecError> {
+    if host.version != HANDSHAKE_VERSION || guest.version != HANDSHAKE_VERSION {
+        return Err(CodecError::IncompatibleShimVersion {
+            version: guest.version,
+        });
+    }
+    Ok(host.capabilities & guest.capabilities)
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn shm_streaming_negotiated(negotiated: u64) -> bool {
+    negotiated & HANDSHAKE_CAP_SHM_STREAMING != 0
+}
+
+// see: cans/11-protocol.md#Wire-framing
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShmExtent {
+    pub tag: String,
+    pub offset: usize,
+    pub len: usize,
+}
+
+// see: cans/11-protocol.md#Wire-framing
+pub fn shm_extent_for(tag: &str, len: usize) -> Option<ShmExtent> {
+    if !(ZERO_COPY_SHM_THRESHOLD_BYTES..=MAX_STREAM_BUFFER_BYTES).contains(&len) {
+        return None;
+    }
+    Some(ShmExtent {
+        tag: tag.to_string(),
+        offset: 0,
+        len,
+    })
 }
 
 // see: cans/11-protocol.md#Wire-framing

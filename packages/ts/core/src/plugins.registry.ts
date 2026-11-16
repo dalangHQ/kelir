@@ -1,6 +1,13 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { ChaosHandle, LedgerHandle, MeshHandle } from "./context.lifecycle.types.js";
+import type {
+  ChaosHandle,
+  ContainerHandle,
+  DbProxyHandle,
+  LedgerHandle,
+  MeshHandle,
+  TransactionHandle,
+} from "./context.lifecycle.types.js";
 import { createPlugin } from "./builder.lifecycle.js";
 import type { KelirBuilder } from "./builder.lifecycle.js";
 
@@ -48,8 +55,8 @@ export interface ContainerConfig extends PluginEnablement {
 }
 
 
-export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"container", unknown, never, P> {
-  return createPlugin<"container", unknown, ContainerConfig, never, P>("container", { enabled: config.enabled, config });
+export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"container", { container: ContainerHandle }, never, P> {
+  return createPlugin<"container", { container: ContainerHandle }, ContainerConfig, never, P>("container", { enabled: config.enabled, config });
 }
 
 
@@ -80,8 +87,8 @@ export interface DbProxyConfig extends PluginEnablement {
 }
 
 
-export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"db-proxy", unknown, never, P> {
-  return createPlugin<"db-proxy", unknown, DbProxyConfig, never, P>("db-proxy", { enabled: config.enabled, config });
+export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"db-proxy", { "db-proxy": DbProxyHandle }, never, P> {
+  return createPlugin<"db-proxy", { "db-proxy": DbProxyHandle }, DbProxyConfig, never, P>("db-proxy", { enabled: config.enabled, config });
 }
 
 
@@ -233,8 +240,8 @@ export interface TransactionConfig extends PluginEnablement {
 }
 
 
-export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"transaction", unknown, never, P> {
-  return createPlugin<"transaction", unknown, TransactionConfig, never, P>("transaction", { enabled: config.enabled, config });
+export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"transaction", { transaction: TransactionHandle }, never, P> {
+  return createPlugin<"transaction", { transaction: TransactionHandle }, TransactionConfig, never, P>("transaction", { enabled: config.enabled, config });
 }
 
 

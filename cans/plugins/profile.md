@@ -125,7 +125,8 @@
       - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.enabled
       - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.timeout_seconds
       - see: artifacts/examples/fixtures/kelir.yaml#session.watchdog.action
-      - session.watchdog.heartbeat_cadence_seconds: TBD (no driver field yet)
+      - session.watchdog.heartbeat_cadence_seconds: live in WatchdogProfile
+        - (crates/kelir/src/sandbox_runtime.flow.rs:142)
     - Session devices (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_rng.enabled
       - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_rng.source
@@ -149,7 +150,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.dir_merge_cache
       - storage.dax_window: auto | off | <size_mb> (default: off)
       - storage.dax_window routes to KelirBuilder::dax_window at boot; no struct field
-      - storage.dax_window: TBD (no StorageConfig field yet; builder method only)
+      - storage.dax_window: no StorageConfig field (drift, owner WS-D1)
     - Storage reconciler (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.atomic_leaf_commit
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.traversal_guard
@@ -233,7 +234,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.bypass_sqlite_wal
     - Terminal wireframe grid (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.wireframe_grid.track_screen_matrix
-      - terminal.wireframe_grid.export_on_trap: TBD (no receipt screen field yet)
+      - terminal.wireframe_grid.export_on_trap: no receipt screen field (drift, owner WS-D1)
   - Checkpoint schema (profile)
     - Checkpoint semantics: see: [2]
     - Lineage semantics (09-snapshots.md): see: [1]

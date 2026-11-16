@@ -11,7 +11,6 @@ use kelir::async_trait;
 use kelir_interface::plugin_model::HandlerCtx;
 
 use kelir::{
-    KelirBuilder, SnapshotDescriptor, TrapFilter, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
@@ -19,6 +18,7 @@ use kelir::{
         SystemTelemetryParticipant, TrapInterposer, Verdict, WatchdogEvent, WatchdogVerdict,
     },
     protocol_wire::{Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent},
+    KelirBuilder, SnapshotDescriptor, TrapFilter, VmConfig,
 };
 
 const IDENTITY_PATH: &str = "/workspace/.policy/identity";
@@ -51,6 +51,7 @@ struct HookState {
     pre_commits: usize,
     post_commits: usize,
     memory_pressures: usize,
+    masked_records: usize,
 }
 
 #[derive(Clone)]
@@ -122,6 +123,12 @@ impl HookHandle {
             .unwrap_or_else(|e| e.into_inner())
             .memory_pressures
     }
+    pub fn masked_records(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .masked_records
+    }
 }
 
 fn mask_tokens(window: &mut [u8]) {
@@ -143,6 +150,33 @@ fn mask_tokens(window: &mut [u8]) {
             i += 1;
         }
     }
+}
+
+// see: cans/10-attestation.md#Hook-trace
+// Ground truth for the pre-redaction acceptance check: how many token
+// records this plugin masked, counted on the same window mask_tokens
+// rewrites, before the rewrite. The receipt must carry one
+// pre-redaction digest per masked record; fewer means the raw digest
+// was never committed.
+fn count_tokens(window: &[u8]) -> usize {
+    if window.len() < TOKEN_LEN {
+        return 0;
+    }
+    let mut count = 0;
+    let mut i = 0;
+    while i + TOKEN_LEN <= window.len() {
+        if &window[i..i + TOKEN_PREFIX.len()] == TOKEN_PREFIX
+            && window[i + TOKEN_PREFIX.len()..i + TOKEN_LEN]
+                .iter()
+                .all(|b| b.is_ascii_alphanumeric())
+        {
+            count += 1;
+            i += TOKEN_LEN;
+        } else {
+            i += 1;
+        }
+    }
+    count
 }
 
 #[derive(Clone, Default)]
@@ -301,6 +335,7 @@ impl FsInterposer for HookMatrixFullPlugin {
 
         let mut window = state.tail.clone();
         window.extend_from_slice(buffer);
+        state.masked_records += count_tokens(&window);
         mask_tokens(&mut window);
         let chunk_start = window.len() - buffer.len();
         let out = window[chunk_start..].to_vec();
@@ -376,6 +411,7 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let mut window = state.console_tail.clone();
         window.extend_from_slice(chunk);
+        state.masked_records += count_tokens(&window);
         mask_tokens(&mut window);
         let chunk_start = window.len() - chunk.len();
         let out = window[chunk_start..].to_vec();
@@ -389,10 +425,12 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
         _exec_id: u64,
         chunk: &[u8],
     ) -> Result<Vec<u8>, PluginError> {
-        self.state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .exec_stdout += 1;
+        let masked = count_tokens(chunk);
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.exec_stdout += 1;
+            state.masked_records += masked;
+        }
         let mut out = chunk.to_vec();
         mask_tokens(&mut out);
         Ok(out)
@@ -404,10 +442,12 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
         _exec_id: u64,
         chunk: &[u8],
     ) -> Result<Vec<u8>, PluginError> {
-        self.state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .exec_stderr += 1;
+        let masked = count_tokens(chunk);
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.exec_stderr += 1;
+            state.masked_records += masked;
+        }
         let mut out = chunk.to_vec();
         mask_tokens(&mut out);
         Ok(out)
@@ -416,15 +456,8 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
 
 #[async_trait]
 impl TrapInterposer for HookMatrixFullPlugin {
-    async fn on_trap(
-        &self,
-        _event: &TrapEvent,
-        _ctx: &HandlerCtx,
-    ) -> Result<Verdict, PluginError> {
-        self.state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .traps += 1;
+    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).traps += 1;
         Ok(Verdict::Pass)
     }
 
@@ -454,6 +487,28 @@ impl TrapInterposer for HookMatrixFullPlugin {
         // Pass, duration_ns: 0, ordinal: 0 }
         if let Ok(receipt) = ctx.receipt().await {
             let _ = receipt.hooks(); // &[HookSpan]; populated per fired hook
+            // see: cans/10-attestation.md#Hook-trace
+            // WS-E acceptance: the receipt must commit the raw
+            // pre-redaction digest for every record this plugin masked.
+            // A listed masked record without its digest, or masked
+            // records with no digests at all on the receipt, fails the
+            // run instead of passing silently.
+            if !receipt.masked_records_complete() {
+                return Err(PluginError::Halt(
+                    "receipt lists a masked record without its pre-redaction digest".into(),
+                ));
+            }
+            let masked = self
+                .state
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .masked_records;
+            if masked > 0 && receipt.masked_records().is_empty() {
+                return Err(PluginError::Halt(
+                    "plugin masked records but the receipt carries no pre-redaction digests"
+                        .into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -499,6 +554,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let handle = plugin.handle();
 
     let mut session = KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -507,6 +563,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -514,6 +571,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -576,12 +637,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
 
     // Drive the 24-ring hook matrix by accessing the synthetic FUSE inode
-    let probe = session
-        .spawn("cat", &[IDENTITY_PATH])
-        .await?;
+    let probe = session.spawn("cat", &[IDENTITY_PATH], None).await?;
     eprintln!("[kelir] cat identity -> exit={}", probe.exit_code);
     assert_eq!(probe.exit_code, 0);
-    assert_eq!(&probe.stdout, IDENTITY_CONTENT);
+    assert_eq!(probe.stdout.as_slice(), IDENTITY_CONTENT);
 
     kelir::time::sleep(Duration::from_millis(100)).await;
     eprintln!(
@@ -601,7 +660,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     );
 
     assert!(handle.traps() > 0, "no traps recorded across execution");
-    assert!(handle.fs_locks() > 0 || handle.exec_stdout() > 0, "fs/exec interposers failed to record telemetry");
+    assert!(
+        handle.fs_locks() > 0 || handle.exec_stdout() > 0,
+        "fs/exec interposers failed to record telemetry"
+    );
     assert_eq!(handle.failures(), 0, "unexpected step failures occurred");
 
     session.stop().await?;

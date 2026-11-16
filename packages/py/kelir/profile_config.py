@@ -69,10 +69,21 @@ class ArtifactsProfile(BaseModel):
     kernel_boot_params: list[str] | None = None
 
 
+class IsolationEnvelopeProfile(BaseModel):
+    enforce_openat2_beneath: ProfileBool | None = None
+    cgroup_parent: str | None = None
+
+
+class BudgetProfile(BaseModel):
+    exec_seconds: ProfileInt | None = None
+
+
 class ShimProfile(BaseModel):
     max_exec_slots: ProfileInt | None = None
     hide_pid: ProfileInt | None = None
     anti_toctou_cgroups: ProfileBool | None = None
+    granular_task_freeze: ProfileBool | None = None
+    rejection_mode: str | None = None
 
 
 class DriverProfile(BaseModel):
@@ -85,7 +96,10 @@ class StorageProfile(BaseModel):
 
 class SessionProfile(BaseModel):
     id: str | None = None
+    tenant_id: str | None = None
     topology: str | None = None
+    isolation_envelope: IsolationEnvelopeProfile | None = None
+    budget: BudgetProfile | None = None
     compute: ComputeProfile | None = None
     balloon: BalloonProfile | None = None
     clock: ClockProfile | None = None

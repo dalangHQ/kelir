@@ -492,3 +492,238 @@ async fn sandbox_profile_parses_kelir_toml_session_budget() -> Result<(), Box<dy
     assert_eq!(budget.exec_seconds, Some(300));
     Ok(())
 }
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+fn parse_yaml_fixture() -> Result<SandboxProfile, Box<dyn std::error::Error>> {
+    let yaml = fs::read_to_string(repo_path(
+        "../../cans/artifacts/examples/fixtures/kelir.yaml",
+    ))?;
+    Ok(serde_yaml::from_str(&yaml)?)
+}
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+fn parse_toml_fixture() -> Result<SandboxProfile, Box<dyn std::error::Error>> {
+    let toml = fs::read_to_string(repo_path(
+        "../../cans/artifacts/examples/fixtures/kelir.toml",
+    ))?;
+    Ok(toml::from_str(&toml)?)
+}
+
+// see: cans/plugins/profile.md#Monotonic-limits
+#[test]
+fn kelir_toml_and_yaml_parse_to_identical_effective_config()
+-> Result<(), Box<dyn std::error::Error>> {
+    let from_yaml = parse_yaml_fixture()?.effective_config()?;
+    let from_toml = parse_toml_fixture()?.effective_config()?;
+    assert_eq!(
+        from_yaml, from_toml,
+        "kelir.toml and kelir.yaml do not parse to the same effective config"
+    );
+    assert_eq!(
+        from_yaml.vm_config.tenant_id.as_deref(),
+        Some("org_enterprise_aegis_prod")
+    );
+    assert_eq!(from_yaml.vm_config.vcpus, 4);
+    assert_eq!(from_yaml.vm_config.memory_mb, 4096);
+    assert_eq!(from_yaml.driver_policy.ffi_worker_threads, 8);
+    assert_eq!(from_yaml.driver_policy.ffi_max_ops_per_sec, 50000);
+    assert_eq!(from_yaml.driver_policy.ffi_queue_capacity, 16384);
+    assert_eq!(from_yaml.driver_policy.ffi_max_buffer_bytes, 16777216);
+    assert_eq!(
+        from_yaml.driver_policy.ffi_zero_copy_shm_threshold_bytes,
+        65536
+    );
+    assert!(from_yaml.driver_policy.ffi_allow_async_worker_yield);
+    assert!(!from_yaml.driver_policy.require_hardware_vmm);
+    assert!(from_yaml.driver_policy.allow_emulated_fallback);
+    assert_eq!(
+        from_yaml
+            .driver_policy
+            .emulated_tier_classification
+            .as_deref(),
+        Some("Class2_RootlessUserNS")
+    );
+    Ok(())
+}
+
+// see: cans/plugins/profile.md#Session-compute-schema-(profile)
+#[test]
+fn ws_d1_every_new_key_maps_to_an_effective_config_field() -> Result<(), Box<dyn std::error::Error>>
+{
+    let effective = parse_yaml_fixture()?.effective_config()?;
+    let envelope = effective
+        .isolation_envelope
+        .as_ref()
+        .ok_or("session.isolation_envelope missing")?;
+    assert_eq!(envelope.enforce_openat2_beneath, Some(true));
+    assert_eq!(
+        envelope.cgroup_parent.as_deref(),
+        Some("aegis/org_enterprise_aegis_prod")
+    );
+    assert_eq!(effective.granular_task_freeze, Some(true));
+    assert!(matches!(
+        effective.rejection_mode,
+        Some(kelir::sandbox_runtime::RejectionMode::SyntheticRefusal)
+    ));
+    let outbox = effective
+        .outbox_deferral
+        .as_ref()
+        .ok_or("wire.outbox_deferral missing")?;
+    assert_eq!(outbox.enabled, Some(true));
+    assert_eq!(outbox.buffer_capacity_bytes, Some(67108864));
+    assert_eq!(outbox.release_on_step_verification, Some(true));
+    assert_eq!(outbox.drop_on_rollback, Some(true));
+    assert_eq!(outbox.compensator_webhook_timeout_ms, Some(5000));
+    assert_eq!(effective.l7_protocol_inspection, Some(true));
+    let dag = effective
+        .step_dag
+        .as_ref()
+        .ok_or("checkpoint.step_dag missing")?;
+    assert_eq!(dag.enabled, Some(true));
+    assert_eq!(dag.require_signed_attribution, Some(true));
+    assert_eq!(dag.require_separation_of_duties, Some(true));
+    assert!(matches!(
+        dag.storage,
+        Some(kelir::sandbox_runtime::StepDagStorage::ContentAddressed)
+    ));
+    let catalog = effective.catalog.as_ref().ok_or("host.catalog missing")?;
+    assert!(matches!(
+        catalog.backend,
+        Some(kelir_catalog::CatalogBackend::Postgres)
+    ));
+    assert_eq!(
+        catalog.endpoint.as_deref(),
+        Some("postgres://kelir_admin@pg.internal.net:5432/kelir_catalog")
+    );
+    assert_eq!(catalog.schema_tenant_partitioning, Some(true));
+    assert_eq!(
+        catalog.fallback_sqlite_path.as_deref(),
+        Some("~/.kelir/catalog.db")
+    );
+    let ring = effective
+        .telemetry_ring
+        .as_ref()
+        .ok_or("host.telemetry_ring missing")?;
+    assert_eq!(ring.feature_extraction, Some(true));
+    assert_eq!(ring.sliding_window_depth, Some(300));
+    assert_eq!(ring.export_feature_vector, Some(true));
+    let wal = effective
+        .ledger_merkle_wal
+        .as_ref()
+        .ok_or("plugins.ledger.merkle_wal missing")?;
+    assert!(matches!(
+        wal.hashing_standard,
+        Some(kelir::sandbox_runtime::HashingStandard::Rfc6962DualBlake3Sha256)
+    ));
+    assert_eq!(wal.record_pre_redaction_hash, Some(true));
+    assert_eq!(wal.include_hook_spans_in_root, Some(true));
+    assert_eq!(
+        wal.witness_cosigning_endpoint.as_deref(),
+        Some("https://witness.internal.net/v1/sth")
+    );
+    let otel = effective
+        .ledger_otel
+        .as_ref()
+        .ok_or("plugins.ledger.otel missing")?;
+    assert_eq!(
+        otel.endpoint.as_deref(),
+        Some("http://localhost:4318/v1/traces")
+    );
+    let guard = effective
+        .tool_guard_interposition
+        .as_ref()
+        .ok_or("plugins.tool_guard.mcp_interposition missing")?;
+    assert_eq!(guard.max_frame_bytes, Some(16777216));
+    assert_eq!(guard.detect_semantic_rug_pull, Some(true));
+    assert_eq!(guard.strict_ast_parameter_validation, Some(true));
+    let taint = effective
+        .tool_guard_taint
+        .as_ref()
+        .ok_or("plugins.tool_guard.taint_governance missing")?;
+    assert_eq!(taint.propagate_byte_range_taints, Some(true));
+    let mcp = effective.mcp.as_ref().ok_or("plugins.mcp missing")?;
+    assert_eq!(mcp.max_frame_bytes, Some(16777216));
+    let mapped = parse_yaml_fixture()?.to_catalog_config();
+    assert_eq!(mapped.backend, kelir_catalog::CatalogBackend::Postgres);
+    assert_eq!(
+        mapped.endpoint.as_deref(),
+        Some("postgres://kelir_admin@pg.internal.net:5432/kelir_catalog")
+    );
+    assert_eq!(
+        mapped.fallback_sqlite_path.as_deref(),
+        Some("~/.kelir/catalog.db")
+    );
+    Ok(())
+}
+
+// see: cans/plugins/profile.md#Monotonic-limits
+#[test]
+fn overlay_widening_a_budget_ceiling_fails_with_e_security_violation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = parse_yaml_fixture()?;
+    let mut widened = base.clone();
+    widened
+        .driver
+        .as_mut()
+        .ok_or("driver missing")?
+        .ffi_boundary
+        .as_mut()
+        .ok_or("ffi_boundary missing")?
+        .max_buffer_bytes = Some(33_554_432);
+    let err = match widened.validate_overlay(&base) {
+        Ok(()) => return Err("widened max_buffer_bytes passed validation".into()),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("ESecurityViolation"),
+        "widening must fail with ESecurityViolation, got {err}"
+    );
+    let mut dropped_guard = base.clone();
+    dropped_guard
+        .plugins
+        .as_mut()
+        .ok_or("plugins missing")?
+        .ledger
+        .as_mut()
+        .ok_or("ledger missing")?
+        .merkle_wal
+        .as_mut()
+        .ok_or("merkle_wal missing")?
+        .record_pre_redaction_hash = Some(false);
+    let err = match dropped_guard.validate_overlay(&base) {
+        Ok(()) => return Err("dropped pre-redaction guard passed validation".into()),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("ESecurityViolation"),
+        "dropping a guard must fail with ESecurityViolation, got {err}"
+    );
+    let mut tightened = base.clone();
+    tightened
+        .driver
+        .as_mut()
+        .ok_or("driver missing")?
+        .ffi_boundary
+        .as_mut()
+        .ok_or("ffi_boundary missing")?
+        .max_buffer_bytes = Some(8_388_608);
+    tightened.validate_overlay(&base)?;
+    base.clone().validate_overlay(&base)?;
+    Ok(())
+}
+
+// see: cans/plugins/profile.md#Monotonic-limits
+#[test]
+fn profile_rejects_disagreeing_tenant_and_org_ids() -> Result<(), Box<dyn std::error::Error>> {
+    let text = "[session]\ntenant_id = \"tenant-a\"\norg_id = \"tenant-b\"\n";
+    let profile: SandboxProfile = toml::from_str(text)?;
+    let err = match profile.validate() {
+        Ok(()) => return Err("tenant/org disagreement passed validation".into()),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string().contains("disagrees"),
+        "unexpected validation error: {err}"
+    );
+    Ok(())
+}

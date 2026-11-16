@@ -17,7 +17,7 @@ use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::builder_scopes::{FsScopeConfig, ScopeRules};
 
-use crate::hlist_sdk::{HCons, HList, HNil, NoParams, Satisfies};
+use crate::hlist_sdk::{HCons, HList, HNil, NoParams, RegisterCaps, Satisfies};
 use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConfig};
 use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
@@ -633,7 +633,7 @@ impl<SealState, Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
     }
 }
 
-impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
+impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList>
     KelirBuilder<Host, SealState, Ctx, Deps, Plugins, Params>
 {
     async fn finish_boot(mut self) -> Result<Session<Plugins, Params>, PluginError> {
@@ -773,6 +773,10 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
             synthetic_files,
             plane_wiring,
         )?;
+        // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        let mut capabilities = kelir_interface::capability_registry::CapabilityRegistry::new();
+        self.plugins.register_caps(&mut capabilities);
+        core.set_capabilities(capabilities);
         core.set_detached(registration.detached);
         core.set_vetoes(std::mem::take(&mut registration.vetoes));
         core.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
@@ -855,7 +859,7 @@ impl<SealState, Plugins: HList, Params: 'static, Ctx, Deps: HList>
     }
 }
 
-impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
+impl<Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList>
     KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>
 {
     // see: cans/03-sdk-architecture.md#Rust-SDK

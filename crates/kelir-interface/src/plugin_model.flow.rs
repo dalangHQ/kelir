@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::capability_registry::CapabilityRegistry;
 use crate::driver_interface::{
     BalloonConvergence, EntropyBackend, EntropyStreamPosition, PmuSampler, VmConfig, VmmDriver,
     VmmError, WatchdogAction, WatchdogEvent, WatchdogVerdict,
@@ -18,6 +19,7 @@ use crate::driver_interface::{
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
 };
+use crate::handles_lifecycle::VmHandle;
 use crate::protocol_wire::{
     FilterAction, Heartbeat, PostExecAction, ProcessExit, SuspendUntil, TrapEvent, Verdict,
 };
@@ -228,9 +230,11 @@ fn vmm_error(error: VmmError) -> PluginError {
 pub struct LifecycleCtx<'a> {
     pub config: &'a VmConfig,
     pub session_id: &'a str,
+    pub vm: VmHandle,
     driver: &'a mut dyn VmmDriver,
     vetoes: &'a mut VetoList,
     watchdog_probe: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    caps: CapabilityRegistry,
 }
 
 impl<'a> LifecycleCtx<'a> {
@@ -243,9 +247,11 @@ impl<'a> LifecycleCtx<'a> {
         Self {
             config,
             session_id,
+            vm: VmHandle::default(),
             driver,
             vetoes,
             watchdog_probe: None,
+            caps: CapabilityRegistry::new(),
         }
     }
 
@@ -261,6 +267,36 @@ impl<'a> LifecycleCtx<'a> {
             watchdog_probe: Some(watchdog_probe),
             ..Self::new(config, session_id, driver, vetoes)
         }
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn cap<T: 'static>(&self) -> Option<&T> {
+        self.caps.get::<T>()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn with_caps(mut self, caps: CapabilityRegistry) -> Self {
+        self.caps = caps;
+        self
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn set_caps(&mut self, caps: CapabilityRegistry) {
+        self.caps = caps;
+    }
+
+    // see: cans/08-lifecycle.md#Hypervisor-primitives
+    pub fn set_vm(&mut self, vm: VmHandle) -> &mut Self {
+        self.vm = vm;
+        self
+    }
+
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub async fn exec_in_guest(&self, _args: &[&str]) -> Result<(), PluginError> {
+        // TODO (L3) [protocol_mux]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec_in_guest always Halts, no guest command path exists.
+        Err(PluginError::Halt(
+            "TODO (L3): LifecycleCtx::exec_in_guest needs the live EXEC stream dispatch".into(),
+        ))
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx

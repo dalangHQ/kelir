@@ -14,19 +14,24 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::telemetry::CausalDelta;
 
 /// Request to finalize the Merkle WAL. include_delta is the causal delta
-/// from the parent (CausalDelta, not Option<CausalDelta>); the caller
-/// guards the winning delta before finalizing.
+/// from the parent (Option<CausalDelta>); None finalizes without a delta.
+/// All three SDKs agree on the shape: TS/Py take an optional delta and
+/// both Rust acceptance examples pass Some(delta).
 #[derive(Debug, Clone)]
 pub struct FinalizeRequest {
-    pub include_delta: CausalDelta,
+    pub include_delta: Option<CausalDelta>,
     pub include_merkle_root: bool,
 }
 
-/// Finalized ledger receipt: the Merkle root plus its signed JWS.
+/// Finalized ledger receipt: the Merkle root plus its signed JWS, plus
+/// the causal delta the receipt was finalized with when one was given.
+/// The delta appearing here is the WS-E acceptance: a finalized receipt
+/// carries the delta it was closed over.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FinalReceipt {
     pub merkle_root: String,
     pub signed_jws: String,
+    pub causal_delta: Option<CausalDelta>,
 }
 
 /// Ledger context handle. finalize appends the leaf via the Merkle WAL,

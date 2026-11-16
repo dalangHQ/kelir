@@ -41,6 +41,7 @@ pub struct SqlProxy {
     dialect: SqlDialect,
     statements: Mutex<StatementTable>,
     connections: Mutex<HashSet<u32>>,
+    rewrite_target: Mutex<String>,
 }
 
 impl SqlProxy {
@@ -52,7 +53,23 @@ impl SqlProxy {
                 statements: HashMap::new(),
             }),
             connections: Mutex::new(HashSet::new()),
+            rewrite_target: Mutex::new(String::new()),
         }
+    }
+
+    // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
+    pub fn set_rewrite_target(&self, target: &str) {
+        if let Ok(mut current) = self.rewrite_target.lock() {
+            *current = target.to_string();
+        }
+    }
+
+    // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
+    pub fn rewrite_target(&self) -> String {
+        self.rewrite_target
+            .lock()
+            .map(|current| current.clone())
+            .unwrap_or_default()
     }
 
     pub fn track_connection(&self, stream_id: u32) -> Result<(), PluginError> {

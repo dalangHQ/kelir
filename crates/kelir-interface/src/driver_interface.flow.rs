@@ -40,7 +40,7 @@ pub struct DriverCapabilities {
     pub supports_cow_fork: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum WxPolicy {
     #[default]
     Strict,
@@ -48,7 +48,7 @@ pub enum WxPolicy {
 }
 
 // see: cans/01-architecture.md#Embedded-profile
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DriverPolicy {
     // see: cans/01-architecture.md#Driver-backends
     pub driver: Option<String>,
@@ -58,6 +58,16 @@ pub struct DriverPolicy {
     pub wx_enforcement: WxPolicy,
     pub ffi_worker_threads: usize,
     pub ffi_max_ops_per_sec: u32,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.queue_capacity
+    pub ffi_queue_capacity: usize,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.max_buffer_bytes
+    pub ffi_max_buffer_bytes: usize,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.zero_copy_shm_threshold_bytes
+    pub ffi_zero_copy_shm_threshold_bytes: usize,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary.allow_async_worker_yield
+    pub ffi_allow_async_worker_yield: bool,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.emulated_tier_classification
+    pub emulated_tier_classification: Option<String>,
 }
 
 // see: cans/01-architecture.md#Embedded-profile
@@ -70,14 +80,60 @@ impl Default for DriverPolicy {
             verify_hw_lockfile: false,
             wx_enforcement: WxPolicy::Strict,
             // see: cans/01-architecture.md#Foreign-runtime-embedding
-            ffi_worker_threads: 1,
+            ffi_worker_threads: 8,
             ffi_max_ops_per_sec: 0,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16_777_216,
+            ffi_zero_copy_shm_threshold_bytes: 65_536,
+            ffi_allow_async_worker_yield: true,
+            emulated_tier_classification: None,
+        }
+    }
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+pub const MSG_EXEC_REFUSAL: &str = "MSG_EXEC_REFUSAL";
+
+// see: cans/11-protocol.md#Binary-exec-channel
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RejectionMode {
+    #[default]
+    SyntheticRefusal,
+    Abort,
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+pub fn synthetic_refusal_body(reason: &str) -> String {
+    format!("{{\"msg\":\"{MSG_EXEC_REFUSAL}\",\"reason\":\"{reason}\"}}")
+}
+
+// see: cans/08-lifecycle.md#Lifecycle-state-machine
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShimConfig {
+    pub max_exec_slots: u32,
+    pub hide_pid: u32,
+    pub anti_toctou_cgroups: bool,
+    pub granular_task_freeze: bool,
+    pub rejection_mode: RejectionMode,
+    pub cgroup_parent: Option<String>,
+}
+
+impl Default for ShimConfig {
+    fn default() -> Self {
+        Self {
+            max_exec_slots: 4096,
+            hide_pid: 2,
+            anti_toctou_cgroups: true,
+            granular_task_freeze: true,
+            rejection_mode: RejectionMode::SyntheticRefusal,
+            cgroup_parent: None,
         }
     }
 }
 
 // see: cans/01-architecture.md#Boot-budget
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FastBootMode {
     #[default]
     Off,
@@ -252,12 +308,14 @@ pub fn reject_emulated_deterministic_clock(
 }
 
 // see: cans/01-architecture.md#Embedded-profile
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VmConfig {
     pub vcpus: u8,
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
     pub rootfs_erofs_path: PathBuf,
+    // see: cans/plugins/profile.md#Session-identity-(profile)
+    pub tenant_id: Option<String>,
     // L3-GAP: [hypervisor_driver]: consumed by hardware-vmm drivers selecting the guest MMU leaf mapping (4/16KB) at boot.; slop: hardcoded 4K mapping on 16K host, silent boot
     pub page_size_kb: u32,
     pub tsc_locked: bool,
@@ -297,6 +355,7 @@ impl Default for VmConfig {
             memory_mb: 256,
             kernel_path: PathBuf::new(),
             rootfs_erofs_path: PathBuf::new(),
+            tenant_id: None,
             page_size_kb: 4,
             tsc_locked: true,
             entropy_seed: None,
@@ -327,6 +386,7 @@ pub fn default_vm_config(
         memory_mb: memory_mb.unwrap_or(256),
         kernel_path: PathBuf::from(kernel.unwrap_or_default()),
         rootfs_erofs_path: PathBuf::from(rootfs_erofs.unwrap_or_default()),
+        tenant_id: None,
         page_size_kb: 4,
         tsc_locked: tsc_locked.unwrap_or(true),
         entropy_seed: None,
@@ -421,6 +481,26 @@ pub struct SharedMemoryHandle {
     pub memfd_raw: std::os::unix::io::RawFd,
     #[cfg(windows)]
     pub section_handle: std::os::windows::io::RawHandle,
+}
+
+// see: cans/01-architecture.md#Shared-memory-channel
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShmMapping {
+    pub tag: String,
+    pub size_bytes: usize,
+    pub guest_phys_addr: u64,
+}
+
+impl ShmMapping {
+    // see: cans/01-architecture.md#Shared-memory-channel
+    pub fn tag(&self) -> &str {
+        &self.tag
+    }
+
+    // see: cans/01-architecture.md#Shared-memory-channel
+    pub fn size_bytes(&self) -> usize {
+        self.size_bytes
+    }
 }
 
 // see: cans/01-architecture.md#Transport-engine-abstraction
@@ -543,6 +623,13 @@ pub trait VmmDriver: Send + Sync {
     async fn freeze_vcpus(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "freeze_vcpus: no native backend override (L3)".into(),
+        ))
+    }
+    // see: cans/11-protocol.md#Binary-exec-channel
+    // L3-GAP: [hypervisor_driver]: backend drivers override freeze_task with the trapped-task cgroup freeze; whole-VM freeze_vcpus stays the fallback.; slop: task freeze unimplemented, whole VM frozen instead
+    async fn freeze_task(&mut self, _task_cgroup: &str) -> Result<(), VmmError> {
+        Err(VmmError::Unsupported(
+            "freeze_task: no native backend override (L3)".into(),
         ))
     }
     // see: cans/10-attestation.md#Lifecycle-bridge

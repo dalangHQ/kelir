@@ -17,6 +17,9 @@ pub struct SpscRingTransport {
 // SAFETY: single-producer/single-consumer ring; header and buffer are mapped once and owned exclusively by the transport pair.
 unsafe impl Send for SpscRingTransport {}
 
+// SAFETY: shared refs only read atomics and immutable capacity; mutation needs &mut self, same exclusivity as Send.
+unsafe impl Sync for SpscRingTransport {}
+
 impl SpscRingTransport {
     pub fn new(header: *mut RingHeader, buffer: *mut u8) -> Self {
         Self { header, buffer }
@@ -58,6 +61,9 @@ enum RingBacking {
 
 // SAFETY: a mapped backing is mapped once by the driver and owned exclusively by the transport pair, same as the owned heap backing.
 unsafe impl Send for OwnedSpscRing {}
+
+// SAFETY: shared refs only read (is_shared_backed/guest_phys_addr/capacity); transport() needs &mut self, same exclusivity as Send.
+unsafe impl Sync for OwnedSpscRing {}
 
 pub struct OwnedSpscRing {
     backing: RingBacking,

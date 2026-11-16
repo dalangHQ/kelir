@@ -21,6 +21,10 @@ pub mod builder_typestate;
 pub mod hlist_sdk;
 pub mod planes;
 pub mod plugin_model;
+#[path = "profile_schema.flow.rs"]
+pub mod profile_schema;
+#[path = "profile_validate.flow.rs"]
+pub mod profile_validate;
 pub mod protocol_wire;
 #[path = "sandbox_runtime.flow.rs"]
 pub mod sandbox_runtime;
@@ -42,9 +46,10 @@ pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_interface::checkpoint::{PidLineage, StepSlot};
 pub use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::handlers_plugin::Has;
-pub use kelir_interface::plugin_model::HandlerCtx;
+pub use kelir_interface::plugin_model::{HandlerCtx, LifecycleEvent};
 pub use kelir_interface::protocol_wire::Verdict;
 pub use kelir_interface::storage::CommitStats;
+pub use kelir_interface::telemetry::CausalDelta;
 pub use planes::storage_plane::{FsReconcileRequest, SnoopRule, SyntheticFile};
 pub use trap_filter::TrapFilter;
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
@@ -52,13 +57,14 @@ pub use async_trait::async_trait;
 #[cfg(feature = "plugin-tool-guard")]
 pub use builder_sdk::ToolGuardExt;
 pub use ciborium::value::Value as CborValue;
+pub use profile_schema::EffectiveConfig;
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use serde;
 pub use serde::{Deserialize, Serialize};
 pub use serde_json;
 pub use session_lifecycle::{
-    ClockHandle, FsHandle, Session, SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel,
-    VsockHandle,
+    ClockHandle, FsHandle, IngressChannel, IngressStream, Session, ShmMapping, SpawnOpts,
+    SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel, VsockHandle,
 };
 pub use tokio::fs;
 pub use tokio::task::JoinSet;
@@ -79,21 +85,25 @@ pub use plugin_chaos::{
     StorageFaultRule,
 };
 #[cfg(feature = "plugin-container")]
-pub use plugin_container::{ContainerConfig, ContainerCtx, ContainerPlugin};
+pub use plugin_container::{ContainerConfig, ContainerCtx, ContainerHandle, ContainerPlugin};
 #[cfg(feature = "plugin-db-proxy")]
-pub use plugin_db_proxy::{DbProxyConfig, DbProxyPlugin, SqlProxyCtx};
+pub use plugin_db_proxy::{
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, SqlProxyCtx, SqlProxyHandle,
+};
 // see: cans/plugins/ledger.md#Plugin-ledger
 #[cfg(feature = "plugin-ledger")]
 pub use plugin_ledger::{
-    FinalReceipt, FinalizeRequest, LedgerConfig, LedgerCtx, LedgerPlugin, LedgerSink, OtelConfig,
-    ReceiptConfig,
+    DualHash, FinalReceipt, FinalizeRequest, HashingStandard, LedgerConfig, LedgerCtx,
+    LedgerHandle, LedgerPlugin, LedgerSink, MerkleChain, MerkleWalConfig, OtelConfig,
+    ReceiptConfig, SignedTreeHead, WitnessClient, WitnessCosignature,
 };
 #[cfg(feature = "plugin-mcp")]
-pub use plugin_mcp::{McpCtx, McpEndpointService, McpPlugin};
+pub use plugin_mcp::{McpConfig, McpCtx, McpEndpointService, McpPlugin};
 // see: cans/plugins/mesh.md#Plugin-mesh
 #[cfg(feature = "plugin-mesh")]
 pub use plugin_mesh::{
-    MeshConfig, MeshCtx, MeshPlugin, PeerIdentity, PeerListener, TraceParentPropagation,
+    MeshConfig, MeshCtx, MeshHandle, MeshPlugin, PeerIdentity, PeerListener,
+    TraceParentPropagation, VectorClock,
 };
 pub use plugin_profile::{ProfileConfig, ProfileCtx, ProfilePlugin};
 // see: cans/plugins/replay.md#Plugin-replay
@@ -108,8 +118,12 @@ pub use plugin_supply_chain::{
 #[cfg(feature = "plugin-tool-guard")]
 pub use plugin_tool_guard::{ToolGuardConfig, ToolGuardCtx, ToolGuardPlugin, ToolSpec};
 #[cfg(feature = "plugin-transaction")]
-pub use plugin_transaction::{TransactionConfig, TransactionCtx, TransactionPlugin};
+pub use plugin_transaction::{
+    TransactionConfig, TransactionCtx, TransactionHandle, TransactionPlugin, Tx,
+};
 #[cfg(feature = "plugin-vault")]
 pub use plugin_vault::{CredentialBrokerCtx, VaultConfig, VaultPlugin};
 #[cfg(feature = "plugin-wire-ingress")]
-pub use plugin_wire_ingress::{IngressRoutingService, WireIngressConfig, WireIngressPlugin};
+pub use plugin_wire_ingress::{
+    IngressRoutingService, SpliceRoute, WireIngressConfig, WireIngressPlugin,
+};

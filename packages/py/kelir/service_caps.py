@@ -18,14 +18,20 @@ from kelir.sdk_errors import EConfig
 __all__ = [
     "Caps",
     "ContainerCap",
+    "ContainerHandle",
     "DbCap",
+    "DbProxyHandle",
     "LedgerCap",
     "LedgerFinalizeResult",
+    "LedgerHandle",
     "MeshHandle",
     "RepoPolicyCap",
     "Savepoint",
+    "SqlProxyHandle",
     "TransactionCap",
+    "TransactionHandle",
     "TransactionScope",
+    "Tx",
     "materialize_cap",
 ]
 
@@ -113,6 +119,10 @@ class TransactionScope:
         # L3-GAP: [relational_transaction]: restore the savepoint blob via the PyO3 _kelir bridge.; slop: savepoint restore no-ops, rolled-back rows resurface
         raise _missing("transaction rollback_to_savepoint")
 
+    async def commit(self) -> None:
+        # L3-GAP: [relational_transaction]: commit the 2PC scope via the PyO3 _kelir bridge.; slop: 2PC commit no-ops, partial commit looks atomic
+        raise _missing("transaction commit")
+
 
 class TransactionCap:
     def scope(
@@ -127,6 +137,11 @@ class TransactionCap:
         )
 
 
+# see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+TransactionHandle = TransactionCap
+Tx = TransactionScope
+
+
 class ContainerCap:
     async def ingest_image(self, tarball: Path | str) -> str:
         # L3-GAP: [adapters_ingestion]: ingest the OCI tarball via the PyO3 _kelir bridge.; slop: OCI tarball accepted without layer digest check
@@ -134,9 +149,25 @@ class ContainerCap:
 
 
 class MeshHandle:
-    async def await_winner(self, timeout: timedelta) -> int:
+    async def broadcast_winner(self, shard_id: int) -> None:
+        # L3-GAP: [protocol_mux]: broadcast the winning shard announcement over the peer federation streams via the PyO3 _kelir bridge.; slop: announcement unrouted, shards never converge
+        raise _missing("mesh broadcast_winner")
+
+    async def await_winner(
+        self,
+        timeout: timedelta | float | int | None = None,
+        *,
+        timeout_secs: float | None = None,
+    ) -> int:
         # L3-GAP: [protocol_mux]: await the winning shard announcement on the mesh listeners via the PyO3 _kelir bridge.; slop: no listener wait, winning shard never awaited, election never settles
         raise _missing("mesh await_winner")
+
+
+# see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+ContainerHandle = ContainerCap
+DbProxyHandle = DbCap
+SqlProxyHandle = DbCap
+LedgerHandle = LedgerCap
 
 
 class Caps:
@@ -147,12 +178,21 @@ class Caps:
         self.repo_policy = RepoPolicyCap()
         self.transaction = TransactionCap()
         self.container = ContainerCap()
+        self.tool_guard: Any = None
+        self.vault: Any = None
+        self.replay: Any = None
+
+    # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    def __call__(self, name: str) -> Any | None:
+        key = _CAP_KEY_ALIASES.get(name, name)
+        return getattr(self, key, None)
 
 
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 _CAP_KEY_ALIASES: dict[str, str] = {
     "db-proxy": "db_proxy",
     "repo-policy": "repo_policy",
+    "tool-guard": "tool_guard",
 }
 
 

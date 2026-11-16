@@ -238,6 +238,13 @@ impl CredentialBrokerCtx {
     pub async fn revoke_all(&self, session_id: &str) -> Result<usize, VaultError> {
         CredentialBrokerService::revoke_all(self.broker.as_ref(), session_id).await
     }
+
+    // see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+    pub async fn inject_placeholders(&self, stream: &[u8]) -> Result<Vec<u8>, VaultError> {
+        crate::service_vault::CarrierInjector::new(Arc::clone(&self.broker))
+            .inject(stream)
+            .await
+    }
 }
 
 // see: cans/plugins/vault.md#Return-errno-and-rejection-behavior-(vault)

@@ -400,7 +400,8 @@
     - Interaction with lifecycle states
       - Running and Draining: available
       - Paused and Stopped: refuse with ESSHUnavailable
-  - Wire port forwarding: details at 07-wire-plane.md#Port-forwarding
+  - Wire port forwarding
+    - Details: see: 07-wire-plane.md#Port-forwarding
   - Zombie reaping
     - Shim runs as guest PID 1
     - waitpid(-1, WNOHANG) pass integrated into async event loop

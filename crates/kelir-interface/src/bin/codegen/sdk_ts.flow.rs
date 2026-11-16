@@ -15,6 +15,9 @@ fn context_handle(plugin_name: &str) -> Option<(&'static str, &'static str)> {
         "chaos" => Some(("chaos", "ChaosHandle")),
         "ledger" => Some(("ledger", "LedgerHandle")),
         "mesh" => Some(("mesh", "MeshHandle")),
+        "container" => Some(("container", "ContainerHandle")),
+        "db-proxy" => Some(("db-proxy", "DbProxyHandle")),
+        "transaction" => Some(("transaction", "TransactionHandle")),
         _ => None,
     }
 }
@@ -117,12 +120,17 @@ fn emit_ts_group(proj: &Projection) -> Result<Vec<String>, String> {
             ));
         }
         Some((context_key, handle_type)) => {
+            let key = if context_key.contains('-') {
+                format!("\"{context_key}\"")
+            } else {
+                context_key.to_string()
+            };
             lines.push(SERVICE_LOOKUP_SEE.trim_end().to_string());
             lines.push(format!(
-                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", {{ {context_key}: {handle_type} }}, never, P> {{"
+                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", {{ {key}: {handle_type} }}, never, P> {{"
             ));
             lines.push(format!(
-                "  return createPlugin<\"{name}\", {{ {context_key}: {handle_type} }}, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"
+                "  return createPlugin<\"{name}\", {{ {key}: {handle_type} }}, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"
             ));
         }
     }

@@ -9,12 +9,12 @@ use kelir_interface::plugin_model::{
     ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
     PipelineBinder, PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{StreamKind, Verdict};
+use kelir_interface::protocol_wire::{StreamKind, SuspendUntil, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
-    McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolsListResult,
-    decode_tools_list,
+    AuditEvent, ByteRange, McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema,
+    ToolTaint, ToolsListResult, decode_tools_list,
 };
 use crate::{ToolGuardConfig, ToolSpec};
 
@@ -23,6 +23,10 @@ impl Default for ToolGuardConfig {
         Self {
             max_invocations_per_trace: 50,
             pin_schemas: true,
+            max_frame_bytes: 16_777_216,
+            detect_semantic_rug_pull: true,
+            strict_ast_parameter_validation: true,
+            propagate_byte_range_taints: true,
         }
     }
 }
@@ -156,8 +160,14 @@ impl ToolGuardPlugin {
         frame: &McpFrame,
         schema: &ToolSchema,
     ) -> Result<Verdict, PluginError> {
-        let _ = (frame, schema);
-        // L3-GAP: [gt_03_taint_tracking_mutation_suspend]: taint-gated approval (Suspend until Approval), secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch) per cans/plugins/tool-guard.md; slop: evaluate returns Pass unconditionally, tainted mutation executes, secrets leak
+        // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+        if self.registry.taint(&schema.name)? == ToolTaint::Tainted {
+            return Ok(Verdict::Suspend {
+                until: SuspendUntil::Approval,
+            });
+        }
+        let _ = frame;
+        // TODO (L3) [governance_tools]: secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch); slop: tainted mutation executes, secrets leak.
         Ok(Verdict::Pass)
     }
 
@@ -194,6 +204,22 @@ impl ToolGuardCtx {
         request: &crate::service_tool_guard::ApprovalRequest,
     ) -> Result<(), PluginError> {
         self.registry.bind_approval(request).await
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn propagate_byte_range_taints(
+        &self,
+        tool: &str,
+        from: &[ByteRange],
+        into_len: usize,
+    ) -> Result<Vec<ByteRange>, PluginError> {
+        self.registry
+            .propagate_byte_range_taints(tool, from, into_len)
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub fn drain_audit_events(&self) -> Vec<AuditEvent> {
+        self.registry.drain_audit_events()
     }
 }
 

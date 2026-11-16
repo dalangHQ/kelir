@@ -72,6 +72,15 @@ pub struct EphemeralCredentials {
     pub ttl_seconds: u32,
 }
 
+impl Default for EphemeralCredentials {
+    fn default() -> Self {
+        Self {
+            placeholder: String::new(),
+            ttl_seconds: 60,
+        }
+    }
+}
+
 // L3-GAP: [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
 
 // see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
@@ -100,6 +109,9 @@ impl DbProxyPlugin {
     }
 
     pub fn with_config(mut self, config: DbProxyConfig) -> Self {
+        if let Some((_, target)) = config.postgres.rewrite_rules.first() {
+            self.proxy.set_rewrite_target(target);
+        }
         self.config = config;
         self
     }
@@ -190,10 +202,18 @@ pub struct SqlProxyCtx {
     proxy: Arc<SqlProxy>,
 }
 
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub type SqlProxyHandle = SqlProxyCtx;
+
 impl SqlProxyCtx {
     // see: cans/02-plugin-model.md#KelirPlugin-trait
     pub fn service(&self) -> &Arc<SqlProxy> {
         &self.proxy
+    }
+
+    // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
+    pub async fn rewrite_target(&self) -> String {
+        self.proxy.rewrite_target()
     }
 }
 

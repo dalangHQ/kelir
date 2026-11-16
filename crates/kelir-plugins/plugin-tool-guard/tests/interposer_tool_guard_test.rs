@@ -287,7 +287,6 @@ fn gt_09_verdict_drop_jsonrpc_error_synthesis() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/governance_tools/gt_10_tool_call_depth_recursion_ceiling.yaml#case_id
 #[test]
-#[ignore]
 fn gt_10_tool_call_depth_recursion_ceiling() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "shell")?;
@@ -326,7 +325,6 @@ fn gt_10_tool_call_depth_recursion_ceiling() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/governance_tools/gt_01_jsonrpc_tool_call_interposition.yaml#case_id
 #[test]
-#[ignore]
 fn gt_01_jsonrpc_tool_call_interposition() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "execute_command")?;
@@ -344,7 +342,6 @@ fn gt_01_jsonrpc_tool_call_interposition() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/governance_tools/gt_03_taint_tracking_mutation_suspend.yaml#case_id
 #[test]
-#[ignore]
 fn gt_03_taint_tracking_mutation_suspend() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "write_file")?;
@@ -371,7 +368,6 @@ fn gt_03_taint_tracking_mutation_suspend() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/governance_tools/gt_12_model_controlled_flag_taint_override.yaml#case_id
 #[test]
-#[ignore]
 fn gt_12_model_controlled_flag_taint_override() -> Result<(), String> {
     let plugin = ToolGuardPlugin::new();
     pin_tool(&plugin, "write_file")?;

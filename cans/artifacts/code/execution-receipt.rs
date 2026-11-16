@@ -93,6 +93,23 @@ pub struct ExecutionReceipt {
     /// phase_timings) and emitted to OTel as spans.
     /// HookSpan shape: see: artifacts/code/hook-trace.rs
     pub hook_trace: Vec<crate::telemetry::hook_trace::HookSpan>,
+    /// Deterministic policy projection of hook_trace: one descriptor per
+    /// fired hook (plugin, ring tag, verdict kind, ordinal). The
+    /// descriptor leaves duration_ns behind, so identical policy
+    /// executions hash identically; this vector enters the Merkle leaf
+    /// while the full hook_trace stays diagnostic. Shape:
+    /// see: artifacts/code/hook-trace.rs
+    pub hook_policy_descriptors: Vec<crate::telemetry::hook_trace::HookPolicyDescriptor>,
+    /// Every in-place masked record for the process, in masking order.
+    /// Each entry commits the BLAKE3 of the raw payload before the mask
+    /// rewrote it; a masked record without its pre-redaction digest is a
+    /// defect the acceptance examples fail on. Enters the Merkle leaf.
+    pub masked_records: Vec<crate::telemetry::hook_trace::MaskedRecord>,
+    /// Branching step-DAG lineage for the receipt: the checkpoint-node
+    /// chain from the receipt's step head back to the DAG root, with the
+    /// signed reviewer identity per node when attribution landed (None
+    /// until the step-DAG lane records it). Enters the Merkle leaf.
+    pub step_lineage: Vec<crate::telemetry::hook_trace::StepLineageEntry>,
 }
 
 /// Per-session receipt store: latest ExecutionReceipt per pid, keyed by
@@ -116,4 +133,25 @@ pub struct AttestationToken {
     pub session_token: String,
     pub vmlinux_blake3: String,
     pub erofs_blake3: String,
+}
+
+impl AttestationToken {
+    /// Class 1 by construction: every field is a hardware-anchored
+    /// primitive, so a token always satisfies Class 1 assertions and a
+    /// Class 2 claim can never satisfy one in its place.
+    pub fn class(&self) -> AttestationClass {
+        AttestationClass::Class1
+    }
+}
+
+/// Attestation provenance class (10-attestation): Class 1 is
+/// hardware-anchored, Class 2 is paravirtual interception and rootless
+/// containers (unprivileged bwrap/proot namespaces), Class 3 is guest
+/// unverified data. Ordinal order is strength order: a class satisfies
+/// its own assertions and every weaker class, never a stronger one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AttestationClass {
+    Class1,
+    Class2,
+    Class3,
 }

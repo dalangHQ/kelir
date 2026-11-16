@@ -160,7 +160,7 @@
     - Invariant: A higher classification never falls back to a lower classification
     - Class 1 (Hardware-Anchored): vmlinux BLAKE3, EROFS BLAKE3, session token,
     - Class 2 (Paravirtual Interception & Rootless Containers): FUSE buffers,
-      - virtqueue frames, character rings, unprivileged bwrap namespaces.
+      - virtqueue frames, character rings, unprivileged bwrap/proot namespaces.
       - character rings. Observed at the hypervisor boundary.
     - Class 3 (Guest Unverified Data): workload stdout/stderr, memory buffers.
       - Tainted by default; cannot satisfy hardware assertions.

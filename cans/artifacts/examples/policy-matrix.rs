@@ -5,20 +5,19 @@
 // see: cans/11-protocol.md#Control-channel
 
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
 };
 
 use kelir::async_trait;
 use kelir::CborValue;
 use kelir::{Deserialize, Serialize};
-use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::driver_interface::Stream;
+use kelir_interface::driver_interface::SuspendReason;
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use kelir::{
-    HCons, HNil, Host, KelirBuilder, NoParams, SnapshotDescriptor, Unsealed, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
         AnyPlugin, KelirPlugin, LifecycleCtx, LifecycleParticipant, NoDeps, PluginDeps,
@@ -26,6 +25,7 @@ use kelir::{
         WatchdogEvent, WatchdogVerdict,
     },
     protocol_wire::{Errno, ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
+    HCons, HNil, Host, KelirBuilder, NoParams, SnapshotDescriptor, Unsealed, VmConfig,
 };
 
 #[derive(Default)]
@@ -281,7 +281,8 @@ struct QuarantinePayload {
     reason: String,
 }
 
-fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + Sync>> {
+fn build_runtime(
+) -> Result<(PolicyBuilder, Arc<PolicyState>), Box<dyn std::error::Error + Send + Sync>> {
     struct EchoVsock;
 
     #[async_trait]
@@ -317,12 +318,12 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         }
     }
 
-
     let policy = PolicyMatrixPlugin::new();
     let shared = Arc::clone(&policy.state);
 
     let quarantine_state = Arc::clone(&shared);
     let builder = KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -331,6 +332,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -338,6 +340,10 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -348,7 +354,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         entropy_seed: None,
     })
     .plugin_instance(policy)
-    .plugin_instance(WatchdogSilencerPlugin::new(shared))
+    .plugin_instance(WatchdogSilencerPlugin::new(Arc::clone(&shared)))
     .actions(|a| {
         a.register(
             "quarantine",
@@ -386,7 +392,7 @@ fn build_runtime() -> Result<PolicyBuilder, Box<dyn std::error::Error + Send + S
         .end()
     });
 
-    Ok(builder)
+    Ok((builder, shared))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -394,7 +400,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut session = build_runtime()?.seal()?.boot().await?;
+    let (builder, shared) = build_runtime()?;
+    let mut session = builder.seal()?.boot().await?;
     session.terminal.resize(120, 40)?;
     eprintln!("[kelir] host pressure={}", session.host.pressure_level());
     let port = session.wire.forward_port(8080, Some(8080))?;
@@ -428,7 +435,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     channel.write_all(b"policy-matrix:ping").await?;
     let mut reply = vec![0u8; 18];
     channel.read_exact(&mut reply).await?;
-    eprintln!("[kelir] vsock channel 0x0013 reply: {}", String::from_utf8_lossy(&reply));
+    eprintln!(
+        "[kelir] vsock channel 0x0013 reply: {}",
+        String::from_utf8_lossy(&reply)
+    );
     assert_eq!(&reply, b"policy-matrix:ping");
 
     // 2. Drive the unified Verdict lattice through guest execve traps
@@ -441,7 +451,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-custom",
     ] {
-        let run = session.spawn(binary, &["--policy-matrix"]).await?;
+        let run = session.spawn(binary, &["--policy-matrix"], None).await?;
         eprintln!("[kelir] {binary} -> exit={}", run.exit_code);
         match binary {
             "policy-allow" => assert_eq!(run.exit_code, 0),
@@ -456,7 +466,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     // Verify Custom action triggered and recorded state
-    assert!(!shared.quarantined_pids.lock().unwrap().is_empty(), "custom quarantine action failed to fire");
+    assert!(
+        !shared.quarantined_pids.lock().unwrap().is_empty(),
+        "custom quarantine action failed to fire"
+    );
 
     session.suspend(SuspendReason::ResourcePressure).await?;
     session.resume().await?;

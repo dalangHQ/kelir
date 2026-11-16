@@ -12,6 +12,18 @@ use crate::session_lifecycle::{Session, SpawnResult};
 use kelir_interface::storage::CommitStats;
 use plugin_profile::{ProfileCtx, ProfilePlugin};
 
+pub use crate::profile_schema::{
+    ArtifactsProfile, BalloonProfile, BudgetProfile, CatalogProfile, CheckpointProfile,
+    ClockProfile, ComputeProfile, DevicesProfile, DriverProfile, DriverProfileTop, EffectiveConfig,
+    EmulatedTierClassification, FfiBoundaryProfile, HashingStandard, HostProfile,
+    InheritanceLattice, InvariantsProfile, IsolationEnvelopeProfile, LedgerPluginProfile,
+    McpInterpositionProfile, McpPluginProfile, MemorySafety, MerkleWalProfile, OtelProfile,
+    OutboxDeferralProfile, PhysicalityCheck, PluginsProfile, PolicyPlaneMutability, RejectionMode,
+    SessionProfile, ShimProfile, StepDagProfile, StepDagStorage, StorageProfile,
+    TaintGovernanceProfile, TelemetryRingProfile, ToolGuardPluginProfile, VirtioRngProfile,
+    VirtioShmProfile, VirtioShmRegionProfile, WatchdogProfile, WireProfile,
+};
+
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
 // see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -20,231 +32,25 @@ pub struct SandboxProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub invariants: Option<serde_json::Value>,
+    pub invariants: Option<InvariantsProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub driver: Option<serde_json::Value>,
+    pub driver: Option<DriverProfileTop>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<SessionProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wire: Option<serde_json::Value>,
+    pub wire: Option<WireProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint: Option<serde_json::Value>,
+    pub checkpoint: Option<CheckpointProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub host: Option<serde_json::Value>,
+    pub host: Option<HostProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub plugins: Option<serde_json::Value>,
+    pub plugins: Option<PluginsProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attestation: Option<serde_json::Value>,
-}
-
-// see: cans/plugins/profile.md#Session-compute-schema-(profile)
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SessionProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub topology: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub compute: Option<ComputeProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub balloon: Option<BalloonProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clock: Option<ClockProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub watchdog: Option<WatchdogProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub devices: Option<DevicesProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifacts: Option<ArtifactsProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shim: Option<ShimProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub driver: Option<DriverProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub storage: Option<StorageProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub budget: Option<BudgetProfile>,
-}
-
-// see: cans/plugins/profile.md#Session-compute-schema-(profile)
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BudgetProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exec_seconds: Option<u64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ComputeProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub vcpus: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_vcpus: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_mb: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page_size_kb: Option<u32>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BalloonProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub initial_mb: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pressure_reclaim: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reclaim_strategy: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactsProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kernel_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rootfs_erofs_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kernel_boot_params: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClockProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tsc_locked: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deterministic_clock: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pinned_clocksource: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preemption_grace_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WatchdogProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timeout_seconds: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub heartbeat_cadence_seconds: Option<u64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DevicesProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub virtio_rng: Option<VirtioRngProfile>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub virtio_shm: Option<VirtioShmProfile>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VirtioRngProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VirtioShmProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub enabled: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub regions: Option<Vec<VirtioShmRegionProfile>>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VirtioShmRegionProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tag: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ShimProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_exec_slots: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hide_pid: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anti_toctou_cgroups: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DriverProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fast_boot: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StorageProfile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dax_window: Option<String>,
-}
-
-impl SandboxProfile {
-    // L3-GAP: [hypervisor_driver]: consume topology, max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
-    pub fn to_vm_config(&self) -> VmConfig {
-        let session = self.session.as_ref();
-        let compute = session.and_then(|s| s.compute.as_ref());
-        let artifacts = session.and_then(|s| s.artifacts.as_ref());
-        let clock = session.and_then(|s| s.clock.as_ref());
-        let watchdog = session.and_then(|s| s.watchdog.as_ref());
-        let mut config = VmConfig::default();
-        if let Some(vcpus) = compute.and_then(|c| c.vcpus) {
-            config.vcpus = vcpus;
-        }
-        if let Some(memory_mb) = compute.and_then(|c| c.memory_mb) {
-            config.memory_mb = memory_mb;
-        }
-        if let Some(kernel) = artifacts.and_then(|a| a.kernel_path.clone()) {
-            config.kernel_path = PathBuf::from(kernel);
-        }
-        if let Some(rootfs) = artifacts.and_then(|a| a.rootfs_erofs_path.clone()) {
-            config.rootfs_erofs_path = PathBuf::from(rootfs);
-        }
-        if let Some(tsc_locked) = clock.and_then(|c| c.tsc_locked) {
-            config.tsc_locked = tsc_locked;
-        }
-        if let Some(watchdog) = watchdog.and_then(|w| w.enabled) {
-            config.enable_watchdog = watchdog;
-        }
-        if let Some(page_size_kb) = compute.and_then(|c| c.page_size_kb) {
-            config.page_size_kb = page_size_kb;
-        }
-        if let Some(deterministic_clock) = clock.and_then(|c| c.deterministic_clock) {
-            config.deterministic_clock = deterministic_clock;
-        }
-        if let Some(pinned) = clock.and_then(|c| c.pinned_clocksource.clone()) {
-            config.pinned_clocksource = Some(pinned);
-        }
-        if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
-            config.preemption_grace_ms = grace;
-        }
-        // L3-GAP: [hd_fast_boot_backend_change]: route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
-        config
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -316,6 +122,7 @@ impl Sandbox {
     }
 
     fn from_profile(profile: SandboxProfile, path: PathBuf) -> Result<Self, PluginError> {
+        profile.validate()?;
         let config = profile.to_vm_config();
         let builder = KelirBuilder::new(config).plugin_instance(ProfilePlugin::new());
         Ok(Self {
@@ -362,7 +169,7 @@ impl Sandbox {
         let Some(session) = self.session.as_ref() else {
             return Err(PluginError::Halt("Sandbox::exec before boot".into()));
         };
-        session.spawn(binary, argv).await
+        session.spawn(binary, argv, None).await
     }
 
     pub async fn rollback(&mut self, lineage: crate::PidLineage) -> Result<(), PluginError> {

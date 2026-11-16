@@ -55,6 +55,26 @@ export interface HookSpan {
   readonly ordinal: number;
 }
 
+export interface HookPolicyDescriptor {
+  readonly plugin: string;
+  readonly ring: string;
+  readonly verdictKind: VerdictKind;
+  readonly ordinal: number;
+}
+
+export interface MaskedRecord {
+  readonly record: string;
+  readonly preRedactionBlake3?: string | null;
+  readonly maskedBytes: number;
+}
+
+export interface StepLineageEntry {
+  readonly nodeId: number;
+  readonly parentNodeId?: number | null;
+  readonly reviewerId?: string | null;
+  readonly reviewerSignature?: string | null;
+}
+
 export interface FsVfsExt {
   readonly servedInodes: number;
   readonly roots: readonly string[];
@@ -80,6 +100,9 @@ export interface ExecutionReceipt {
   readonly egressDroppedBytes: number;
   readonly extensions: readonly ReceiptExtension[];
   readonly hookTrace: readonly HookSpan[];
+  readonly hookPolicyDescriptors: readonly HookPolicyDescriptor[];
+  readonly maskedRecords: readonly MaskedRecord[];
+  readonly stepLineage: readonly StepLineageEntry[];
   readonly fsVfsExt?: FsVfsExt | null;
   readonly netL7SqlExt?: NetL7SqlExt | null;
   // see: cans/10-attestation.md#Typed-extensions
@@ -140,6 +163,26 @@ export function fromNativeExitKind(raw: NativeExitKindRecord): ExitKind {
   return { kind: "hypervisor-fault", message: raw.hypervisorFault };
 }
 
+export interface NativeHookPolicyDescriptorRecord {
+  readonly plugin: string;
+  readonly ring: string;
+  readonly verdictKind: VerdictKind;
+  readonly ordinal: number;
+}
+
+export interface NativeMaskedRecordRecord {
+  readonly record: string;
+  readonly preRedactionBlake3?: string | null;
+  readonly maskedBytes: number;
+}
+
+export interface NativeStepLineageEntryRecord {
+  readonly nodeId: number;
+  readonly parentNodeId?: number | null;
+  readonly reviewerId?: string | null;
+  readonly reviewerSignature?: string | null;
+}
+
 export interface NativeExecutionReceiptRecord {
   readonly pid: number;
   readonly binaryPath: string;
@@ -155,6 +198,9 @@ export interface NativeExecutionReceiptRecord {
   readonly egressDroppedBytes: number;
   readonly extensions: readonly ReceiptExtension[];
   readonly hookTrace: readonly HookSpan[];
+  readonly hookPolicyDescriptors: readonly HookPolicyDescriptor[];
+  readonly maskedRecords: readonly MaskedRecord[];
+  readonly stepLineage: readonly StepLineageEntry[];
   readonly fsVfsExt?: FsVfsExt | null;
   readonly netL7SqlExt?: NetL7SqlExt | null;
 }
@@ -196,6 +242,32 @@ export function fromNativePhaseTimings(raw: NativePhaseTimingsRecord): PhaseTimi
   };
 }
 
+export function fromNativeHookPolicyDescriptor(raw: NativeHookPolicyDescriptorRecord): HookPolicyDescriptor {
+  return {
+    plugin: raw.plugin,
+    ring: raw.ring,
+    verdictKind: raw.verdictKind,
+    ordinal: raw.ordinal,
+  };
+}
+
+export function fromNativeMaskedRecord(raw: NativeMaskedRecordRecord): MaskedRecord {
+  return {
+    record: raw.record,
+    preRedactionBlake3: raw.preRedactionBlake3 ?? null,
+    maskedBytes: raw.maskedBytes,
+  };
+}
+
+export function fromNativeStepLineageEntry(raw: NativeStepLineageEntryRecord): StepLineageEntry {
+  return {
+    nodeId: raw.nodeId,
+    parentNodeId: raw.parentNodeId ?? null,
+    reviewerId: raw.reviewerId ?? null,
+    reviewerSignature: raw.reviewerSignature ?? null,
+  };
+}
+
 export function fromNativeExecutionReceipt(raw: NativeExecutionReceiptRecord): ExecutionReceipt {
   return {
     pid: raw.pid,
@@ -212,6 +284,9 @@ export function fromNativeExecutionReceipt(raw: NativeExecutionReceiptRecord): E
     egressDroppedBytes: raw.egressDroppedBytes,
     extensions: raw.extensions,
     hookTrace: raw.hookTrace,
+    hookPolicyDescriptors: raw.hookPolicyDescriptors,
+    maskedRecords: raw.maskedRecords,
+    stepLineage: raw.stepLineage,
     fsVfsExt: raw.fsVfsExt ?? null,
     netL7SqlExt: raw.netL7SqlExt ?? null,
     fsVfs(): FsVfsExt | null {

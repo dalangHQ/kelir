@@ -98,6 +98,73 @@ jobs:
       - name: Examples compile / typecheck (Rust + Python + TypeScript)
         run: just check-examples
 
+  # ─── EXAMPLES RUN (Stage 1, NON-BLOCKING until L3) ─────────────
+  # WS-F1: the nine patched examples execute as tests in all three
+  # languages via just check-examples-run. Hardware tier required for
+  # git-gate and hook-matrix-full: no KVM on the hosted runner, so those
+  # two SKIP with a notice (never a fake pass); the other seven run under
+  # emulated Class 2. Converge (2026-11-16): COMPILE-GAP is 0 in the
+  # merged tree, but all 21 executable runs FAIL on L3 runtime stubs
+  # (unbound VmControl / missing PyO3 wheel / MODULE_NOT_FOUND native
+  # addon); 0 pass until L3 lands live execution. Non-blocking until
+  # then: continue-on-error, do not flip without a green run.
+  examples-run:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: astral-sh/setup-uv@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.5
+      - uses: taiki-e/install-action@just
+      - name: Install JS + Python SDK dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv venv && uv pip install -e "packages/py[dev]"
+      - name: Examples run as tests (Rust + Python + TypeScript)
+        run: just check-examples-run
+
+  # ─── COVERAGE GATES (Stage 1, NON-BLOCKING until vectors land) ─
+  # WS-F2: the four parity coverage flags. Each fails closed on missing
+  # evidence vectors (l7-stream-*, outbox-*, step-dag-*, swarm-mesh-* in
+  # vectors.json); live execution behind the vectors is L3. Converge
+  # (2026-11-16): vectors.json carries zero of the four families and no
+  # lane touched it — WS-B1/B6/B7/B9 never landed the evidence vectors.
+  # Non-blocking until they land: continue-on-error, do not flip without
+  # a green run.
+  coverage-gates:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - name: Coverage gates (--l7-stream, --outbox, --step-dag, --swarm-mesh)
+        run: just check-coverage-gates
+
+  # ─── SPEC DRIFT (Stage 1) ───────────────────────────────────────
+  # WS-F3: every depth<=1 normative leaf in the patch-series spec files
+  # maps to a code symbol or test; drift recorded in
+  # scripts/spec-drift-gaps.yaml passes, unrecorded drift fails. The
+  # hygiene grep (zero L3-GAP / TODO (L3) / aspirational / TBD (no .* field
+  # in cans/*.md, cans/plugins/*.md, cans/artifacts/examples/**) rides
+  # the same script; the test-plan registries and _collab history are
+  # out of that scope by design (they are the L3-blocker record itself).
+  spec-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+      - name: Spec drift (just check-spec-drift)
+        run: just check-spec-drift
+
   # ─── 1c. FAST STATIC GATE (<90s) ────────────────────────────
   lint-and-types:
     runs-on: ubuntu-latest

@@ -4,6 +4,7 @@ import {
   Session,
   SuspendReason,
   relaySocketPath,
+  type IngressStream,
   type NativeSessionHandle,
 } from "../dist/index.js";
 import { EConfig } from "../dist/index.js";
@@ -144,7 +145,7 @@ function fakeNativeSession(options?: {
       spawnOptions?: SpawnOptions,
     ): Promise<SpawnResult> => {
       record("spawn", binary, argv, spawnOptions);
-      return { exitCode: 0, stdout: `ran ${binary}` };
+      return { exitCode: 0, stdout: new TextEncoder().encode(`ran ${binary}`) };
     },
     execInGuest: async (
       binary: string,
@@ -152,7 +153,7 @@ function fakeNativeSession(options?: {
       spawnOptions?: SpawnOptions,
     ): Promise<SpawnResult> => {
       record("execInGuest", binary, argv, spawnOptions);
-      return { exitCode: 3, stderr: `guest ${binary}` };
+      return { exitCode: 3, stderr: new TextEncoder().encode(`guest ${binary}`) };
     },
     suspend: async (reason: SuspendReason): Promise<void> => {
       record("suspend", reason);
@@ -185,14 +186,21 @@ function fakeNativeSession(options?: {
       receiptLeafHash: "leaf-hash",
     }),
     handleIngress: async function* <Req, Resp>(
-      ingressOptions: {
-        cwd?: string;
-        handler: (req: Req) => Promise<Resp>;
-      },
-    ): AsyncGenerator<Resp, void, unknown> {
-      record("handleIngress", ingressOptions.cwd);
-      yield 3 as unknown as Resp;
-      yield 4 as unknown as Resp;
+      port: number,
+    ): AsyncGenerator<IngressStream<Req, Resp>, void, unknown> {
+      record("handleIngress", port);
+      yield {
+        request: 3 as unknown as Req,
+        respond: async (): Promise<void> => {
+          record("ingress.respond");
+        },
+      };
+      yield {
+        request: 4 as unknown as Req,
+        respond: async (): Promise<void> => {
+          record("ingress.respond");
+        },
+      };
     },
     vm: {
       checkpoint: async (name: string): Promise<NativeSnapshotDescriptorRecord> => {
@@ -306,6 +314,20 @@ function fakeNativeSession(options?: {
               record("checkpoint.create", label);
               return NATIVE_SNAPSHOT;
             },
+            createStep: async (): Promise<number> => {
+              record("checkpoint.createStep");
+              return 1;
+            },
+            commitStep: async (): Promise<number> => {
+              record("checkpoint.commitStep");
+              return 1;
+            },
+            revertStep: async (slot: number): Promise<void> => {
+              record("checkpoint.revertStep", slot);
+            },
+            rollback: async (snapshotId: string): Promise<void> => {
+              record("checkpoint.rollback", snapshotId);
+            },
           },
         }),
     ...(options?.omitHost === true
@@ -322,6 +344,10 @@ function fakeNativeSession(options?: {
             },
           },
         }),
+    shm: async (region: string): Promise<{ region: string }> => {
+      record("shm", region);
+      return { region };
+    },
   };
   return native;
 }
@@ -582,7 +608,7 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   const spawnResult = await session.spawn("cat", argv, spawnOptions);
   check(spawnResult.exitCode === 0, "spawn returns the native exit code");
   check(
-    spawnResult.stdout === "ran cat",
+    new TextDecoder().decode(spawnResult.stdout) === "ran cat",
     "spawn surfaces the native stdout",
   );
   const spawnCalls = callsOf(native, "spawn");
@@ -596,7 +622,7 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
   const guestResult = await session.execInGuest("ls", ["/workspace"]);
   check(guestResult.exitCode === 3, "execInGuest returns the native exit code");
   check(
-    guestResult.stderr === "guest ls",
+    new TextDecoder().decode(guestResult.stderr) === "guest ls",
     "execInGuest surfaces the native stderr",
   );
   const reason = SuspendReason.external("human-authorization-hold");
@@ -684,19 +710,21 @@ async function sessionDelegatesLifecycleCalls(): Promise<void> {
     "getCausalDeltaFromParent maps receiptLeafHash",
   );
   const yielded: unknown[] = [];
-  for await (const value of session.handleIngress<number, number>({
-    cwd: "/workspace",
-    handler: async (req: number): Promise<number> => req + 1,
-  })) {
-    yielded.push(value);
+  for await (const stream of session.handleIngress<number, number>(8443)) {
+    yielded.push(stream.request);
+    await stream.respond(stream.request + 1);
   }
   check(
     yielded.length === 2 && yielded[0] === 3 && yielded[1] === 4,
-    "handleIngress yields every native generator value in order",
+    "handleIngress yields every native stream in order",
   );
   check(
-    callsOf(native, "handleIngress")[0].args[0] === "/workspace",
-    "handleIngress forwards options to the native generator",
+    callsOf(native, "handleIngress")[0].args[0] === 8443,
+    "handleIngress forwards the port to the native generator",
+  );
+  check(
+    callsOf(native, "ingress.respond").length === 2,
+    "handleIngress streams respond",
   );
 }
 

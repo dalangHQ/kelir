@@ -1,0 +1,35 @@
+# spec-drift-gaps.yaml: recorded spec-drift inventory for just check-spec-drift.
+# One `file#slug<TAB>owner` per line. A leaf listed here has no code symbol
+# or test reference yet; the owning lane closes it by landing the symbol or
+# test (or a see: pointer to it). A listed leaf that gains a reference, or
+# that no longer exists, is stale and fails the gate: remove it.
+# Owners are work-order lanes (work-order.md); WS-F holds the structural
+# leaves no single lane owns.
+cans/01-architecture.md#capability-taxonomy	WS-A
+cans/01-architecture.md#core-invariants	WS-B
+cans/01-architecture.md#trust-boundaries	WS-B
+cans/02-plugin-model.md#declarative-plugin-macros	WS-A
+cans/02-plugin-model.md#first-class-plugins	WS-C
+cans/02-plugin-model.md#language-parity	WS-A
+cans/02-plugin-model.md#native-addon-contract	WS-A
+cans/03-sdk-architecture.md#fluent-plugin-surface	WS-A
+cans/03-sdk-architecture.md#n-native-design	WS-A
+cans/08-lifecycle.md#lifecycle-observation	WS-B8
+cans/08-lifecycle.md#native-checkpoint-plane-(kelir-engine::checkpoint)	WS-B7
+cans/08-lifecycle.md#portable-snapshot-bundles	WS-B7
+cans/08-lifecycle.md#wire-port-forwarding	WS-B1
+cans/10-attestation.md#primitive-vs-derived-metrics	WS-E
+cans/10-attestation.md#scope	WS-E
+cans/11-protocol.md#policy-rejection-receipt	WS-B4
+cans/11-protocol.md#trap-decision-invariants	WS-B
+cans/14-observability.md#health-signals	WS-B8
+cans/14-observability.md#log-streaming	WS-B8
+cans/14-observability.md#online-statistical-feature-extraction	WS-B8
+cans/15-operations.md#execution-philosophy	WS-F
+cans/15-operations.md#external-repository-ci	WS-F
+cans/15-operations.md#project-structure	WS-F
+cans/15-operations.md#test-plan	WS-F
+cans/plugins/container.md#crate-dependencies-(container)	WS-C1
+cans/plugins/container.md#error-and-return-semantics-(container)	WS-C1
+cans/plugins/container.md#invariants-and-policy-(container)	WS-C1
+cans/plugins/container.md#service-exports-(container)	WS-C1

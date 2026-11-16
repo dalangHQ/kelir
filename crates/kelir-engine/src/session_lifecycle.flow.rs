@@ -73,98 +73,12 @@ pub struct Session {
     detached: bool,
     state: LifecycleState,
     exec_params: ExecParamsStore,
+    capabilities: kelir_interface::CapabilityRegistry,
 }
 
 // see: cans/01-architecture.md#Host-state-root
-pub fn session_dir(
-    session_id: &[u8; 16],
-) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
-    let home = std::env::var("HOME").map_err(|_| {
-        kelir_interface::plugin_model::PluginError::Halt(
-            "HOME is not set; cannot locate ~/.kelir session root".into(),
-        )
-    })?;
-    Ok(std::path::PathBuf::from(home)
-        .join(".kelir")
-        .join("sessions")
-        .join(encode_hex(session_id)))
-}
-
-// see: cans/01-architecture.md#Host-state-root
-// L3-GAP: [lifecycle_checkpoint]: the runtime child janitor sweeps orphaned session dirs on startup; slop: orphaned session dirs never swept, disk leaks
-pub fn reap_ephemeral_session_dir(
-    session_id: &[u8; 16],
-) -> Result<(), kelir_interface::plugin_model::PluginError> {
-    let dir = session_dir(session_id)?;
-    match std::fs::remove_dir_all(dir) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(kelir_interface::plugin_model::PluginError::Halt(format!(
-            "reap session dir: {error}"
-        ))),
-    }
-}
-
-// see: cans/01-architecture.md#Host-state-root
-fn ensure_workspace_root(
-    session_id: &[u8; 16],
-) -> Result<std::path::PathBuf, kelir_interface::plugin_model::PluginError> {
-    let workspace_root = session_dir(session_id)?.join("workspace");
-    std::fs::create_dir_all(&workspace_root)?;
-    Ok(workspace_root)
-}
-
-// see: cans/06-storage-catalog.md#Entity-model
-// L3-GAP: [lc_16_session_incarnation_cas_guard]: swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof; slop: destructive verb skips incarnation CAS, stale row deleted
-// L3-GAP: [lc_14_detached_session_lease_heartbeat]: detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle; slop: detached row stays Ephemeral, expires_at never advances
-fn register_catalog_row(
-    session_id: [u8; 16],
-    incarnation_id: [u8; 16],
-) -> Result<(), kelir_interface::plugin_model::PluginError> {
-    let row = kelir_catalog::schema_catalog::SessionRow {
-        session_id,
-        incarnation_id: kelir_catalog::schema_catalog::IncarnationId::from_bytes(incarnation_id),
-        lease_kind: kelir_catalog::schema_catalog::LeaseKind::Ephemeral,
-        expires_at_unix: None,
-        runner_pid: i64::from(std::process::id()),
-        boot_id: encode_hex(&mint_uuid_v7()),
-        start_time_ns: i64::try_from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_nanos())
-                .unwrap_or_default(),
-        )
-        .unwrap_or(i64::MAX),
-    };
-    let catalog =
-        kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("{error}"))
-        })?)
-        .map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!("catalog open: {error}"))
-        })?;
-    // see: cans/06-storage-catalog.md#Entity-model
-    let already_registered = catalog
-        .lookup_session(&session_id)
-        .map_err(|error| {
-            kelir_interface::plugin_model::PluginError::Halt(format!(
-                "catalog session lookup: {error}"
-            ))
-        })?
-        .is_some();
-    if already_registered {
-        tracing::warn!(
-            "session {} already registered in the catalog; booting idempotently without a second insert",
-            encode_hex(&session_id)
-        );
-        return Ok(());
-    }
-    catalog.register_session(&row).map_err(|error| {
-        kelir_interface::plugin_model::PluginError::Halt(format!(
-            "catalog session registration: {error}"
-        ))
-    })
-}
+use crate::session_paths::{ensure_workspace_root, register_catalog_row, tenant_id};
+pub use crate::session_paths::{reap_ephemeral_session_dir, session_dir};
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 #[derive(Debug, Clone)]
@@ -382,7 +296,7 @@ impl Session {
         let incarnation_id = mint_uuid_v7();
         // see: cans/06-storage-catalog.md#Entity-model
         let session_id = mint_uuid_v7();
-        register_catalog_row(session_id, incarnation_id)?;
+        register_catalog_row(session_id, incarnation_id, tenant_id(&config))?;
         // see: cans/01-architecture.md#Host-state-root
         let workspace_root = ensure_workspace_root(&session_id)?;
         let terminal_ops = required_ops(plane_wiring.terminal_ops, "TerminalOps", "terminal_ops")?;
@@ -518,6 +432,7 @@ impl Session {
             detached: false,
             state: LifecycleState::Initializing,
             exec_params: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            capabilities: kelir_interface::CapabilityRegistry::new(),
         };
         // see: cans/11-protocol.md#Kind-registration
         session.bind_stream_kind_sinks()?;
@@ -532,7 +447,9 @@ impl Session {
     pub fn plugins(&self) -> &[crate::plugin_registry::PluginRegistration] {
         &self.plugins
     }
-
+    pub fn set_capabilities(&mut self, caps: kelir_interface::CapabilityRegistry) {
+        self.capabilities = caps;
+    }
     pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
         &self.metrics
     }
@@ -600,6 +517,43 @@ impl Session {
         kelir_interface::checkpoint::PidLineage::new_in_session(root_pid, self.incarnation_id)
     }
 
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn shm(
+        &self,
+        region: &str,
+    ) -> impl Future<
+        Output = Result<
+            kelir_interface::driver_interface::ShmMapping,
+            kelir_interface::plugin_model::PluginError,
+        >,
+    > + Send {
+        // TODO (L2): the driver resolves the region size from the declared virtio_shm region table; size 0 requests the declared size.
+        let driver = self.driver.clone();
+        let region = region.to_string();
+        async move {
+            let Some(driver) = driver else {
+                return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
+                    "shm mapping is TODO (L3): no VMM driver loaded for region `{region}`"
+                )));
+            };
+            let handle = driver
+                .lock()
+                .await
+                .map_shared_region(&region, 0)
+                .await
+                .map_err(|error| {
+                    kelir_interface::plugin_model::PluginError::Halt(format!(
+                        "shm mapping for region `{region}`: {error}"
+                    ))
+                })?;
+            Ok(kelir_interface::driver_interface::ShmMapping {
+                tag: handle.tag,
+                size_bytes: handle.size_bytes,
+                guest_phys_addr: handle.guest_phys_addr,
+            })
+        }
+    }
+
     // see: cans/08-lifecycle.md#CoW-fork
     // SAFETY: the wrapper copies every parent field it needs before the first await so the returned future never borrows the !Sync parent.
     // TODO (L2): fork_state runs on this async path and must not block the runtime thread; clone plugin state without blocking_lock/block_on per cans/02-plugin-model.md#KelirPlugin-trait.
@@ -630,6 +584,7 @@ impl Session {
         let parent_registration = self.engine.host_registration_state();
         let parent_receipts = self.engine.receipt_store().snapshot();
         let exec_params = Arc::clone(&self.exec_params);
+        let capabilities = self.capabilities.clone();
         async move {
             // see: cans/08-lifecycle.md#CoW-fork
             let child_driver = match parent_driver {
@@ -644,7 +599,7 @@ impl Session {
                 }
                 None => None,
             };
-            register_catalog_row(session_id, incarnation_id)?;
+            register_catalog_row(session_id, incarnation_id, tenant_id(&config))?;
             // see: cans/01-architecture.md#Host-state-root
             let workspace_root = ensure_workspace_root(&session_id)?;
             let mut storage = crate::planes::storage::StoragePlane::new(
@@ -703,6 +658,7 @@ impl Session {
                 // see: cans/08-lifecycle.md#CoW-fork
                 state: LifecycleState::Running,
                 exec_params,
+                capabilities,
             })
         }
     }
@@ -861,6 +817,8 @@ impl Session {
                     &mut self.vetoes,
                     std::sync::Arc::clone(&watchdog_probe),
                 );
+                ctx.set_vm(VmHandle::new(DriverVmControl::shared(driver)))
+                    .set_caps(self.capabilities.clone());
                 self.engine.dispatch_lifecycle(event, &mut ctx).await?;
             }
             None => {
@@ -872,6 +830,7 @@ impl Session {
                     &mut self.vetoes,
                     std::sync::Arc::clone(&watchdog_probe),
                 );
+                ctx.set_caps(self.capabilities.clone());
                 self.engine.dispatch_lifecycle(event, &mut ctx).await?;
             }
         }
@@ -901,7 +860,7 @@ impl Session {
             .map_err(|error| {
                 kelir_interface::plugin_model::PluginError::Halt(format!("catalog open: {error}"))
             })?;
-        let owned = match catalog.lookup_session(&self.session_id) {
+        let owned = match catalog.lookup_session(tenant_id(&self.config), &self.session_id) {
             Ok(Some(row)) => {
                 row.lease_kind == kelir_catalog::schema_catalog::LeaseKind::Ephemeral
                     && row.incarnation_id.0 == self.incarnation_id
@@ -918,7 +877,7 @@ impl Session {
             return Ok(());
         }
         catalog
-            .unregister_session(&self.session_id)
+            .unregister_session(tenant_id(&self.config), &self.session_id)
             .map_err(|error| {
                 kelir_interface::plugin_model::PluginError::Halt(format!(
                     "catalog unregister: {error}"

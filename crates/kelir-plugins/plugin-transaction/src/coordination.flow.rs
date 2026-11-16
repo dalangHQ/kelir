@@ -1,6 +1,6 @@
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use kelir_interface::plugin_model::{
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
 use crate::TransactionConfig;
-use crate::service_transaction::{Savepoint, TransactionHandle, TransactionScope};
+use crate::service_transaction::{Savepoint, TransactionScope, TransactionScopeHandle};
 
 impl Default for TransactionConfig {
     fn default() -> Self {
@@ -28,7 +28,7 @@ impl Default for TransactionConfig {
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 #[derive(Clone, Debug)]
 pub(crate) struct ActiveTransaction {
-    handle: TransactionHandle,
+    handle: TransactionScopeHandle,
     namespace: [u8; 16],
     scope: TransactionScope,
 }
@@ -37,7 +37,7 @@ pub(crate) struct ActiveTransaction {
 #[derive(Clone, Debug)]
 struct RecordedSavepoint {
     savepoint: Savepoint,
-    transaction: TransactionHandle,
+    transaction: TransactionScopeHandle,
 }
 
 // see: cans/plugins/transaction.md#Temporal-savepoints
@@ -53,9 +53,54 @@ pub(crate) struct PeerCoordination {
     lock_broker: RwLock<Option<Arc<dyn LockBrokerCoordination>>>,
     active: RwLock<Option<ActiveTransaction>>,
     savepoints: RwLock<Vec<RecordedSavepoint>>,
+    outbox: Mutex<TransactionOutbox>,
     next_handle: AtomicU64,
     next_savepoint: AtomicU64,
     next_nonce: AtomicU64,
+}
+
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+#[derive(Debug, Default)]
+pub(crate) struct TransactionOutbox {
+    buffered: Vec<(u64, usize)>,
+    used_bytes: usize,
+    next_frame: u64,
+}
+
+// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+const OUTBOX_CAPACITY_BYTES: usize = 67_108_864;
+
+impl TransactionOutbox {
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    fn buffer(&mut self, len: usize) -> Result<u64, PluginError> {
+        let next = self
+            .used_bytes
+            .checked_add(len)
+            .ok_or_else(|| PluginError::Halt("E2BIG: transaction outbox size overflow".into()))?;
+        if next > OUTBOX_CAPACITY_BYTES {
+            return Err(PluginError::Halt(
+                "E2BIG: transaction outbox deferral buffer capacity exceeded".into(),
+            ));
+        }
+        let id = self.next_frame;
+        self.next_frame = self.next_frame.saturating_add(1);
+        self.buffered.push((id, len));
+        self.used_bytes = next;
+        Ok(id)
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    fn release(&mut self) -> Vec<u64> {
+        let ids: Vec<u64> = self.buffered.iter().map(|(id, _)| *id).collect();
+        self.buffered.clear();
+        self.used_bytes = 0;
+        ids
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    fn discard(&mut self) -> Vec<u64> {
+        self.release()
+    }
 }
 
 impl PeerCoordination {
@@ -111,7 +156,7 @@ impl PeerCoordination {
 
     pub(crate) fn require_active(
         &self,
-        handle: &TransactionHandle,
+        handle: &TransactionScopeHandle,
     ) -> Result<ActiveTransaction, PluginError> {
         let active = self.active()?.ok_or_else(|| {
             PluginError::Halt(
@@ -147,14 +192,14 @@ impl PeerCoordination {
     pub(crate) fn begin_scope(
         &self,
         scope: TransactionScope,
-    ) -> Result<TransactionHandle, PluginError> {
+    ) -> Result<TransactionScopeHandle, PluginError> {
         if let Some(active) = self.active()? {
             return Err(PluginError::Halt(format!(
                 "EINVAL: transaction {} is still active; commit or abort it before opening a new scope",
                 active.handle.id
             )));
         }
-        let handle = TransactionHandle {
+        let handle = TransactionScopeHandle {
             id: self.next_handle.fetch_add(1, Ordering::AcqRel),
         };
         // L3-GAP: [relational_transaction]: mint the transaction UUID namespace from the session's seeded entropy source; slop: UUID namespace hardcoded, ids collide across sessions
@@ -214,7 +259,7 @@ impl PeerCoordination {
     pub(crate) fn record_savepoint(
         &self,
         savepoint: Savepoint,
-        transaction: TransactionHandle,
+        transaction: TransactionScopeHandle,
     ) -> Result<(), PluginError> {
         // L3-GAP: [relational_transaction]: snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints; slop: savepoint blob empty, rollback restores nothing, state lost
         match self.savepoints.write() {
@@ -232,7 +277,7 @@ impl PeerCoordination {
     // see: cans/plugins/transaction.md#Temporal-savepoints
     pub(crate) fn rollback_recorded_savepoint(
         &self,
-        transaction: &TransactionHandle,
+        transaction: &TransactionScopeHandle,
         savepoint: Savepoint,
     ) -> Result<(), PluginError> {
         // L3-GAP: [relational_transaction]: restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet; slop: restore unimplemented, ROLLBACK TO never issued, savepoint useless
@@ -280,11 +325,39 @@ impl PeerCoordination {
         }
     }
 
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub(crate) fn buffer_side_effect(&self, len: usize) -> Result<u64, PluginError> {
+        let mut outbox = self
+            .outbox
+            .lock()
+            .map_err(|_| PluginError::Halt("transaction outbox poisoned".into()))?;
+        outbox.buffer(len)
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub(crate) fn release_outbox(&self) -> Result<Vec<u64>, PluginError> {
+        let mut outbox = self
+            .outbox
+            .lock()
+            .map_err(|_| PluginError::Halt("transaction outbox poisoned".into()))?;
+        Ok(outbox.release())
+    }
+
+    // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
+    pub(crate) fn discard_outbox(&self) -> Result<Vec<u64>, PluginError> {
+        let mut outbox = self
+            .outbox
+            .lock()
+            .map_err(|_| PluginError::Halt("transaction outbox poisoned".into()))?;
+        Ok(outbox.discard())
+    }
+
     // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     pub(crate) async fn abort_active(&self) -> Result<(), PluginError> {
         // L3-GAP: [relational_transaction]: discard the broker upper file and tombstones through the driver-side session path; slop: upper file and tombstones never discarded, storage leaks after commit
         self.issue_sql_rollback().await?;
         self.release_transaction_locks_scoped().await?;
+        self.discard_outbox()?;
         self.clear_active()
     }
 }
@@ -318,6 +391,9 @@ impl TransactionCtx {
         &self.coordination
     }
 }
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub type TransactionHandle = TransactionCtx;
 
 // see: cans/plugins/transaction.md#Plugin-transaction
 #[derive(Clone, Default)]

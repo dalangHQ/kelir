@@ -201,6 +201,8 @@ export interface NativeStorageConfigBinding {
   readonly idmapHostUid?: number;
   readonly sharedCaches?: string[];
   readonly lockBroker?: boolean;
+  readonly lockBrokerGlobs?: string[];
+  readonly lockBrokerNonBlocking?: boolean;
   readonly syntheticFiles?: readonly {
     readonly path: string;
     readonly content: string;
@@ -268,6 +270,9 @@ export interface NativeKelirOptionsBinding {
   readonly tscLocked?: boolean;
   readonly enableWatchdog?: boolean;
   readonly driver?: string;
+  readonly networkOff?: boolean;
+  readonly nsPerInstruction?: number;
+  readonly entropySeed?: number;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK

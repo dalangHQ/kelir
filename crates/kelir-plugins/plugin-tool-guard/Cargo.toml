@@ -10,6 +10,7 @@ kelir-interface = { path = "../../kelir-interface" }
 plugin-mcp = { path = "../plugin-mcp" }
 async-trait = { workspace = true }
 blake3 = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 kelir-plugin-testkit = { path = "../../kelir-plugin-testkit" }

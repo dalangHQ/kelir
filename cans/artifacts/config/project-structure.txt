@@ -15,6 +15,8 @@ kelir/
 ├── kelir.cicd.md
 ├── kelir.project-structure.md
 ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
+├── patch.md                           # Primitives patch series, 6 parts: canonical engine fixtures & schemas (applied)
+├── patch2.md                          # Primitives patch series, 5 parts: core architecture & framing invariants (applied)
 ├── plan.md
 ├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml                # PNPM workspace definition
@@ -62,6 +64,8 @@ kelir/
 │   │   │   ├── hlist_sdk.flow.rs               # Heterogeneous plugin-context list
 │   │   │   ├── lib.rs                 # Composition root: binds all nine Real*Ops; re-export surface: kelir-engine API (5 native planes) + optional feature-gated plugins
 │   │   │   ├── plugin_model.rs              # Facade plugin re-exports
+│   │   │   ├── profile_schema.flow.rs        # Typed profile schema: every kelir.toml/kelir.yaml key
+│   │   │   ├── profile_validate.flow.rs      # Monotonic ceiling validation, deny_unknown_fields
 │   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
 │   │   │   ├── sandbox_runtime.flow.rs             # Sandbox entrypoint
 │   │   │   ├── session_lifecycle.flow.rs             # Session assembly from builder parts
@@ -192,6 +196,7 @@ kelir/
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Core initialization exports
 │   │   │   ├── session_lifecycle.flow.rs             # Session lifecycle assembly
+│   │   │   ├── session_paths.flow.rs             # Session-dir and catalog path helpers (split from session_lifecycle)
 │   │   │   ├── session_support.flow.rs               # NullDriver, mint_uuid_v7, workspace quota consts
 │   │   │   ├── trap_gate.flow.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │   │   ├── uart_terminal.flow.rs                # Early-boot UART scrape
@@ -276,6 +281,7 @@ kelir/
 │   │   ├── Cargo.toml                 # Dependencies: serde, blake3, ciborium, thiserror, async-trait, tokio
 │   │   ├── src/
 │   │   │   ├── addon_abi.rs
+│   │   │   ├── capability_registry.rs        # CapabilityRegistry: dynamic DAG registry, 8 canonical keys
 │   │   │   ├── chaos_types.rs
 │   │   │   ├── codec_protocol.flow.rs               # Frame codec
 │   │   │   ├── credential_vault.rs          # Credential descriptors
@@ -291,10 +297,12 @@ kelir/
 │   │   │   ├── lifecycle_state.flow.rs
 │   │   │   ├── mount_scope.flow.rs
 │   │   │   ├── plugin_model.flow.rs              # KelirPlugin, MountScope, LifecycleCtx, PluginError
+│   │   │   ├── policy_plane.flow.rs              # Signed operator lease, dynamic policy plane (Ed25519 verify L3)
 │   │   │   ├── protocol_wire.flow.rs            # MuxFrameHeader (stream_id, flags, len), TrapEvent, Verdict, GuestToHost, HostToGuest
 │   │   │   ├── runtime_block.flow.rs
 │   │   │   ├── spawn_transport.rs
 │   │   │   ├── vsock_mesh.flow.rs               # Vsock addressing
+│   │   │   ├── worker_pool.flow.rs               # Async worker pool, 8 threads, hook deadlines
 │   │   │   ├── bin/
 │   │   │   │   └── codegen/           # Native codegen: TS/PY SDK types, fusion tables, wire consts, Merkle, OTLP
 │   │   │   │       ├── fusion_codegen.flow.rs
@@ -313,31 +321,38 @@ kelir/
 │   │   │   ├── checkpoint/
 │   │   │   │   ├── graph.flow.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   └── ops.flow.rs
+│   │   │   │   ├── ops.flow.rs
+│   │   │   │   └── step_dag.flow.rs           # Content-addressed step DAG, branching heads, SoD, Merkle root
 │   │   │   ├── host/
 │   │   │   │   ├── mod.rs
 │   │   │   │   └── ops.flow.rs
 │   │   │   ├── storage/
 │   │   │   │   ├── fuse_ops.flow.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
+│   │   │   │   ├── isolation_envelope.flow.rs  # OrgScope isolation envelope, tenant partition
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── storage_io.rs          # StorageIo trait, RootHandle, HostFileLock
 │   │   │   │   ├── storage_reconciler.rs  # ReconcilerOps trait, FsReconcileRequest, CommitStats
+│   │   │   │   ├── storage_snoop.rs       # SnoopRule, MaskReadRule, ReadMaskEngine (in-flight read masking)
 │   │   │   │   ├── storage_synthetic.flow.rs   # SyntheticFile, DynamicFile
 │   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
 │   │   │   ├── telemetry/
 │   │   │   │   ├── delta_attest.flow.rs           # CausalDelta
 │   │   │   │   ├── merkle_attest.flow.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   └── receipt_attest.flow.rs         # ExecutionReceipt
+│   │   │   │   ├── receipt_attest.flow.rs         # ExecutionReceipt
+│   │   │   │   └── telemetry_ring.flow.rs         # 300-entry telemetry ring, 16-dim feature vector, OTLP export
 │   │   │   ├── terminal/
 │   │   │   │   ├── log.flow.rs
 │   │   │   │   ├── mod.rs
 │   │   │   │   └── ops.flow.rs
 │   │   │   └── wire/
+│   │   │       ├── connection_parking.flow.rs    # Inbound TCP parking during suspend holds
 │   │   │       ├── dns_ops.flow.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
 │   │   │       ├── l4_ops.flow.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
+│   │   │       ├── l7_parser.flow.rs           # L7 HTTP/1.1 parser, SSE, JSON-RPC (TLS decrypt L3)
 │   │   │       ├── mod.rs
 │   │   │       ├── net_ops.flow.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
+│   │   │       ├── outbox.flow.rs              # Egress side-effect outbox: deferral buffer, release, purge
 │   │   │       └── udp_nat.flow.rs             # UdpNatOps trait, UdpNatEntry, NAT slab constants
 │   │   └── tests/
 │   │       ├── causal_delta_hex_test.rs
@@ -448,6 +463,7 @@ kelir/
 │   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
+│   │   │   │   ├── ast.flow.rs        # JSON-RPC 2.0 AST parser: request/response type validation, 16 MB frame assembler
 │   │   │   │   ├── lib.rs             # Thin aggregator
 │   │   │   │   └── mcp_service.flow.rs         # McpEndpointService, McpCtx: hooks on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
 │   │   │   └── tests/
@@ -610,10 +626,12 @@ kelir/
 │   │   │   ├── __init__.py            # Async builder interface
 │   │   │   ├── builder_scopes.py
 │   │   │   ├── kelir_builder.py
+│   │   │   ├── kelir_builder_scope.py     # Builder scope split: _Scope, trap-deny wrap, Handler
 │   │   │   ├── lifecycle_sandbox.py   # Sandbox entrypoint
 │   │   │   ├── lifecycle_session.py
 │   │   │   ├── model_plugin.py        # Plugin registration surface
 │   │   │   ├── plugin_fusion.py       # AOT hook-fusion client
+│   │   │   ├── plugin_model.py        # Plugin model types: KelirPlugin, MountScope, PluginError
 │   │   │   ├── profile_config.py
 │   │   │   ├── sdk_errors.py          # SDK error types
 │   │   │   ├── service_caps.py
@@ -630,6 +648,19 @@ kelir/
 │   │   │   │   └── wire_protocol.py
 │   │   │   └── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
 │   │   │       ├── __init__.py
+│   │   │       ├── chaos.py           # Python bindings for fault injection (granular module)
+│   │   │       ├── container.py       # Python bindings for rootless OCI container runner (granular module)
+│   │   │       ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation (granular module)
+│   │   │       ├── ledger.py          # Python bindings for OTLP + opt-in Merkle WAL audit ledger (granular module)
+│   │   │       ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console (granular module)
+│   │   │       ├── mesh.py            # Python bindings for vsock federation transport (granular module)
+│   │   │       ├── profile.py         # Python bindings for declarative profile ingestion (granular module)
+│   │   │       ├── replay.py          # Python bindings for deterministic clock replay (granular module)
+│   │   │       ├── supply_chain.py    # Python bindings for package lifecycle guard (granular module)
+│   │   │       ├── tool_guard.py      # Python bindings for MCP tool-call interposition (granular module)
+│   │   │       ├── transaction.py     # Python bindings for multi-resource 2PC coordination (granular module)
+│   │   │       ├── vault.py           # Python bindings for out-of-band credential broker (granular module)
+│   │   │       ├── wire_ingress.py    # Python bindings for connection parking (granular module)
 │   │   │       ├── plugin_chaos.py    # Python bindings for fault injection
 │   │   │       ├── plugin_container.py # Python bindings for rootless OCI container runner
 │   │   │       ├── plugin_db_proxy.py # Python bindings for pgwire + vsock DB mediation
@@ -659,12 +690,14 @@ kelir/
 │   │           └── test_bindings_vectors.py
 │   └── ts/                            # TypeScript Monorepo Packages
 │       ├── core/                      # @kelir/core
+│       │   ├── node-shims.d.ts        # Node type shims (process arch/pid/getuid)
 │       │   ├── package.json
 │       │   ├── tsconfig.check.json
 │       │   ├── tsconfig.json
 │       │   ├── src/                   # <entity>.<domain>[.role].ts naming
 │       │   │   ├── builder.config.ts
 │       │   │   ├── builder.lifecycle.ts # KelirBuilder
+│       │   │   ├── builder.types.ts   # Builder type block (split from builder.lifecycle.ts)
 │       │   │   ├── context.lifecycle.types.ts # Generic accumulation context engine
 │       │   │   ├── errors.sdk.ts      # SDK error types
 │       │   │   ├── fusion.plugin.ts   # AOT hook-fusion client
@@ -716,9 +749,14 @@ kelir/
     ├── check-builder-parity.sh
     ├── check-canon.sh
     ├── check-examples-canonical.sh
+    ├── check-examples-run.sh
+    ├── check-examples-thin.sh
     ├── check-examples.sh
     ├── check-plugin-coverage.sh
-    └── map_tool.py
+    ├── check-spec-drift.py
+    ├── check-spec-drift.sh
+    ├── map_tool.py
+    └── spec-drift-gaps.yaml
 # No tests/ dir at repo root; test files live under crates/*/tests/,
 # packages/ts/core/{src,tests}, and packages/py/tests/.
 # Filename grammar: <entity>_<domain>[_role]_test.rs (Rust),

@@ -9,12 +9,14 @@ export * from "./generated/protocol.wire.generated.js";
 export interface SpawnOptions {
   readonly cwd?: string;
   readonly params?: Record<string, unknown>;
+  readonly input?: string | Uint8Array;
+  readonly env?: Record<string, string>;
 }
 
 export interface SpawnResult {
   readonly exitCode: number;
-  readonly stdout?: string;
-  readonly stderr?: string;
+  readonly stdout?: Uint8Array;
+  readonly stderr?: Uint8Array;
 }
 
 export interface TrapInfo {

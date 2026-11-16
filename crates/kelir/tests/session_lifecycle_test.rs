@@ -42,7 +42,7 @@ async fn ar_01_execution_receipt_blake3_binding() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/bin/true", &[]).await {
+    match session.spawn("/bin/true", &[], None).await {
         Ok(result) => {
             assert_eq!(result.exit_code, 0);
         }
@@ -66,7 +66,7 @@ async fn lc_04_draining_state_rejection_ebusy() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     session.drain(5000).map_err(|e| e.to_string())?;
-    match session.spawn("echo new_task", &[]).await {
+    match session.spawn("echo new_task", &[], None).await {
         Err(PluginError::Halt(message)) => {
             assert!(
                 message.contains("EBUSY"),
@@ -303,7 +303,10 @@ async fn lc_14_detached_session_lease_heartbeat() -> Result<(), String> {
         kelir_catalog::CatalogDb::open(kelir_catalog::catalog_path().map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
     match db
-        .lookup_session(&session.session_id())
+        .lookup_session(
+            kelir_catalog::schema_catalog::DEFAULT_TENANT_ID,
+            &session.session_id(),
+        )
         .map_err(|e| e.to_string())?
     {
         None => return Err("detached session registered no catalog row".to_string()),
@@ -361,7 +364,7 @@ async fn ar_05_erofs_trusted_prefix_fast_path() -> Result<(), String> {
         .boot()
         .await
         .map_err(|e| e.to_string())?;
-    match session.spawn("/usr/bin/env", &[]).await {
+    match session.spawn("/usr/bin/env", &[], None).await {
         Ok(result) => assert_eq!(result.exit_code, 0),
         Err(e) => {
             return Err(format!(

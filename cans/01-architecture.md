@@ -105,7 +105,7 @@
             - Binary entry points under src/bin/ do not count.
             - The seam wave closed all six hits (2026-11-13).
             - Each plane crate now has one .flow.rs seam; hits are zero.
-          - A // TODO (L3) in a prepared .run.rs stub warns until the L3 phase fills it; the markers are removed as bodies land.
+          - A prepared .run.rs stub carrying an L3 deferral marker warns until the L3 phase fills it; the markers are removed as bodies land.
           - Current phase is L1/L2 only: no new L3 bodies land until the L3 phase opens; pre-existing L3-shaped bodies are labeled .run.rs as found, not written.
           - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
         - Zero-panic production invariant

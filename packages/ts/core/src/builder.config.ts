@@ -17,6 +17,9 @@ export interface KelirConfig {
   readonly tscLocked?: boolean;
   readonly enableWatchdog?: boolean;
   readonly detached?: boolean;
+  readonly networkOff?: boolean;
+  readonly nsPerInstruction?: number;
+  readonly entropySeed?: number;
 }
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline

@@ -7,7 +7,7 @@ use kelir_interface::protocol_wire::StreamKind;
 #[path = "ingress_state.flow.rs"]
 pub mod ingress_state;
 
-pub use ingress_state::{IngressRoutingService, WireIngressPlugin};
+pub use ingress_state::{IngressRoutingService, SpliceRoute, WireIngressPlugin};
 
 // see: cans/plugins/wire-ingress.md#Host-proxy-terminates-TCP-handshake-and-buffers-up-to-64KB-initial-request-data
 pub const MAX_PARKED_BYTES: usize = 64 * 1024;

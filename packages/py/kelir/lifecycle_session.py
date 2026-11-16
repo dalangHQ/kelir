@@ -32,6 +32,16 @@ def _suspend_reason_record(reason: SuspendReason) -> dict[str, str]:
     return {"kind": "resource-pressure"}
 
 
+# see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+class IngressStream:
+    def __init__(self, request: Any) -> None:
+        self.request = request
+
+    async def respond(self, response: Any) -> None:
+        # TODO (L3) [wire_plane]: deliver the ingress response over the parked vsock stream.; slop: respond always raises, parked ingress never answered.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ingress respond (L3)")
+
+
 class Session:
     def __init__(self) -> None:
         self._native: Any = None
@@ -101,9 +111,28 @@ class Session:
         *,
         cwd: str | None = None,
         params: Any = None,
+        input: bytes | None = None,
+        env: dict[str, str] | None = None,
     ) -> SpawnResult:
         # L3-GAP: [bindings_py]: spawn binary in the guest via the PyO3 _kelir bridge.; slop: spawn returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
+
+    # see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+    async def shm(self, region: str) -> Any:
+        # TODO (L3) [vr_07_virtio_shm_unmap_on_teardown]: map the virtio_shm region shared across sibling microVMs.; slop: Session.shm always raises, no shared region exists.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session shm (L3)")
+
+    # see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+    async def handle_ingress(
+        self,
+        *,
+        port: int,
+        request_type: Any = None,
+        response_type: Any = None,
+    ) -> Any:
+        # TODO (L3) [wire_plane]: splice the ingress listener directly to the guest shim via vsock.; slop: handle_ingress always raises, no live ingress path exists.
+        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session handle_ingress (L3)")
+        yield IngressStream(None)
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
         # L3-GAP: [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process

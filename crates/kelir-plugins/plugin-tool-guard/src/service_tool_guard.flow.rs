@@ -4,9 +4,10 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
+use plugin_mcp::ast::{JsonRpcId, parse_json_rpc_request, parse_json_rpc_response};
+use serde_json::Value;
 
 // see: cans/plugins/mcp.md#MCP-contract
-// TODO (L2): hoist the JSON-RPC frame AST into plugin-mcp so tool-guard imports it directly per cans/plugins/tool-guard.md#Crate-dependencies-(tool-guard).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum McpMethod {
     ToolsList,
@@ -28,15 +29,190 @@ pub struct McpFrame {
 impl McpFrame {
     // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
     pub fn decode(payload: &[u8]) -> Result<Self, PluginError> {
-        // L3-GAP: [gt_01_jsonrpc_tool_call_interposition]: decode JSON Lines frames and classify tools/call vs tools/list per cans/plugins/mcp.md; FLAG_CONTINUATION reassembly per cans/11-protocol.md#Stream-mux-framing; slop: decode returns default frame, tools/call never classified, calls Halt EPERM
-        let _ = payload;
-        Ok(Self {
-            method: McpMethod::Unparsed,
-            id: 0,
-            tool_name: None,
-            arguments: Vec::new(),
-        })
+        let request = match parse_json_rpc_request(payload) {
+            Ok(request) => request,
+            Err(_) => {
+                return Ok(Self {
+                    method: McpMethod::Unparsed,
+                    id: 0,
+                    tool_name: None,
+                    arguments: Vec::new(),
+                });
+            }
+        };
+        let id = match request.id {
+            Some(JsonRpcId::Number(id)) => id,
+            Some(JsonRpcId::Text(_)) | None => 0,
+        };
+        match request.method.as_str() {
+            "tools/list" => Ok(Self {
+                method: McpMethod::ToolsList,
+                id,
+                tool_name: None,
+                arguments: Vec::new(),
+            }),
+            "tools/call" => {
+                let Some(params) = request.params else {
+                    return Ok(Self {
+                        method: McpMethod::Unparsed,
+                        id: 0,
+                        tool_name: None,
+                        arguments: Vec::new(),
+                    });
+                };
+                let Some(tool_name) = params
+                    .get("name")
+                    .and_then(|name| name.as_str())
+                    .map(str::to_string)
+                else {
+                    return Ok(Self {
+                        method: McpMethod::Unparsed,
+                        id: 0,
+                        tool_name: None,
+                        arguments: Vec::new(),
+                    });
+                };
+                let arguments = match params.get("arguments") {
+                    Some(arguments) => serde_json::to_vec(arguments).unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                Ok(Self {
+                    method: McpMethod::ToolsCall,
+                    id,
+                    tool_name: Some(tool_name),
+                    arguments,
+                })
+            }
+            _ => Ok(Self {
+                method: McpMethod::Other,
+                id,
+                tool_name: None,
+                arguments: Vec::new(),
+            }),
+        }
     }
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolsListChange {
+    DescriptionRewrite { tool: String },
+    SmuggledParams { tool: String },
+    ToolAdded { tool: String },
+    ToolRemoved { tool: String },
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+pub fn diff_tools_list(
+    locked: &BTreeMap<String, ToolSchema>,
+    candidate: &ToolsListResult,
+) -> Vec<ToolsListChange> {
+    let mut changes = Vec::new();
+    let mut seen: BTreeMap<String, &ToolSchema> = BTreeMap::new();
+    for schema in &candidate.tools {
+        seen.insert(schema.name.clone(), schema);
+    }
+    for (name, old) in locked {
+        let Some(new) = seen.get(name) else {
+            changes.push(ToolsListChange::ToolRemoved { tool: name.clone() });
+            continue;
+        };
+        if new.description != old.description {
+            changes.push(ToolsListChange::DescriptionRewrite { tool: name.clone() });
+        }
+        if schema_param_keys(&new.input_schema) != schema_param_keys(&old.input_schema) {
+            changes.push(ToolsListChange::SmuggledParams { tool: name.clone() });
+        }
+    }
+    for name in seen.keys() {
+        if !locked.contains_key(name) {
+            changes.push(ToolsListChange::ToolAdded { tool: name.clone() });
+        }
+    }
+    changes
+}
+
+// see: cans/plugins/tool-guard.md#Immutable-schema-locking
+fn schema_param_keys(input_schema: &[u8]) -> Vec<String> {
+    let Ok(value) = serde_json::from_slice::<Value>(input_schema) else {
+        return vec!["<unparseable>".to_string()];
+    };
+    let Some(properties) = value
+        .get("properties")
+        .and_then(|properties| properties.as_object())
+    else {
+        return Vec::new();
+    };
+    let mut keys: Vec<String> = properties
+        .iter()
+        .map(|(name, property)| {
+            let kind = property
+                .get("type")
+                .and_then(|kind| kind.as_str())
+                .unwrap_or("?");
+            format!("{name}:{kind}")
+        })
+        .collect();
+    keys.sort();
+    keys
+}
+
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ByteRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TaintSet {
+    ranges: Vec<ByteRange>,
+}
+
+impl TaintSet {
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn mark(&mut self, range: ByteRange) {
+        if range.end > range.start && !self.ranges.contains(&range) {
+            self.ranges.push(range);
+        }
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn propagate(&self, into_len: usize) -> Vec<ByteRange> {
+        self.ranges
+            .iter()
+            .filter_map(|range| {
+                let start = range.start.min(into_len);
+                let end = range.end.min(into_len);
+                if end > start {
+                    Some(ByteRange { start, end })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn overlaps(&self, range: ByteRange) -> bool {
+        self.ranges
+            .iter()
+            .any(|tainted| range.start < tainted.end && tainted.start < range.end)
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuditEvent {
+    pub kind: String,
+    pub tool: String,
+    pub detail: String,
 }
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
@@ -47,11 +223,41 @@ pub struct ToolsListResult {
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
 pub fn decode_tools_list(payload: &[u8]) -> Result<ToolsListResult, PluginError> {
-    // L3-GAP: [governance_tools]: decode the JSON Lines tools/list result envelope per cans/plugins/mcp.md; slop: tools/list envelope undecoded, catalog stays empty, lock faked
-    Err(PluginError::Halt(format!(
-        "tools/list envelope decode pending (L3): {} bytes",
-        payload.len()
-    )))
+    let response = parse_json_rpc_response(payload)?;
+    let Some(result) = response.result else {
+        return Err(PluginError::Halt(
+            "tools/list response carries no result envelope".into(),
+        ));
+    };
+    let Some(tools) = result.get("tools").and_then(|tools| tools.as_array()) else {
+        return Err(PluginError::Halt(
+            "tools/list result carries no tools array".into(),
+        ));
+    };
+    let mut out = ToolsListResult { tools: Vec::new() };
+    for tool in tools {
+        let name = tool
+            .get("name")
+            .and_then(|name| name.as_str())
+            .ok_or_else(|| PluginError::Halt("tools/list entry carries no string name".into()))?;
+        let description = tool
+            .get("description")
+            .and_then(|description| description.as_str())
+            .ok_or_else(|| {
+                PluginError::Halt("tools/list entry carries no string description".into())
+            })?;
+        let input_schema = match tool.get("inputSchema") {
+            Some(schema) => serde_json::to_vec(schema).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        out.tools.push(ToolSchema {
+            name: name.to_string(),
+            description: description.to_string(),
+            input_schema,
+            signature: Vec::new(),
+        });
+    }
+    Ok(out)
 }
 
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
@@ -91,8 +297,10 @@ pub trait ToolRegistryService: Send + Sync {
 pub struct ToolRegistry {
     schemas: Mutex<BTreeMap<String, ToolSchema>>,
     taint: Mutex<HashMap<String, ToolTaint>>,
+    taint_ranges: Mutex<HashMap<String, TaintSet>>,
     locked_digest: Mutex<Option<[u8; 32]>>,
     approvals: Mutex<Vec<ApprovalRequest>>,
+    audit: Mutex<Vec<AuditEvent>>,
 }
 
 impl ToolRegistry {
@@ -124,16 +332,91 @@ impl ToolRegistry {
         for schema in &advertisement.tools {
             candidate.insert(schema.name.clone(), schema.clone());
         }
-        if self.lock_digest()?.is_some()
-            && canonical_catalog(&candidate) != canonical_catalog(&schemas)
-        {
-            return Err(PluginError::Halt(
-                "ESecurityViolation: tool catalog mutation after the locked advertisement"
-                    .to_string(),
-            ));
+        if self.lock_digest()?.is_some() {
+            let changes = diff_tools_list(&schemas, advertisement);
+            if !changes.is_empty() {
+                let detail = changes
+                    .iter()
+                    .map(|change| format!("{change:?}"))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                for change in &changes {
+                    let tool = match change {
+                        ToolsListChange::DescriptionRewrite { tool }
+                        | ToolsListChange::SmuggledParams { tool }
+                        | ToolsListChange::ToolAdded { tool }
+                        | ToolsListChange::ToolRemoved { tool } => tool.clone(),
+                    };
+                    self.record_audit(AuditEvent {
+                        kind: format!("{change:?}"),
+                        tool,
+                        detail: detail.clone(),
+                    })?;
+                }
+                return Err(PluginError::Halt(format!(
+                    "ESecurityViolation: tool catalog mutation after the locked advertisement: {detail}"
+                )));
+            }
+            return Ok(());
         }
         *schemas = candidate;
         Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub fn record_audit(&self, event: AuditEvent) -> Result<(), PluginError> {
+        let mut audit = self
+            .audit
+            .lock()
+            .map_err(|_| PluginError::Halt("tool audit table poisoned".into()))?;
+        audit.push(event);
+        Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub fn drain_audit_events(&self) -> Vec<AuditEvent> {
+        match self.audit.lock() {
+            Ok(mut audit) => std::mem::take(&mut *audit),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn propagate_byte_range_taints(
+        &self,
+        tool: &str,
+        from: &[ByteRange],
+        into_len: usize,
+    ) -> Result<Vec<ByteRange>, PluginError> {
+        let source = TaintSet {
+            ranges: from.to_vec(),
+        };
+        let propagated = source.propagate(into_len);
+        if propagated.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut ranges = self
+            .taint_ranges
+            .lock()
+            .map_err(|_| PluginError::Halt("tool taint-range table poisoned".into()))?;
+        let entry = ranges.entry(tool.to_string()).or_default();
+        for range in &propagated {
+            entry.mark(*range);
+        }
+        self.mark_tainted(tool)?;
+        Ok(propagated)
+    }
+
+    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
+    pub fn taint_ranges(&self, tool: &str) -> Result<Vec<ByteRange>, PluginError> {
+        let ranges = self
+            .taint_ranges
+            .lock()
+            .map_err(|_| PluginError::Halt("tool taint-range table poisoned".into()))?;
+        Ok(ranges
+            .get(tool)
+            .map(|set| set.propagate(usize::MAX))
+            .unwrap_or_default())
     }
 
     pub async fn lock_catalog(&self) -> Result<(), PluginError> {
@@ -202,7 +485,7 @@ impl ToolRegistryService for ToolRegistry {
             .approvals
             .lock()
             .map_err(|_| PluginError::Halt("approval ledger poisoned".into()))?;
-        // L3-GAP: [gt_03_taint_tracking_mutation_suspend]: verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md; slop: approval binds without hash check, mutated payload rides approval
+        // L3-GAP: [governance_tools]: verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md; slop: approval binds without hash check, mutated payload rides approval
         approvals.push(ApprovalRequest {
             tool: request.tool.clone(),
             canonical_arguments: request.canonical_arguments.clone(),

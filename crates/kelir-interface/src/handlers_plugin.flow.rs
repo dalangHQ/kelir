@@ -251,6 +251,14 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self.plugins.capability()
     }
 
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn cap_infallible<P: 'static>(&self) -> &P
+    where
+        Plugins: Has<P>,
+    {
+        self.plugins.get()
+    }
+
     // see: cans/02-plugin-model.md#Static-dispatch
     pub fn erased(&self) -> HandlerCtx<(), ()> {
         let mut erased = HandlerCtx::new(self.session_id, self.pid, (), self.params_buffer.clone())

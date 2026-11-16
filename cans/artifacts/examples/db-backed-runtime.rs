@@ -7,12 +7,12 @@ use std::env;
 use kelir::Deserialize;
 
 use kelir::{
-    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil,
-    HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin,
-    NoParams, PostExecAction, ReceiptConfig, SqlProxyHandle, TransactionConfig,
-    TransactionHandle, TransactionPlugin, TrapFilter, Unsealed, Verdict, VmConfig,
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{Errno, KelirPlugin, PluginError},
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil, HandlerCtx,
+    Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin, NoParams,
+    PostExecAction, ReceiptConfig, SqlProxyCtx, SqlProxyHandle, TransactionConfig, TransactionCtx,
+    TransactionHandle, TransactionPlugin, TrapFilter, Unsealed, Verdict, VmConfig,
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
@@ -53,6 +53,10 @@ fn build_runtime(
 
     // see: cans/plugins/ledger.md#Merkle-WAL
     let ledger_plugin = LedgerPlugin::new(true).with_config(LedgerConfig {
+        hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
+        record_pre_redaction_hash: false,
+        include_hook_spans_in_root: false,
+        witness_cosigning_endpoint: None,
         store: "sqlite://.kelir/migrate-audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
@@ -75,6 +79,7 @@ fn build_runtime(
     });
 
     KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -83,6 +88,7 @@ fn build_runtime(
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -90,6 +96,10 @@ fn build_runtime(
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -179,7 +189,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .ok_or("transaction capability missing")?;
 
     let mut tx = tx_handle
-        .scope("migrate-42", vec!["/workspace/migrations".into()], vec!["migrate_schema".into()])
+        .scope(
+            "migrate-42",
+            vec!["/workspace/migrations".into()],
+            vec!["migrate_schema".into()],
+        )
         .await?;
     let savepoint = tx.savepoint().await?;
 
@@ -187,6 +201,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .spawn(
             "python",
             &["-m", "app.migrate", "--schema", params.schema_name.as_str()],
+            None,
         )
         .await?;
     if run.exit_code != 0 {
@@ -204,12 +219,21 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .cap::<LedgerHandle>()
         .ok_or("ledger capability missing")?;
 
+    let delta = ledger.get_causal_delta_from_parent().await?;
     let final_receipt = ledger
         .finalize(FinalizeRequest {
-            include_delta: Some(ledger.get_causal_delta_from_parent().await?),
+            include_delta: Some(delta.clone()),
             include_merkle_root: true,
         })
         .await?;
+    // see: cans/10-attestation.md#Execution-receipts
+    // WS-E acceptance: the causal delta the receipt was finalized over
+    // appears in the finalized receipt itself.
+    assert!(
+        final_receipt.causal_delta.is_some(),
+        "finalized receipt carries no causal delta"
+    );
+    assert_eq!(final_receipt.causal_delta.as_ref(), Some(&delta));
     eprintln!(
         "[kelir] merkle={} jws={}…",
         final_receipt.merkle_root,

@@ -86,11 +86,11 @@
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Finalize pin (SSOT-A1)
       - finalize(FinalizeRequest { include_delta, include_merkle_root })
-      - Returns FinalReceipt { merkle_root, signed_jws }
-      - include_delta is a required CausalDelta
-      - TS allows a missing/null includeDelta; it is the outlier
-      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:91-102
-      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:160
+      - Returns FinalReceipt { merkle_root, signed_jws, causal_delta }
+      - include_delta is Option<CausalDelta>; None finalizes without a delta
+      - The finalized receipt carries the delta it was closed over in causal_delta
+      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:98-109
+      - See: crates/kelir-plugins/plugin-ledger/src/lib.rs:175
     - Return errno and rejection behavior (ledger)
       - Pure observer: never returns Action::Drop or blocks inline execution
       - Disk-full on WAL partition triggers hypervisor LifecycleRequest::Suspend(ResourcePressure)

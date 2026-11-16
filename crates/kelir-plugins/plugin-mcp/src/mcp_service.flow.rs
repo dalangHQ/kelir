@@ -11,10 +11,13 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
 use kelir_interface::runtime_block::block_on;
 
+use crate::ast::{JsonRpcId, parse_json_rpc_request};
+
 // see: cans/plugins/mcp.md#MCP-hook-wiring
 #[derive(Default)]
 struct McpServiceState {
     advertised_tools: Mutex<Vec<String>>,
+    last_request_id: Mutex<Option<JsonRpcId>>,
 }
 
 // see: cans/plugins/mcp.md#Service-exports-(mcp)
@@ -47,7 +50,22 @@ impl McpEndpointService {
     }
 
     // see: cans/plugins/mcp.md#MCP-contract
+    pub fn last_request_id(&self) -> Result<Option<JsonRpcId>, PluginError> {
+        Ok(self
+            .state
+            .last_request_id
+            .lock()
+            .map_err(|_| PluginError::Halt("mcp transaction table poisoned".into()))?
+            .clone())
+    }
+
+    // see: cans/plugins/mcp.md#MCP-contract
     pub async fn route_request(&self, payload: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let request = parse_json_rpc_request(payload)?;
+        if let Ok(mut last) = self.state.last_request_id.lock() {
+            *last = request.id.clone();
+        }
+        let _ = request;
         // L3-GAP: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed
         Err(PluginError::Halt(format!(
             "MCP_CONSOLE transport routing pending (L3): {} bytes",
@@ -96,16 +114,45 @@ impl StreamFrameSink for McpCtxStreamSink {
     }
 }
 
+// see: cans/plugins/mcp.md#MCP-contract
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpConfig {
+    pub max_frame_bytes: u64,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            max_frame_bytes: 16_777_216,
+        }
+    }
+}
+
+impl McpConfig {
+    pub fn new(max_frame_bytes: u64) -> Self {
+        Self { max_frame_bytes }
+    }
+}
+
 // see: cans/plugins/mcp.md#Plugin-mcp
 #[derive(Clone, PluginDeps)]
 pub struct McpPlugin {
     pub service: McpEndpointService,
+    pub config: McpConfig,
 }
 
 impl McpPlugin {
     pub fn new() -> Self {
         Self {
             service: McpEndpointService::new(),
+            config: McpConfig::default(),
+        }
+    }
+
+    pub fn with_config(config: McpConfig) -> Self {
+        Self {
+            service: McpEndpointService::new(),
+            config,
         }
     }
 }

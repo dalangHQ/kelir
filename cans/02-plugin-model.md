@@ -246,7 +246,7 @@
       - Hook-return pin (SSOT-A1): one Action enum is canonical
         - Type aliases, not split enums: Verdict and FilterAction are aliases of Action
         - Old call sites keep resolving; new code writes Action directly
-        - No per-ring aliases beyond the two historical names
+        - No per-ring aliases beyond Verdict and FilterAction
       - PluginError-scope pin (SSOT-A1)
         - Err(PluginError::*) is reserved for "I broke": panic, I/O, invariant violation
         - A plugin that wants to deny returns Action::Drop { errno, reason }
@@ -670,7 +670,7 @@
         - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
           - The Rust type stays for the profile facade's unpack path
           - Live Rust unpack() returns an empty vec
-            - TODO (L3) [plugin_engine] in builder_sdk.flow.rs
+            - L3 deferral [plugin_engine] in builder_sdk.flow.rs
             - The profile-facade flattening that consumes it is L3 work, not pinned here
       - (j) Named L3 blockers (no open gap is left unnamed)
         - Lock-broker globs/nonBlocking: sp_15_host_inode_lock_broker_flock_bridge
@@ -680,10 +680,10 @@
           - PyO3 storage_bridge.rs:61-66 extracts bool only
           - PyO3 :162-166 hardcodes non_blocking false
           - NAPI storage_bridge.rs:37 carries the sp_15 TODO marker
-          - flock delegation is TODO (L3) in crates/kelir-storage/src/lock_broker.run.rs:128,180,188
+          - flock delegation is an L3 deferral in crates/kelir-storage/src/lock_broker.run.rs:128,180,188
         - CompositeBundle unpack: no dedicated case id exists in the register
           - Tracked under the plugin_engine code_only domain group
-          - TODO (L3) [plugin_engine] at builder_sdk.flow.rs:194; unpack returns an empty vec
+          - L3 deferral [plugin_engine] at builder_sdk.flow.rs:194; unpack returns an empty vec
           - Mounting one stays unsupported; the type stays for the profile facade
     - Rust generic arity (pinned; the contract A3 implements)
       - KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>
@@ -745,8 +745,6 @@
         - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
         - Verdict (SSOT-A1; Action aliases on lifecycle rings): .on_vm_init / .on_vm_ready / .on_vm_shutdown
           - Are live ring verbs in all three SDKs
-          - Artifact prose calling them superseded is stale
-          - A2 corrects the artifact; the spec keeps the verbs
           - See: cans/artifacts/code/rust-plugin-builder.rs
           - See: cans/artifacts/code/rust-plugin-builder-scopes.rs
         - Lifecycle commit: .on_pre_commit, .on_post_commit, .on_host_preempt

@@ -42,7 +42,9 @@ use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
     StepVerdict, TrapEvent, Verdict,
 };
-use kelir_interface::telemetry::{ExecutionReceipt, HookSpan, ReceiptStore, VerdictKind};
+use kelir_interface::telemetry::{
+    ExecutionReceipt, HookPolicyDescriptor, HookSpan, ReceiptStore, VerdictKind,
+};
 use kelir_interface::terminal::LogStream;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 

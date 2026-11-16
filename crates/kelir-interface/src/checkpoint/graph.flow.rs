@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::driver_interface::SnapshotDescriptor;
-use crate::telemetry::CausalDelta;
+use crate::telemetry::{CausalDelta, StepLineageEntry};
 
 // see: cans/10-attestation.md#Step-evaluation-loop
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -82,6 +82,22 @@ impl ManifestGraph {
             current = self.nodes.get(&id).and_then(|node| node.parent);
         }
         chain
+    }
+
+    // see: cans/10-attestation.md#Step-evaluation-loop
+    pub fn step_lineage(&self, node_id: u64) -> Vec<StepLineageEntry> {
+        self.lineage(node_id)
+            .into_iter()
+            .map(|id| {
+                let parent = self.nodes.get(&id).and_then(|node| node.parent);
+                StepLineageEntry {
+                    node_id: id,
+                    parent_node_id: parent,
+                    reviewer_id: None,
+                    reviewer_signature: None,
+                }
+            })
+            .collect()
     }
 }
 

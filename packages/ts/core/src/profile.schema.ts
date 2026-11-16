@@ -21,7 +21,19 @@ const ProfileSchema = Type.Object(
     session: Type.Optional(
       Type.Object({
         id: Type.Optional(Type.String()),
+        tenant_id: Type.Optional(Type.String()),
         topology: Type.Optional(Type.String()),
+        isolation_envelope: Type.Optional(
+          Type.Object({
+            enforce_openat2_beneath: Type.Optional(Type.Boolean()),
+            cgroup_parent: Type.Optional(Type.String()),
+          }),
+        ),
+        budget: Type.Optional(
+          Type.Object({
+            exec_seconds: Type.Optional(Type.Integer()),
+          }),
+        ),
         compute: Type.Optional(
           Type.Object({
             vcpus: Type.Optional(Type.Integer()),
@@ -84,6 +96,8 @@ const ProfileSchema = Type.Object(
             max_exec_slots: Type.Optional(Type.Integer()),
             hide_pid: Type.Optional(Type.Integer()),
             anti_toctou_cgroups: Type.Optional(Type.Boolean()),
+            granular_task_freeze: Type.Optional(Type.Boolean()),
+            rejection_mode: Type.Optional(Type.String()),
           }),
         ),
         driver: Type.Optional(

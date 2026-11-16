@@ -458,39 +458,6 @@ entries:
   code_todos:
   - packages/ts/core/src/builder.lifecycle.ts
   - packages/ts/core/src/session.lifecycle.ts
-- case_id: gt_01_jsonrpc_tool_call_interposition
-  status: red
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - McpFrame::decode returns the default frame (method Other, no tool name), so tools/call is never classified and the call is rejected with Halt EPERM before any policy runs
-  - Tool asserted executed while the guard never inspected the arguments before the guest process launched
-  - Frames classified by substring on the raw bytes instead of JSON-RPC 2.0 decode, so a tools/list frame is treated as tools/call
-  must_not:
-  - Classify frames by substring instead of JSON-RPC 2.0 decode
-  - Assert execution without the guard hook firing first
-  acceptance:
-  - tool_guard_interception_count() == 1 for the tools/call frame
-  - interception_payload_tool_name() == 'execute_command' with event tool_guard.tool_call_intercepted
-  code_todos:
-  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.flow.rs
-- case_id: gt_03_taint_tracking_mutation_suspend
-  status: red
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - evaluate_tool_call returns Verdict::Pass unconditionally, so the tainted write_file executes without approval
-  - Suspend returned but the guest file is still written before the approval arrives
-  - Approval binds to the tool name only instead of the canonical payload hash, so a mutated payload rides the approval
-  must_not:
-  - Return Verdict::Pass for a mutating tool under tainted state
-  - Suspend without binding the approval to the canonical payload hash
-  acceptance:
-  - 'Verdict is Suspend { until: SuspendUntil::Approval }'
-  - fs::exists_in_guest('deploy.sh') == false with event tool_guard.suspended_for_approval
-  code_todos:
-  - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
-  - crates/kelir-plugins/plugin-tool-guard/src/service_tool_guard.flow.rs
 - case_id: gt_04_token_bucket_call_quota_etoolquota
   status: red
   domain: governance_tools
@@ -585,21 +552,6 @@ entries:
   - Error message contains 'Policy denied' and the connection remains open, event tool_guard.tool_dropped
   code_todos:
   - crates/kelir-plugins/plugin-tool-guard/src/lib.rs
-- case_id: gt_10_tool_call_depth_recursion_ceiling
-  status: red
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - All 51 calls rejected with Halt EPERM from the decode stub, so the ceiling is never exercised and zero of the first 50 pass
-  - 51st call allowed because the per-trace count resets on every call
-  - Ceiling enforced with ECYCLICREWRITE instead of ETOOLQUOTA, conflating the invocation ceiling with cyclic-rewrite rejection
-  must_not:
-  - Reject the first 50 calls with Halt EPERM from the decode stub
-  - Reject the 51st call with ECYCLICREWRITE instead of ETOOLQUOTA
-  acceptance:
-  - First 50 calls in the trace pass and the 51st returns Verdict::Drop with errno ETOOLQUOTA
-  - Receipt fault_reason ETOOLQUOTA with event tool_guard.depth_exceeded
-  code_todos: []
 - case_id: gt_11_out_of_band_human_approval_resume
   status: gap
   domain: governance_tools
@@ -614,21 +566,6 @@ entries:
   acceptance:
   - vcpu_state_was_parked() == true while suspended
   - tool_execution_res.is_ok() == true after approval with event tool_guard.approved_and_resumed
-  code_todos: []
-- case_id: gt_12_model_controlled_flag_taint_override
-  status: red
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - evaluate_tool_call returns Verdict::Pass without consulting taint, so override_taint:true in the model parameters clears the host gate
-  - Taint cleared from guest arguments, so a prompt-injected force=true untaints write_file
-  - Verdict Suspend asserted while registry.taint('write_file') reads clean, so the gate and the state disagree
-  must_not:
-  - Accept override_taint:true from model parameters
-  - Let in-guest instructions clear host-tracked taint
-  acceptance:
-  - Verdict is Suspend regardless of the override_taint parameter
-  - registry.taint('write_file') == Ok(ToolTaint::Tainted) with event tool_guard.taint_override_ignored
   code_todos: []
 - case_id: gv_02_out_of_scope_credential_denial
   status: gap
@@ -678,21 +615,6 @@ entries:
   - keyring_is_mlocked() == true with event vault.buffer_zeroized
   code_todos:
   - crates/kelir-plugins/plugin-vault/src/service_vault.flow.rs
-- case_id: gv_08_external_egress_sidecar_tls_relay
-  status: gap
-  domain: governance_vault
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - TLS terminated inside supervisor memory, so a supervisor heap dump exposes the plaintext enterprise token
-  - Sidecar implemented as an in-process thread instead of an out-of-tree daemon, so the secret still transits supervisor memory
-  - Relay asserted by the HTTP 200 while the supervisor heap is never scanned for the secret
-  must_not:
-  - Terminate TLS inside supervisor memory
-  - Implement the sidecar as an in-process thread
-  acceptance:
-  - supervisor_memory_contains('super_secret_token_123') == false during egress
-  - frames_outbound == 1 with event vault.sidecar_relayed
-  code_todos: []
 - case_id: gv_10_sigv4_signed_header_synthesis
   status: gap
   domain: governance_vault

@@ -29,10 +29,25 @@ pub struct ContainerCtx {
     pub(crate) service: Arc<SharedContainerService>,
 }
 
+// see: cans/plugins/container.md#Service-exports-(container)
+pub type ContainerHandle = ContainerCtx;
+
 impl ContainerCtx {
     // see: cans/02-plugin-model.md#KelirPlugin-trait
     pub fn service(&self) -> &Arc<SharedContainerService> {
         &self.service
+    }
+
+    // see: cans/plugins/container.md#Plugin-container
+    // see: cans/plugins/container.md#Service-exports-(container)
+    pub async fn ingest_image(&self, tarball: &Path) -> Result<String, PluginError> {
+        std::fs::metadata(tarball).map_err(|err| {
+            PluginError::Halt(format!(
+                "ENOENT: OCI tarball {} is not readable: {err}",
+                tarball.display()
+            ))
+        })?;
+        self.service.ingest_cached_image(tarball).await
     }
 }
 

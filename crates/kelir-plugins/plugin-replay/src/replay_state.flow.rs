@@ -37,6 +37,8 @@ struct ReplayState {
     sample_floor_ns: Mutex<u64>,
     sample_regress: Mutex<Option<String>>,
     rng_position: Mutex<Option<EntropyStreamPosition>>,
+    ns_per_instruction: Mutex<Option<u32>>,
+    effective_entropy_seed: Mutex<Option<u64>>,
 }
 
 impl ReplayState {
@@ -50,6 +52,8 @@ impl ReplayState {
             sample_floor_ns: Mutex::new(0),
             sample_regress: Mutex::new(None),
             rng_position: Mutex::new(None),
+            ns_per_instruction: Mutex::new(None),
+            effective_entropy_seed: Mutex::new(None),
         }
     }
 
@@ -205,6 +209,16 @@ impl ReplayCtx {
     }
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    pub fn ns_per_instruction(&self) -> Result<Option<u32>, PluginError> {
+        Ok(*ReplayState::lock_slot(&self.state.ns_per_instruction)?)
+    }
+
+    // see: cans/plugins/replay.md#Deterministic-RNG
+    pub fn effective_entropy_seed(&self) -> Result<Option<u64>, PluginError> {
+        Ok(*ReplayState::lock_slot(&self.state.effective_entropy_seed)?)
+    }
+
+    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     pub async fn step_due_windows(&self, ctx: &mut LifecycleCtx<'_>) -> Result<u64, PluginError> {
         let due = self.state.take_due_windows()?;
         for (index, retired_instructions) in due.iter().enumerate() {
@@ -279,15 +293,39 @@ impl LifecycleParticipant for ReplayPlugin {
             ));
         }
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
-        if !self.config.network_isolation {
+        if !self.config.network_isolation || !ctx.config.network_off {
             return Err(PluginError::Halt(
                 "replay mode requires network isolation (network: off)".into(),
             ));
         }
+        // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+        if !ctx.config.deterministic_clock {
+            return Err(PluginError::Halt(
+                "replay mode requires deterministic_clock".into(),
+            ));
+        }
+        // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
+        if ctx.config.pinned_clocksource.as_deref() != Some("kvm-clock") {
+            return Err(PluginError::Halt(
+                "replay mode requires pinned_clocksource kvm-clock".into(),
+            ));
+        }
+        // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+        if ctx.config.preemption_grace_ms != 0 {
+            return Err(PluginError::Halt(
+                "replay mode requires preemption_grace_ms 0".into(),
+            ));
+        }
+        *ReplayState::lock_slot(&self.state.ns_per_instruction)? = ctx.config.ns_per_instruction;
+        let effective_seed = ctx
+            .config
+            .entropy_seed
+            .unwrap_or(self.config.deterministic_rng_seed);
+        *ReplayState::lock_slot(&self.state.effective_entropy_seed)? = Some(effective_seed);
         // see: cans/plugins/replay.md#Deterministic-RNG
         if let Err(err) = ctx
             .set_entropy_backend(EntropyBackend::SeededChaCha20 {
-                seed: self.config.deterministic_rng_seed,
+                seed: effective_seed,
             })
             .await
         {

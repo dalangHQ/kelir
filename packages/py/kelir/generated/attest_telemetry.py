@@ -163,6 +163,26 @@ class HookSpan(BaseModel):
     ordinal: int = 0
 
 
+class HookPolicyDescriptor(BaseModel):
+    plugin: str = ""
+    ring: str = ""
+    verdict_kind: VerdictKind = Field(default_factory=VerdictKindPass)
+    ordinal: int = 0
+
+
+class MaskedRecord(BaseModel):
+    record: str = ""
+    pre_redaction_blake3: str | None = None
+    masked_bytes: int = 0
+
+
+class StepLineageEntry(BaseModel):
+    node_id: int = 0
+    parent_node_id: int | None = None
+    reviewer_id: str | None = None
+    reviewer_signature: str | None = None
+
+
 class FsVfsExt(BaseModel):
     served_inodes: int = 0
     roots: list[str] = Field(default_factory=list)
@@ -189,6 +209,9 @@ class ExecutionReceipt(BaseModel):
     egress_dropped_bytes: int = 0
     extensions: list[ReceiptExtension] = Field(default_factory=list)
     hook_trace: list[HookSpan] = Field(default_factory=list)
+    hook_policy_descriptors: list[HookPolicyDescriptor] = Field(default_factory=list)
+    masked_records: list[MaskedRecord] = Field(default_factory=list)
+    step_lineage: list[StepLineageEntry] = Field(default_factory=list)
     fs_vfs_ext: FsVfsExt | None = None
     net_l7_sql_ext: NetL7SqlExt | None = None
 

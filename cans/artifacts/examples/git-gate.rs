@@ -84,6 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut session = KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 1024,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -92,6 +93,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -99,6 +101,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -143,17 +149,23 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Test 1: Forced push gets stripped and disarmed via Verdict::Patch
     let push_run = session
-        .spawn("git", &["push", "--force", "origin", "main"])
+        .spawn("git", &["push", "--force", "origin", "main"], None)
         .await?;
     eprintln!("[kelir] git push --force -> exit={}", push_run.exit_code);
     assert_eq!(push_run.exit_code, 0);
 
     // Test 2: Commit directly mentioning protected branch gets aborted via Verdict::Abort
     let commit_run = session
-        .spawn("git", &["commit", "-m", "illegal change to master"])
+        .spawn("git", &["commit", "-m", "illegal change to master"], None)
         .await?;
-    eprintln!("[kelir] git commit protected -> exit={}", commit_run.exit_code);
-    assert_ne!(commit_run.exit_code, 0, "protected branch commit was not gated");
+    eprintln!(
+        "[kelir] git commit protected -> exit={}",
+        commit_run.exit_code
+    );
+    assert_ne!(
+        commit_run.exit_code, 0,
+        "protected branch commit was not gated"
+    );
 
     session.stop().await?;
     Ok(())

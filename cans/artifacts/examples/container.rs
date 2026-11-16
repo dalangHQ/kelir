@@ -6,16 +6,17 @@
 use std::path::Path;
 
 use kelir::{
+    driver_interface::{DriverPolicy, WxPolicy},
     ContainerConfig, ContainerCtx, ContainerHandle, ContainerPlugin, HCons, HNil, Host,
     KelirBuilder, NoParams, Unsealed, VmConfig,
-    driver_interface::{DriverPolicy, WxPolicy},
 };
 
 const OCI_TARBALL: &str = "./fixtures/oci-hello-world.tar";
 
-fn container_builder(
-) -> KelirBuilder<Host, Unsealed, (), HNil, HCons<ContainerCtx, HNil>, NoParams> {
+fn container_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HCons<ContainerCtx, HNil>, NoParams>
+{
     KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -24,6 +25,7 @@ fn container_builder(
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -31,6 +33,10 @@ fn container_builder(
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -66,7 +72,15 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let run = session
         .spawn(
             "podman",
-            &["run", "--rm", "--rootless", image, "echo", "hello from the microVM"],
+            &[
+                "run",
+                "--rm",
+                "--rootless",
+                &image,
+                "echo",
+                "hello from the microVM",
+            ],
+            None,
         )
         .await?;
     if run.exit_code != 0 {
@@ -84,9 +98,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 "--privileged",
                 "--device",
                 "/dev/kvm",
-                image,
+                &image,
                 "true",
             ],
+            None,
         )
         .await?;
     if escape.exit_code == 0 {

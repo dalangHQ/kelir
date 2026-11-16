@@ -10,7 +10,7 @@ pub mod handshake;
 #[path = "mesh_state.flow.rs"]
 pub mod mesh_state;
 
-pub use mesh_state::{MeshCtx, MeshPlugin};
+pub use mesh_state::{MeshCtx, MeshHandle, MeshPlugin, VectorClock};
 
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -8,7 +8,9 @@ pub mod coordination;
 pub mod service_transaction;
 
 pub use coordination::{TransactionCtx, TransactionPlugin};
-pub use service_transaction::{Savepoint, TransactionHandle, TransactionScope, TransactionService};
+pub use service_transaction::{
+    Savepoint, TransactionHandle, TransactionScope, TransactionScopeHandle, TransactionService, Tx,
+};
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
 #[derive(Clone, Debug)]

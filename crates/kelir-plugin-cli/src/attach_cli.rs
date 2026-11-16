@@ -33,7 +33,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     };
     let session_id = parse_session_id(id_arg)?;
     let db = kelir_catalog::CatalogDb::open(catalog_path()?).map_err(CatalogError::Sqlite)?;
-    let Some(row) = db.lookup_session(&session_id)? else {
+    let Some(row) = db.lookup_session_any_tenant(&session_id)? else {
         return Err(format!("attach: no catalog row for session `{id_arg}`").into());
     };
     if row.lease_kind == LeaseKind::Lease

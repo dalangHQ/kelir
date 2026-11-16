@@ -13,3 +13,4 @@ mod real_checkpoint;
 mod step_slot;
 
 pub use crate::checkpoint::checkpoint_ops;
+pub use kelir_interface::checkpoint::step_dag::{StepDag, StepDagConfig, StepDagError};

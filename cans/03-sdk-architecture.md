@@ -113,8 +113,6 @@
             - for that plugin; no session.ext(T)
           - Inter-plugin capabilities resolve via c.cap::<T>() (Rust),
             - c.cap("<pluginKey>") (TS), c.cap("<plugin_key>") (Python)
-          - Deprecated pre-unification forms: c.ctx::<T>() (Rust),
-            - c.<pluginKey> (TS), c.cap.<plugin_key> (Python)
             - see: #Service-lookup-across-languages for the table
       - Unified verdict surface: see: 02-plugin-model.md#Unified-verdict
         - One spelling in Rust and TS (method-call form):

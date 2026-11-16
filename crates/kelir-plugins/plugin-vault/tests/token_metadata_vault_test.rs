@@ -8,7 +8,7 @@ use kelir_plugin_testkit::LoopbackStream;
 use kelir_plugin_testkit::block_on;
 use kelir_plugin_testkit::handlers_testkit::handler_ctx;
 use plugin_vault::service_vault::{
-    CredentialBroker, CredentialBrokerService, TokenRequest, VaultError,
+    CarrierInjector, CredentialBroker, CredentialBrokerService, TokenRequest, VaultError,
 };
 use plugin_vault::{MetadataEndpoint, VaultConfig, VaultPlugin};
 
@@ -221,6 +221,35 @@ fn gv_11_mtls_client_cert_bundle_issuance() -> Result<(), String> {
     assert!(
         ttl <= 900,
         "mTLS bundle validity {ttl}s exceeds the 900s ceiling, got: {text}"
+    );
+    Ok(())
+}
+
+// see: cans/artifacts/test-plan/cases/governance_vault/gv_08_in_ring_carrier_secret_injection.yaml#case_id
+#[test]
+fn gv_08_in_ring_carrier_secret_injection() -> Result<(), String> {
+    let broker = bound_broker(vec![descriptor("openai_key", "api.openai.com")])?;
+    let injector = CarrierInjector::new(broker);
+    let injected = block_on(
+        injector
+            .inject(b"GET /v1/models HTTP/1.1\r\nAuthorization: Bearer vault://openai_key\r\n\r\n"),
+    )
+    .map_err(|err| format!("{err:?}"))?;
+    let text = String::from_utf8(injected).map_err(|err| format!("{err:?}"))?;
+    assert!(
+        !text.contains("vault://"),
+        "placeholder leaked through unsubstituted: {text}"
+    );
+    let token = text
+        .split("Authorization: Bearer ")
+        .nth(1)
+        .and_then(|rest| rest.split("\r\n").next())
+        .unwrap_or("");
+    assert!(!token.is_empty(), "issued token is empty: {text}");
+    let err = block_on(injector.inject(b"Authorization: Bearer vault://no_such_key\r\n"));
+    assert!(
+        matches!(err, Err(VaultError::Enodata(_))),
+        "unregistered placeholder must fail closed with ENODATA, got {err:?}"
     );
     Ok(())
 }

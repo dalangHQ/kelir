@@ -51,6 +51,7 @@ clean-old:
 # check-spec is the spec gate only (refs + structure + redundancy).
 # Coverage gates live elsewhere; see 15-operations.md#Coverage-gates.
 # Flag string lives here: CI calls just check-spec, never raw cans flags.
+# see: cans/15-operations.md#Spec-gate
 check-spec:
     @cans check --refs-only --json | jq -e '.ok and .exitCode == 0'
     @cans check --json          | jq -e '.ok and .exitCode == 0'
@@ -64,13 +65,62 @@ check-spec-touched:
 check-plugin-coverage:
     ./scripts/check-plugin-coverage.sh
 
+# --action-coverage: every Action variant appears in at least one vector.
+check-action-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --action-coverage
+
+# --l7-stream-coverage: at least one l7-stream-* vector exercises in-ring
+# L7 HTTP/TLS parsing. Live execution behind the vector is L3; the flag
+# and the assertion call site are the L1/L2 wiring. Evidence owner: WS-B1.
+check-l7-stream-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --l7-stream-coverage
+
+# --outbox-coverage: at least one outbox-* vector exercises the egress
+# outbox (release on commit, purge on rollback). Evidence owner: WS-B6/WS-C3.
+check-outbox-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --outbox-coverage
+
+# --step-dag-coverage: at least one step-dag-* vector exercises the
+# branching step DAG (attribution + SoD). Evidence owner: WS-B7.
+check-step-dag-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --step-dag-coverage
+
+# --swarm-mesh-coverage: at least one swarm-mesh-* vector exercises a
+# broadcast/await winner cycle. Evidence owner: WS-B9/WS-C4.
+check-swarm-mesh-coverage:
+    cargo run -p kelir-plugin-cli -- parity run vectors.json --swarm-mesh-coverage
+
+# All four WS-F2 coverage gates in one recipe (each fails closed on missing
+# evidence; see cans/15-operations.md#Coverage-gates).
+check-coverage-gates: check-l7-stream-coverage check-outbox-coverage check-step-dag-coverage check-swarm-mesh-coverage
+
+# --spec-drift: every depth<=1 normative leaf in the patch-series spec files
+# maps to a code symbol or test; drift recorded in scripts/spec-drift-gaps.yaml
+# passes, unrecorded drift fails. See scripts/check-spec-drift.sh.
+# see: cans/15-operations.md#Spec-drift
+check-spec-drift:
+    ./scripts/check-spec-drift.sh
+
+# --examples-run: run the nine patched examples as tests (Rust via the
+# throwaway crate, Python directly, TypeScript via node on compiled output).
+# Hardware tier required for git-gate and hook-matrix-full; emulated Class 2
+# allowed for the rest. See scripts/check-examples-run.sh.
+# see: cans/15-operations.md#Examples-run
+check-examples-run:
+    ./scripts/check-examples-run.sh
+
 # --examples-canonical: cans/artifacts/examples/ is the single canonical home.
 check-examples-canonical:
     ./scripts/check-examples-canonical.sh
 
 # --examples: the canonical examples compile/typecheck in all three languages.
+# see: cans/15-operations.md#Examples-compile
 check-examples:
     ./scripts/check-examples.sh
+
+# --examples-thin: the canonical examples import only the public SDK surface plus the standard library.
+check-examples-thin:
+    ./scripts/check-examples-thin.sh
 
 # --builder-parity: the unified KelirBuilder chain is identical in Rust/TS/Python.
 check-builder-parity:
@@ -89,6 +139,7 @@ check-budgets:
 
 # --maturity: filename level ∈ crate allowed_levels, forbid/structural
 # rules S1-S5 gated by [policy] forbid_mode, placement always hard.
+# see: cans/15-operations.md#Maturity-check
 check-maturity:
     cargo run -p kelir-maturity -- check --strict
 
@@ -123,6 +174,7 @@ check-hygiene:
     cargo deny check licenses
     echo "OK: All files <= 1000 LOC; zero inline tests in src/; licenses ok."
 
+# see: cans/15-operations.md#Tiered-compilation
 check-tiered:
     cargo check --profile dev-min --workspace --all-targets
 
@@ -354,4 +406,4 @@ check-types:
 check-gates: check-manifest check-tests
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
-check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-examples-thin check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon

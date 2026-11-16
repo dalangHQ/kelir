@@ -11,6 +11,8 @@ pub struct SpawnRequest {
     pub cwd: Option<String>,
     pub limits_bytes: Vec<u8>,
     pub params_bytes: Vec<u8>,
+    pub input: Vec<u8>,
+    pub env: Vec<(String, String)>,
 }
 
 // see: cans/11-protocol.md#Binary-exec-channel

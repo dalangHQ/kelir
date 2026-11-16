@@ -1,9 +1,10 @@
 // see: cans/plugins/vault.md#Plugin-vault
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::path::Path;
 use std::sync::MutexGuard;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -181,11 +182,19 @@ impl CredentialBroker {
         }))
     }
 
-    // see: cans/plugins/vault.md#Memory-isolation-and-zeroization
+    // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
     fn bound_session(&self) -> Result<String, VaultError> {
         self.lock_session()?
             .clone()
             .ok_or_else(|| VaultError::Eperm("credential broker has no session scope bound".into()))
+    }
+
+    // see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+    pub fn resolve_placeholder(&self, placeholder: &str) -> Option<String> {
+        self.descriptors
+            .iter()
+            .find(|descriptor| descriptor.placeholder == placeholder)
+            .map(|descriptor| descriptor.name.clone())
     }
 }
 
@@ -266,4 +275,118 @@ fn entropy_draw() -> Result<u64, VaultError> {
     getrandom::fill(&mut bytes)
         .map_err(|_| VaultError::Eperm("CSPRNG entropy draw failed".into()))?;
     Ok(u64::from_le_bytes(bytes))
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+pub struct CarrierInjector {
+    broker: Arc<CredentialBroker>,
+}
+
+impl CarrierInjector {
+    pub fn new(broker: Arc<CredentialBroker>) -> Self {
+        Self { broker }
+    }
+
+    // see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+    pub async fn inject(&self, stream: &[u8]) -> Result<Vec<u8>, VaultError> {
+        let mut out = Vec::with_capacity(stream.len());
+        let mut cursor = 0usize;
+        while let Some(found) = find_subslice(&stream[cursor..], b"vault://") {
+            let start = cursor + found;
+            out.extend_from_slice(&stream[cursor..start]);
+            let key_start = start + b"vault://".len();
+            let mut key_end = key_start;
+            while key_end < stream.len() && is_placeholder_byte(stream[key_end]) {
+                key_end += 1;
+            }
+            let placeholder = std::str::from_utf8(&stream[start..key_end])
+                .map_err(|_| VaultError::Einval("vault placeholder is not valid UTF-8".into()))?;
+            let Some(name) = self.broker.resolve_placeholder(placeholder) else {
+                return Err(VaultError::Enodata(format!(
+                    "unregistered vault placeholder {placeholder}"
+                )));
+            };
+            let token = CredentialBrokerService::issue(
+                self.broker.as_ref(),
+                &TokenRequest {
+                    name,
+                    ttl_seconds: DEFAULT_TOKEN_TTL_SECONDS,
+                },
+            )
+            .await?;
+            out.extend_from_slice(token.token.as_bytes());
+            cursor = key_end;
+        }
+        out.extend_from_slice(&stream[cursor..]);
+        Ok(out)
+    }
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+fn is_placeholder_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-' || byte == b'.'
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+pub struct MtlsMaterial {
+    pub cert_pem: Vec<u8>,
+    key_pem: Vec<u8>,
+}
+
+impl std::fmt::Debug for MtlsMaterial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MtlsMaterial")
+            .field("cert_pem_len", &self.cert_pem.len())
+            .field("key_pem", &"<redacted>")
+            .finish()
+    }
+}
+
+// see: cans/plugins/vault.md#Memory-isolation-and-zeroization
+impl Drop for MtlsMaterial {
+    fn drop(&mut self) {
+        self.key_pem.zeroize();
+    }
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+pub fn load_mtls_material(cert_path: &Path, key_path: &Path) -> Result<MtlsMaterial, VaultError> {
+    let cert_pem = std::fs::read(cert_path).map_err(|err| {
+        VaultError::Enodata(format!(
+            "mTLS cert {} is not readable: {err}",
+            cert_path.display()
+        ))
+    })?;
+    let key_pem = std::fs::read(key_path).map_err(|err| {
+        VaultError::Enodata(format!(
+            "mTLS key {} is not readable: {err}",
+            key_path.display()
+        ))
+    })?;
+    if !cert_pem.starts_with(b"-----BEGIN CERTIFICATE-----") {
+        return Err(VaultError::Einval(
+            "mTLS cert is not a PEM certificate".into(),
+        ));
+    }
+    if !key_pem.starts_with(b"-----BEGIN ") || !contains(&key_pem, b"PRIVATE KEY-----") {
+        return Err(VaultError::Einval(
+            "mTLS key is not a PEM private key".into(),
+        ));
+    }
+    Ok(MtlsMaterial { cert_pem, key_pem })
+}
+
+// see: cans/plugins/vault.md#In-ring-carrier-secret-injection
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    find_subslice(haystack, needle).is_some()
 }

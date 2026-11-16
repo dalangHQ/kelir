@@ -69,10 +69,21 @@ struct ParkedConnection {
     buffered: Vec<u8>,
 }
 
+// see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpliceRoute {
+    pub connection_id: u64,
+    pub target_port: u16,
+    pub vsock_port: u16,
+    pub buffered: Vec<u8>,
+}
+
 // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
 #[derive(Debug, Default)]
 struct IngressState {
     parked: Mutex<HashMap<u64, ParkedConnection>>,
+    splices: Mutex<HashMap<u64, SpliceRoute>>,
+    rst_purged: Mutex<Vec<u64>>,
     pending_wake: Mutex<bool>,
     parking: Mutex<bool>,
 }
@@ -193,6 +204,42 @@ impl IngressState {
         parked.clear();
         Ok(connection_ids)
     }
+
+    // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+    fn splice(&self, connection_id: u64, vsock_port: u16) -> Result<SpliceRoute, PluginError> {
+        let mut parked = self
+            .parked
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress parked table poisoned".into()))?;
+        let Some(connection) = parked.remove(&connection_id) else {
+            return Err(PluginError::Halt(format!(
+                "ENOENT: wire-ingress connection {connection_id} is not parked"
+            )));
+        };
+        let route = SpliceRoute {
+            connection_id,
+            target_port: connection.target_port,
+            vsock_port,
+            buffered: connection.buffered,
+        };
+        let mut splices = self
+            .splices
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress splice table poisoned".into()))?;
+        splices.insert(connection_id, route.clone());
+        Ok(route)
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    fn purge_on_rollback(&self) -> Result<Vec<u64>, PluginError> {
+        let purged = self.reset()?;
+        let mut rst_purged = self
+            .rst_purged
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress purge table poisoned".into()))?;
+        rst_purged.extend_from_slice(&purged);
+        Ok(purged)
+    }
 }
 
 // see: cans/plugins/wire-ingress.md#Service-exports-(wire-ingress)
@@ -217,6 +264,30 @@ impl IngressRoutingService {
 
     pub fn reset_parked_connections(&self) -> Result<Vec<u64>, PluginError> {
         self.state.reset()
+    }
+
+    // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
+    pub fn splice_to_shim(
+        &self,
+        connection_id: u64,
+        vsock_port: u16,
+    ) -> Result<SpliceRoute, PluginError> {
+        self.state.splice(connection_id, vsock_port)
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub fn purge_on_rollback(&self) -> Result<Vec<u64>, PluginError> {
+        self.state.purge_on_rollback()
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub fn rst_purged_connections(&self) -> Result<Vec<u64>, PluginError> {
+        Ok(self
+            .state
+            .rst_purged
+            .lock()
+            .map_err(|_| PluginError::Halt("wire-ingress purge table poisoned".into()))?
+            .clone())
     }
 
     pub fn is_parking(&self) -> Result<bool, PluginError> {

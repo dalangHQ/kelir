@@ -1,12 +1,22 @@
 // see: cans/07-wire-plane.md#Wire-architecture
+#[path = "connection_parking.flow.rs"]
+pub mod connection_parking;
 #[path = "dns_ops.flow.rs"]
 pub mod dns;
 #[path = "l4_ops.flow.rs"]
 pub mod l4;
+#[path = "l7_parser.flow.rs"]
+pub mod l7;
 #[path = "net_ops.flow.rs"]
 pub mod net;
+#[path = "outbox.flow.rs"]
+pub mod outbox;
 #[path = "udp_nat.flow.rs"]
 pub mod udp_nat;
+
+pub use connection_parking::{ConnectionParking, ConnectionParkingConfig, ParkedConnection};
+pub use l7::{HttpRequest, HttpResponse, JsonRpcEnvelope, L7ParseError, L7Parser, SseEvent};
+pub use outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxError, OutboxFrame};
 
 pub use dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};
 pub use l4::{L4DivertOps, L4Stream};

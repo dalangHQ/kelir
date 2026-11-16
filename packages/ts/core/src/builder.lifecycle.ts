@@ -72,51 +72,22 @@ export type {
   CreatePluginOptions,
 };
 
-export type TrapHandlerResult = Verdict | PostExecAction;
-
-export type TrapHandler<Ctx, Params> = (
-  c: HandlerContext<Ctx, Params>,
-) => Promise<TrapHandlerResult> | TrapHandlerResult;
-
-export interface TrapHandlers<Ctx, Params> {
-  readonly pre?: TrapHandler<Ctx, Params>;
-  readonly post?: (c: HandlerContext<Ctx, Params>) => Promise<PostExecAction> | PostExecAction;
-}
-
-interface PluginRegistration {
-  readonly name: string;
-  readonly enabled: boolean;
-}
-
-interface MountRecord {
-  readonly name: string;
-  readonly enabled: boolean;
-  readonly requiredDeps: readonly string[];
-  readonly duplicate: boolean;
-}
-
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, any>
-  ? [Deps] extends [never]
-    ? unknown
-    : string extends Deps
-      ? unknown
-      : [Deps] extends [keyof Ctx]
-        ? unknown
-        : { readonly __missing_dependency: Deps }
-  : unknown;
-
-// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export type PluginContextOf<P> =
-  P extends KelirBuilder<infer Name, infer C, any, any>
-    ? (C extends Record<string, unknown>
-        ? (string extends keyof C
-            ? { readonly [K in Name]: C }
-            : (Name extends keyof C ? C : { readonly [K in Name]: C }))
-        : { readonly [K in Name]: C })
-    : P extends PluginContext<infer C>
-      ? C
-      : unknown;
+import type {
+  MountRecord,
+  PluginContextOf,
+  PluginRegistration,
+  TrapHandler,
+  TrapHandlerResult,
+  TrapHandlers,
+  ValidateDeps,
+} from "./builder.types.js";
+export type {
+  PluginContextOf,
+  TrapHandler,
+  TrapHandlerResult,
+  TrapHandlers,
+  ValidateDeps,
+} from "./builder.types.js";
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
@@ -892,6 +863,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       tscLocked: this.kelirConfig.tscLocked,
       enableWatchdog: this.kelirConfig.enableWatchdog,
       driver: this.kelirConfig.driver,
+      networkOff: this.kelirConfig.networkOff,
+      nsPerInstruction: this.kelirConfig.nsPerInstruction,
+      entropySeed: this.kelirConfig.entropySeed,
     });
     // L3-GAP: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
     if (this.terminalCfg) {
@@ -909,12 +883,13 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     }
     if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
       // L3-GAP: [bindings_ts]: snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop onWrite never fires on guest writes
-      // L3-GAP: [bindings_ts]: forward lockBroker globs/nonBlocking once the native setter exists.; slop: lockBroker globs/nonBlocking silently dropped, lock broker never enforced
       nativeBuilder.setStorageConfig({
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
         sharedCaches: this.storageCfg?.sharedCaches as string[] | undefined,
         lockBroker: this.storageCfg?.lockBroker ?? this.lockBrokerCfg !== undefined,
+        lockBrokerGlobs: this.lockBrokerCfg?.globs as string[] | undefined,
+        lockBrokerNonBlocking: this.lockBrokerCfg?.nonBlocking,
         syntheticFiles: this.storageCfg?.syntheticFiles?.map((file) => ({
           path: file.path,
           content: typeof file.content === "function" ? file.content() : file.content,

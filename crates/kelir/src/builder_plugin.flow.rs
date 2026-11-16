@@ -12,8 +12,8 @@ use kelir_interface::driver_interface::{
 };
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, MountScope, PipelineBinder, PluginClone,
-    PluginDeps, PluginError,
+    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleEvent, MountScope, PipelineBinder,
+    PluginClone, PluginDeps, PluginError,
 };
 use kelir_interface::protocol_wire::{
     FilterAction, Heartbeat, PostExecAction, ProcessExit, TrapEvent, Verdict,
@@ -400,6 +400,25 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
                 verb: PhantomData,
             }));
         self
+    }
+
+    // see: cans/08-lifecycle.md#Lifecycle-vetoes
+    pub fn on<F>(self, event: LifecycleEvent, f: F) -> Self
+    where
+        F: for<'c, 'i> Fn(
+                &'c mut LifecycleCtx<'i>,
+            )
+                -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send + 'c>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        match event {
+            LifecycleEvent::VmInit => self.on_vm_init(f),
+            LifecycleEvent::VmReady => self.on_vm_ready(f),
+            LifecycleEvent::VmShutdown => self.on_vm_shutdown(f),
+            LifecycleEvent::VmPreempt => self.on_host_preempt(f),
+        }
     }
 
     pub(crate) fn on_vm_init<F>(mut self, f: F) -> Self

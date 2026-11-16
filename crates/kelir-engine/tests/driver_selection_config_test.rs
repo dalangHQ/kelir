@@ -13,6 +13,11 @@ fn policy(driver: Option<&str>, allow_emulated: bool) -> DriverPolicy {
         wx_enforcement: WxPolicy::Strict,
         ffi_worker_threads: 1,
         ffi_max_ops_per_sec: 0,
+        ffi_queue_capacity: 16384,
+        ffi_max_buffer_bytes: 16777216,
+        ffi_zero_copy_shm_threshold_bytes: 65536,
+        ffi_allow_async_worker_yield: true,
+        emulated_tier_classification: None,
     }
 }
 

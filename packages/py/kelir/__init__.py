@@ -307,6 +307,14 @@ class WatchdogAction(str, Enum):
     TERMINATE = "terminate"
 
 
+# see: cans/08-lifecycle.md#State-machine
+class LifecycleEvent(str, Enum):
+    VmInit = "vm-init"
+    VmReady = "vm-ready"
+    VmPreempt = "vm-preempt"
+    VmShutdown = "vm-shutdown"
+
+
 # see: cans/11-protocol.md#Wire-framing
 class ExecveMutation:
 
@@ -506,7 +514,7 @@ class TrapFilter:
             argv=self.argv_pattern,
         )
 
-    def argv_matches(self, pattern: re.Pattern[str]) -> TrapFilter:
+    def argv_matches(self, pattern: str | re.Pattern[str]) -> TrapFilter:
         # see: cans/02-plugin-model.md#Filter-before-FFI-gate
         return TrapFilter(
             self.binary_name,
@@ -515,7 +523,7 @@ class TrapFilter:
             cwd=self.cwd_pattern,
             env=self.env_matchers,
             uid=self.uid_filter,
-            argv=pattern.pattern,
+            argv=pattern.pattern if isinstance(pattern, re.Pattern) else pattern,
         )
 
     def snapshot(self) -> TrapFilterSnapshot:
@@ -535,8 +543,8 @@ class TrapFilter:
 @dataclass
 class SpawnResult:
     exit_code: int = 0
-    stdout: str | None = None
-    stderr: str | None = None
+    stdout: bytes = b""
+    stderr: bytes = b""
 
 
 @dataclass
@@ -549,14 +557,20 @@ class CommitStats:
 from kelir.service_caps import (
     Caps as Caps,
     ContainerCap as ContainerCap,
+    ContainerHandle as ContainerHandle,
     DbCap as DbCap,
+    DbProxyHandle as DbProxyHandle,
     LedgerCap as LedgerCap,
     LedgerFinalizeResult as LedgerFinalizeResult,
+    LedgerHandle as LedgerHandle,
     MeshHandle as MeshHandle,
     RepoPolicyCap as RepoPolicyCap,
     Savepoint as Savepoint,
+    SqlProxyHandle as SqlProxyHandle,
     TransactionCap as TransactionCap,
+    TransactionHandle as TransactionHandle,
     TransactionScope as TransactionScope,
+    Tx as Tx,
 )
 
 
@@ -700,6 +714,24 @@ class CheckpointHandle:
         native = _require_native(self._native, "checkpoint create")
         return _snapshot_from_dict(native.create(label))
 
+    async def create_step(
+        self, lineage: Any, descriptor: SnapshotDescriptor
+    ) -> int:
+        native = _require_native(self._native, "checkpoint create_step")
+        return int(native.create_step(lineage, _snapshot_to_dict(descriptor)))
+
+    async def commit_step(self, lineage: Any) -> int:
+        native = _require_native(self._native, "checkpoint commit_step")
+        return int(native.commit_step(lineage))
+
+    async def revert_step(self, slot: int) -> None:
+        native = _require_native(self._native, "checkpoint revert_step")
+        native.revert_step(slot)
+
+    async def rollback(self, snapshot_id: str) -> None:
+        native = _require_native(self._native, "checkpoint rollback")
+        native.rollback(snapshot_id)
+
 
 class HostHandle:
     def __init__(self, native: Any = None) -> None:
@@ -813,8 +845,10 @@ __all__ = [
     "Channel",
     "CheckpointHandle",
     "ContainerCap",
+    "ContainerHandle",
     "CtxT",
     "DbCap",
+    "DbProxyHandle",
     "Deadline",
     "Errno",
     "ExecStream",
@@ -832,6 +866,8 @@ __all__ = [
     "KelirBuilder",
     "LedgerCap",
     "LedgerFinalizeResult",
+    "LedgerHandle",
+    "LifecycleEvent",
     "MeshHandle",
     "MsgType",
     "ParamsT",
@@ -846,14 +882,17 @@ __all__ = [
     "Session",
     "SnapshotDescriptor",
     "SpawnResult",
+    "SqlProxyHandle",
     "StreamKind",
     "SuspendReason",
     "Condition",
     "SuspendUntil",
     "TrapFilter",
     "TransactionCap",
+    "TransactionHandle",
     "TransactionScope",
     "TrapEvent",
+    "Tx",
     "Verdict",
     "WatchdogAction",
     "builder",

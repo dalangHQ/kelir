@@ -15,6 +15,8 @@ import {
 import type {
   CheckpointHandle,
   HostHandle,
+  PidLineage,
+  ShmMapping,
   StepHandle,
   StorageHandle,
   TerminalHandle,
@@ -52,6 +54,45 @@ export interface NativeTerminalHandle {
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeCheckpointHandle {
   create(label: string): Promise<NativeSnapshotDescriptorRecord>;
+  createStep(
+    lineage: NativePidLineageRecord,
+    descriptor: NativeSnapshotDescriptorRecord,
+  ): Promise<number>;
+  commitStep(lineage: NativePidLineageRecord): Promise<number>;
+  revertStep(slot: number): Promise<void>;
+  rollback(snapshotId: string): Promise<void>;
+}
+
+// see: cans/09-snapshots.md#Groups-and-lineage
+export interface NativePidLineageRecord {
+  readonly root_pid: number;
+  readonly incarnation_id: Uint8Array;
+}
+
+function toNativePidLineage(lineage: PidLineage): NativePidLineageRecord {
+  return {
+    root_pid: lineage.rootPid,
+    incarnation_id: lineage.incarnationId,
+  };
+}
+
+function toNativeSnapshotDescriptor(
+  descriptor: SnapshotDescriptor,
+): NativeSnapshotDescriptorRecord {
+  return {
+    id: descriptor.id,
+    dirty_bytes: descriptor.dirtyBytes,
+    created_at_ns: descriptor.createdAtNs,
+    parent_digest: descriptor.parentDigest ?? null,
+    guest_clock: descriptor.guestClock
+      ? {
+          absolute_wall_clock_ns: descriptor.guestClock.absoluteWallClockNs,
+          monotonic_offset_ns: descriptor.guestClock.monotonicOffsetNs,
+          timezone: descriptor.guestClock.timezone,
+          boot_params: descriptor.guestClock.bootParams,
+        }
+      : null,
+  };
 }
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
@@ -117,10 +158,10 @@ export interface NativeSessionHandle {
     readonly name: string;
     readonly ctx: unknown;
   }[];
-  handleIngress<Req, Resp>(options: {
-    cwd?: string;
-    handler: (req: Req) => Promise<Resp>;
-  }): AsyncGenerator<Resp, void, unknown>;
+  handleIngress<Req, Resp>(
+    port: number,
+  ): AsyncGenerator<IngressStream<Req, Resp>, void, unknown>;
+  shm(region: string): Promise<ShmMapping>;
 }
 
 function missingPlaneError(plane: string): EConfig {
@@ -146,6 +187,14 @@ function fallbackTerminal(): TerminalHandle {
 function fallbackCheckpoint(): CheckpointHandle {
   return {
     create: (): Promise<SnapshotDescriptor> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    createStep: (): Promise<number> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    commitStep: (): Promise<number> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    revertStep: (): Promise<void> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    rollback: (): Promise<void> =>
       Promise.reject(missingPlaneError("checkpoint")),
   };
 }
@@ -189,6 +238,20 @@ export class Session {
             fromNativeSnapshotDescriptor(
               await nativeCheckpoint.create(label),
             ),
+          createStep: (
+            lineage: PidLineage,
+            descriptor: SnapshotDescriptor,
+          ): Promise<number> =>
+            nativeCheckpoint.createStep(
+              toNativePidLineage(lineage),
+              toNativeSnapshotDescriptor(descriptor),
+            ),
+          commitStep: (lineage: PidLineage): Promise<number> =>
+            nativeCheckpoint.commitStep(toNativePidLineage(lineage)),
+          revertStep: (slot: number): Promise<void> =>
+            nativeCheckpoint.revertStep(slot),
+          rollback: (snapshotId: string): Promise<void> =>
+            nativeCheckpoint.rollback(snapshotId),
         }
       : fallbackCheckpoint();
     this.host = native.host ?? fallbackHost();
@@ -342,10 +405,20 @@ export class Session {
     );
   }
 
-  async *handleIngress<Req, Resp>(options: {
-    cwd?: string;
-    handler: (req: Req) => Promise<Resp>;
-  }): AsyncGenerator<Resp, void, unknown> {
-    yield* this.native.handleIngress(options);
+  async *handleIngress<Req, Resp>(
+    port: number,
+  ): AsyncGenerator<IngressStream<Req, Resp>, void, unknown> {
+    yield* this.native.handleIngress<Req, Resp>(port);
   }
+
+  // see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+  async shm(region: string): Promise<ShmMapping> {
+    return this.native.shm(region);
+  }
+}
+
+// see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+export interface IngressStream<Req, Resp> {
+  readonly request: Req;
+  respond(response: Resp): Promise<void>;
 }

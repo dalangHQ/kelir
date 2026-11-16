@@ -803,6 +803,8 @@ impl PipelineEngine {
             return;
         }
         if let Some(mut receipt) = self.receipt_store.lookup(pid) {
+            receipt.hook_policy_descriptors =
+                spans.iter().map(HookPolicyDescriptor::from_span).collect();
             receipt.hook_trace = spans;
             self.receipt_store.insert(receipt);
         }

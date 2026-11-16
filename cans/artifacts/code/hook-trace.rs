@@ -66,6 +66,44 @@ pub struct HookSpan {
     pub ordinal: u32,
 }
 
+/// Deterministic policy projection of one HookSpan: everything the
+/// Merkle leaf commits about a fired hook, without the timing. The
+/// ring is the kebab-case tag ("trap", "fs-read"); duration_ns is
+/// deliberately absent, so identical policy executions hash
+/// identically. Derived from HookSpan at attach time; the full span
+/// stays diagnostic and out of the leaf.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookPolicyDescriptor {
+    pub plugin: String,
+    pub ring: String,
+    pub verdict_kind: VerdictKind,
+    pub ordinal: u32,
+}
+
+/// One in-place masked record: the raw payload digest committed
+/// before the mask rewrote the bytes. pre_redaction_blake3 is None
+/// only when the digest was never committed, which the acceptance
+/// examples fail on; a complete receipt carries Some for every entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaskedRecord {
+    pub record: String,
+    pub pre_redaction_blake3: Option<String>,
+    pub masked_bytes: u64,
+}
+
+/// One step-DAG lineage entry: a checkpoint node on the receipt's
+/// chain from its step head back to the DAG root. reviewer_id and
+/// reviewer_signature carry the Ed25519-signed reviewer identity when
+/// step attribution landed; both None until the step-DAG lane records
+/// it on the node.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepLineageEntry {
+    pub node_id: u64,
+    pub parent_node_id: Option<u64>,
+    pub reviewer_id: Option<String>,
+    pub reviewer_signature: Option<String>,
+}
+
 impl ExecutionReceipt {
     /// hook_trace accessor: every hook that fired for the trapped
     /// process, in firing order. Diagnostic only; never part of

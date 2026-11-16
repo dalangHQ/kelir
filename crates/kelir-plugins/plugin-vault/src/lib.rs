@@ -9,6 +9,7 @@ pub mod metadata_endpoint;
 pub mod service_vault;
 
 pub use metadata_endpoint::{CredentialBrokerCtx, MetadataEndpoint, VaultPlugin};
+pub use service_vault::{CarrierInjector, MtlsMaterial, load_mtls_material};
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
 pub const METADATA_CREDENTIALS_PREFIX: &str = "/kelir/credentials/";

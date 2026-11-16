@@ -17,7 +17,9 @@ use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 #[path = "service_container.flow.rs"]
 pub mod service_container;
 
-pub use service_container::{ContainerCtx, ContainerService, SharedContainerService};
+pub use service_container::{
+    ContainerCtx, ContainerHandle, ContainerService, SharedContainerService,
+};
 
 // see: cans/plugins/container.md#UID/GID-mapping-isolation
 const NEWUIDMAP: &str = "newuidmap";

@@ -9,16 +9,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional
 
 from kelir import (
+    Caps,
     CtxT,
+    EConfig,
     FilterAction,
     HandlerContext,
     ParamsT,
+    SpawnResult,
     TrapEvent,
     Verdict,
+    VmHandle,
     WatchdogAction,
 )
 from kelir.plugin_fusion import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
+from kelir.lifecycle_session import Session
 
 if TYPE_CHECKING:
     from kelir import KelirBuilder
@@ -110,9 +115,19 @@ class WatchdogVerdict(Enum):
 
 class LifecycleCtx:
 
-    def __init__(self) -> None:
+    def __init__(self, caps: Caps | None = None) -> None:
         self._vetoes: list[tuple[VetoEvent, Callable[[], Veto]]] = []
         self._watchdog: tuple[timedelta, WatchdogAction] | None = None
+        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+        self.cap = caps if caps is not None else Caps()
+        self.vm = VmHandle(Session())
+
+    # see: cans/03-sdk-architecture.md#Session-surfaces
+    async def exec_in_guest(self, argv: list[str]) -> SpawnResult:
+        # TODO (L3) [protocol_mux]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec_in_guest always raises, no guest command path exists.
+        raise EConfig(
+            "kelir native PyO3 bridge (_kelir) is missing: lifecycle exec_in_guest (L3)"
+        )
 
     # see: cans/08-lifecycle.md#Watchdog
     def set_watchdog(self, *, timeout: timedelta, action: WatchdogAction) -> None:

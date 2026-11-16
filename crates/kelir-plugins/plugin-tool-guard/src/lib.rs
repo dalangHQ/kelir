@@ -16,6 +16,10 @@ pub use tool_guard_state::{ToolGuardCtx, ToolGuardPlugin};
 pub struct ToolGuardConfig {
     pub max_invocations_per_trace: u32,
     pub pin_schemas: bool,
+    pub max_frame_bytes: u64,
+    pub detect_semantic_rug_pull: bool,
+    pub strict_ast_parameter_validation: bool,
+    pub propagate_byte_range_taints: bool,
 }
 
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline

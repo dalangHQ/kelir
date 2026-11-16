@@ -104,6 +104,15 @@
     - Local mirror: `just check-spec` invokes the identical flags
     - Invariant: every rule in _rules.yaml maps to a step here, or the rule
       - is dead and gets removed
+  - Spec drift
+    - Job: spec-drift
+    - Runs `just check-spec-drift`: every depth<=1 normative leaf in the
+      - patch-series spec files maps to a code symbol or test; drift
+      - recorded in scripts/spec-drift-gaps.yaml passes, unrecorded drift
+      - fails. The hygiene grep rides the same script: zero hits for its
+      - four patterns (exact patterns: see: scripts/check-spec-drift.py)
+      - in cans/*.md, cans/plugins/*.md, cans/artifacts/examples/**
+    - Local mirror: `just check-spec-drift`
   - Maturity check
     - Job: maturity-check
     - Runs `just check-maturity`: every .rs file's level from its filename
@@ -113,7 +122,7 @@
       - wave; placement failures fail the job
     - Scope is src/ files only; tests/ and benches/ are excluded, test files
       - are governed by NG-01 (names, placement), not by filename level
-    - A prepared .run.rs stub carrying // TODO (L3) warns, not fails, until
+    - A prepared .run.rs stub carrying an L3 deferral marker warns, not fails, until
       - the L3 phase fills it; the markers are removed as bodies land
     - Crate-shape rule concern-leak:C1: a crate with three or more lib
       - .run.rs files and no .flow.rs file is a concern leak (its L3 bodies
@@ -131,14 +140,30 @@
       - Rust: cargo check per example bin; Python: syntax plus import
       - against the live SDK; TypeScript: tsc over tsconfig.check.json
       - after the @kelir/core build
-    - Aspirational tier: cans/artifacts/examples/aspirational/ holds examples
-      - whose core demonstration is a runtime no-op; they are excluded from
-      - `just check-examples` (scripts/check-examples.sh globs examples/*.rs,
-      - *.py non-recursively, so the subdirectory is naturally out of the gate)
+    - Deferred examples: a subdirectory of cans/artifacts/examples/ holds
+      - examples whose core demonstration is a runtime no-op; they are
+      - excluded from `just check-examples` (scripts/check-examples.sh
+      - globs examples/*.rs, *.py non-recursively, so a subdirectory is
+      - naturally out of the gate)
     - examples/ (top level) compiles in all three languages or it is not in
-      - examples/ — a whole-fiction example lives under aspirational/ instead
+      - examples/ — a whole-fiction example lives in a subdirectory instead
     - No path filter: an SDK change anywhere can break an example
     - Local mirror: `just check-examples`, also in `just check-all`
+  - Examples run
+    - Job: examples-run
+    - Runs `just check-examples-run`: the nine patched examples execute as
+      - tests in all three languages (Rust `cargo run --bin` in the same
+      - throwaway crate check-examples builds; Python executes each file;
+      - TypeScript runs node over the compiled examples). The work-order
+      - spells the cargo-example form with underscores (serverless_webhook);
+      - files use hyphens (serverless-webhook.rs)
+    - Tier: hardware tier required for git-gate and hook-matrix-full
+      - (skipped with a notice when /dev/kvm is absent, never a fake pass);
+      - emulated Class 2 allowed for the other seven
+    - Outcomes are PASS, RUNNING (still alive at the timeout: serve-forever
+      - examples, unasserted, never counted as PASS), SKIP, COMPILE-GAP
+      - (a WS-A..E surface is missing), FAIL, BLOCKED (toolchain missing)
+    - Local mirror: `just check-examples-run`
   - Coverage-gates
     - Coverage gates are gate names, distinct from cans check flags
       - cans check has no --*-coverage flags; each gate names its enforcement below
@@ -210,7 +235,9 @@
           - Predicate grammar (the 5 predicate methods: with_arg,
             with_cwd, with_env, with_uid, argv_matches):
             see: 02-plugin-model.md#TrapFilter-predicates
-        - The 58 live vectors.json cases stay until the vectors regenerate
+        - vectors.json carries the canonical roster; the roster is enforced
+          - by kelir-plugin-cli parity run (assert_canonical_roster);
+          - regenerate with `kelir-plugin-cli vectors`
         - Asserts every Verdict and FilterAction outcome appears in a case
         - Verb home: see: 02-plugin-model.md#Chainable-verbs
         - Scope home: see: 02-plugin-model.md#Nested-scopes
@@ -219,12 +246,28 @@
         - Enforcement: kelir-plugin-cli parity run; gate spec only
       - --l7-stream-coverage
         - Asserts in-ring L7 HTTP/TLS parsing and stream transformations execute
+        - Evidence: at least one `l7-stream-*` vector in vectors.json; the
+          - vector family is owned by WS-B1 and exercised by serverless-webhook
+        - Enforcement: kelir-plugin-cli parity run --l7-stream-coverage
+          - via just check-l7-stream-coverage; fails closed on missing evidence
       - --outbox-coverage
         - Asserts network outbox holds irreversible egress and purges on rollback
+        - Evidence: at least one `outbox-*` vector in vectors.json, covering
+          - release on commit and purge on rollback; owned by WS-B6/WS-C3
+        - Enforcement: kelir-plugin-cli parity run --outbox-coverage
+          - via just check-outbox-coverage; fails closed on missing evidence
       - --step-dag-coverage
         - Asserts branching step DAGs evaluate with signed reviewer attribution
+        - Evidence: at least one `step-dag-*` vector in vectors.json, covering
+          - branching, signed attribution, and separation of duties; owned by WS-B7
+        - Enforcement: kelir-plugin-cli parity run --step-dag-coverage
+          - via just check-step-dag-coverage; fails closed on missing evidence
       - --swarm-mesh-coverage
         - Asserts virtio_shm ring coordination and winner election consensus
+        - Evidence: at least one `swarm-mesh-*` vector in vectors.json, covering
+          - at least one broadcast/await winner cycle; owned by WS-B9/WS-C4
+        - Enforcement: kelir-plugin-cli parity run --swarm-mesh-coverage
+          - via just check-swarm-mesh-coverage; fails closed on missing evidence
       - --trapfilter-coverage
         - Asserts every TrapFilter predicate method has at least one vector
         - Predicate set: with_arg, with_cwd, with_env, with_uid, argv_matches
@@ -243,7 +286,6 @@
         - Enforcement: kelir-plugin-cli parity run; gate spec only
       - --fluent-builder-coverage
         - History, not a second gate: see: #--unified-builder-coverage
-        - Current count there: 46 builder cases, 58 vectors; 50/63 once the 5 chain cases generate
     - --veto-coverage
       - Asserts every VetoEvent is registered at least once in an example
       - Veto home: see: 08-lifecycle.md#Lifecycle-vetoes

@@ -285,10 +285,9 @@ cases:
   case_file: cases/governance_tools/gt_01_jsonrpc_tool_call_interposition.yaml
   target_crate: crates/kelir-plugins
   target_tier: integration
-  status: red
+  status: implemented
   test_file: crates/kelir-plugins/plugin-tool-guard/tests/interposer_tool_guard_test.rs
   test_fn: gt_01_jsonrpc_tool_call_interposition
-  reason: 'on_console_input for a pinned tools/call frame (execute_command) rejected with Halt(EPERM: unparsed MCP frame fails closed pending JSON-RPC 2.0 decode); McpFrame::decode is an L3 stub so tools/call classification never runs'
 - case_id: gt_02_immutable_schema_locking_esecurity
   case_file: cases/governance_tools/gt_02_immutable_schema_locking_esecurity.yaml
   target_crate: crates/kelir-plugins
@@ -300,10 +299,9 @@ cases:
   case_file: cases/governance_tools/gt_03_taint_tracking_mutation_suspend.yaml
   target_crate: crates/kelir-plugins
   target_tier: integration
-  status: red
+  status: implemented
   test_file: crates/kelir-plugins/plugin-tool-guard/tests/interposer_tool_guard_test.rs
   test_fn: gt_03_taint_tracking_mutation_suspend
-  reason: 'tainted write_file tools/call rejected with Halt(EPERM: unparsed MCP frame fails closed pending JSON-RPC 2.0 decode) instead of the approval/suspend outcome; taint-gated approval is a TODO (L3) in ToolGuardPlugin::evaluate_tool_call (returns Pass unconditionally); assertion accepts any boundary error mentioning approval or suspend'
 - case_id: gt_04_token_bucket_call_quota_etoolquota
   case_file: cases/governance_tools/gt_04_token_bucket_call_quota_etoolquota.yaml
   target_crate: crates/kelir-plugins
@@ -357,10 +355,9 @@ cases:
   case_file: cases/governance_tools/gt_10_tool_call_depth_recursion_ceiling.yaml
   target_crate: crates/kelir-plugins
   target_tier: unit
-  status: red
+  status: implemented
   test_file: crates/kelir-plugins/plugin-tool-guard/tests/interposer_tool_guard_test.rs
   test_fn: gt_10_tool_call_depth_recursion_ceiling
-  reason: 'the 51st tools/call in trace 0x0012 rejected with Halt(EPERM: unparsed MCP frame fails closed pending JSON-RPC 2.0 decode) instead of ETOOLQUOTA, and zero of the first 50 calls passed; McpFrame::decode stub keeps charge_quota unreachable'
 - case_id: gt_11_out_of_band_human_approval_resume
   case_file: cases/governance_tools/gt_11_out_of_band_human_approval_resume.yaml
   target_crate: crates/kelir-plugins
@@ -375,10 +372,9 @@ cases:
   case_file: cases/governance_tools/gt_12_model_controlled_flag_taint_override.yaml
   target_crate: crates/kelir-plugins
   target_tier: integration
-  status: red
+  status: implemented
   test_file: crates/kelir-plugins/plugin-tool-guard/tests/interposer_tool_guard_test.rs
   test_fn: gt_12_model_controlled_flag_taint_override
-  reason: 'write_file tools/call carrying override_taint:true rejected with Halt(EPERM: unparsed MCP frame fails closed pending JSON-RPC 2.0 decode) instead of suspending; taint gate is a TODO (L3) in evaluate_tool_call (Pass unconditionally, taint never consulted); taint-stays-Tainted half asserted via registry.taint'
 - case_id: gt_13_cli_doctor_reports_missing_kvm
   case_file: cases/governance_tools/gt_13_cli_doctor_reports_missing_kvm.yaml
   target_crate: crates/kelir-plugin-cli
@@ -448,15 +444,13 @@ cases:
   status: implemented
   test_file: crates/kelir-plugins/plugin-vault/tests/token_metadata_vault_test.rs
   test_fn: gv_07_unregistered_credential_enodata
-- case_id: gv_08_external_egress_sidecar_tls_relay
-  case_file: cases/governance_vault/gv_08_external_egress_sidecar_tls_relay.yaml
+- case_id: gv_08_in_ring_carrier_secret_injection
+  case_file: cases/governance_vault/gv_08_in_ring_carrier_secret_injection.yaml
   target_crate: crates/kelir-plugins
-  target_tier: e2e
-  status: gap
-  test_file: null
-  test_fn: null
-  reason: no sidecar code exists in this tree; the external egress sidecar is an optional out-of-tree
-    daemon per cans/plugins/vault.md, so this case is specified against the spec text, not a live surface.
+  target_tier: integration
+  status: implemented
+  test_file: crates/kelir-plugins/plugin-vault/tests/token_metadata_vault_test.rs
+  test_fn: gv_08_in_ring_carrier_secret_injection
 - case_id: gv_09_metadata_non_vsock_peer_econnrefused
   case_file: cases/governance_vault/gv_09_metadata_non_vsock_peer_econnrefused.yaml
   target_crate: crates/kelir-plugins

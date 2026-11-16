@@ -21,7 +21,11 @@ pub mod wal;
 pub mod wal_ledger;
 
 pub use otel_ledger::TraceParent;
-pub use wal_ledger::{LedgerSink, LocalMerkleDbSink, OtlpLedgerSink, WalRecord};
+pub use wal_ledger::{
+    DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, MerkleInclusionProof, OtlpLedgerSink,
+    SignedTreeHead, WalRecord, WitnessClient, WitnessCosignature, dual_merkle_leaf,
+    dual_merkle_node, dual_merkle_root, inclusion_proof,
+};
 
 // see: cans/plugins/ledger.md#OpenTelemetry
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -65,6 +69,10 @@ pub struct LedgerConfig {
     pub store: String,
     pub merkle_chain: bool,
     pub suppress_local_db: bool,
+    pub hashing_standard: String,
+    pub record_pre_redaction_hash: bool,
+    pub include_hook_spans_in_root: bool,
+    pub witness_cosigning_endpoint: Option<String>,
     pub otel: Option<OtelConfig>,
     pub receipts: ReceiptConfig,
 }
@@ -75,6 +83,10 @@ impl LedgerConfig {
             store: store.into(),
             merkle_chain,
             suppress_local_db: false,
+            hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".to_string(),
+            record_pre_redaction_hash: false,
+            include_hook_spans_in_root: false,
+            witness_cosigning_endpoint: None,
             otel: None,
             receipts: ReceiptConfig::default(),
         }
@@ -93,7 +105,7 @@ impl LedgerSink for NoopLedgerSink {
 // see: cans/artifacts/examples/autonomous-swe-agent.rs#FinalizeRequest
 #[derive(Debug, Clone)]
 pub struct FinalizeRequest {
-    pub include_delta: CausalDelta,
+    pub include_delta: Option<CausalDelta>,
     pub include_merkle_root: bool,
 }
 
@@ -102,6 +114,48 @@ pub struct FinalizeRequest {
 pub struct FinalReceipt {
     pub merkle_root: String,
     pub signed_jws: String,
+    pub causal_delta: Option<CausalDelta>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HashingStandard {
+    #[default]
+    Rfc6962DualBlake3Sha256,
+}
+
+impl HashingStandard {
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "RFC_6962_DUAL_BLAKE3_SHA256" => Some(Self::Rfc6962DualBlake3Sha256),
+            _ => None,
+        }
+    }
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MerkleWalConfig {
+    pub hashing_standard: HashingStandard,
+    pub sign_leaves: bool,
+    pub fsync_on_reap: bool,
+    pub record_pre_redaction_hash: bool,
+    pub include_hook_spans_in_root: bool,
+    pub witness_cosigning_endpoint: Option<String>,
+}
+
+impl Default for MerkleWalConfig {
+    fn default() -> Self {
+        Self {
+            hashing_standard: HashingStandard::Rfc6962DualBlake3Sha256,
+            sign_leaves: true,
+            fsync_on_reap: true,
+            record_pre_redaction_hash: true,
+            include_hook_spans_in_root: true,
+            witness_cosigning_endpoint: None,
+        }
+    }
 }
 
 // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
@@ -110,7 +164,13 @@ pub struct LedgerCtx {
     denials: Arc<Mutex<HashMap<u32, u64>>>,
     otel: OtelConfig,
     metrics: Option<Arc<MetricRegistry>>,
+    merkle: MerkleWalConfig,
+    chain: Arc<MerkleChain>,
 }
+
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+// see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
+pub type LedgerHandle = LedgerCtx;
 
 impl LedgerCtx {
     pub fn new(otel: OtelConfig, metrics: Option<Arc<MetricRegistry>>) -> Self {
@@ -118,6 +178,8 @@ impl LedgerCtx {
             denials: Arc::new(Mutex::new(HashMap::new())),
             otel,
             metrics,
+            merkle: MerkleWalConfig::default(),
+            chain: Arc::new(MerkleChain::new()),
         }
     }
 
@@ -168,11 +230,49 @@ impl LedgerCtx {
         ))
     }
 
-    pub async fn finalize(&self, _request: FinalizeRequest) -> Result<FinalReceipt, PluginError> {
-        // L3-GAP: [telemetry_audit]: append the leaf via wal_ledger::WalRecord + wal_ledger::merkle_root, sign the receipt, and return the finalized root; slop: finalize keeps Err Halt, no leaf appended or signed, receipt unverifiable
-        Err(PluginError::Halt(
-            "ledger finalize needs the Merkle WAL sink".into(),
-        ))
+    pub async fn finalize(&self, request: FinalizeRequest) -> Result<FinalReceipt, PluginError> {
+        // see: cans/plugins/ledger.md#Finalize-pin-(SSOT-A1)
+        let mut leaves: Vec<[u8; 32]> = Vec::new();
+        if let Some(delta) = &request.include_delta {
+            leaves.push(delta.receipt_leaf_hash);
+        }
+        let root = if request.include_merkle_root {
+            let chain_root = self.chain.root(self.merkle.include_hook_spans_in_root)?;
+            leaves.push(chain_root);
+            crate::wal_ledger::merkle_root(&leaves)
+        } else {
+            crate::wal_ledger::merkle_root(&leaves)
+        };
+        // TODO (L3) [telemetry_audit]: sign the receipt JWS with the host session Ed25519 key; slop: receipt ships with an empty JWS, unverifiable.
+        Ok(FinalReceipt {
+            merkle_root: kelir_interface::hex_codec::encode_hex(&root),
+            signed_jws: String::new(),
+            causal_delta: request.include_delta.clone(),
+        })
+    }
+
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.record_pre_redaction_hash
+    pub fn record_pre_redaction_hash(&self, record_bytes: &[u8]) -> Result<DualHash, PluginError> {
+        if !self.merkle.record_pre_redaction_hash {
+            return Ok(crate::wal_ledger::dual_merkle_leaf(record_bytes));
+        }
+        self.chain.record_pre_redaction_hash(record_bytes)
+    }
+
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.include_hook_spans_in_root
+    pub fn record_hook_span(
+        &self,
+        span: kelir_interface::telemetry::HookSpan,
+    ) -> Result<(), PluginError> {
+        self.chain.record_hook_span(span)
+    }
+
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.witness_cosigning_endpoint
+    pub fn witness_client(&self) -> Option<WitnessClient> {
+        self.merkle
+            .witness_cosigning_endpoint
+            .clone()
+            .map(WitnessClient::new)
     }
 
     pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
@@ -188,6 +288,8 @@ pub struct LedgerPlugin {
     pub merkle_enabled: bool,
     pub otel: OtelConfig,
     pub config: LedgerConfig,
+    merkle_wal: MerkleWalConfig,
+    chain: Arc<MerkleChain>,
     denials: Arc<Mutex<HashMap<u32, u64>>>,
     metrics: Option<Arc<MetricRegistry>>,
 }
@@ -198,9 +300,16 @@ impl LedgerPlugin {
             merkle_enabled,
             otel: OtelConfig::default(),
             config: LedgerConfig::new(".kelir/audit.merkle.db", merkle_enabled),
+            merkle_wal: MerkleWalConfig::default(),
+            chain: Arc::new(MerkleChain::new()),
             denials: Arc::new(Mutex::new(HashMap::new())),
             metrics: None,
         }
+    }
+
+    pub fn with_merkle_wal(mut self, merkle_wal: MerkleWalConfig) -> Self {
+        self.merkle_wal = merkle_wal;
+        self
     }
 
     pub fn with_config(mut self, config: LedgerConfig) -> Self {
@@ -259,6 +368,8 @@ impl KelirPlugin for LedgerPlugin {
             denials: Arc::clone(&self.denials),
             otel: self.otel.clone(),
             metrics: self.metrics.clone(),
+            merkle: self.merkle_wal.clone(),
+            chain: Arc::clone(&self.chain),
         }
     }
     fn name(&self) -> &'static str {

@@ -14,7 +14,7 @@ policy_plane_mutability = "dynamic_signed"
 
 [driver]
 backend = "auto"
-require_hardware_vmm = true
+require_hardware_vmm = false
 allow_emulated_fallback = true
 emulated_tier_classification = "Class2_RootlessUserNS"
 verify_hw_lockfile = true
@@ -31,8 +31,12 @@ allow_async_worker_yield = true
 
 [session]
 id = "ses_swe_bench_primary"
-org_id = "org_enterprise_aegis_prod"
+tenant_id = "org_enterprise_aegis_prod"
 topology = "local"
+
+[session.isolation_envelope]
+enforce_openat2_beneath = true
+cgroup_parent = "aegis/org_enterprise_aegis_prod"
 
 [session.budget]
 exec_seconds = 300
@@ -83,6 +87,8 @@ kernel_boot_params = ["kptr_restrict=2", "dmesg_restrict=1", "panic_on_oops=1", 
 max_exec_slots = 4096
 hide_pid = 2
 anti_toctou_cgroups = true
+granular_task_freeze = true
+rejection_mode = "synthetic_refusal"
 
 # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
 [session.driver]
@@ -448,6 +454,12 @@ sentinel_path = "/dev/kelir-gate"
 detect_pty_quiescence = true
 pre_checkpoint_dentry_trim = true
 
+[checkpoint.step_dag]
+enabled = true
+require_signed_attribution = true
+require_separation_of_duties = true
+storage = "content_addressed"
+
 [checkpoint.step_evaluation]
 enabled = true
 default_action = "proceed"
@@ -498,6 +510,11 @@ wal_mode = true
 busy_timeout_ms = 5000
 lease_ttl_seconds = 30
 prune_unreferenced_cas_blobs = true
+
+[host.telemetry_ring]
+feature_extraction = true
+sliding_window_depth = 300
+export_feature_vector = true
 
 [attestation.hardware_facts]
 measure_vmlinux_blake3 = true

@@ -9,31 +9,30 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kelir::async_trait;
+use kelir::{Deserialize, Serialize};
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
-use kelir::{Deserialize, Serialize};
 
 use kelir::{
-    ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FsReconcileRequest, HCons,
-    HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin,
-    NetworkFaultRule, NoParams, OtelConfig, PostExecAction, ReceiptConfig, FinalizeRequest,
-    StorageFaultRule, TrapFilter, Unsealed, Verdict, VmConfig,
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
-            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, SnoopRule,
-            StoragePlaneConfig, SyntheticFile, WorkspaceEncapsulation,
+            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, SnoopRule, StoragePlaneConfig,
+            SyntheticFile, WorkspaceEncapsulation,
         },
         terminal_plane::{PromptRule, PtyConfig, TokenShieldConfig},
         wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
     },
     plugin_model::{
-        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError,
-        TrapInterposer,
+        AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError, TrapInterposer,
     },
     protocol_wire::{Errno, ExecveMutation, PatchPayload, TrapEvent},
     telemetry_attest::ExecutionReceipt,
+    ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FinalizeRequest,
+    FsReconcileRequest, HCons, HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx,
+    LedgerHandle, LedgerPlugin, NetworkFaultRule, NoParams, OtelConfig, PostExecAction,
+    ReceiptConfig, SnapshotDescriptor, StorageFaultRule, TrapFilter, Unsealed, Verdict, VmConfig,
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
@@ -74,7 +73,10 @@ pub struct RepoPolicyHandle {
 
 impl RepoPolicyHandle {
     pub async fn violations(&self) -> usize {
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).violations
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .violations
     }
     pub async fn branch(&self) -> String {
         self.state
@@ -253,12 +255,13 @@ async fn build_runtime(
     let policy_handle = policy_plugin.handle();
     let host_uid = {
         use std::os::unix::fs::MetadataExt;
-        std::fs::metadata("/proc/self").map(|m| m.uid()).map_err(|e| {
-            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-        })?
+        std::fs::metadata("/proc/self")
+            .map(|m| m.uid())
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?
     };
 
     let builder = KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 4,
         memory_mb: 4096,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -267,6 +270,7 @@ async fn build_runtime(
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -274,6 +278,10 @@ async fn build_runtime(
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -350,11 +358,12 @@ async fn build_runtime(
                     let oracle = Arc::clone(&oracle);
                     let path = path.to_path_buf();
                     let raw = raw.to_vec();
-                    let ledger = ctx.cap::<LedgerHandle>();
+                    let ledger = ctx.cap::<LedgerHandle>().cloned();
                     Box::pin(async move {
-                        let evt: kelir::serde_json::Value = kelir::serde_json::from_slice(&raw).map_err(|err| {
-                            PluginError::Halt(format!("snoop payload decode failed: {err}"))
-                        })?;
+                        let evt: kelir::serde_json::Value = kelir::serde_json::from_slice(&raw)
+                            .map_err(|err| {
+                                PluginError::Halt(format!("snoop payload decode failed: {err}"))
+                            })?;
                         if evt
                             .get("falsifiedResult")
                             .and_then(|value| value.as_bool())
@@ -366,7 +375,10 @@ async fn build_runtime(
                             )));
                         }
                         let producer_blake3 = match ledger {
-                            Some(ref l) => l.blake3_of_producing_process(&path).await.unwrap_or_default(),
+                            Some(ref l) => l
+                                .blake3_of_producing_process(&path)
+                                .await
+                                .unwrap_or_default(),
                             None => String::new(),
                         };
                         oracle
@@ -447,6 +459,10 @@ async fn build_runtime(
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
+        hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
+        record_pre_redaction_hash: false,
+        include_hook_spans_in_root: false,
+        witness_cosigning_endpoint: None,
         store: ".kelir/audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
@@ -465,198 +481,187 @@ async fn build_runtime(
         },
     }))
     .plugin_instance(policy_plugin)
-    .trap_async(
-            "*",
-            {
-                let oracle = Arc::clone(&oracle);
-                move |c: HandlerCtx<_, _>| {
-                    let oracle = Arc::clone(&oracle);
-                    async move {
-                        let _pre = c.vm.checkpoint(format!("pre:{}", c.trap.pid)).await?;
+    .trap_async("*", {
+        let oracle = Arc::clone(&oracle);
+        move |c: HandlerCtx<_, _>| {
+            let oracle = Arc::clone(&oracle);
+            async move {
+                let _pre = c.vm.checkpoint(format!("pre:{}", c.trap.pid)).await?;
 
-                        let intent: IntentAnalysis = oracle
-                            .analyze_intent(&c.trap)
-                            .await
-                            .map_err(|err| {
-                                PluginError::Halt(format!("intent analysis failed: {err}"))
-                            })?;
-                        if !intent.is_hypothesis_valid {
-                            return Ok(Verdict::Drop {
-                                errno: Errno::Eperm,
-                                reason: format!(
-                                    "Verification Reject: {}",
-                                    intent.falsification_reason.unwrap_or_default()
-                                ),
-                            });
-                        }
-                        Ok(Verdict::Pass)
-                    }
-                }
-            },
-        )
-        .trap_async(
-            TrapFilter::binary("npm")
-                .with_arg("test")
-                .with_arg("--")
-                .with_arg("--runInBand"),
-            |c: HandlerCtx<_, _>| async move {
-                c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
-                // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
-                // SDK patch carries the typed ExecveMutation (CBOR on the wire).
-                Ok(Verdict::Patch(PatchPayload::ExecveMutation(
-                    ExecveMutation {
-                        new_binary: Some(c.trap.binary_path.clone()),
-                        new_argv: Some(c.trap.argv.clone()),
-                        set_env: vec![
-                            (
-                                "OTEL_TRACE_ID".into(),
-                                format!("{:032x}", std::process::id()),
-                            ),
-                            ("CI".into(), "1".into()),
-                        ],
-                        unset_env: vec![],
-                    },
-                )))
-            },
-        )
-        .trap_async(
-            TrapFilter::binary("git").with_arg("push"),
-            |c: HandlerCtx<_, _>| async move {
-                if c.trap.argv.iter().any(|a| a == "--force") {
-                    let argv: Vec<String> = c
-                        .trap
-                        .argv
-                        .iter()
-                        .filter(|a| *a != "--force")
-                        .cloned()
-                        .collect();
-                    return Ok(Verdict::Patch(PatchPayload::ExecveMutation(
-                        ExecveMutation {
-                            new_binary: Some("/bin/git".into()),
-                            new_argv: Some(argv),
-                            set_env: vec![("KELIR_DISARMED".into(), "1".into())],
-                            unset_env: vec![],
-                        },
-                    )));
+                let intent: IntentAnalysis = oracle
+                    .analyze_intent(&c.trap)
+                    .await
+                    .map_err(|err| PluginError::Halt(format!("intent analysis failed: {err}")))?;
+                if !intent.is_hypothesis_valid {
+                    return Ok(Verdict::Drop {
+                        errno: Errno::Eperm,
+                        reason: format!(
+                            "Verification Reject: {}",
+                            intent.falsification_reason.unwrap_or_default()
+                        ),
+                    });
                 }
                 Ok(Verdict::Pass)
-            },
-        )
-        .post_exec(
-            "*",
-            {
-                let oracle = Arc::clone(&oracle);
-                move |c: HandlerCtx<_, _>| {
-                    let oracle = Arc::clone(&oracle);
-                    async move {
-                        let pre: SnapshotDescriptor = c
-                            .step
-                            .last()
-                            .ok_or_else(|| PluginError::Halt("no pre-exec checkpoint".into()))?;
-                        let receipt: ExecutionReceipt = c.receipt().await?;
+            }
+        }
+    })
+    .trap_async(
+        TrapFilter::binary("npm")
+            .with_arg("test")
+            .with_arg("--")
+            .with_arg("--runInBand"),
+        |c: HandlerCtx<_, _>| async move {
+            c.fs.warm_cache(&["node_modules", ".next/cache"]).await?;
+            // Env injection via Patch, not env.set + Pass (09: EINVALIDDECISION).
+            // SDK patch carries the typed ExecveMutation (CBOR on the wire).
+            Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                ExecveMutation {
+                    new_binary: Some(c.trap.binary_path.clone()),
+                    new_argv: Some(c.trap.argv.clone()),
+                    set_env: vec![
+                        (
+                            "OTEL_TRACE_ID".into(),
+                            format!("{:032x}", std::process::id()),
+                        ),
+                        ("CI".into(), "1".into()),
+                    ],
+                    unset_env: vec![],
+                },
+            )))
+        },
+    )
+    .trap_async(
+        TrapFilter::binary("git").with_arg("push"),
+        |c: HandlerCtx<_, _>| async move {
+            if c.trap.argv.iter().any(|a| a == "--force") {
+                let argv: Vec<String> = c
+                    .trap
+                    .argv
+                    .iter()
+                    .filter(|a| *a != "--force")
+                    .cloned()
+                    .collect();
+                return Ok(Verdict::Patch(PatchPayload::ExecveMutation(
+                    ExecveMutation {
+                        new_binary: Some("/bin/git".into()),
+                        new_argv: Some(argv),
+                        set_env: vec![("KELIR_DISARMED".into(), "1".into())],
+                        unset_env: vec![],
+                    },
+                )));
+            }
+            Ok(Verdict::Pass)
+        },
+    )
+    .post_exec("*", {
+        let oracle = Arc::clone(&oracle);
+        move |c: HandlerCtx<_, _>| {
+            let oracle = Arc::clone(&oracle);
+            async move {
+                let pre: SnapshotDescriptor = c
+                    .step
+                    .last()
+                    .ok_or_else(|| PluginError::Halt("no pre-exec checkpoint".into()))?;
+                let receipt: ExecutionReceipt = c.receipt().await?;
 
-                        // see: cans/10-attestation.md#binary_blake3-identity
-                        let trap_hex = hex_lower(&c.trap.binary_blake3);
-                        if receipt.binary_blake3 != trap_hex {
-                            c.vm.rollback(&pre).await?;
-                            c.terminal
-                                .notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
-                            return Ok(PostExecAction::RollbackAndHalt);
-                        }
-
-                        if c.trap.binary_path.ends_with("/npm")
-                            && receipt.egress_bytes > 0
-                            && c.trap.cwd.contains("/checkout-service")
-                        {
-                            c.vm.rollback(&pre).await?;
-                            c.terminal.notice(&format!(
-                                "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
-                                receipt.egress_bytes
-                            ));
-                            return Ok(PostExecAction::RollbackAndHalt);
-                        }
-
-                        if !oracle
-                            .verify_physical_receipt(&receipt)
-                            .await
-                            .map_err(|err| {
-                                PluginError::Halt(format!(
-                                    "physical receipt verification failed: {err}"
-                                ))
-                            })? {
-                            c.vm.rollback(&pre).await?;
-                            c.terminal
-                                .notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
-                            return Ok(PostExecAction::RollbackAndHalt);
-                        }
-                        Ok(PostExecAction::Proceed)
-                    }
-                }
-            },
-        )
-        .trap_async(
-            TrapFilter::binary("git").with_arg("commit").with_arg("-m"),
-            {
-                let policy = policy_handle.clone();
-                move |c: HandlerCtx<_, _>| {
-                    let policy = policy.clone();
-                    async move {
-                        let n = policy.violations().await;
-                        if n > 0 {
-                            return Ok(Verdict::Drop {
-                                errno: Errno::Eperm,
-                                reason: format!("EPOLICY: {n} prior violation(s)."),
-                            });
-                        }
-                        Ok(Verdict::Pass)
-                    }
-                }
-            },
-        )
-        .post_exec(
-            TrapFilter::binary("git").with_arg("commit"),
-            |c: HandlerCtx<_, _>| async move {
-                let receipt = c.receipt().await?;
-
-                if receipt.dirty_bytes == 0 {
-                    return Err(PluginError::Halt("zero-byte delta commit".into()));
+                // see: cans/10-attestation.md#binary_blake3-identity
+                let trap_hex = hex_lower(&c.trap.binary_blake3);
+                if receipt.binary_blake3 != trap_hex {
+                    c.vm.rollback(&pre).await?;
+                    c.terminal
+                        .notice("⚡ [KELIR]: post-exec binary hash mismatch — REVERTED\n");
+                    return Ok(PostExecAction::RollbackAndHalt);
                 }
 
-                // see: cans/10-attestation.md#Typed-extensions
-                match receipt.fs_vfs() {
-                    Some(ext) => eprintln!(
-                        "[kelir] commit fs:vfs extension present, served_inodes={} roots={}",
-                        ext.served_inodes,
-                        ext.roots.len(),
-                    ),
-                    None => eprintln!("[kelir] commit fs:vfs extension absent"),
+                if c.trap.binary_path.ends_with("/npm")
+                    && receipt.egress_bytes > 0
+                    && c.trap.cwd.contains("/checkout-service")
+                {
+                    c.vm.rollback(&pre).await?;
+                    c.terminal.notice(&format!(
+                        "⚡ [KELIR]: hermetic test emitted {}B egress — REVERTED\n",
+                        receipt.egress_bytes
+                    ));
+                    return Ok(PostExecAction::RollbackAndHalt);
+                }
+
+                if !oracle
+                    .verify_physical_receipt(&receipt)
+                    .await
+                    .map_err(|err| {
+                        PluginError::Halt(format!("physical receipt verification failed: {err}"))
+                    })?
+                {
+                    c.vm.rollback(&pre).await?;
+                    c.terminal
+                        .notice("⚡ [KELIR]: post-condition violated — REVERTED\n");
+                    return Ok(PostExecAction::RollbackAndHalt);
                 }
                 Ok(PostExecAction::Proceed)
-            },
-        )
-        .lifecycle(|l| {
-            l.on_vm_init(|ctx| {
-                Box::pin(async move {
-                    ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
-                        .await
-                })
-            })
-            .on_vm_shutdown(|ctx| {
-                Box::pin(async move {
-                    if let Some(ledger) = ctx.cap::<LedgerHandle>() {
-                        ledger.flush().await?;
+            }
+        }
+    })
+    .trap_async(
+        TrapFilter::binary("git").with_arg("commit").with_arg("-m"),
+        {
+            let policy = policy_handle.clone();
+            move |_c: HandlerCtx<_, _>| {
+                let policy = policy.clone();
+                async move {
+                    let n = policy.violations().await;
+                    if n > 0 {
+                        return Ok(Verdict::Drop {
+                            errno: Errno::Eperm,
+                            reason: format!("EPOLICY: {n} prior violation(s)."),
+                        });
                     }
-                    Ok(())
-                })
+                    Ok(Verdict::Pass)
+                }
+            }
+        },
+    )
+    .post_exec(
+        TrapFilter::binary("git").with_arg("commit"),
+        |c: HandlerCtx<_, _>| async move {
+            let receipt = c.receipt().await?;
+
+            if receipt.dirty_bytes == 0 {
+                return Err(PluginError::Halt("zero-byte delta commit".into()));
+            }
+
+            // see: cans/10-attestation.md#Typed-extensions
+            match receipt.fs_vfs() {
+                Some(ext) => eprintln!(
+                    "[kelir] commit fs:vfs extension present, served_inodes={} roots={}",
+                    ext.served_inodes,
+                    ext.roots.len(),
+                ),
+                None => eprintln!("[kelir] commit fs:vfs extension absent"),
+            }
+            Ok(PostExecAction::Proceed)
+        },
+    )
+    .lifecycle(|l| {
+        l.on_vm_init(|ctx| {
+            Box::pin(async move {
+                ctx.set_watchdog(Duration::from_secs(5 * 60), kelir::WatchdogAction::Reboot)
+                    .await
             })
-            .end()
         })
-        .deny(|d| {
-            d.on_trap_deny(|_event, _verdict, _session| async move {
-                Ok::<(), PluginError>(())
+        .on_vm_shutdown(|ctx| {
+            Box::pin(async move {
+                if let Some(ledger) = ctx.cap::<LedgerHandle>() {
+                    ledger.flush().await?;
+                }
+                Ok(())
             })
+        })
+        .end()
+    })
+    .deny(|d| {
+        d.on_trap_deny(|_event, _verdict, _session| async move { Ok::<(), PluginError>(()) })
             .end()
-        });
+    });
 
     Ok(builder)
 }
@@ -700,28 +705,45 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for id in ['A', 'B', 'C', 'D'] {
             let mut child = session.fork().await?;
             joins.spawn(async move {
-                let outcome: Result<kelir::CausalDelta, Box<dyn std::error::Error + Send + Sync>> = async {
-                    child.vm.clock.skew(Duration::from_secs(86400 * ((id as u64) - ('A' as u64) + 1))).await?;
-                    child.checkpoint.create_step(
-                        child.lineage(1),
-                        SnapshotDescriptor {
-                            id: format!("hypothesis-{id}"),
-                            dirty_bytes: 0,
-                            created_at_ns: 0,
-                            parent_digest: None,
-                            guest_clock: None,
-                        },
-                    )?;
-                    child.checkpoint.commit_step(child.lineage(1))?;
-                    let run = child.spawn("npm", &["run", &format!("verify-hypothesis-{id}")], None).await?;
-                    if run.exit_code != 0 {
-                        return Err(format!("hypothesis {id} verification failed: code {}", run.exit_code).into());
+                let outcome: Result<kelir::CausalDelta, Box<dyn std::error::Error + Send + Sync>> =
+                    async {
+                        child
+                            .vm
+                            .clock
+                            .skew(Duration::from_secs(
+                                86400 * ((id as u64) - ('A' as u64) + 1),
+                            ))
+                            .await?;
+                        child.checkpoint.create_step(
+                            child.lineage(1),
+                            SnapshotDescriptor {
+                                id: format!("hypothesis-{id}"),
+                                dirty_bytes: 0,
+                                created_at_ns: 0,
+                                parent_digest: None,
+                                guest_clock: None,
+                            },
+                        )?;
+                        child.checkpoint.commit_step(child.lineage(1))?;
+                        let run = child
+                            .spawn("npm", &["run", &format!("verify-hypothesis-{id}")], None)
+                            .await?;
+                        if run.exit_code != 0 {
+                            return Err(format!(
+                                "hypothesis {id} verification failed: code {}",
+                                run.exit_code
+                            )
+                            .into());
+                        }
+                        let delta = child
+                            .cap::<LedgerHandle>()
+                            .ok_or("ledger missing")?
+                            .get_causal_delta_from_parent()
+                            .await?;
+                        child.stop().await?;
+                        Ok(delta)
                     }
-                    let delta = child.cap::<LedgerHandle>().ok_or("ledger missing")?.get_causal_delta_from_parent().await?;
-                    child.stop().await?;
-                    Ok(delta)
-                }
-                .await;
+                    .await;
                 (id, outcome)
             });
         }
@@ -732,7 +754,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 joined.map_err(|err| Box::new(err) as Box<dyn std::error::Error + Send + Sync>)?,
             );
         }
-        
+
         let mut winner_info = None;
         for id in ['A', 'B', 'C', 'D'] {
             if let Some((_, Ok(delta))) = exit_codes.iter().find(|(branch, _)| *branch == id) {
@@ -747,10 +769,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             return Ok(());
         };
 
-        session.suspend(SuspendReason::External(
-            ExternalSuspendKind::HumanAuthorizationHold,
-        ))
-        .await?;
+        session
+            .suspend(SuspendReason::External(
+                ExternalSuspendKind::HumanAuthorizationHold,
+            ))
+            .await?;
         eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
         oracle.await_human_approval().await?;
         session.resume().await?;
@@ -774,7 +797,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 include_merkle_root: true,
             })
             .await?;
-        eprintln!("[kelir] receipt merkle={} jws={}…", final_receipt.merkle_root, &final_receipt.signed_jws[..64]);
+        eprintln!(
+            "[kelir] receipt merkle={} jws={}…",
+            final_receipt.merkle_root,
+            &final_receipt.signed_jws[..64]
+        );
 
         Ok(())
     }

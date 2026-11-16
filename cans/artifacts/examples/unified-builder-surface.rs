@@ -171,6 +171,7 @@ pub fn build_plain_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, No
 
 pub fn build_host() -> SurfaceHostBuilder {
     KelirBuilder::new(VmConfig {
+        tenant_id: None,
         vcpus: 2,
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
@@ -179,6 +180,7 @@ pub fn build_host() -> SurfaceHostBuilder {
         enable_watchdog: true,
         enable_gpu_passthrough: false,
         driver_policy: DriverPolicy {
+            emulated_tier_classification: None,
             driver: None,
             require_hardware_vmm: false,
             allow_emulated_fallback: true,
@@ -186,6 +188,10 @@ pub fn build_host() -> SurfaceHostBuilder {
             wx_enforcement: WxPolicy::PermissiveAudit,
             ffi_worker_threads: 2,
             ffi_max_ops_per_sec: 1000,
+            ffi_queue_capacity: 16384,
+            ffi_max_buffer_bytes: 16777216,
+            ffi_zero_copy_shm_threshold_bytes: 65536,
+            ffi_allow_async_worker_yield: true,
         },
         page_size_kb: 4,
         deterministic_clock: false,
@@ -328,7 +334,7 @@ pub fn build_host() -> SurfaceHostBuilder {
 // the Host-mode impl, so there is no method to call on a plugin-mode
 // builder. This function is an L2 skeleton that returns its builder
 // unchanged; it proves nothing at runtime and must not be read as a pass.
-// TODO (L3): no runtime probe exists for this case by construction: uncommenting any line below must fail the build with E0599 (no method named `<verb>`); a live EConfig probe like the TS/Py siblings is impossible in Rust.
+// No runtime probe exists for this case by construction: uncommenting any line below must fail the build with E0599 (no method named `<verb>`); a live EConfig probe like the TS/Py siblings is impossible in Rust.
 pub fn host_only_verbs_rejected_on_plugin(
     plugin: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {

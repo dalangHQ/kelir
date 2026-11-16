@@ -71,6 +71,8 @@ session:
   id: "ses_swe_bench_primary"
   tenant_id: "org_enterprise_aegis_prod"
   topology: local                     # local | hub | spoke_thin | spoke_fat | spoke_ephemeral
+  budget:
+    exec_seconds: 300
   isolation_envelope:
     enforce_openat2_beneath: true
     cgroup_parent: "aegis/org_enterprise_aegis_prod"
@@ -545,6 +547,7 @@ plugins:
     # Context Taint Tracking & Out-of-Band Human Approvals.
     taint_governance:
       untrusted_ingress_taints: true  # Ingestion of raw external data marks trace tainted
+      propagate_byte_range_taints: true
       mutating_verbs_require_approval: true # Tainted mutating tool returns Verdict::Suspend
 
     # Argument Sanitization & Secret Scrubbing.
@@ -653,6 +656,10 @@ plugins:
     socket_path: "/run/kelir/mcp.sock"
     framing: "json_lines"             # Strict newline-delimited JSON (no Content-Length header)
     max_frame_bytes: 16777216
+
+  # ─── PLUGIN: WIRE-INGRESS (Tier 2 In-Ring L7 Ingress) ───────────────────────
+  wire_ingress:
+    enabled: true
 
   # ─── PLUGIN: REPO-POLICY (Branch Protection & Diff Limits) ───────
   repo-policy:

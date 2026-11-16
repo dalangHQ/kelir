@@ -593,9 +593,81 @@ fn assert_action_coverage(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/15-operations.md#--l7-stream-coverage
+fn assert_l7_stream_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let found = vectors
+        .iter()
+        .filter(|vector| vector.name.starts_with("l7-stream-"))
+        .count();
+    if found == 0 {
+        return Err(
+            "parity: l7-stream coverage missing: no `l7-stream-*` vector in vectors.json; \
+             WS-B1 owns the evidence (in-ring L7 HTTP/TLS parsing exercised by serverless-webhook)"
+                .to_string(),
+        );
+    }
+    println!("parity: l7-stream coverage OK ({found} vector(s))");
+    Ok(())
+}
+
+// see: cans/15-operations.md#--outbox-coverage
+fn assert_outbox_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let found = vectors
+        .iter()
+        .filter(|vector| vector.name.starts_with("outbox-"))
+        .count();
+    if found == 0 {
+        return Err(
+            "parity: outbox coverage missing: no `outbox-*` vector in vectors.json; \
+             WS-B6/WS-C3 own the evidence (buffered frames released on commit, purged on rollback)"
+                .to_string(),
+        );
+    }
+    println!("parity: outbox coverage OK ({found} vector(s))");
+    Ok(())
+}
+
+// see: cans/15-operations.md#--step-dag-coverage
+fn assert_step_dag_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let found = vectors
+        .iter()
+        .filter(|vector| vector.name.starts_with("step-dag-"))
+        .count();
+    if found == 0 {
+        return Err(
+            "parity: step-dag coverage missing: no `step-dag-*` vector in vectors.json; \
+             WS-B7 owns the evidence (branching DAG + signed attribution + SoD paths)"
+                .to_string(),
+        );
+    }
+    println!("parity: step-dag coverage OK ({found} vector(s))");
+    Ok(())
+}
+
+// see: cans/15-operations.md#--swarm-mesh-coverage
+fn assert_swarm_mesh_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    let found = vectors
+        .iter()
+        .filter(|vector| vector.name.starts_with("swarm-mesh-"))
+        .count();
+    if found == 0 {
+        return Err(
+            "parity: swarm-mesh coverage missing: no `swarm-mesh-*` vector in vectors.json; \
+             WS-B9/WS-C4 own the evidence (>=1 broadcast/await winner cycle)"
+                .to_string(),
+        );
+    }
+    println!("parity: swarm-mesh coverage OK ({found} vector(s))");
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut path = "vectors.json".to_string();
     let mut action_coverage = false;
+    let mut l7_stream_coverage = false;
+    let mut outbox_coverage = false;
+    let mut step_dag_coverage = false;
+    let mut swarm_mesh_coverage = false;
     let mut rest = args;
     match args.first().map(String::as_str) {
         None => {}
@@ -604,7 +676,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some(other) => {
             return Err(CliError::usage(format!(
-                "parity: unknown action `{other}` (expected `run [path] [--action-coverage]`)"
+                "parity: unknown action `{other}` (expected `run [path] [--action-coverage] [--l7-stream-coverage] [--outbox-coverage] [--step-dag-coverage] [--swarm-mesh-coverage]`)"
             )));
         }
     }
@@ -613,6 +685,18 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         .filter(|arg| {
             if arg.as_str() == "--action-coverage" {
                 action_coverage = true;
+                false
+            } else if arg.as_str() == "--l7-stream-coverage" {
+                l7_stream_coverage = true;
+                false
+            } else if arg.as_str() == "--outbox-coverage" {
+                outbox_coverage = true;
+                false
+            } else if arg.as_str() == "--step-dag-coverage" {
+                step_dag_coverage = true;
+                false
+            } else if arg.as_str() == "--swarm-mesh-coverage" {
+                swarm_mesh_coverage = true;
                 false
             } else {
                 true
@@ -633,6 +717,18 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     assert_canonical_roster(vectors)?;
     if action_coverage {
         assert_action_coverage(vectors)?;
+    }
+    if l7_stream_coverage {
+        assert_l7_stream_coverage(vectors)?;
+    }
+    if outbox_coverage {
+        assert_outbox_coverage(vectors)?;
+    }
+    if step_dag_coverage {
+        assert_step_dag_coverage(vectors)?;
+    }
+    if swarm_mesh_coverage {
+        assert_swarm_mesh_coverage(vectors)?;
     }
     println!(
         "parity: {} vector(s) from {path}: frame-validated {}; watchdog-armed {}; veto-registered {}",

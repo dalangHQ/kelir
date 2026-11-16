@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use kelir_interface::handlers_plugin::Capability;
+use kelir_interface::handlers_plugin::{Capability, Has};
 pub use kelir_interface::handles_lifecycle::{
     ClockHandle, FsHandle, StepStack, TerminalHandle, VmHandle,
 };
@@ -105,6 +105,14 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+    pub fn cap_infallible<P: 'static>(&self) -> &P
+    where
+        Plugins: Has<P>,
+    {
+        self.plugins.get()
+    }
+
+    // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     pub fn plane<P: Plane>(&self) -> Option<&P> {
         match std::any::type_name::<P>() {
             "kelir_engine::planes::terminal::TerminalPlane" => {
@@ -158,8 +166,25 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     }
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
-    pub async fn spawn(&self, binary: &str, argv: &[&str]) -> Result<SpawnResult, PluginError> {
-        self.exec(binary, argv, None).await
+    pub async fn spawn(
+        &self,
+        binary: &str,
+        argv: &[&str],
+        opts: Option<SpawnOpts>,
+    ) -> Result<SpawnResult, PluginError> {
+        let mut builder = self.spawn_builder(binary);
+        builder.args.extend(argv.iter().map(|arg| arg.to_string()));
+        if let Some(opts) = opts {
+            builder.input = opts.input;
+            if opts.cwd.is_some() {
+                builder.cwd = opts.cwd;
+            }
+            if !opts.params.is_empty() {
+                builder.params_bytes = opts.params;
+            }
+            builder.env = opts.env;
+        }
+        builder.await
     }
 
     // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -190,6 +215,26 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     // TODO (L2): surface the step handle as a Session property per cans/03-sdk-architecture.md#Session-surfaces.
     pub fn vsock(&self) -> VsockHandle {
         VsockHandle
+    }
+
+    // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+    pub async fn handle_ingress<Req, Res>(
+        &self,
+        _port: u16,
+        _sock_path: &str,
+    ) -> Result<IngressChannel<Req, Res>, PluginError> {
+        // TODO (L3) [wire_plane]: splice the ingress listener directly to the guest shim via vsock.; slop: handle_ingress always Halts, no live ingress path exists.
+        Err(PluginError::Halt(
+            "TODO (L3): Session::handle_ingress needs the live wire-ingress splice".into(),
+        ))
+    }
+
+    // see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+    pub async fn shm(&self, _region: &str) -> Result<ShmMapping, PluginError> {
+        // TODO (L3) [vr_07_virtio_shm_unmap_on_teardown]: map the virtio_shm region shared across sibling microVMs.; slop: Session::shm always Halts, no shared region exists.
+        Err(PluginError::Halt(
+            "TODO (L3): Session::shm needs the live virtio_shm mapping".into(),
+        ))
     }
 
     // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
@@ -350,10 +395,57 @@ impl<Plugins: HList, Params> std::ops::DerefMut for Session<Plugins, Params> {
 
 // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
 #[derive(Debug, Clone, Default)]
+pub struct SpawnOpts {
+    pub input: Vec<u8>,
+    pub cwd: Option<String>,
+    pub params: Vec<u8>,
+    pub env: Vec<(String, String)>,
+}
+
+// see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
+#[derive(Debug, Clone, Default)]
 pub struct SpawnResult {
     pub exit_code: i32,
-    pub stdout: Option<String>,
-    pub stderr: Option<String>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+// see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+pub struct IngressChannel<Req, Res> {
+    _marker: PhantomData<fn() -> (Req, Res)>,
+}
+
+impl<Req, Res> IngressChannel<Req, Res> {
+    // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+    pub async fn next_request(&mut self) -> Result<Option<IngressStream<Req, Res>>, PluginError> {
+        Ok(None)
+    }
+}
+
+// see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+pub struct IngressStream<Req, Res> {
+    request: Req,
+    _marker: PhantomData<fn() -> Res>,
+}
+
+impl<Req, Res> IngressStream<Req, Res> {
+    pub fn request(&self) -> &Req {
+        &self.request
+    }
+
+    // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
+    pub async fn respond(&mut self, _res: Res) -> Result<(), PluginError> {
+        // TODO (L3) [wire_plane]: deliver the ingress response over the parked vsock stream.; slop: respond always Halts, parked ingress never answered.
+        Err(PluginError::Halt(
+            "TODO (L3): IngressStream::respond needs the live wire-ingress splice".into(),
+        ))
+    }
+}
+
+// see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+#[derive(Debug, Clone)]
+pub struct ShmMapping {
+    pub region: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -368,6 +460,20 @@ impl VsockHandle {
 
 pub struct VsockChannel {
     inner: tokio::io::DuplexStream,
+}
+
+impl VsockChannel {
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub async fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        tokio::io::AsyncWriteExt::write_all(self, buf).await
+    }
+
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub async fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
+        tokio::io::AsyncReadExt::read_exact(self, buf)
+            .await
+            .map(|_| ())
+    }
 }
 
 impl tokio::io::AsyncRead for VsockChannel {
@@ -408,6 +514,8 @@ pub struct SpawnBuilder {
     pub limits: Option<ProcessLimits>,
     pub transport: Option<Arc<dyn SpawnTransport>>,
     pub params_bytes: Vec<u8>,
+    pub input: Vec<u8>,
+    pub env: Vec<(String, String)>,
     params_error: Option<String>,
 }
 
@@ -496,6 +604,8 @@ impl Future for SpawnBuilder {
             cwd: self.cwd.clone(),
             limits_bytes: encode_exec_control_limits(self.limits.as_ref()),
             params_bytes: self.params_bytes.clone(),
+            input: self.input.clone(),
+            env: self.env.clone(),
         };
         match transport.dispatch_exec(&request) {
             Ok(()) => {

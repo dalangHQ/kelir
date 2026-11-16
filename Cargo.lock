@@ -741,6 +741,7 @@ version = "1.0.0"
 dependencies = [
  "kelir-interface",
  "rusqlite",
+ "serde",
  "thiserror 2.0.21",
 ]
 
@@ -1284,6 +1285,7 @@ dependencies = [
  "kelir-otlp",
  "kelir-plugin-testkit",
  "serde",
+ "sha2",
  "tracing",
 ]
 
@@ -1294,6 +1296,7 @@ dependencies = [
  "async-trait",
  "kelir-interface",
  "kelir-plugin-testkit",
+ "serde_json",
  "tokio",
 ]
 
@@ -1350,6 +1353,7 @@ dependencies = [
  "kelir-interface",
  "kelir-plugin-testkit",
  "plugin-mcp",
+ "serde_json",
 ]
 
 [[package]]

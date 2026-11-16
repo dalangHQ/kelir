@@ -7,6 +7,7 @@ import type {
   ExecveMutation,
   ExecutionReceipt,
   SnapshotDescriptor,
+  SpawnResult,
   TrapInfo,
   WatchdogAction,
 } from "./types.core.js";
@@ -78,8 +79,23 @@ export interface TerminalHandle {
   ): Promise<{ bytes: Uint8Array; nextOffset: number }>;
 }
 
+// see: cans/09-snapshots.md#Groups-and-lineage
+export interface PidLineage {
+  readonly rootPid: number;
+  readonly incarnationId: Uint8Array;
+}
+
+// see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+export interface ShmMapping {
+  readonly region: string;
+}
+
 export interface CheckpointHandle {
   create(label: string): Promise<SnapshotDescriptor>;
+  createStep(lineage: PidLineage, descriptor: SnapshotDescriptor): Promise<number>;
+  commitStep(lineage: PidLineage): Promise<number>;
+  revertStep(slot: number): Promise<void>;
+  rollback(snapshotId: string): Promise<void>;
 }
 
 export interface HostHandle {
@@ -98,6 +114,39 @@ export interface MeshHandle {
   readonly peers?: readonly string[];
   // L3-GAP: [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
   awaitWinner(timeoutMs: number): Promise<number>;
+  broadcastWinner(shardId: number): Promise<void>;
+}
+
+// see: cans/plugins/container.md#Plugin-container
+export interface ContainerHandle {
+  ingestImage(path: string): Promise<string>;
+}
+
+// see: cans/plugins/db-proxy.md#Plugin-db-proxy
+export interface DbProxyHandle {
+  readonly rewriteTarget: string;
+}
+
+// see: cans/plugins/transaction.md#Plugin-transaction
+export interface Savepoint {
+  readonly id: number;
+}
+
+// see: cans/plugins/transaction.md#Plugin-transaction
+export interface Tx {
+  savepoint(): Promise<Savepoint>;
+  rollbackToSavepoint(savepoint: Savepoint): Promise<void>;
+  commit(): Promise<void>;
+}
+
+export interface TransactionHandle {
+  scope(
+    name: string,
+    options: {
+      readonly paths: readonly string[];
+      readonly schemas: readonly string[];
+    },
+  ): Promise<Tx>;
 }
 
 export interface ChaosHandle {
@@ -105,6 +154,9 @@ export interface ChaosHandle {
 }
 
 export interface LifecycleContext {
+  readonly vm: VmHandle;
+  cap<T>(name: string): T | undefined;
+  execInGuest(argv: readonly string[]): Promise<SpawnResult>;
   setWatchdog(options: { timeoutMs: number; action: WatchdogAction }): void;
   registerVeto(event: VetoEvent, predicate: () => boolean): void;
 }

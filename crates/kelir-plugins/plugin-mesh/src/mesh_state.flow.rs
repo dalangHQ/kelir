@@ -1,4 +1,5 @@
 // see: cans/plugins/mesh.md#Plugin-mesh
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -33,6 +34,32 @@ struct PeerRecord {
     traceparent: Option<String>,
 }
 
+// see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VectorClock {
+    counters: BTreeMap<u32, u64>,
+}
+
+impl VectorClock {
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    pub fn tick(&mut self, peer: u32) {
+        *self.counters.entry(peer).or_insert(0) += 1;
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    pub fn merge(&mut self, other: &Self) {
+        for (peer, count) in &other.counters {
+            let entry = self.counters.entry(*peer).or_insert(0);
+            *entry = (*entry).max(*count);
+        }
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    pub fn get(&self, peer: u32) -> u64 {
+        self.counters.get(&peer).copied().unwrap_or(0)
+    }
+}
+
 // see: cans/plugins/mesh.md#Peer-identity
 pub(crate) struct MeshState {
     svid: Mutex<Option<SpiffeSvid>>,
@@ -40,6 +67,8 @@ pub(crate) struct MeshState {
     handshakes: Mutex<Vec<JoinHandle<()>>>,
     rejections: Mutex<Vec<PeerRejection>>,
     rejection_spans: Mutex<Vec<kelir_interface::telemetry::HookSpan>>,
+    winner: Mutex<Option<u32>>,
+    vector_clock: Mutex<VectorClock>,
 }
 
 impl MeshState {
@@ -50,7 +79,44 @@ impl MeshState {
             handshakes: Mutex::new(Vec::new()),
             rejections: Mutex::new(Vec::new()),
             rejection_spans: Mutex::new(Vec::new()),
+            winner: Mutex::new(None),
+            vector_clock: Mutex::new(VectorClock::default()),
         }
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    fn record_winner(&self, shard_id: u32) -> Result<(), PluginError> {
+        let mut winner = self
+            .winner
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh winner slot lock poisoned".into()))?;
+        let current = *winner;
+        if current.is_none_or(|current| shard_id < current) {
+            *winner = Some(shard_id);
+        }
+        let mut clock = self
+            .vector_clock
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh vector clock poisoned".into()))?;
+        clock.tick(shard_id);
+        Ok(())
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    fn recorded_winner(&self) -> Result<Option<u32>, PluginError> {
+        Ok(*self
+            .winner
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh winner slot lock poisoned".into()))?)
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    fn vector_clock(&self) -> Result<VectorClock, PluginError> {
+        Ok(self
+            .vector_clock
+            .lock()
+            .map_err(|_| PluginError::Halt("mesh vector clock poisoned".into()))?
+            .clone())
     }
 
     fn lock_svid(&self) -> Result<MutexGuard<'_, Option<SpiffeSvid>>, PluginError> {
@@ -312,6 +378,9 @@ pub struct MeshCtx {
     state: Arc<MeshState>,
 }
 
+// see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+pub type MeshHandle = MeshCtx;
+
 impl MeshCtx {
     // see: cans/plugins/mesh.md#Error-and-return-semantics-(mesh)
     pub fn peer_rejections(&self) -> Result<Vec<PeerRejection>, PluginError> {
@@ -321,6 +390,18 @@ impl MeshCtx {
     // see: cans/10-attestation.md#Hook-trace
     pub fn rejection_spans(&self) -> Vec<kelir_interface::telemetry::HookSpan> {
         self.state.drain_rejection_spans()
+    }
+
+    // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
+    pub async fn broadcast_winner(&self, shard_id: u32) -> Result<(), PluginError> {
+        self.state.record_winner(shard_id)?;
+        // TODO (L3) [protocol_mux]: fan the announcement out over the virtio_shm peer rings; slop: announcement never leaves the session, sibling microVMs never converge.
+        Ok(())
+    }
+
+    // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+    pub fn vector_clock(&self) -> Result<VectorClock, PluginError> {
+        self.state.vector_clock()
     }
 
     // see: cans/artifacts/examples/multi-vm-swarm.rs#publish
@@ -351,6 +432,9 @@ impl MeshCtx {
 
     // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
     pub async fn await_winner(&self, _timeout: Duration) -> Result<u32, PluginError> {
+        if let Some(winner) = self.state.recorded_winner()? {
+            return Ok(winner);
+        }
         // L3-GAP: [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles
         let peers = self.state.lock_peers()?;
         Err(PluginError::Halt(format!(

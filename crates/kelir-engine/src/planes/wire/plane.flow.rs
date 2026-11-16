@@ -9,10 +9,13 @@ use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::vsock_mesh::VsockServiceHandler;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
+use kelir_interface::wire::l7::L7Parser;
 use kelir_interface::wire::net::{
     FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, WireWiring, link_local_route,
 };
+use kelir_interface::wire::outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxFrame};
 use kelir_interface::wire::udp_nat::UdpNatOps;
+use kelir_interface::wire::{ConnectionParking, ConnectionParkingConfig};
 
 use super::unbound_ops::{UnboundDnsOps, UnboundL4DivertOps, UnboundNetOps, UnboundUdpNatOps};
 
@@ -40,6 +43,9 @@ pub struct WirePlane {
     imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
     metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
     wiring: Option<WireWiring>,
+    l7_parser: Arc<Mutex<L7Parser>>,
+    outbox: Arc<Mutex<OutboxBuffer>>,
+    parking: Arc<Mutex<ConnectionParking>>,
 }
 
 impl Default for WirePlane {
@@ -82,7 +88,63 @@ impl WirePlane {
             imds_sink: Arc::new(RwLock::new(None)),
             metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
             wiring: None,
+            l7_parser: Arc::new(Mutex::new(L7Parser::default())),
+            outbox: Arc::new(Mutex::new(OutboxBuffer::default())),
+            parking: Arc::new(Mutex::new(ConnectionParking::default())),
         }
+    }
+
+    // see: cans/07-wire-plane.md#L7-protocol-inspection
+    pub fn l7_parser(&self) -> Arc<Mutex<L7Parser>> {
+        Arc::clone(&self.l7_parser)
+    }
+
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub fn with_outbox_config(self, config: OutboxDeferralConfig) -> Self {
+        if let Ok(mut outbox) = self.outbox.lock() {
+            *outbox = OutboxBuffer::new(config);
+        }
+        self
+    }
+
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub fn buffer_outbox(&self, payload: Vec<u8>, irreversible: bool) -> Result<u64, PluginError> {
+        let mut outbox = self
+            .outbox
+            .lock()
+            .map_err(|_| PluginError::Halt("wire outbox slot poisoned".into()))?;
+        outbox
+            .buffer(payload, irreversible)
+            .map_err(|error| PluginError::Halt(error.to_string()))
+    }
+
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub fn release_outbox_on_step(&self) -> Vec<OutboxFrame> {
+        self.outbox
+            .lock()
+            .map(|mut outbox| outbox.release_verified())
+            .unwrap_or_default()
+    }
+
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub fn purge_outbox_on_rollback(&self) -> Vec<OutboxFrame> {
+        self.outbox
+            .lock()
+            .map(|mut outbox| outbox.purge_rollback())
+            .unwrap_or_default()
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub fn with_parking_config(self, config: ConnectionParkingConfig) -> Self {
+        if let Ok(mut parking) = self.parking.lock() {
+            *parking = ConnectionParking::new(config);
+        }
+        self
+    }
+
+    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    pub fn parking(&self) -> Arc<Mutex<ConnectionParking>> {
+        Arc::clone(&self.parking)
     }
 
     pub fn ops(&self) -> WireOps {

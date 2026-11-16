@@ -39,6 +39,36 @@ where
     }
 }
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
+pub trait RegisterCaps {
+    fn register_caps(
+        &self,
+        registry: &mut kelir_interface::capability_registry::CapabilityRegistry,
+    );
+}
+
+impl RegisterCaps for HNil {
+    fn register_caps(
+        &self,
+        _registry: &mut kelir_interface::capability_registry::CapabilityRegistry,
+    ) {
+    }
+}
+
+impl<Head, Tail> RegisterCaps for HCons<Head, Tail>
+where
+    Head: Clone + Send + Sync + 'static,
+    Tail: HList + RegisterCaps,
+{
+    fn register_caps(
+        &self,
+        registry: &mut kelir_interface::capability_registry::CapabilityRegistry,
+    ) {
+        registry.register(std::sync::Arc::new(self.head.clone()));
+        self.tail.register_caps(registry);
+    }
+}
+
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub trait Satisfies<Other> {}
 

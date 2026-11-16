@@ -2,6 +2,8 @@
 
 // L3-GAP: [protocol_mux]: tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
 pub mod addon_abi;
+pub mod capability_registry;
+pub use capability_registry::CapabilityRegistry;
 pub mod chaos_types;
 pub mod checkpoint;
 #[path = "codec_protocol.flow.rs"]
@@ -29,6 +31,8 @@ pub mod lifecycle_state;
 pub mod mount_scope;
 #[path = "plugin_model.flow.rs"]
 pub mod plugin_model;
+#[path = "policy_plane.flow.rs"]
+pub mod policy_plane;
 #[path = "protocol_wire.flow.rs"]
 pub mod protocol_wire;
 #[path = "runtime_block.flow.rs"]
@@ -40,3 +44,5 @@ pub mod terminal;
 #[path = "vsock_mesh.flow.rs"]
 pub mod vsock_mesh;
 pub mod wire;
+#[path = "worker_pool.flow.rs"]
+pub mod worker_pool;

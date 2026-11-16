@@ -1,7 +1,7 @@
 // see: cans/08-lifecycle.md#State-machine
 
 import { kelir, t, PostExecAction, SuspendReason, LifecycleEvent,
-         type ExecutionReceipt } from "@kelir/core";
+         type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
 interface WebhookRequest {
@@ -82,7 +82,7 @@ const runtime = kelir({
     await ctx.vm.adjustBalloon(384);
   })
   .on(LifecycleEvent.VmShutdown, async (ctx) => {
-    await ctx.cap("ledger")?.flush();
+    await ctx.cap<LedgerHandle>("ledger")?.flush();
   });
 
 async function main() {
