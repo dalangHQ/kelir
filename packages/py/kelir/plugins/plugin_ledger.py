@@ -37,6 +37,10 @@ class LedgerConfig:
     store: str = ""
     merkle_chain: bool = False
     suppress_local_db: bool = False
+    hashing_standard: str = ""
+    record_pre_redaction_hash: bool = False
+    include_hook_spans_in_root: bool = False
+    witness_cosigning_endpoint: str | None = None
     otel: OtelConfig | None = None
     receipts: ReceiptConfig = field(default_factory=lambda: ReceiptConfig())
 

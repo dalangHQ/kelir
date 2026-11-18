@@ -189,9 +189,6 @@ export interface NativeTerminalConfigBinding {
   readonly rows?: number;
   readonly dropOsc52?: boolean;
   readonly stripTitle?: boolean;
-  readonly tokenShieldMaxBytesTotal?: number;
-  readonly tokenShieldMaxLinesTotal?: number;
-  readonly tokenShieldClampStrategy?: string;
   readonly streamEngine?: string;
 }
 
@@ -203,34 +200,18 @@ export interface NativeStorageConfigBinding {
   readonly lockBroker?: boolean;
   readonly lockBrokerGlobs?: string[];
   readonly lockBrokerNonBlocking?: boolean;
-  readonly syntheticFiles?: readonly {
-    readonly path: string;
-    readonly content: string;
-    readonly mode?: number;
-  }[];
-  readonly maskRead?: readonly {
-    readonly glob: string;
-    readonly pattern: string;
-    readonly replace: string;
-  }[];
   readonly encapsulation?: string;
-  readonly scanEngine?: string;
-  readonly carryoverBytes?: number;
 }
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
 export interface NativeSinkholeRuleBinding {
   readonly host: string;
-  readonly methods?: string[];
-  readonly paths?: string[];
   readonly allow?: boolean;
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
 export interface NativeWireConfigBinding {
   readonly sinkhole?: { readonly rules?: readonly NativeSinkholeRuleBinding[] };
-  readonly sinkholeDnsExcept?: string[];
-  readonly sinkholeDropAll?: boolean;
   readonly sshAgentBridge?: boolean;
   readonly vaults?: readonly {
     readonly name: string;

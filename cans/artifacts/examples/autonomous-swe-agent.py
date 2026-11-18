@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import platform
-import re
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
@@ -23,7 +21,6 @@ from kelir import (
     Errno,
     ExecutionReceipt,
     External,
-    ExternalSuspendKind,
     Field,
     FilterAction,
     HandlerContext,
@@ -39,12 +36,16 @@ from kelir import (
     WatchdogAction,
 )
 from kelir.plugin_model import BasePlugin, LifecycleCtx, PluginError
-from kelir.terminal_planes import PromptRule, TokenShield
-from kelir.storage_planes import (
-    DynamicFile, SyntheticFile, IdmapConfig, MaskRule, SnoopRule
+from kelir.plugins.plugin_redaction import (
+    MaskReadConfig, MaskReadRule, RedactionConfig, redaction,
 )
+from kelir.plugins.plugin_terminal_guard import (
+    PromptRuleConfig, TerminalGuardConfig, terminal_guard,
+)
+from kelir.plugins.plugin_token_shield import TokenShieldConfig, token_shield
+from kelir.storage_planes import IdmapConfig
 from kelir.wire_planes import (
-    L4Proxy, Mtls, SinkholeConfig, CredentialDescriptor
+    L4Proxy, Mtls, SinkholeConfig, SinkholeRule, CredentialDescriptor
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -178,27 +179,6 @@ class RepoPolicyPlugin(BasePlugin):
         return f"[repo-policy: {n} open violations]\n".encode()
 
 
-# see: cans/02-plugin-model.md#Hook-context-restriction
-def make_snoop(
-    oracle: UserOracle,
-) -> Callable[[Path, bytes, HandlerContext], Awaitable[Optional[FilterAction]]]:
-    # see: cans/02-plugin-model.md#Unified-verdict
-    async def on_write(
-        path: Path, raw: bytes, c: HandlerContext,
-    ) -> Optional[FilterAction]:
-        evt = json.loads(raw)
-        if evt.get("falsifiedResult") is True:
-            # Denial is an Action, never a PluginError (PluginError-scope pin).
-            return FilterAction.drop(
-                errno=Errno.EPERM,
-                reason=f"harness hallucination at {path}",
-            )
-        # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-        ledger = c.cap("ledger")
-        producer_blake3 = await ledger.blake3_of_producing_process(path) if ledger else ""
-        await oracle.ingest_harness_event(path, evt, producer_blake3)
-        return None
-    return on_write
 
 
 # see: cans/02-plugin-model.md#Unified-verdict
@@ -352,22 +332,6 @@ async def build_runtime(
             rows=40,
             drop_osc52=True,
             strip_title=True,
-            token_shield=TokenShield(
-                max_bytes_total=128 * 1024,
-                max_lines_total=500,
-                clamp_strategy="head-and-tail",
-                notice="⚠️ [SHIELD]",
-            ),
-            prompts=[
-                PromptRule(
-                    pattern=re.compile(
-                        r"Overwrite production schema\? \[y/N\]", re.I
-                    ),
-                    timeout=3.0,
-                    verify_foreground=True,
-                    action=lambda _p, stream: stream.write(b"y\n"),
-                ),
-            ],
             stream_engine="StatelessRegex",
         )
 
@@ -378,44 +342,54 @@ async def build_runtime(
                 "~/.npm", "~/.cache/pip", "~/.cargo/registry",
             ],
             lock_broker=True,
-            synthetic_files=[
-                SyntheticFile.static(
-                    "/workspace/.env.local",
-                    "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
-                ),
-                SyntheticFile.dynamic(
-                    "/workspace/identity.jwt",
-                    lambda _p: DynamicFile(
-                        content=f"Bearer {uuid.uuid4().hex}",
-                        mode=0o400,
-                    ),
-                ),
-            ],
-            mask_read=[
-                MaskRule(
-                    glob="**/secrets/**",
-                    patterns=[
-                        (r"sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"),
-                        (r"AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"),
-                    ],
-                ),
-            ],
-            snoops=[
-                SnoopRule(
-                    glob="~/.claude/sessions/*.json",
-                    sync=True,
-                    on_write=make_snoop(oracle),
-                ),
-            ],
         )
+
+        # see: cans/plugins/token-shield.md#Plugin-token-shield
+        .use(token_shield(TokenShieldConfig(
+            max_bytes_total=128 * 1024,
+            max_lines_total=500,
+            clamp_strategy="head-and-tail",
+            notice="⚠️ [SHIELD]",
+        )))
+
+        # see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
+        .use(terminal_guard(TerminalGuardConfig(
+            prompts=[
+                PromptRuleConfig(
+                    pattern=r"(?i)Overwrite production schema\? \[y/N\]",
+                    timeout_seconds=3,
+                    verify_foreground=True,
+                    action=list(b"y\n"),
+                ),
+            ],
+        )))
+
+        # see: cans/plugins/redaction.md#Plugin-redaction
+        .use(redaction(RedactionConfig(
+            mask_read=MaskReadConfig(
+                engine="fast-regex",
+                carryover_bytes=1024,
+                rules=[
+                    MaskReadRule(
+                        glob="**/secrets/**",
+                        patterns=[
+                            (r"sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"),
+                            (r"AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"),
+                        ],
+                    ),
+                ],
+            ),
+        )))
+
 
         # see: cans/07-wire-plane.md#Vault-and-credential-flow
         .wire(
-            sinkhole=SinkholeConfig.from_legacy(
-                [
-                    "api.stripe.com", "github.com", "*.internal.net",
-                ],
-                True,
+            sinkhole=SinkholeConfig(
+                rules=[
+                    SinkholeRule(host=host, allow=True)
+                    for host in ["api.stripe.com", "github.com", "*.internal.net"]
+                ]
+                + [SinkholeRule(host="*", allow=False)],
             ),
             ssh_agent_bridge=True,
             vaults=[
@@ -569,7 +543,7 @@ async def main() -> None:
         winning_id, winning_delta = winner
 
         # see: cans/08-lifecycle.md#Suspend-and-resume
-        await session.suspend(External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD))
+        await session.suspend(External("human-authorization-hold"))
         log.info("[kelir] suspended rss_mb=0")
         await oracle.await_human_approval()
         await session.resume()

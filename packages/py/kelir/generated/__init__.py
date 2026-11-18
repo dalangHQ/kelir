@@ -21,7 +21,6 @@ from kelir.generated.attest_telemetry import (
     MaskedRecord,
     StepLineageEntry,
     FsVfsExt,
-    NetL7SqlExt,
     ExecutionReceipt,
     CausalDelta,
 )
@@ -47,7 +46,6 @@ __all__ = [
     "MaskedRecord",
     "StepLineageEntry",
     "FsVfsExt",
-    "NetL7SqlExt",
     "ExecutionReceipt",
     "CausalDelta",
 ]

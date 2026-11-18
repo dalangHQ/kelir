@@ -399,3 +399,81 @@ fn sc_07_nested_script_ancestor_trap() -> Result<(), String> {
     }
     Ok(())
 }
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+#[test]
+fn interpreter_unwrap_captures_dash_c_payload() -> Result<(), String> {
+    let event = exec_event(
+        4401,
+        4400,
+        "/bin/sh",
+        vec!["sh".into(), "-c".into(), "git push --force".into()],
+    );
+    let unwrapped = plugin_supply_chain::unwrap_interpreter(&event);
+    assert_eq!(unwrapped.binary_path, "sh", "interpreter stays the binary");
+    assert_eq!(
+        unwrapped.shell_payload.as_deref(),
+        Some("git push --force"),
+        "the -c string must be captured as code payload"
+    );
+    assert!(
+        plugin_supply_chain::is_interpreter("/usr/bin/python3"),
+        "versioned interpreter names must match the table"
+    );
+    assert!(
+        !plugin_supply_chain::is_interpreter("/usr/bin/git"),
+        "non-interpreters must not match the table"
+    );
+    Ok(())
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+#[test]
+fn interpreter_unwrap_strips_env_xargs_and_find_exec_wrappers() -> Result<(), String> {
+    let env = exec_event(
+        4401,
+        4400,
+        "/usr/bin/env",
+        vec![
+            "env".into(),
+            "FOO=1".into(),
+            "python3".into(),
+            "app.py".into(),
+        ],
+    );
+    assert_eq!(
+        plugin_supply_chain::unwrap_interpreter(&env).binary_path,
+        "python3",
+        "env assignments must strip to the wrapped command"
+    );
+    let xargs = exec_event(
+        4401,
+        4400,
+        "/usr/bin/xargs",
+        vec!["xargs".into(), "node".into(), "server.js".into()],
+    );
+    assert_eq!(
+        plugin_supply_chain::unwrap_interpreter(&xargs).binary_path,
+        "node",
+        "xargs must strip to the wrapped command"
+    );
+    let find = exec_event(
+        4401,
+        4400,
+        "/usr/bin/find",
+        vec![
+            "find".into(),
+            "/workspace".into(),
+            "-exec".into(),
+            "perl".into(),
+            "clean.pl".into(),
+            ";".into(),
+        ],
+    );
+    assert_eq!(
+        plugin_supply_chain::unwrap_interpreter(&find).binary_path,
+        "perl",
+        "find -exec must strip to the executed command"
+    );
+    Ok(())
+}

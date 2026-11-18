@@ -118,22 +118,6 @@ impl PipelineEngine {
         Ok(())
     }
 
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    // L3-GAP: [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked
-    pub async fn dispatch_post_exec(
-        &self,
-        event: &TrapEvent,
-        ctx: &HandlerCtx,
-    ) -> Result<StepVerdict, PluginError> {
-        for gate in &self.post_exec_gates {
-            let action = quarantine_unit(gate.check(event, ctx)).await?;
-            if action != PostExecAction::Proceed {
-                return Ok(action.to_step_verdict());
-            }
-        }
-        Ok(StepVerdict::Commit)
-    }
-
     // see: cans/08-lifecycle.md#Watchdog
     pub async fn dispatch_watchdog(
         &self,

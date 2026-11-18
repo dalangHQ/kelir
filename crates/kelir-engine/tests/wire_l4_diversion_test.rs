@@ -113,19 +113,20 @@ fn wp_07_link_local_quarantine_drop() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_08_imds_cloud_metadata_quarantine.yaml#case_id
 #[test]
 fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
-    let frame = ipv4_frame([169, 254, 169, 254], 6, 80);
-    match link_local_route(&frame, FrameDirection::Outbound) {
-        Some(LinkLocalRoute::VaultImds { vsock_port }) => assert_eq!(vsock_port, 80),
-        other => return Err(format!("IMDS frame routed wrongly: {other:?}")),
-    }
-    let wire = test_wire();
-    assert!(!wire.imds_sink_bound());
-    match wire.route_imds_to_vault(&frame) {
-        Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
-            assert!(message.contains("no vault vsock sink bound"));
+    let mut frame = ipv4_frame([169, 254, 169, 254], 6, 80);
+    assert_eq!(
+        link_local_route(&frame, FrameDirection::Outbound),
+        Some(LinkLocalRoute::Drop)
+    );
+    let mut wire = test_wire();
+    let action = wire
+        .process_outbound_frame(&mut frame)
+        .map_err(|e| e.to_string())?;
+    match action {
+        FilterAction::Drop { reason, .. } => {
+            assert!(reason.contains("link-local"));
         }
-        Err(e) => return Err(format!("IMDS without sink gave wrong error: {e}")),
-        Ok(_) => return Err("IMDS without sink forwarded".to_string()),
+        other => return Err(format!("IMDS frame was not dropped: {other:?}")),
     }
     let azure = ipv4_frame([168, 63, 129, 16], 6, 80);
     assert_eq!(link_local_route(&azure, FrameDirection::Outbound), None);

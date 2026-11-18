@@ -8,7 +8,6 @@ use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_engine::planes::storage::storage_quota::StorageQuota;
 use kelir_interface::plugin_model::{FsContext, FsInodeAttr, HandlerCtx, PluginError};
 use kelir_interface::protocol_wire::{Errno, FilterAction, PatchPayload, Verdict};
-use kelir_interface::storage::synthetic::SyntheticFile;
 use kelir_interface::storage::{FuseOpcode, FuseOps, FuseReply, FuseRequest, FuseResponse};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,7 +18,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // see: cans/05-storage-plane.md#Interception-pipeline
 pub(crate) struct RealFuseOps {
     engine: Arc<PipelineEngine>,
-    synthetic_files: Vec<SyntheticFile>,
     virtual_inodes: RwLock<HashMap<PathBuf, u64>>,
     next_virtual_inode: AtomicU64,
     quota: Arc<StorageQuota>,
@@ -30,17 +28,11 @@ impl RealFuseOps {
     pub(crate) fn new(engine: Arc<PipelineEngine>) -> Self {
         Self {
             engine: Arc::clone(&engine),
-            synthetic_files: Vec::new(),
             virtual_inodes: RwLock::new(HashMap::new()),
             next_virtual_inode: AtomicU64::new(2),
             quota: Arc::new(StorageQuota::unbounded()),
             lock_broker: Arc::new(LockBroker::new(engine)),
         }
-    }
-
-    pub(crate) fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
-        self.synthetic_files = files;
-        self
     }
 
     // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
@@ -62,13 +54,6 @@ pub(crate) fn build_fuse_ops(engine: Arc<PipelineEngine>) -> Arc<dyn FuseOps> {
     Arc::new(RealFuseOps::new(engine))
 }
 
-pub(crate) fn build_fuse_ops_with_files(
-    engine: Arc<PipelineEngine>,
-    files: Vec<SyntheticFile>,
-) -> Arc<dyn FuseOps> {
-    Arc::new(RealFuseOps::new(engine).with_synthetic_files(files))
-}
-
 impl FuseOps for RealFuseOps {
     fn dispatch(
         &self,
@@ -77,14 +62,6 @@ impl FuseOps for RealFuseOps {
     ) -> Result<FuseResponse, PluginError> {
         match request.opcode {
             FuseOpcode::Lookup => {
-                for file in &self.synthetic_files {
-                    if let Some(attr) = file.lookup_attr(&request.path)? {
-                        return Ok(FuseResponse {
-                            guest_inode: self.virtual_inode(&request.path)?,
-                            reply: FuseReply::Inode(attr),
-                        });
-                    }
-                }
                 match self.engine.dispatch_fs_lookup(&request.path, ctx)? {
                     Verdict::Pass => Ok(FuseResponse {
                         guest_inode: request.guest_inode,
@@ -126,18 +103,6 @@ impl FuseOps for RealFuseOps {
                 }
             }
             FuseOpcode::Read => {
-                for file in &self.synthetic_files {
-                    if let Some(attr) = file.lookup_attr(&request.path)? {
-                        let content = attr.content;
-                        let len = content.len() as u64;
-                        let start = request.offset.min(len) as usize;
-                        let end = request.offset.saturating_add(request.size).min(len) as usize;
-                        return Ok(FuseResponse {
-                            guest_inode: self.virtual_inode(&request.path)?,
-                            reply: FuseReply::Payload(content[start..end].to_vec()),
-                        });
-                    }
-                }
                 request.data = self
                     .engine
                     .dispatch_fs_read(&request.path, &request.data, ctx)?;
@@ -148,14 +113,6 @@ impl FuseOps for RealFuseOps {
                 })
             }
             FuseOpcode::Getattr => {
-                for file in &self.synthetic_files {
-                    if let Some(attr) = file.lookup_attr(&request.path)? {
-                        return Ok(FuseResponse {
-                            guest_inode: self.virtual_inode(&request.path)?,
-                            reply: FuseReply::Inode(attr),
-                        });
-                    }
-                }
                 Err(PluginError::Halt(
                     "TODO (L3) [storage_plane]: FUSE GETATTR needs the broker stat across lower, upper, and tombstones; slop: GETATTR without lower/upper/tombstone merge, stat wrong".into(),
                 ))

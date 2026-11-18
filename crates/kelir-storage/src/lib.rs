@@ -13,4 +13,4 @@ pub use crate::lock_broker::{
     LockBroker, LockBrokerWiring, LockGrant, LockKey, LockKind, LockRequest, LockState,
 };
 pub use crate::reconciler::{Reconciler, StagingGuard};
-pub use crate::storage::{fuse_ops, fuse_ops_with_synthetic_files, reconciler};
+pub use crate::storage::{fuse_ops, reconciler};

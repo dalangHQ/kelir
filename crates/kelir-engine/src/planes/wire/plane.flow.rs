@@ -1,17 +1,16 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Userspace-network-stack
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::FilterAction;
-use kelir_interface::vsock_mesh::VsockServiceHandler;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
-use kelir_interface::wire::l7::L7Parser;
 use kelir_interface::wire::net::{
-    FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, WireWiring, link_local_route,
+    FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, SinkholeRule, WireWiring,
+    link_local_route,
 };
 use kelir_interface::wire::outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxFrame};
 use kelir_interface::wire::udp_nat::UdpNatOps;
@@ -40,10 +39,8 @@ pub struct WirePlane {
     port_forwards: Arc<Mutex<std::collections::HashMap<u16, u16>>>,
     host_listeners:
         Arc<Mutex<std::collections::HashMap<u16, kelir_transport::host_bind::HostListener>>>,
-    imds_sink: Arc<RwLock<Option<Arc<dyn VsockServiceHandler>>>>,
-    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
     wiring: Option<WireWiring>,
-    l7_parser: Arc<Mutex<L7Parser>>,
     outbox: Arc<Mutex<OutboxBuffer>>,
     parking: Arc<Mutex<ConnectionParking>>,
 }
@@ -85,18 +82,11 @@ impl WirePlane {
             l4_ops,
             port_forwards: Arc::new(Mutex::new(std::collections::HashMap::new())),
             host_listeners: Arc::new(Mutex::new(std::collections::HashMap::new())),
-            imds_sink: Arc::new(RwLock::new(None)),
-            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            metrics: Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
             wiring: None,
-            l7_parser: Arc::new(Mutex::new(L7Parser::default())),
             outbox: Arc::new(Mutex::new(OutboxBuffer::default())),
             parking: Arc::new(Mutex::new(ConnectionParking::default())),
         }
-    }
-
-    // see: cans/07-wire-plane.md#L7-protocol-inspection
-    pub fn l7_parser(&self) -> Arc<Mutex<L7Parser>> {
-        Arc::clone(&self.l7_parser)
     }
 
     // see: cans/07-wire-plane.md#Egress-side-effect-outbox
@@ -180,46 +170,36 @@ impl WirePlane {
                 wiring
             }
             None => WireWiring {
-                sinkhole: SinkholeConfig::from_allowlist_drop_all(Vec::new(), network_off),
+                sinkhole: SinkholeConfig {
+                    rules: if network_off {
+                        vec![SinkholeRule {
+                            host: "*".to_string(),
+                            allow: false,
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                },
                 ..Default::default()
             },
         }
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
+    pub fn with_metrics(
+        mut self,
+        metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
+    ) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<kelir_interface::telemetry::MetricRegistry> {
         &self.metrics
     }
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
     pub fn wiring(&self) -> Option<&WireWiring> {
         self.wiring.as_ref()
-    }
-
-    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-    pub fn bind_imds_sink(&self, handler: Arc<dyn VsockServiceHandler>) -> Result<(), PluginError> {
-        match self.imds_sink.write() {
-            Ok(mut guard) => {
-                *guard = Some(handler);
-                Ok(())
-            }
-            Err(_) => Err(PluginError::Halt("imds sink slot poisoned".into())),
-        }
-    }
-
-    pub fn imds_sink_bound(&self) -> bool {
-        matches!(self.imds_sink.read(), Ok(guard) if guard.is_some())
-    }
-
-    pub fn imds_sink(&self) -> Result<Option<Arc<dyn VsockServiceHandler>>, PluginError> {
-        match self.imds_sink.read() {
-            Ok(guard) => Ok(guard.clone()),
-            Err(_) => Err(PluginError::Halt("imds sink slot poisoned".into())),
-        }
     }
 
     fn record_drop(&self, action: &kelir_interface::protocol_wire::FilterAction) {
@@ -307,7 +287,6 @@ impl WirePlane {
                 self.record_drop(&action);
                 return Ok(action);
             }
-            Some(LinkLocalRoute::VaultImds { .. }) => return self.route_imds_to_vault(frame),
             None => {}
         }
         let action = self
@@ -330,30 +309,6 @@ impl WirePlane {
             tracing::warn!("FilterAction::Suspend returned without consumer");
         }
         action
-    }
-
-    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-    pub fn route_imds_to_vault(
-        &self,
-        frame: &[u8],
-    ) -> Result<
-        kelir_interface::protocol_wire::FilterAction,
-        kelir_interface::plugin_model::PluginError,
-    > {
-        match link_local_route(frame, FrameDirection::Outbound) {
-            Some(LinkLocalRoute::VaultImds { vsock_port }) => {
-                if self.imds_sink()?.is_none() {
-                    return Err(PluginError::Halt(format!(
-                        "IMDS 169.254.169.254:{vsock_port} has no vault vsock sink bound; mount plugin-vault and bind it"
-                    )));
-                }
-                // L3-GAP: [wire_plane]: parse the HTTP metadata request and bridge it to the bound vault vsock service stream; slop: metadata request never bridged to vault vsock
-                Ok(kelir_interface::protocol_wire::FilterAction::Forward)
-            }
-            _ => Err(PluginError::Halt(
-                "route_imds_to_vault called on a non-IMDS frame".into(),
-            )),
-        }
     }
 
     pub fn divert_l4(&self, guest_port: u16, host_target: String) -> Result<L4Stream, PluginError> {

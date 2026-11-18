@@ -13,7 +13,7 @@ import {
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
 import type { Schema } from "./schema.config.js";
-import type { LockBrokerConfig, StorageConfig } from "./builder.config.js";
+import type { LockBrokerConfig } from "./builder.config.js";
 import type { KelirBuilder } from "./builder.lifecycle.js";
 import { unknownSchema, validateSchema } from "./schema.config.js";
 import type {
@@ -70,11 +70,8 @@ export interface TrapScope<Ctx, Owner = unknown> {
 }
 
 // see: cans/02-plugin-model.md#Nested-scopes
-export interface FsScopeConfig<Ctx = unknown> {
+export interface FsScopeConfig {
   readonly lockBroker?: LockBrokerConfig;
-  readonly carryoverBytes?: number;
-  readonly scanEngine?: string;
-  readonly snoops?: StorageConfig<Ctx>["snoops"];
 }
 
 // see: cans/02-plugin-model.md#Nested-scopes
@@ -112,7 +109,7 @@ export interface FsScope<Ctx, Owner = unknown> {
     handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict,
   ): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
-  config(cfg: FsScopeConfig<Ctx>): FsScope<Ctx, Owner>;
+  config(cfg: FsScopeConfig): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
   requires<Req extends string>(name?: Req): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
@@ -312,7 +309,7 @@ export class HookRegistry<Ctx = unknown> {
   readonly deriveFns: Array<(c: unknown) => unknown> = [];
   readonly contextFns: Array<(c: unknown) => unknown> = [];
   readonly vsockEntries: VsockServiceEntry[] = [];
-  fsScopeConfig?: FsScopeConfig<Ctx>;
+  fsScopeConfig?: FsScopeConfig;
   fsScopeForkFn?: () => KelirBuilder<any, any, any, any>;
   fsScopeTimeoutSeconds?: number;
   fsScopePriority?: number;

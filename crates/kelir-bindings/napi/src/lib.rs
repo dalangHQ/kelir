@@ -14,8 +14,8 @@ pub mod handles_run;
 pub mod storage_bridge;
 
 pub use builder::{
-    NativeKelirBuilder, NativeKelirOptions, NativeL4Proxy, NativeMaskRule, NativeStorageConfig,
-    NativeSyntheticFile, NativeTerminalConfig, NativeVaultDescriptor, NativeWireConfig,
+    NativeKelirBuilder, NativeKelirOptions, NativeL4Proxy, NativeStorageConfig,
+    NativeTerminalConfig, NativeVaultDescriptor, NativeWireConfig,
 };
 pub(crate) use handles::envelope_error;
 pub use handles::{

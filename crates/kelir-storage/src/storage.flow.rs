@@ -1,9 +1,8 @@
 // see: cans/05-storage-plane.md#Storage-architecture
-use crate::fuse::{build_fuse_ops, build_fuse_ops_with_files};
+use crate::fuse::build_fuse_ops;
 use crate::reconciler::build_reconciler;
 use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_interface::storage::isolation_envelope::IsolationEnvelope;
-use kelir_interface::storage::synthetic::SyntheticFile;
 use kelir_interface::storage::{FuseOps, ReconcilerOps, StorageIo, TraversalGuard};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -11,13 +10,6 @@ use std::sync::{Arc, RwLock};
 
 pub fn fuse_ops(engine: Arc<PipelineEngine>) -> Arc<dyn FuseOps> {
     build_fuse_ops(engine)
-}
-
-pub fn fuse_ops_with_synthetic_files(
-    engine: Arc<PipelineEngine>,
-    files: Vec<SyntheticFile>,
-) -> Arc<dyn FuseOps> {
-    build_fuse_ops_with_files(engine, files)
 }
 
 pub fn reconciler(

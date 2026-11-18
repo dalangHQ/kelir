@@ -36,7 +36,7 @@ kelir/
 │   ├── _rules.yaml                    # Checker rules: node length, refs, aliasing, forbidden targets
 │   ├── AGENTS.md                      # Agent instructions for working in cans/
 │   ├── _collab/                       # Conflicts, handoffs, task tracking
-│   ├── plugins/                       # 14 plugin specs (13 community + commercial.md)
+│   ├── plugins/                       # 22 plugin specs (21 community + commercial.md)
 │   └── artifacts/                     # Terminal artifacts: code, diagrams, examples, config
 │       ├── code/                      # SSOT code signatures (wire protocol, traits, services)
 │       │   ├── rust-plugin-builder.rs # Fluent plugin-creation builder, Rust surface (illustrative)
@@ -95,7 +95,7 @@ kelir/
 │   │   │   ├── plugin_model.rs              # Facade plugin re-exports
 │   │   │   ├── profile_schema.flow.rs        # Typed profile schema: every kelir.toml/kelir.yaml key
 │   │   │   ├── profile_validate.flow.rs      # Monotonic ceiling validation, deny_unknown_fields
-│   │   │   ├── profile_validate.rs
+│   │   │   ├── profile_validate.rs           # Module shim re-exporting profile_validate.flow.rs
 │   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
 │   │   │   ├── sandbox_runtime.flow.rs             # Sandbox entrypoint
 │   │   │   ├── session_lifecycle.flow.rs             # Session assembly from builder parts
@@ -162,15 +162,14 @@ kelir/
 │   │   │   └── schema_catalog.flow.rs              # SessionRow, CasLease, IncarnationId
 │   │   └── tests/
 │   │       └── session_lease_catalog_test.rs
-│   ├── kelir-checkpoint/              # Checkpoint plane: RealCheckpointOps (manifest graph, step slots, compaction)
-│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
+│   ├── kelir-checkpoint/              # Checkpoint plane: RealCheckpointOps (manifest graph, compaction)
+│   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── checkpoint.flow.rs
 │   │       ├── compaction.run.rs      # Compaction + restore with clock watermark
 │   │       ├── lib.rs                 # L2 re-export RealCheckpointOps
 │   │       ├── manifest_graph.run.rs  # Manifest graph head/lineage
 │   │       ├── real_checkpoint.run.rs # RealCheckpointOps struct + CheckpointOps impl
-│   │       └── step_slot.run.rs       # Step slot create/commit/rollback/branch
 │   ├── kelir-drivers/                 # Pluggable Virtualization Implementations
 │   │   ├── driver-avf/                # Android Virtualization Framework via /dev/avf and pKVM
 │   │   │   ├── Cargo.toml
@@ -189,7 +188,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   └── sys_driver.rs
+│   │   │   │   └── sys_driver.rs                 # Raw Hypervisor.framework bindings
 │   │   │   └── tests/
 │   │   │       ├── balloon_purge_driver_test.rs
 │   │   │       ├── lazy_construction_driver_test.rs
@@ -227,7 +226,7 @@ kelir/
 │   │   │   ├── lib.rs                 # Core initialization exports
 │   │   │   ├── session_lifecycle.flow.rs             # Session lifecycle assembly
 │   │   │   ├── session_paths.flow.rs             # Session-dir and catalog path helpers (split from session_lifecycle)
-│   │   │   ├── session_paths.rs
+│   │   │   ├── session_paths.rs                  # Module shim re-exporting session_paths.flow.rs
 │   │   │   ├── session_support.flow.rs               # NullDriver, mint_uuid_v7, workspace quota consts
 │   │   │   ├── trap_gate.flow.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │   │   ├── uart_terminal.flow.rs                # Early-boot UART scrape
@@ -249,7 +248,7 @@ kelir/
 │   │   │   │   └── registration.flow.rs     # Trap-deny/custom-action callbacks + HostRegistrationState
 │   │   │   ├── planes/                # Core Foundation Planes (Merged Engine Subsystems)
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── checkpoint/        # Checkpoint Plane façade: delegates to kelir-checkpoint RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs)
+│   │   │   │   ├── checkpoint/        # Checkpoint Plane façade: delegates to kelir-checkpoint RealCheckpointOps (manifest_graph.run.rs, compaction.run.rs)
 │   │   │   │   │   ├── mod.rs
 │   │   │   │   │   └── plane.flow.rs
 │   │   │   │   ├── host/              # Host Plane façade: delegates to kelir-host RealHostOps (pressure.run.rs, balloon.run.rs, reaper.run.rs)
@@ -262,7 +261,7 @@ kelir/
 │   │   │   │   │   ├── plane.flow.rs
 │   │   │   │   │   ├── storage_quota.flow.rs
 │   │   │   │   │   └── unbound_io.flow.rs
-│   │   │   │   ├── terminal/          # Terminal Plane façade: delegates to kelir-terminal RealTerminalOps (vt100.run.rs, token_shield.run.rs, log_segment.run.rs)
+│   │   │   │   ├── terminal/          # Terminal Plane façade: delegates to kelir-terminal RealTerminalOps (vt100.run.rs, log_segment.run.rs)
 │   │   │   │   │   ├── mod.rs
 │   │   │   │   │   └── plane.flow.rs
 │   │   │   │   └── wire/              # Wire Plane: virtio-net, userspace smoltcp ingress ring, DNS policy filter + synthetic gateway, connection parking
@@ -295,7 +294,7 @@ kelir/
 │   │       ├── wire_l4_diversion_test.rs
 │   │       └── wire_scope_test.rs           # Mount-scope net-filter dispatch (WO3-C6)
 │   ├── kelir-host/                    # Host plane: RealHostOps (pressure, balloon, reaper)
-│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp, async-trait, libc
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, async-trait, libc
 │   │   └── src/
 │   │       ├── balloon.run.rs         # Balloon inflate/reclaim
 │   │       ├── host.flow.rs
@@ -352,31 +351,26 @@ kelir/
 │   │   │   │       ├── ts_codegen.flow.rs
 │   │   │   │       └── wire_codegen.flow.rs
 │   │   │   ├── checkpoint/
-│   │   │   │   ├── attribution.rs
 │   │   │   │   ├── graph.flow.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── ops.rs
-│   │   │   │   └── step_dag.flow.rs           # Content-addressed step DAG, branching heads, SoD, Merkle root
+│   │   │   │   └── ops.rs
 │   │   │   ├── host/
 │   │   │   │   ├── mod.rs
 │   │   │   │   └── ops.rs
 │   │   │   ├── storage/
 │   │   │   │   ├── fuse_ops.flow.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
 │   │   │   │   ├── isolation_envelope.flow.rs  # OrgScope isolation envelope, tenant partition
-│   │   │   │   ├── isolation_envelope.rs
+│   │   │   │   ├── isolation_envelope.rs       # Module shim re-exporting isolation_envelope.flow.rs
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── storage_io.rs          # StorageIo trait, RootHandle, HostFileLock
 │   │   │   │   ├── storage_reconciler.rs  # ReconcilerOps trait, FsReconcileRequest, CommitStats
-│   │   │   │   ├── storage_snoop.flow.rs
-│   │   │   │   ├── storage_snoop.rs       # SnoopRule, MaskReadRule, ReadMaskEngine (in-flight read masking)
-│   │   │   │   ├── storage_synthetic.flow.rs   # SyntheticFile, DynamicFile
 │   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
 │   │   │   ├── telemetry/
 │   │   │   │   ├── delta_attest.flow.rs           # CausalDelta
 │   │   │   │   ├── merkle_attest.flow.rs
+│   │   │   │   ├── metric_registry.flow.rs        # MetricRegistry + MetricSnapshot
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── receipt_attest.flow.rs         # ExecutionReceipt
-│   │   │   │   └── telemetry_ring.flow.rs         # 300-entry telemetry ring, 16-dim feature vector, OTLP export
 │   │   │   ├── terminal/
 │   │   │   │   ├── log.flow.rs
 │   │   │   │   ├── log.rs
@@ -386,9 +380,7 @@ kelir/
 │   │   │       ├── connection_parking.flow.rs    # Inbound TCP parking during suspend holds
 │   │   │       ├── dns_ops.flow.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
 │   │   │       ├── l4_ops.flow.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
-│   │   │       ├── l4_ops.rs
-│   │   │       ├── l7_parser.flow.rs           # L7 HTTP/1.1 parser, SSE, JSON-RPC (TLS decrypt L3)
-│   │   │       ├── l7_tls.rs
+│   │   │       ├── l4_ops.rs                   # Module shim re-exporting l4_ops.flow.rs
 │   │   │       ├── mod.rs
 │   │   │       ├── net_ops.flow.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
 │   │   │       ├── outbox.flow.rs              # Egress side-effect outbox: deferral buffer, release, purge
@@ -398,7 +390,7 @@ kelir/
 │   │       ├── clock_reject_interface_test.rs
 │   │       ├── errno_serde_test.rs
 │   │       └── error_envelope_mapping_test.rs
-│   ├── kelir-interface-macros/
+│   ├── kelir-interface-macros/        # Proc macros for kelir-interface
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       └── lib.rs
@@ -413,23 +405,10 @@ kelir/
 │   │   │   └── tree.run.rs            # read_allowed_levels, rs_files, check_tree
 │   │   └── tests/
 │   │       └── maturity_check_test.rs   # level_of, placement, content-rule warns, L3 TODO warns on prepared stubs
-│   ├── kelir-otlp/                    # Supporting crate: zero-allocation metric registry and OTLP exporter
-│   │   ├── Cargo.toml
-│   │   ├── src/
-│   │   │   ├── encoder.flow.rs                 # OtlpEncoder
-│   │   │   ├── encoder.run.rs                  # TODO (L3) stub: OTLP protobuf encoding
-│   │   │   ├── exporter.flow.rs                # OtlpExporter, OtlpEndpoint
-│   │   │   ├── exporter.run.rs                 # TODO (L3) stub: gRPC/HTTP export transport
-│   │   │   ├── lib.rs                 # Thin aggregator: re-exports OtlpExporter, OtlpEncoder, OtlpEndpoint, OtlpSpan
-│   │   │   ├── records_otlp.flow.rs             # OTLP record transforms (receipts, causal deltas)
-│   │   │   ├── registry_otlp.flow.rs            # MetricRegistry + MetricSnapshot
-│   │   │   └── span.flow.rs                    # phase_spans
-│   │   └── tests/
-│   │       └── exporter_otlp_test.rs
 │   ├── kelir-plugin-cli/              # Plugin tooling: scaffold, check, vectors, parity diff
 │   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   ├── attach_cli.run.rs
+│   │   │   ├── attach_cli.run.rs          # Session attach
 │   │   │   ├── attest_cli.flow.rs
 │   │   │   ├── audit_cli.run.rs               # Same audit as CI
 │   │   │   ├── budgets_cli.run.rs             # Hard performance budget validator
@@ -446,7 +425,7 @@ kelir/
 │   │   │   ├── parity_cli.run.rs              # Parity runner: vectors + AST surface diff
 │   │   │   ├── registry_cli.rs            # Registry attestation and verification commands
 │   │   │   ├── rings_cli.run.rs               # plugin rings --show: ring inventory and masks
-│   │   │   ├── scaffold_cli.run.rs
+│   │   │   ├── scaffold_cli.run.rs        # plugin new: scaffold crate, trait stubs, empty vectors
 │   │   │   ├── setup_cli.flow.rs               # kelir setup: host hardening, shims, LSM, hw-lock
 │   │   │   ├── spec_cli.run.rs                # kelir spec check/export: AOT profile validation, canonical emit
 │   │   │   └── vectors_cli.run.rs             # Regenerate vectors.json from testkit fixtures
@@ -456,8 +435,8 @@ kelir/
 │   ├── kelir-plugin-testkit/          # Shared test infrastructure; dev-dependency of every plugin-*
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
 │   │   ├── src/
-│   │   │   ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
-│   │   │   ├── assertions_testkit.flow.rs
+│   │   │   ├── assertions_testkit.flow.rs      # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+│   │   │   ├── assertions_testkit.rs          # Module shim re-exporting assertions_testkit.flow.rs
 │   │   │   ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │   │   ├── handlers_testkit.run.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
 │   │   │   ├── lib.rs
@@ -466,7 +445,12 @@ kelir/
 │   │   │   └── vectors_testkit.flow.rs             # vectors.json fixture loading
 │   │   └── tests/
 │   │       └── wire_frame_decode_test.rs
-│   ├── kelir-plugins/                 # 13 Optional Domain Extensions (Zero Core Dependency Bleed)
+│   ├── kelir-plugins/                 # 21 Optional Domain Extensions (Zero Core Dependency Bleed)
+│   │   ├── plugin-anomaly/            # Surprisal anomaly detection (16-dim features, 300-entry window)
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       └── service_anomaly.flow.rs     # Surprisal model + escalation
 │   │   ├── plugin-chaos/              # Fault Injection Engine
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
@@ -485,30 +469,51 @@ kelir/
 │   │   │   │   ├── lib.rs             # Verdict engine (Pass | Patch(PgFrame) | Drop | Suspend | Abort)
 │   │   │   │   ├── pgwire_db_proxy.flow.rs          # L7 pgwire parsing
 │   │   │   │   ├── reassembler_wire.run.rs
+│   │   │   │   ├── receipt_sql.flow.rs            # SqlReceiptExt: net:l7:sql receipt extension
 │   │   │   │   ├── service_db_proxy.flow.rs
 │   │   │   │   ├── sqlite_db_proxy.flow.rs
 │   │   │   │   └── reassembler_wire/
 │   │   │   │       └── layout_wire.flow.rs
 │   │   │   └── tests/
 │   │   │       └── proxy_pgwire_protocol_test.rs
+│   │   ├── plugin-egress-proxy/       # CONNECT/SOCKS5 handshake + upstream dial
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       └── service_egress_proxy.flow.rs # CONNECT/SOCKS5 handshake, upstream dial
+│   │   ├── plugin-l7-http/            # L7 HTTP/1.1 parse, SSE, JSON-RPC, TLS, 403 synthesis
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── l7_parser.flow.rs           # L7 HTTP/1.1 parser, SSE, JSON-RPC
+│   │   │       ├── l7_tls.rs                   # TLS host keyring (decrypt L3)
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       └── service_l7_http.flow.rs     # L7 HTTP service: 403 synthesis
 │   │   ├── plugin-ledger/             # Compliance & Audit Trail
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── compute_ledger.rs         # compute_causal_delta() — CausalDelta computation (struct lives in kelir-interface)
 │   │   │   │   ├── lib.rs             # Thin aggregator
 │   │   │   │   ├── otel_ledger.flow.rs            # W3C traceparent context propagator
+│   │   │   │   ├── otlp_encoder.flow.rs           # OTLP protobuf encoding
+│   │   │   │   ├── otlp_encoder.run.rs            # TODO (L3) stub: OTLP protobuf encoding
+│   │   │   │   ├── otlp_exporter.flow.rs          # OtlpExporter, OtlpEndpoint
+│   │   │   │   ├── otlp_exporter.run.rs           # TODO (L3) stub: gRPC/HTTP export transport
+│   │   │   │   ├── otlp_records.flow.rs           # OTLP record transforms (receipts, causal deltas)
+│   │   │   │   └── otlp_span.flow.rs              # phase_spans
 │   │   │   │   ├── wal.run.rs                  # TODO (L3) stub: LMDB WAL append + Ed25519 leaf signing
 │   │   │   │   ├── wal_ledger.flow.rs             # LedgerSink trait: OTLP default; LocalMerkleDbSink opt-in (ledger.merkle.enabled = true) + external delegation
 │   │   │   │   └── wal_ledger/
 │   │   │   │       └── merkle_wal.flow.rs
 │   │   │   └── tests/
+│   │   │       ├── otlp_exporter_test.rs
 │   │   │       └── wal_merkle_attest_test.rs
 │   │   ├── plugin-mcp/                # MCP stdio JSON-RPC ↔ VirtIO rings
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── ast.flow.rs        # JSON-RPC 2.0 AST parser: request/response type validation, 16 MB frame assembler
 │   │   │   │   ├── lib.rs             # Thin aggregator
-│   │   │   │   └── mcp_service.flow.rs         # McpEndpointService, McpCtx: hooks on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
+│   │   │   │   ├── mcp_service.flow.rs         # McpEndpointService, McpCtx: hooks on_vm_ready, on_console_*, on_fs_*, on_trap, on_process_exit
+│   │   │   │   └── schema.flow.rs              # JSON-schema validation for tool params
 │   │   │   └── tests/
 │   │   │       └── mcp_console_stream_test.rs
 │   │   ├── plugin-mesh/               # Sovereign federation transport: peer vsock stream with mTLS framing
@@ -525,7 +530,13 @@ kelir/
 │   │   │   └── src/
 │   │   │       ├── lib.rs             # ConfigurablePlugin trait + profile type surface
 │   │   │       ├── patch.flow.rs            # JsonPatch application
-│   │   │       └── profile_state.flow.rs         # ProfileState, NamespaceRouter, ProfilePlugin: CompositePlugin flattening of profile declarations into child plugins
+│   │   │       ├── profile_state.flow.rs         # ProfileState, NamespaceRouter, ProfilePlugin: CompositePlugin flattening of profile declarations into child plugins
+│   │   │       └── synthetic_identity.flow.rs    # Synthetic .gitconfig files
+│   │   ├── plugin-redaction/          # Read masking + write snooping
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       └── service_redaction.flow.rs   # MaskRead + snoop verdicts
 │   │   ├── plugin-replay/             # PMU instruction-stepped deterministic clock replay
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
@@ -533,14 +544,43 @@ kelir/
 │   │   │   │   └── replay_state.flow.rs         # ReplayState, ReplayPmuSampler
 │   │   │   └── tests/
 │   │   │       └── step_window_replay_test.rs
+│   │   ├── plugin-step-eval/          # Step evaluation + content-addressed step DAG
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── step_attribution.rs
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       ├── service_step_eval.flow.rs   # StepEvaluator: begin/commit/rollback step
+│   │   │       ├── step_dag.flow.rs            # Content-addressed step DAG, branching heads, SoD, Merkle root
+│   │   │       └── step_slot.run.rs            # Step slot state machine
 │   │   ├── plugin-supply-chain/       # Package guard: blocks dynamic lifecycle scripts in package manager trees
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
+│   │   │   │   ├── interpreter.flow.rs         # Interpreter unwrapping: python/node/bash/sh/perl/ruby, shebang, PT_INTERP
 │   │   │   │   ├── lib.rs             # Thin aggregator
 │   │   │   │   ├── state.flow.rs            # SupplyChainState: trap hook rejecting postinstall/setup.py via ancestor chain
 │   │   │   │   └── wx_token.flow.rs         # WxTokenLedger, WxTokenChannel
 │   │   │   └── tests/
 │   │   │       └── jit_wx_governance_test.rs
+│   │   ├── plugin-taint/              # Byte-range taint tracking
+│   │   │   ├── Cargo.toml
+│   │   │   ├── src/
+│   │   │   │   ├── lib.rs             # Thin aggregator
+│   │   │   │   ├── service_taint.flow.rs       # Byte-range taint service
+│   │   │   │   └── state.flow.rs               # Cross-ring taint correlation state
+│   │   │   └── tests/
+│   │   │       └── taint_tracking_test.rs
+│   │   ├── plugin-terminal-guard/     # Terminal prompt guard
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       ├── notice_box.run.rs           # Prompt notice box
+│   │   │       └── service_terminal_guard.flow.rs # Prompt rules: match, timeout, verify-foreground, action bytes
+│   │   ├── plugin-token-shield/       # Token-shield scrollback clamping
+│   │   │   ├── Cargo.toml
+│   │   │   └── src/
+│   │   │       ├── clamp.run.rs                # Scrollback clamping
+│   │   │       ├── lib.rs             # Thin aggregator
+│   │   │       └── service_token_shield.flow.rs # TokenShield service
 │   │   ├── plugin-tool-guard/         # MCP tool-call interposition, schema pinning, veto rules on MCP port
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
@@ -562,10 +602,12 @@ kelir/
 │   │   ├── plugin-vault/              # Out-of-band credential broker, host keyring sole secret store, mlock zeroization on drop
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
+│   │   │   │   ├── boot_diversion.flow.rs      # IMDS boot diversion registration
 │   │   │   │   ├── lib.rs             # Thin aggregator
 │   │   │   │   ├── metadata.run.rs            # TODO (L3) stub: metadata HTTP response writer / JSON encoder
 │   │   │   │   ├── metadata_endpoint.flow.rs         # MetadataEndpoint, serve_metadata_session
-│   │   │   │   └── service_vault.flow.rs         # Vault broker service
+│   │   │   │   ├── service_vault.flow.rs         # Vault broker service
+│   │   │   │   └── synthetic_env.flow.rs         # Synthetic .env files
 │   │   │   └── tests/
 │   │   │       └── token_metadata_vault_test.rs
 │   │   └── plugin-wire-ingress/       # Connection parking and wake-on-traffic L4/L7 proxy
@@ -598,7 +640,7 @@ kelir/
 │   │   └── tests/
 │   │       └── pty_discipline_terminal_test.rs
 │   ├── kelir-storage/                 # Storage L3 impls (RealFuseOps, Reconciler, LockBroker); .run.rs stubs
-│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-storage-io, kelir-otlp, libc
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-storage-io, libc
 │   │   └── src/
 │   │       ├── fuse.run.rs            # RealFuseOps + FuseWorker (TODO (L3) shells, no meat)
 │   │       ├── lib.rs                 # Re-exports RealFuseOps, FuseWorker, Reconciler, LockBroker
@@ -611,14 +653,13 @@ kelir/
 │   │       ├── io.run.rs              # RealStorageIo (TODO (L3) shells, no meat)
 │   │       ├── lib.rs                 # Re-exports RealStorageIo
 │   │       └── storage_io.flow.rs
-│   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, token shield, log segments)
-│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, kelir-otlp
+│   ├── kelir-terminal/                # Terminal plane: RealTerminalOps (VT100 grid, log segments)
+│   │   ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # L2 re-export RealTerminalOps
 │   │   │   ├── log_segment.run.rs     # Append-only per-stream log segments
 │   │   │   ├── real_terminal.run.rs   # RealTerminalOps struct + TerminalOps impl
 │   │   │   ├── terminal.flow.rs
-│   │   │   ├── token_shield.run.rs    # Token shield + prompt wiring
 │   │   │   └── vt100.run.rs           # VT100 state machine, ANSI filter, export
 │   │   └── tests/
 │   │       └── terminal_vt100_matrix_test.rs
@@ -629,8 +670,8 @@ kelir/
 │   │   └── src/
 │   │       ├── case_map.rs
 │   │       ├── lib.rs
-│   │       ├── perf_budgets.rs
 │   │       ├── perf_budgets.flow.rs
+│   │       ├── perf_budgets.rs
 │   │       ├── spec_anchors.run.rs        # Spec heading/anchor extraction shared by the gates
 │   │       └── bin/
 │   │           ├── anchors_testkit.run.rs         # Spec anchor index generator (committed anchors.json)
@@ -647,7 +688,7 @@ kelir/
 │   │       ├── fallback_transport_test.rs
 │   │       └── ring_spsc_transport_test.rs
 │   └── kelir-wire/                  # Wire plane bodies: smoltcp stack, DNS gateway, UDP NAT, L4 diversion
-│       ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, smoltcp, kelir-otlp, kelir-transport
+│       ├── Cargo.toml                 # Depends on kelir-interface, kelir-engine, smoltcp, kelir-transport
 │       └── src/
 │           ├── dns.run.rs             # RealDnsOps
 │           ├── l4.run.rs              # RealL4DivertOps
@@ -676,7 +717,6 @@ kelir/
 │   │   │   ├── sdk_errors.py          # SDK error types
 │   │   │   ├── service_caps.py
 │   │   │   ├── storage_planes.py      # Storage plane bindings
-│   │   │   ├── terminal_planes.py     # Terminal plane bindings
 │   │   │   ├── wire_planes.py         # Wire plane bindings
 │   │   │   ├── compat/
 │   │   │   │   ├── __init__.py
@@ -688,28 +728,42 @@ kelir/
 │   │   │   │   └── wire_protocol.py
 │   │   │   └── plugins/               # Python plugin bindings mirroring Rust/TS 1:1
 │   │   │       ├── __init__.py
+│   │   │       ├── anomaly.py         # Python bindings for surprisal anomaly detection (granular module)
 │   │   │       ├── chaos.py           # Python bindings for fault injection (granular module)
 │   │   │       ├── container.py       # Python bindings for rootless OCI container runner (granular module)
 │   │   │       ├── db_proxy.py        # Python bindings for pgwire + vsock DB mediation (granular module)
+│   │   │       ├── egress_proxy.py    # Python bindings for CONNECT/SOCKS5 egress proxy (granular module)
+│   │   │       ├── l7_http.py         # Python bindings for L7 HTTP parse + TLS + 403 synthesis (granular module)
 │   │   │       ├── ledger.py          # Python bindings for OTLP + opt-in Merkle WAL audit ledger (granular module)
 │   │   │       ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console (granular module)
 │   │   │       ├── mesh.py            # Python bindings for vsock federation transport (granular module)
 │   │   │       ├── profile.py         # Python bindings for declarative profile ingestion (granular module)
 │   │   │       ├── replay.py          # Python bindings for deterministic clock replay (granular module)
 │   │   │       ├── supply_chain.py    # Python bindings for package lifecycle guard (granular module)
+│   │   │       ├── step_eval.py       # Python bindings for step evaluation + step DAG (granular module)
+│   │   │       ├── terminal_guard.py  # Python bindings for terminal prompt guard (granular module)
+│   │   │       ├── token_shield.py    # Python bindings for token-shield scrollback clamping (granular module)
 │   │   │       ├── tool_guard.py      # Python bindings for MCP tool-call interposition (granular module)
 │   │   │       ├── transaction.py     # Python bindings for multi-resource 2PC coordination (granular module)
 │   │   │       ├── vault.py           # Python bindings for out-of-band credential broker (granular module)
 │   │   │       ├── wire_ingress.py    # Python bindings for connection parking (granular module)
+│   │   │       ├── plugin_anomaly.py  # Python bindings for surprisal anomaly detection
 │   │   │       ├── plugin_chaos.py    # Python bindings for fault injection
 │   │   │       ├── plugin_container.py # Python bindings for rootless OCI container runner
 │   │   │       ├── plugin_db_proxy.py # Python bindings for pgwire + vsock DB mediation
+│   │   │       ├── plugin_egress_proxy.py # Python bindings for CONNECT/SOCKS5 egress proxy
+│   │   │       ├── plugin_l7_http.py  # Python bindings for L7 HTTP parse + TLS + 403 synthesis
 │   │   │       ├── plugin_ledger.py   # Python bindings for OTLP + opt-in Merkle WAL audit ledger
 │   │   │       ├── plugin_mcp.py      # Python bindings for MCP stdio JSON-RPC console
 │   │   │       ├── plugin_mesh.py     # Python bindings for vsock federation transport
 │   │   │       ├── plugin_profile.py  # Python bindings for declarative profile ingestion
+│   │   │       ├── plugin_redaction.py # Python bindings for read masking + write snooping
 │   │   │       ├── plugin_replay.py   # Python bindings for deterministic clock replay
 │   │   │       ├── plugin_supply_chain.py # Python bindings for package lifecycle guard
+│   │   │       ├── plugin_step_eval.py # Python bindings for step evaluation + step DAG
+│   │   │       ├── plugin_taint.py    # Python bindings for byte-range taint tracking
+│   │   │       ├── plugin_terminal_guard.py # Python bindings for terminal prompt guard
+│   │   │       ├── plugin_token_shield.py # Python bindings for token-shield scrollback clamping
 │   │   │       ├── plugin_tool_guard.py # Python bindings for MCP tool-call interposition
 │   │   │       ├── plugin_transaction.py # Python bindings for multi-resource 2PC coordination
 │   │   │       ├── plugin_vault.py    # Python bindings for out-of-band credential broker
@@ -750,6 +804,7 @@ kelir/
 │       │   │   ├── sandbox.runtime.ts # Sandbox entrypoint
 │       │   │   ├── schema.config.ts   # TypeBox command validation wrappers
 │       │   │   ├── session.lifecycle.ts # Session handle
+│       │   │   ├── step-eval.protocol.ts # Step evaluation protocol: PostExecAction, StepVerdict, StepEvalHandle
 │       │   │   ├── telemetry.attest.generated.ts # Generated receipts/deltas (codegen)
 │       │   │   ├── trap.protocol.ts   # Trap registration
 │       │   │   ├── types.core.ts      # Shared SDK types

@@ -115,7 +115,6 @@ impl ExecutionReceipt {
             masked_records,
             step_lineage,
             fs_vfs_ext: _,
-            net_l7_sql_ext: _,
         } = self;
         let mut hasher = blake3::Hasher::new();
         hash_str(&mut hasher, "kelir-receipt-leaf-v1");

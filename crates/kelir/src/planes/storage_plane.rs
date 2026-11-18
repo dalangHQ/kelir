@@ -1,12 +1,8 @@
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/03-sdk-architecture.md#Rust-SDK
-pub use kelir_interface::storage::{
-    DynamicFile, DynamicFileGenerator, FsReconcileRequest, SnoopRule, SyntheticFile,
-};
+pub use kelir_interface::storage::FsReconcileRequest;
 // see: cans/05-storage-plane.md#Storage-architecture
-pub use kelir_engine::planes::storage::{
-    IdmapConfig, MaskReadRule, ReadMaskEngine, WorkspaceEncapsulation,
-};
+pub use kelir_engine::planes::storage::{IdmapConfig, WorkspaceEncapsulation};
 
 // see: cans/05-storage-plane.md#Storage-architecture
 // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -15,12 +11,7 @@ pub struct StoragePlaneConfig {
     pub idmap: IdmapConfig,
     pub shared_caches: Vec<String>,
     pub lock_broker: bool,
-    pub synthetic_files: Vec<SyntheticFile>,
-    pub snoops: Vec<SnoopRule>,
-    pub mask_read: Vec<MaskReadRule>,
     pub encapsulation: WorkspaceEncapsulation,
-    pub scan_engine: ReadMaskEngine,
-    pub carryover_bytes: usize,
 }
 
 // see: cans/05-storage-plane.md#Host-inode-lock-broker

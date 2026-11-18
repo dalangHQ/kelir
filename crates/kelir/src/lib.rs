@@ -40,18 +40,16 @@ pub use builder_scopes::{
     LifecycleScope, NetScope, ParamsScope, ReadRules, RuleScope, ScopeRules, StreamsScope,
     TelemetryScope, TrapScope, VsockScope, WriteRules,
 };
-pub use builder_sdk::{
-    Host, KelirBuilder, LifecycleMut, Plugin, PostExecAction, Sealed, StepVerdict, Unsealed,
-};
+pub use builder_sdk::{Host, KelirBuilder, LifecycleMut, Plugin, Sealed, Unsealed};
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
-pub use kelir_interface::checkpoint::{PidLineage, StepSlot};
+pub use kelir_interface::checkpoint::PidLineage;
 pub use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig, WatchdogAction};
 pub use kelir_interface::handlers_plugin::Has;
 pub use kelir_interface::plugin_model::{HandlerCtx, LifecycleEvent};
 pub use kelir_interface::protocol_wire::Verdict;
 pub use kelir_interface::storage::CommitStats;
 pub use kelir_interface::telemetry::CausalDelta;
-pub use planes::storage_plane::{FsReconcileRequest, SnoopRule, SyntheticFile};
+pub use planes::storage_plane::FsReconcileRequest;
 pub use trap_filter::TrapFilter;
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 pub use async_trait::async_trait;
@@ -79,6 +77,12 @@ pub fn block_on<F: Future<Output = T>, T>(future: F) -> std::io::Result<T> {
     Ok(runtime.block_on(future))
 }
 
+// see: cans/plugins/anomaly.md#Plugin-anomaly
+#[cfg(feature = "plugin-anomaly")]
+pub use plugin_anomaly::{
+    AnomalyConfig, AnomalyCtx, AnomalyDetectionService, AnomalyHandle, AnomalyPlugin,
+    FeatureVector, TelemetryRing, TelemetryRingConfig, TelemetrySample,
+};
 // see: cans/plugins/chaos.md#Plugin-chaos
 #[cfg(feature = "plugin-chaos")]
 pub use plugin_chaos::{
@@ -89,8 +93,15 @@ pub use plugin_chaos::{
 pub use plugin_container::{ContainerConfig, ContainerCtx, ContainerHandle, ContainerPlugin};
 #[cfg(feature = "plugin-db-proxy")]
 pub use plugin_db_proxy::{
-    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, SqlProxyCtx, SqlProxyHandle,
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, NetL7SqlExt, SqlProxyCtx, SqlProxyHandle,
+    SqlReceiptExt,
 };
+// see: cans/plugins/egress-proxy.md#Plugin-egress-proxy
+#[cfg(feature = "plugin-egress-proxy")]
+pub use plugin_egress_proxy::{EgressProxyConfig, EgressProxyPlugin};
+// see: cans/plugins/l7-http.md#Plugin-l7-http
+#[cfg(feature = "plugin-l7-http")]
+pub use plugin_l7_http::{L7HttpConfig, L7HttpPlugin};
 // see: cans/plugins/ledger.md#Plugin-ledger
 #[cfg(feature = "plugin-ledger")]
 pub use plugin_ledger::{
@@ -107,15 +118,32 @@ pub use plugin_mesh::{
     TraceParentPropagation, VectorClock,
 };
 pub use plugin_profile::{ProfileConfig, ProfileCtx, ProfilePlugin};
+// see: cans/plugins/redaction.md#Plugin-redaction
+#[cfg(feature = "plugin-redaction")]
+pub use plugin_redaction::{MaskReadConfig, RedactionConfig, RedactionPlugin};
 // see: cans/plugins/replay.md#Plugin-replay
 #[cfg(feature = "plugin-replay")]
 pub use plugin_replay::{ReplayConfig, ReplayCtx, ReplayPlugin};
+// see: cans/plugins/step-eval.md#Plugin-step-eval
+pub use plugin_step_eval::{
+    PostExecAction, StepEvalConfig, StepEvalPlugin, StepEvaluationCtx, StepEvaluationService,
+    StepEvaluator, StepVerdict,
+};
 // see: cans/plugins/supply-chain.md#Plugin-supply-chain
 #[cfg(feature = "plugin-supply-chain")]
 pub use plugin_supply_chain::{
     AuthorizedJitEngine, JitValidationService, PackageGuardConfig, SupplyChainConfig,
     SupplyChainCtx, SupplyChainPlugin, WxJitConfig,
 };
+// see: cans/plugins/taint.md#Plugin-taint
+#[cfg(feature = "plugin-taint")]
+pub use plugin_taint::{TaintPlugin, TaintTrackingService};
+// see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
+#[cfg(feature = "plugin-terminal-guard")]
+pub use plugin_terminal_guard::{TerminalGuardConfig, TerminalGuardPlugin};
+// see: cans/plugins/token-shield.md#Plugin-token-shield
+#[cfg(feature = "plugin-token-shield")]
+pub use plugin_token_shield::{TokenShieldConfig, TokenShieldPlugin};
 #[cfg(feature = "plugin-tool-guard")]
 pub use plugin_tool_guard::{ToolGuardConfig, ToolGuardCtx, ToolGuardPlugin, ToolSpec};
 #[cfg(feature = "plugin-transaction")]

@@ -7,7 +7,8 @@ use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_engine::session_lifecycle::PlaneWiring;
 use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::plugin_model::{FsInterposer, HandlerCtx, MountScope, PipelineBinder};
-use kelir_interface::storage::{FuseOpcode, FuseReply, FuseRequest, SyntheticFile};
+use kelir_interface::storage::{FuseOpcode, FuseReply, FuseRequest};
+use plugin_vault::{SyntheticEnvFile, VaultSyntheticFiles};
 
 fn boot_config() -> kelir_interface::driver_interface::VmConfig {
     VmConfig {
@@ -18,7 +19,7 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 }
 
 fn full_wiring() -> PlaneWiring {
-    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let metrics = || Arc::new(kelir_interface::telemetry::MetricRegistry::new());
     let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     PlaneWiring {
         terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
@@ -44,7 +45,7 @@ fn unbound_terminal_ops_fails_boot() -> Result<(), String> {
         terminal_ops: None,
         ..full_wiring()
     };
-    match Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), wiring) {
+    match Session::boot_with_plugins(boot_config(), &[], None, wiring) {
         Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert!(
                 message.contains("TerminalOps unbound at boot"),
@@ -64,7 +65,7 @@ fn unbound_net_ops_fails_boot() -> Result<(), String> {
         net_ops: None,
         ..full_wiring()
     };
-    match Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), wiring) {
+    match Session::boot_with_plugins(boot_config(), &[], None, wiring) {
         Err(kelir_interface::plugin_model::PluginError::Halt(message)) => {
             assert!(
                 message.contains("NetOps unbound at boot"),
@@ -80,7 +81,7 @@ fn unbound_net_ops_fails_boot() -> Result<(), String> {
 // see: cans/01-architecture.md#Host-runtime
 #[test]
 fn unbound_fuse_ops_has_no_dispatcher() -> Result<(), String> {
-    let session = Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), full_wiring())
+    let session = Session::boot_with_plugins(boot_config(), &[], None, full_wiring())
         .map_err(|error| error.to_string())?;
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut lookup = FuseRequest {
@@ -111,15 +112,19 @@ fn unbound_fuse_ops_has_no_dispatcher() -> Result<(), String> {
 fn bound_fuse_ops_dispatches_synthetic_lookup() -> Result<(), String> {
     let mut engine = PipelineEngine::new();
     engine.bind_fs_scoped(Arc::new(PassFs), MountScope::default());
-    let fuse_ops = kelir_storage::fuse_ops_with_synthetic_files(
-        Arc::new(engine),
-        vec![SyntheticFile::static_(".env", "SECRET=<redacted>")],
+    engine.bind_fs_scoped(
+        Arc::new(VaultSyntheticFiles::new(vec![SyntheticEnvFile::new(
+            ".env",
+            "SECRET=<redacted>",
+        )])),
+        MountScope::default(),
     );
+    let fuse_ops = kelir_storage::fuse_ops(Arc::new(engine));
     let wiring = PlaneWiring {
         fuse_ops: Some(fuse_ops),
         ..full_wiring()
     };
-    let session = Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), wiring)
+    let session = Session::boot_with_plugins(boot_config(), &[], None, wiring)
         .map_err(|error| error.to_string())?;
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     let mut lookup = FuseRequest {

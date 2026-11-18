@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use kelir_interface::telemetry::CausalDelta;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 use kelir_plugin_testkit::block_on;
 use plugin_ledger::wal_ledger::{WalRecord, merkle_leaf, merkle_node, merkle_root};
 use plugin_ledger::{LedgerCtx, LedgerPlugin, OtelConfig};

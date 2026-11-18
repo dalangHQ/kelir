@@ -1,12 +1,11 @@
 // see: cans/08-lifecycle.md#Delta-chain-compaction
 // see: cans/09-snapshots.md#Groups-and-lineage
-// see: cans/10-attestation.md#Step-evaluation-loop
 use std::collections::HashMap;
 
 use crate::driver_interface::SnapshotDescriptor;
-use crate::telemetry::{CausalDelta, StepLineageEntry};
+use crate::telemetry::CausalDelta;
 
-// see: cans/10-attestation.md#Step-evaluation-loop
+// see: cans/09-snapshots.md#Groups-and-lineage
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PidLineage {
     root_pid: u32,
@@ -82,50 +81,5 @@ impl ManifestGraph {
             current = self.nodes.get(&id).and_then(|node| node.parent);
         }
         chain
-    }
-
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    pub fn step_lineage(&self, node_id: u64) -> Vec<StepLineageEntry> {
-        self.lineage(node_id)
-            .into_iter()
-            .map(|id| {
-                let parent = self.nodes.get(&id).and_then(|node| node.parent);
-                StepLineageEntry {
-                    node_id: id,
-                    parent_node_id: parent,
-                    reviewer_id: None,
-                    reviewer_signature: None,
-                }
-            })
-            .collect()
-    }
-}
-
-// see: cans/08-lifecycle.md#Delta-chain-compaction
-pub struct StepSlot {
-    slot_id: u64,
-    base_descriptor: SnapshotDescriptor,
-    pending_delta: Option<CausalDelta>,
-}
-
-impl StepSlot {
-    pub fn new(slot_id: u64, base_descriptor: SnapshotDescriptor) -> Self {
-        Self {
-            slot_id,
-            base_descriptor,
-            pending_delta: None,
-        }
-    }
-
-    pub fn slot_id(&self) -> u64 {
-        self.slot_id
-    }
-
-    pub fn base_descriptor(&self) -> &SnapshotDescriptor {
-        &self.base_descriptor
-    }
-
-    pub fn pending_delta(&self) -> Option<&CausalDelta> {
-        self.pending_delta.as_ref()
     }
 }

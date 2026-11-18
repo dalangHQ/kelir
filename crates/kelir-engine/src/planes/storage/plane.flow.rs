@@ -3,9 +3,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use kelir_interface::storage::{
-    CommitStats, FsReconcileRequest, ReconcilerOps, SnoopRule, StorageIo, SyntheticFile,
-};
+use kelir_interface::storage::{CommitStats, FsReconcileRequest, ReconcilerOps, StorageIo};
 
 use super::config::StorageConfig;
 use super::storage_quota::StorageQuota;
@@ -19,9 +17,7 @@ pub struct StoragePlane {
     io: Arc<dyn StorageIo>,
     reconciler: OnceLock<Arc<dyn ReconcilerOps>>,
     wiring: StorageConfig,
-    metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-    synthetic_files: Vec<SyntheticFile>,
-    snoops: Vec<SnoopRule>,
+    metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
 }
 
 impl StoragePlane {
@@ -39,14 +35,12 @@ impl StoragePlane {
             io: Arc::new(UnboundStorageIo),
             reconciler: OnceLock::new(),
             wiring: StorageConfig::default(),
-            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-            synthetic_files: Vec::new(),
-            snoops: Vec::new(),
+            metrics: Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
         }
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // L3-GAP: [storage_plane]: plane engines consume wiring (idmap remap, mask-read scan, encapsulation chmod, shared-cache mounts) per cans/05; slop: wiring unconsumed, encapsulation and masking unenforced
+    // L3-GAP: [storage_plane]: plane engines consume wiring (idmap remap, encapsulation chmod, shared-cache mounts) per cans/05; slop: wiring unconsumed, encapsulation unenforced
     pub fn with_wiring(mut self, wiring: StorageConfig) -> Self {
         self.wiring = wiring;
         self
@@ -57,33 +51,16 @@ impl StoragePlane {
         &self.wiring
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
+    pub fn with_metrics(
+        mut self,
+        metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
+    ) -> Self {
         self.metrics = metrics;
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<kelir_interface::telemetry::MetricRegistry> {
         &self.metrics
-    }
-
-    pub fn with_synthetic_files(mut self, files: Vec<SyntheticFile>) -> Self {
-        self.synthetic_files = files;
-        self
-    }
-
-    pub fn synthetic_files(&self) -> &[SyntheticFile] {
-        &self.synthetic_files
-    }
-
-    // see: cans/02-plugin-model.md#Unified-interposition-pipeline
-    // L3-GAP: [storage_plane]: snoop rules register as write-path FsInterposer hooks so on_write fires with (path, raw, ctx) per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: snoops held but never dispatched, writes unobserved
-    pub fn with_snoops(mut self, snoops: Vec<SnoopRule>) -> Self {
-        self.snoops = snoops;
-        self
-    }
-
-    pub fn snoops(&self) -> &[SnoopRule] {
-        &self.snoops
     }
 
     pub fn with_io(mut self, storage_io: Arc<dyn StorageIo>) -> Self {

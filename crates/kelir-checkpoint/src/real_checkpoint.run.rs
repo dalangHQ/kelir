@@ -1,17 +1,15 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use kelir_interface::checkpoint::{CheckpointOps, ManifestGraph, PidLineage, StepSlot};
+use kelir_interface::checkpoint::{CheckpointNode, CheckpointOps, ManifestGraph, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 pub(crate) struct RealCheckpointOps {
-    pub(crate) active_steps: Mutex<HashMap<PidLineage, StepSlot>>,
     pub(crate) graph: RwLock<ManifestGraph>,
-    pub(crate) next_slot_id: AtomicU64,
+    pub(crate) next_node_id: AtomicU64,
     pub(crate) monotonic_watermark_ns: AtomicU64,
     pub(crate) metrics: Arc<MetricRegistry>,
 }
@@ -19,20 +17,11 @@ pub(crate) struct RealCheckpointOps {
 impl RealCheckpointOps {
     pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         Self {
-            active_steps: Mutex::new(HashMap::new()),
             graph: RwLock::new(ManifestGraph::new()),
-            next_slot_id: AtomicU64::new(0),
+            next_node_id: AtomicU64::new(0),
             monotonic_watermark_ns: AtomicU64::new(0),
             metrics,
         }
-    }
-
-    pub(crate) fn lock_steps(
-        &self,
-    ) -> Result<MutexGuard<'_, HashMap<PidLineage, StepSlot>>, PluginError> {
-        self.active_steps
-            .lock()
-            .map_err(|_| PluginError::Halt("step slot lock poisoned".into()))
     }
 
     pub(crate) fn lock_graph(&self) -> Result<RwLockWriteGuard<'_, ManifestGraph>, PluginError> {
@@ -53,53 +42,52 @@ pub(crate) fn build_checkpoint_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn Chec
 }
 
 impl CheckpointOps for RealCheckpointOps {
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    fn create_step(
-        &self,
-        lineage: PidLineage,
-        base: SnapshotDescriptor,
-    ) -> Result<u64, PluginError> {
-        let mut steps = self.lock_steps()?;
-        crate::step_slot::create_step(&mut steps, &self.next_slot_id, lineage, base)
-    }
-
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    fn active_step(&self, lineage: PidLineage) -> Result<Option<SnapshotDescriptor>, PluginError> {
-        let steps = self.lock_steps()?;
-        Ok(crate::step_slot::active_descriptor(&steps, lineage))
-    }
-
-    // see: cans/08-lifecycle.md#Delta-chain-compaction
-    fn commit_step(&self, lineage: PidLineage) -> Result<u64, PluginError> {
-        let step = {
-            let mut steps = self.lock_steps()?;
-            crate::step_slot::take_step(&mut steps, lineage)?
-        };
+    // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
+    fn snapshot(&self, lineage: PidLineage, base: SnapshotDescriptor) -> Result<u64, PluginError> {
         let mut graph = self.lock_graph()?;
-        crate::step_slot::commit_step(&mut graph, step, lineage)
+        let node_id = self.next_node_id.fetch_add(1, Ordering::SeqCst);
+        let parent = graph.head(lineage);
+        graph.insert(CheckpointNode {
+            node_id,
+            parent,
+            descriptor: base,
+            delta: None,
+        });
+        graph.set_head(lineage, node_id);
+        Ok(node_id)
     }
 
-    // see: cans/08-lifecycle.md#Delta-chain-compaction
-    fn rollback_step(&self, lineage: PidLineage) -> Result<SnapshotDescriptor, PluginError> {
-        let mut steps = self.lock_steps()?;
-        crate::step_slot::rollback_step(&mut steps, lineage)
+    // see: cans/08-lifecycle.md#CoW-fork
+    fn fork(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError> {
+        self.branch_from(node_id, lineage)
     }
 
     // see: cans/08-lifecycle.md#Delta-chain-compaction
     fn branch_from(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError> {
         let mut graph = self.lock_graph()?;
-        crate::step_slot::branch_from(&mut graph, node_id, lineage)
+        if graph.get(node_id).is_none() {
+            return Err(PluginError::Halt(
+                "branch source node not in manifest graph".into(),
+            ));
+        }
+        if graph.has_lineage(lineage) {
+            return Err(PluginError::Halt(
+                "PID lineage already has a chain head".into(),
+            ));
+        }
+        graph.set_head(lineage, node_id);
+        Ok(())
     }
 
     // see: cans/09-snapshots.md#Restore-modes
     // see: cans/08-lifecycle.md#Clock-invariants
-    fn restore(
+    fn rollback(
         &self,
         node_id: u64,
         guest_monotonic_ns: u64,
     ) -> Result<SnapshotDescriptor, PluginError> {
         let graph = self.read_graph()?;
-        crate::compaction::restore(
+        crate::compaction::rollback(
             &graph,
             node_id,
             guest_monotonic_ns,
@@ -126,7 +114,7 @@ impl CheckpointOps for RealCheckpointOps {
     // see: cans/09-snapshots.md#Groups-and-lineage
     fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError> {
         let mut graph = self.lock_graph()?;
-        crate::compaction::compact(&mut graph, &self.next_slot_id, lineage)
+        crate::compaction::compact(&mut graph, &self.next_node_id, lineage)
     }
 
     fn fresh(&self) -> Arc<dyn CheckpointOps> {

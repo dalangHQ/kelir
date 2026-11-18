@@ -17,6 +17,8 @@ pub use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.token_ttl_seconds
 pub const DEFAULT_TOKEN_TTL_SECONDS: u32 = 60;
+// see: cans/plugins/vault.md#Plugin-vault
+pub const VAULT_PLACEHOLDER_PREFIX: &str = "vault://";
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 pub const MAX_TOKEN_TTL_SECONDS: u32 = 900;
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use kelir_interface::host::HostReaperKind;
 use kelir_interface::plugin_model::PluginError;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 pub(crate) fn lsm_status(reaper_kind: &HostReaperKind) -> bool {
     // L3-GAP: [hypervisor_driver]: query the host LSM (Linux LSM / macOS sandbox / Windows integrity) status; slop: LSM status never queried, posture unproven

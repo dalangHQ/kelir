@@ -6,13 +6,12 @@
 use std::sync::Arc;
 
 use kelir::plugin_model::{FilterAction, MountScope};
+use kelir::protocol_wire::Errno;
 use kelir::{
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, HCons, HNil, Host,
     KelirBuilder, LedgerCtx, LedgerPlugin, NetworkFaultRule, NoParams, Plugin, StorageFaultRule,
-    Unsealed,
+    Unsealed, VmConfig,
 };
-use kelir::driver_interface::default_vm_config;
-use kelir::protocol_wire::Errno;
 
 // see: cans/02-plugin-model.md#Unified-builder
 // The canonical chaos plugin: identical behaviour in all three languages.
@@ -68,18 +67,17 @@ pub type ChaosHostBuilder = KelirBuilder<
 // see: cans/plugins/chaos.md#Plugin-chaos
 pub fn build_chaos_host(config: ChaosConfig) -> ChaosHostBuilder {
     // see: cans/01-architecture.md#Embedded-profile
-    KelirBuilder::new(default_vm_config(
-        Some(1),
-        Some(256),
-        Some(format!(
+    KelirBuilder::new(VmConfig::default())
+        .vcpus(1)
+        .memory_mb(256)
+        .kernel(format!(
             "./fixtures/vmlinux-6.6-{}-kelir",
             std::env::consts::ARCH
-        )),
-        Some("./fixtures/rootfs-chaos.erofs".into()),
-        Some(true),
-        Some(false),
-    ))
-    .plugin_instance(ChaosPlugin::new(config))
+        ))
+        .rootfs("./fixtures/rootfs-chaos.erofs")
+        .tsc_locked(true)
+        .watchdog(false)
+        .plugin_instance(ChaosPlugin::new(config))
 }
 
 // see: cans/02-plugin-model.md#Unified-builder

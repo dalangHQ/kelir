@@ -135,13 +135,9 @@ async fn lc_01_cow_fork_warm_memory_sharing() -> Result<(), String> {
     let lineage = parent.lineage(0x11);
     let base = parent
         .checkpoint
-        .create_step(lineage, step_descriptor(5_000_000_000))
+        .snapshot(lineage, step_descriptor(5_000_000_000))
         .map_err(|e| e.to_string())?;
     assert_eq!(base, 0);
-    parent
-        .checkpoint
-        .commit_step(lineage)
-        .map_err(|e| e.to_string())?;
     let child = parent.fork().await.map_err(|e| e.to_string())?;
     match child.checkpoint.head(lineage) {
         Some(head) => assert_eq!(head, base),
@@ -171,9 +167,9 @@ async fn lc_02_suspend_zero_rss_purge() -> Result<(), String> {
         None => return Err("host RSS unobservable on this platform".to_string()),
     };
     session
-        .suspend(SuspendReason::External(
-            ExternalSuspendKind::HumanAuthorizationHold,
-        ))
+        .suspend(SuspendReason::External(ExternalSuspendKind::External(
+            "human-authorization-hold".to_string(),
+        )))
         .await
         .map_err(|e| e.to_string())?;
     let after = match session.host.refresh_rss() {

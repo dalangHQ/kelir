@@ -851,12 +851,10 @@ class KelirBuilder:
         )
         # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms/embed_mode once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
         if "terminal" in self._config:
-            # L3-GAP: [bindings_py]: token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.; slop: token shield/prompt callbacks never cross to native
             native.set_terminal_config(
                 _bridge_safe_config("terminal", self._config["terminal"])
             )
         if "storage" in self._config:
-            # L3-GAP: [bindings_py]: snoop on_write callbacks stay Python-side until the FFI callback bridge lands.; slop: snoop on_write never fires on guest writes
             native.set_storage_config(
                 _bridge_safe_config("storage", self._config["storage"])
             )

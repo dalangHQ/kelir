@@ -191,7 +191,7 @@ check-plugin plugin:
 check-plugin-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in chaos container db-proxy ledger mcp mesh profile replay supply-chain tool-guard transaction vault wire-ingress; do
+    for p in anomaly chaos container db-proxy egress-proxy l7-http ledger mcp mesh profile redaction replay step-eval supply-chain taint terminal-guard token-shield tool-guard transaction vault wire-ingress; do
         just check-plugin "$p"
     done
 
@@ -219,7 +219,7 @@ test-core:
 
 # Every optional domain plugin independently. Failure in one does not mask others.
 test-plugins:
-    cargo nextest run -p plugin-chaos -p plugin-container -p plugin-db-proxy -p plugin-ledger -p plugin-mcp -p plugin-mesh -p plugin-profile -p plugin-replay -p plugin-supply-chain -p plugin-tool-guard -p plugin-transaction -p plugin-vault -p plugin-wire-ingress
+    cargo nextest run -p plugin-anomaly -p plugin-chaos -p plugin-container -p plugin-db-proxy -p plugin-egress-proxy -p plugin-l7-http -p plugin-ledger -p plugin-mcp -p plugin-mesh -p plugin-profile -p plugin-redaction -p plugin-replay -p plugin-step-eval -p plugin-supply-chain -p plugin-taint -p plugin-terminal-guard -p plugin-token-shield -p plugin-tool-guard -p plugin-transaction -p plugin-vault -p plugin-wire-ingress
 
 # Single plugin (debugging)
 test-plugin plugin:

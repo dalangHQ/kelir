@@ -605,7 +605,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [chaos, container, db-proxy, ledger, mcp, mesh, profile, replay, supply-chain, tool-guard, transaction, vault, wire-ingress]
+        plugin: [anomaly, chaos, container, db-proxy, egress-proxy, l7-http, ledger, mcp, mesh, profile, redaction, replay, step-eval, supply-chain, taint, terminal-guard, token-shield, tool-guard, transaction, vault, wire-ingress]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -664,7 +664,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [chaos, container, db-proxy, ledger, mcp, mesh, profile, replay, supply-chain, tool-guard, transaction, vault, wire-ingress]
+        plugin: [anomaly, chaos, container, db-proxy, egress-proxy, l7-http, ledger, mcp, mesh, profile, redaction, replay, step-eval, supply-chain, taint, terminal-guard, token-shield, tool-guard, transaction, vault, wire-ingress]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

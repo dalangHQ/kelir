@@ -11,7 +11,7 @@ use kelir::{
     plugin_model::{Errno, KelirPlugin, PluginError},
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil, HandlerCtx,
     Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin, NoParams,
-    PostExecAction, ReceiptConfig, SqlProxyCtx, SqlProxyHandle, TransactionConfig, TransactionCtx,
+    PostExecAction, ReceiptConfig, SqlProxyCtx, SqlProxyHandle, SqlReceiptExt, TransactionConfig, TransactionCtx,
     TransactionHandle, TransactionPlugin, TrapFilter, Unsealed, Verdict, VmConfig,
 };
 

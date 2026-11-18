@@ -1,6 +1,7 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
 use super::*;
+use kelir_interface::telemetry::MetricRegistry;
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub(super) struct FusedCrossing<'a> {
@@ -52,14 +53,11 @@ pub struct PipelineEngine {
     pub(super) telemetry_interceptors: Vec<Arc<dyn SystemTelemetryParticipant>>,
     pub(super) telemetry_scopes: Vec<MountScope>,
     pub(super) telemetry_regs: Vec<RingRegistration>,
-    pub(super) post_exec_gates: Vec<Arc<dyn PostExecGate>>,
-    pub(super) post_exec_scopes: Vec<MountScope>,
-    pub(super) post_exec_regs: Vec<RingRegistration>,
     pub(super) stream_sinks: Vec<(u16, Arc<dyn StreamFrameSink>, MountScope)>,
     pub(super) lock_broker: Option<Arc<dyn LockBrokerCoordination>>,
     pub(super) parked_reset: Option<Arc<dyn ParkedConnectionReset>>,
     pub(super) token_revoker: Option<Arc<dyn TokenRevocation>>,
-    pub(super) metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    pub(super) metrics: Arc<MetricRegistry>,
     pub(super) trampoline: Option<kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
     pub(super) checkpoint: Option<Arc<CheckpointPlane>>,
     pub(super) on_trap_deny: Option<Arc<TrapDenyCallback>>,
@@ -98,13 +96,6 @@ impl PipelineBinder for PipelineEngine {
         self.trap_interceptors.push(stage);
         self.trap_scopes.push(scope);
         self.trap_regs.push(RingRegistration::default());
-    }
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope) {
-        let scope = self.effective_scope(scope);
-        self.post_exec_gates.push(gate);
-        self.post_exec_scopes.push(scope);
-        self.post_exec_regs.push(RingRegistration::default());
     }
     fn bind_console_scoped(&mut self, stage: Arc<dyn ConsoleInterposer>, scope: MountScope) {
         let scope = self.effective_scope(scope);
@@ -200,14 +191,11 @@ impl PipelineEngine {
             telemetry_interceptors: Vec::new(),
             telemetry_scopes: Vec::new(),
             telemetry_regs: Vec::new(),
-            post_exec_gates: Vec::new(),
-            post_exec_scopes: Vec::new(),
-            post_exec_regs: Vec::new(),
             stream_sinks: Vec::new(),
             lock_broker: None,
             parked_reset: None,
             token_revoker: None,
-            metrics: Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+            metrics: Arc::new(MetricRegistry::new()),
             trampoline: None,
             checkpoint: None,
             on_trap_deny: None,
@@ -269,7 +257,7 @@ impl PipelineEngine {
         self.foreign_queue.complete();
     }
 
-    pub fn with_metrics(mut self, metrics: Arc<kelir_otlp::registry_otlp::MetricRegistry>) -> Self {
+    pub fn with_metrics(mut self, metrics: Arc<MetricRegistry>) -> Self {
         self.metrics = metrics;
         self
     }
@@ -280,7 +268,7 @@ impl PipelineEngine {
         self
     }
 
-    pub fn metrics(&self) -> &Arc<kelir_otlp::registry_otlp::MetricRegistry> {
+    pub fn metrics(&self) -> &Arc<MetricRegistry> {
         &self.metrics
     }
 
@@ -297,7 +285,7 @@ impl PipelineEngine {
         self.trampoline.as_ref()
     }
 
-    // see: cans/10-attestation.md#Step-evaluation-loop
+    // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
     pub fn with_checkpoint(mut self, plane: Arc<CheckpointPlane>) -> Self {
         self.checkpoint = Some(plane);
         self
@@ -323,22 +311,6 @@ impl PipelineEngine {
         (action.handler)(payload)
             .await
             .map_err(|error| PluginError::Halt(format!("custom action {name} failed: {error}")))
-    }
-
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    // L3-GAP: [plugin_engine]: resolve guest pid to its lineage root before lookup once the trap-stream ppid chain walk lands; slop: trap lookup without lineage root, wrong process blamed
-    pub fn hydrate_step<Plugins, Params>(
-        &self,
-        ctx: &mut HandlerCtx<Plugins, Params>,
-        lineage: PidLineage,
-    ) -> Result<(), PluginError> {
-        let Some(plane) = self.checkpoint.as_ref() else {
-            return Ok(());
-        };
-        if let Some(descriptor) = plane.active_step(lineage)? {
-            ctx.step.push(descriptor);
-        }
-        Ok(())
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -430,11 +402,6 @@ impl PipelineEngine {
 
     pub fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
         <Self as PipelineBinder>::bind_trap_scoped(self, stage, scope);
-    }
-
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    pub fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope) {
-        <Self as PipelineBinder>::bind_post_exec_scoped(self, gate, scope);
     }
 
     pub(super) fn scope_at(scopes: &[MountScope], index: usize) -> MountScope {
@@ -604,11 +571,6 @@ impl PipelineEngine {
             self.telemetry_interceptors,
             self.telemetry_scopes,
             self.telemetry_regs
-        );
-        resort!(
-            self.post_exec_gates,
-            self.post_exec_scopes,
-            self.post_exec_regs
         );
     }
 

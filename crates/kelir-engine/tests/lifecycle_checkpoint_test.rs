@@ -9,7 +9,7 @@ use kelir_interface::plugin_model::PluginError;
 
 fn checkpoint_plane() -> CheckpointPlane {
     CheckpointPlane::new(kelir_checkpoint::checkpoint_ops(Arc::new(
-        kelir_otlp::registry_otlp::MetricRegistry::new(),
+        kelir_interface::telemetry::MetricRegistry::new(),
     )))
 }
 
@@ -49,30 +49,28 @@ fn lc_05_monotonic_clock_clamp_on_resume() -> Result<(), String> {
     let plane = checkpoint_plane();
     let lineage = PidLineage::new_in_session(100, [0x05; 16]);
     let first = plane
-        .create_step(lineage, descriptor(5_000_000_000))
+        .snapshot(lineage, descriptor(5_000_000_000))
         .map_err(|e| e.to_string())?;
     assert_eq!(first, 0);
-    let committed = plane.commit_step(lineage).map_err(|e| e.to_string())?;
-    assert_eq!(committed, 0);
     let second = plane
-        .create_step(lineage, descriptor(1_000_000_000))
+        .snapshot(lineage, descriptor(1_000_000_000))
         .map_err(|e| e.to_string())?;
     assert_eq!(second, 1);
-    let committed_second = plane.commit_step(lineage).map_err(|e| e.to_string())?;
-    assert_eq!(committed_second, 1);
-    let restored_first = plane.restore(0, 0).map_err(|e| e.to_string())?;
+    let restored_first = plane.rollback(0, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_first)?, 5_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 5_000_000_000);
-    let restored_second = plane.restore(1, 0).map_err(|e| e.to_string())?;
+    let restored_second = plane.rollback(1, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_second)?, 5_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 5_000_000_000);
-    let restored_live = plane.restore(0, 6_000_000_000).map_err(|e| e.to_string())?;
+    let restored_live = plane
+        .rollback(0, 6_000_000_000)
+        .map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_live)?, 6_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 6_000_000_000);
-    let restored_floor = plane.restore(1, 0).map_err(|e| e.to_string())?;
+    let restored_floor = plane.rollback(1, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored_floor)?, 6_000_000_000);
     assert_eq!(plane.monotonic_watermark_ns(), 6_000_000_000);
-    match plane.restore(999, 0) {
+    match plane.rollback(999, 0) {
         Err(PluginError::Halt(message)) => assert!(message.contains("not in manifest graph")),
         Err(e) => return Err(format!("unknown restore gave wrong error: {e}")),
         Ok(_) => return Err("unknown node restored".to_string()),
@@ -86,15 +84,13 @@ fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
     let plane = checkpoint_plane();
     let lineage = PidLineage::new_in_session(200, [0x19; 16]);
     let base = plane
-        .create_step(lineage, descriptor(100))
+        .snapshot(lineage, descriptor(100))
         .map_err(|e| e.to_string())?;
     assert_eq!(base, 0);
-    assert_eq!(plane.commit_step(lineage).map_err(|e| e.to_string())?, 0);
     let head = plane
-        .create_step(lineage, descriptor(200))
+        .snapshot(lineage, descriptor(200))
         .map_err(|e| e.to_string())?;
     assert_eq!(head, 1);
-    assert_eq!(plane.commit_step(lineage).map_err(|e| e.to_string())?, 1);
     assert_eq!(plane.head(lineage), Some(1));
     let compacted = plane.compact(lineage).map_err(|e| e.to_string())?;
     assert_eq!(compacted, 2);
@@ -103,7 +99,7 @@ fn lc_19_delta_chain_unbounded_compaction() -> Result<(), String> {
     assert_eq!(chain.len(), 2);
     assert_eq!(chain[0], compacted);
     assert_eq!(chain[1], 0);
-    let restored = plane.restore(compacted, 0).map_err(|e| e.to_string())?;
+    let restored = plane.rollback(compacted, 0).map_err(|e| e.to_string())?;
     assert_eq!(restored_offset(&restored)?, 200);
     Ok(())
 }

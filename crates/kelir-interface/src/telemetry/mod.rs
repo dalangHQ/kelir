@@ -5,16 +5,16 @@
 pub mod delta_attest;
 #[path = "merkle_attest.flow.rs"]
 pub mod merkle_attest;
+#[path = "metric_registry.flow.rs"]
+pub mod metric_registry;
 #[path = "receipt_attest.flow.rs"]
 pub mod receipt_attest;
-#[path = "telemetry_ring.flow.rs"]
-pub mod telemetry_ring;
 
-pub use telemetry_ring::{FeatureVector, OtlpExporterConfig, TelemetryRing, TelemetryRingConfig};
+pub use metric_registry::{MetricRegistry, MetricSnapshot};
 
 pub use delta_attest::CausalDelta;
 pub use receipt_attest::{
     AttestationClass, AttestationToken, ExecutionReceipt, ExitKind, FsVfsExt, HookPolicyDescriptor,
-    HookSpan, MaskedRecord, NetL7SqlExt, PhaseTimings, ReceiptExtension, ReceiptStore,
-    StepLineageEntry, VerdictKind,
+    HookSpan, MaskedRecord, PhaseTimings, ReceiptExtension, ReceiptStore, StepLineageEntry,
+    VerdictKind,
 };

@@ -3,12 +3,10 @@
 use napi::{Error, Result};
 
 use kelir_engine::planes::storage::{
-    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
-    WorkspaceEncapsulation,
+    IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation,
 };
-use kelir_interface::storage::SyntheticFile;
 
-use crate::{NativeMaskRule, NativeStorageConfig, NativeSyntheticFile};
+use crate::NativeStorageConfig;
 
 // see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
 fn econfig(message: impl Into<String>) -> Error {
@@ -25,17 +23,8 @@ fn u32_of(value: f64, what: &str) -> Result<u32> {
     Ok(value as u32)
 }
 
-// see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
-fn usize_of(value: f64, what: &str) -> Result<usize> {
-    if !(value.is_finite() && value >= 0.0 && value <= usize::MAX as f64) {
-        return Err(econfig(format!("storage {what} is not a usize")));
-    }
-    Ok(value as usize)
-}
-
 // see: cans/05-storage-plane.md#Storage-architecture
 // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: NAPI lock-broker scope globs ride a dedicated native lock-broker config surface.; slop: globs accepted without flock bridge, lock unenforced
-// L3-GAP: [bindings_ts]: snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands, so snoops do not cross into the Rust SnoopRule yet.; slop: snoop callbacks stay TS-side, writes unobserved
 pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
     let encapsulation = match cfg.encapsulation.as_deref() {
         None => WorkspaceEncapsulation::default(),
@@ -55,27 +44,6 @@ pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
         }),
         _ => return Err(econfig("storage idmap needs both guest_uid and host_uid")),
     };
-    let mask_read = match (&cfg.mask_read, &cfg.scan_engine, &cfg.carryover_bytes) {
-        (None, None, None) => None,
-        _ => Some(MaskReadConfig {
-            engine: match cfg.scan_engine.as_deref() {
-                None => ReadMaskEngine::FastRegex,
-                Some("FastRegex") => ReadMaskEngine::FastRegex,
-                Some(other) => {
-                    return Err(econfig(format!(
-                        "storage scan_engine `{other}` is not FastRegex"
-                    )));
-                }
-            },
-            carryover_bytes: usize_of(cfg.carryover_bytes.unwrap_or(0.0), "carryover_bytes")?,
-            rules: cfg
-                .mask_read
-                .as_deref()
-                .map(mask_rules)
-                .transpose()?
-                .unwrap_or_default(),
-        }),
-    };
     Ok(StorageConfig {
         shared_caches: cfg
             .shared_caches
@@ -92,44 +60,6 @@ pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
                 non_blocking: false,
             }),
         idmap,
-        mask_read,
         encapsulation,
     })
-}
-
-// see: cans/05-storage-plane.md#In-flight-read-masking
-fn mask_rules(rules: &[NativeMaskRule]) -> Result<Vec<MaskReadRule>> {
-    rules
-        .iter()
-        .map(|rule| {
-            Ok(MaskReadRule {
-                glob: rule.glob.clone(),
-                patterns: vec![(rule.pattern.clone(), rule.replace.clone())],
-            })
-        })
-        .collect()
-}
-
-// see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
-pub fn synthetic_files(cfg: &NativeStorageConfig) -> Result<Vec<SyntheticFile>> {
-    cfg.synthetic_files
-        .as_ref()
-        .map(|files| {
-            files
-                .iter()
-                .map(|file: &NativeSyntheticFile| {
-                    let mode = match file.mode {
-                        None => 0o400,
-                        Some(mode) => u32_of(mode, "synthetic file mode")?,
-                    };
-                    Ok(SyntheticFile::static_with_mode(
-                        &file.path,
-                        &file.content,
-                        mode,
-                    ))
-                })
-                .collect()
-        })
-        .transpose()
-        .map(|files| files.unwrap_or_default())
 }

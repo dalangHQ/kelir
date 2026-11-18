@@ -30,7 +30,7 @@ class NetworkFaultRule:
 @dataclass
 class StorageFaultRule:
     target_path: str = ""
-    simulate_error: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress", "path-traversal", "etimeout"] = "eperm"
+    simulate_error: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress", "path-traversal", "etimeout", "eafnosupport"] = "eperm"
     error_probability: float = 0.0
 
 

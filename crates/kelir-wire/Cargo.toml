@@ -12,7 +12,6 @@ description = "Wire plane bodies: smoltcp stack, synthetic DNS gateway, UDP NAT,
 kelir-interface = { path = "../kelir-interface" }
 kelir-engine = { path = "../kelir-engine" }
 smoltcp = { version = "0.11", default-features = false, features = ["std", "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp"] }
-kelir-otlp = { path = "../kelir-otlp" }
 kelir-transport = { path = "../kelir-transport" }
 
 [lints]

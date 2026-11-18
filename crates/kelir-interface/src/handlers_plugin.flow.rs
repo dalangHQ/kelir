@@ -165,7 +165,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self
     }
 
-    // TODO (L3): verify the ed25519 signature on the stored operator lease token; presence-only until then.
+    // TODO (L3) [governance_tools]: verify the ed25519 signature on the stored operator lease token; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
     pub fn has_valid_operator_lease(&self) -> bool {
         self.operator_lease.is_some()
     }

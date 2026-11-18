@@ -24,8 +24,6 @@ CredentialKind = Literal["bearer_token", "sigv4", "mtls_bundle"]
 @dataclass
 class SinkholeRule:
     host: str = ""
-    methods: list[str] | None = None
-    paths: list[str] | None = None
     allow: bool = False
 
 
@@ -33,14 +31,6 @@ class SinkholeRule:
 @dataclass
 class SinkholeConfig:
     rules: list[SinkholeRule] = field(default_factory=list)
-
-    @classmethod
-    def from_legacy(cls, allowlist: list[str], drop_all: bool) -> SinkholeConfig:
-        # see: cans/07-wire-plane.md#Sinkhole-rules
-        rules = [SinkholeRule(host=host, allow=True) for host in allowlist]
-        if drop_all:
-            rules.append(SinkholeRule(host="*", allow=False))
-        return cls(rules=rules)
 
 
 @dataclass

@@ -38,7 +38,7 @@ pub(crate) fn compact(
     Ok(compacted_id)
 }
 
-pub(crate) fn restore(
+pub(crate) fn rollback(
     graph: &ManifestGraph,
     node_id: u64,
     guest_monotonic_ns: u64,

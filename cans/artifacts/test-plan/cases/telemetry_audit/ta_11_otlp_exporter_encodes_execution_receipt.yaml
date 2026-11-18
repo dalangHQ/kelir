@@ -3,7 +3,7 @@ case_id: "ta_11_otlp_exporter_encodes_execution_receipt"
 title: "OtlpExporter export_receipt encodes an ExecutionReceipt into OTLP bytes without touching local disk"
 domain: "telemetry_audit"
 target_tier: "unit"
-target_crate: "crates/kelir-otlp"
+target_crate: "crates/kelir-plugins/plugin-ledger"
 platform_target:
   os: "any"
   arch: "any"

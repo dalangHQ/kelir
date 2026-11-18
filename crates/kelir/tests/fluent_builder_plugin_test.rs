@@ -9,8 +9,8 @@ use kelir::interface::driver_interface::{Stream, VmConfig, WatchdogVerdict};
 use kelir::interface::errno_types::Errno;
 use kelir::interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, KelirPlugin, LifecycleParticipant,
-    MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder, PluginError, PostExecGate,
-    StreamFrameSink, SystemTelemetryParticipant, TokenRevocation, TrapInterposer,
+    MountScope, NetInterposer, ParkedConnectionReset, PipelineBinder, PluginError, StreamFrameSink,
+    SystemTelemetryParticipant, TokenRevocation, TrapInterposer,
 };
 use kelir::interface::protocol_wire::Verdict;
 use kelir::interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
@@ -84,10 +84,6 @@ impl PipelineBinder for RecordingBinder {
         _scope: MountScope,
     ) {
         self.binds.push("telemetry".to_string());
-    }
-
-    fn bind_post_exec_scoped(&mut self, _gate: Arc<dyn PostExecGate>, _scope: MountScope) {
-        self.binds.push("post_exec".to_string());
     }
 
     fn bind_stream_kind_scoped(

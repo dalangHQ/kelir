@@ -188,11 +188,6 @@ class FsVfsExt(BaseModel):
     roots: list[str] = Field(default_factory=list)
 
 
-class NetL7SqlExt(BaseModel):
-    statements: int = 0
-    distinct_shapes: int = 0
-
-
 # L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
 class ExecutionReceipt(BaseModel):
     pid: int = 0
@@ -213,7 +208,6 @@ class ExecutionReceipt(BaseModel):
     masked_records: list[MaskedRecord] = Field(default_factory=list)
     step_lineage: list[StepLineageEntry] = Field(default_factory=list)
     fs_vfs_ext: FsVfsExt | None = None
-    net_l7_sql_ext: NetL7SqlExt | None = None
 
 
 class CausalDelta(BaseModel):

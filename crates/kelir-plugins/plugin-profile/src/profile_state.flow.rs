@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, PluginDeps, StreamFrameSink,
+    FsInterposer, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, PluginDeps,
+    StreamFrameSink,
 };
 use kelir_interface::protocol_wire::StreamKind;
 use serde_json::Value;
@@ -13,6 +14,7 @@ use crate::patch::{
     check_value_against_base, contains_number, pointer_namespace, remove_pointer, resolve_pointer,
     set_pointer,
 };
+use crate::synthetic_identity::{ProfileSyntheticFiles, SyntheticIdentityFile};
 use crate::{ConfigurablePlugin, JsonPatch, PatchOp, ProfileConfig};
 
 // see: cans/plugins/profile.md#Inversion-of-Control-configuration-router:
@@ -266,6 +268,7 @@ impl ProfileState {
 #[derive(Clone, PluginDeps)]
 pub struct ProfilePlugin {
     state: Arc<ProfileState>,
+    synthetic_files: Vec<SyntheticIdentityFile>,
 }
 
 impl ProfilePlugin {
@@ -276,7 +279,14 @@ impl ProfilePlugin {
     pub fn with_config(config: ProfileConfig) -> Self {
         Self {
             state: Arc::new(ProfileState::new(config)),
+            synthetic_files: Vec::new(),
         }
+    }
+
+    // see: cans/plugins/profile.md#Synthetic-inode-ownership-(profile)
+    pub fn with_synthetic_files(mut self, files: Vec<SyntheticIdentityFile>) -> Self {
+        self.synthetic_files = files;
+        self
     }
 
     pub fn register_namespace(
@@ -380,6 +390,10 @@ impl KelirPlugin for ProfilePlugin {
             sink,
             MountScope::default().with_stream_kinds([StreamKind::ProfileSync]),
         );
+        // see: cans/plugins/profile.md#Synthetic-inode-ownership-(profile)
+        let fs_stage: Arc<dyn FsInterposer> =
+            Arc::new(ProfileSyntheticFiles::new(self.synthetic_files.clone()));
+        pipeline.bind_fs_scoped(fs_stage, MountScope::default());
     }
 }
 

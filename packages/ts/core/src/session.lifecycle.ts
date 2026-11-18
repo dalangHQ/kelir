@@ -54,12 +54,17 @@ export interface NativeTerminalHandle {
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeCheckpointHandle {
   create(label: string): Promise<NativeSnapshotDescriptorRecord>;
-  createStep(
+  snapshot(
     lineage: NativePidLineageRecord,
     descriptor: NativeSnapshotDescriptorRecord,
   ): Promise<number>;
-  commitStep(lineage: NativePidLineageRecord): Promise<number>;
-  revertStep(slot: number): Promise<void>;
+  fork(nodeId: number, lineage: NativePidLineageRecord): Promise<void>;
+  branchFrom(nodeId: number, lineage: NativePidLineageRecord): Promise<void>;
+  rollbackNode(
+    nodeId: number,
+    guestMonotonicNs?: number,
+  ): Promise<NativeSnapshotDescriptorRecord>;
+  compact(lineage: NativePidLineageRecord): Promise<number>;
   rollback(snapshotId: string): Promise<void>;
 }
 
@@ -188,11 +193,15 @@ function fallbackCheckpoint(): CheckpointHandle {
   return {
     create: (): Promise<SnapshotDescriptor> =>
       Promise.reject(missingPlaneError("checkpoint")),
-    createStep: (): Promise<number> =>
+    snapshot: (): Promise<number> =>
       Promise.reject(missingPlaneError("checkpoint")),
-    commitStep: (): Promise<number> =>
+    fork: (): Promise<void> =>
       Promise.reject(missingPlaneError("checkpoint")),
-    revertStep: (): Promise<void> =>
+    branchFrom: (): Promise<void> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    rollbackNode: (): Promise<SnapshotDescriptor> =>
+      Promise.reject(missingPlaneError("checkpoint")),
+    compact: (): Promise<number> =>
       Promise.reject(missingPlaneError("checkpoint")),
     rollback: (): Promise<void> =>
       Promise.reject(missingPlaneError("checkpoint")),
@@ -239,18 +248,30 @@ export class Session {
             fromNativeSnapshotDescriptor(
               await nativeCheckpoint.create(label),
             ),
-          createStep: (
+          snapshot: (
             lineage: PidLineage,
             descriptor: SnapshotDescriptor,
           ): Promise<number> =>
-            nativeCheckpoint.createStep(
+            nativeCheckpoint.snapshot(
               toNativePidLineage(lineage),
               toNativeSnapshotDescriptor(descriptor),
             ),
-          commitStep: (lineage: PidLineage): Promise<number> =>
-            nativeCheckpoint.commitStep(toNativePidLineage(lineage)),
-          revertStep: (slot: number): Promise<void> =>
-            nativeCheckpoint.revertStep(slot),
+          fork: (nodeId: number, lineage: PidLineage): Promise<void> =>
+            nativeCheckpoint.fork(nodeId, toNativePidLineage(lineage)),
+          branchFrom: (
+            nodeId: number,
+            lineage: PidLineage,
+          ): Promise<void> =>
+            nativeCheckpoint.branchFrom(nodeId, toNativePidLineage(lineage)),
+          rollbackNode: async (
+            nodeId: number,
+            guestMonotonicNs?: number,
+          ): Promise<SnapshotDescriptor> =>
+            fromNativeSnapshotDescriptor(
+              await nativeCheckpoint.rollbackNode(nodeId, guestMonotonicNs),
+            ),
+          compact: (lineage: PidLineage): Promise<number> =>
+            nativeCheckpoint.compact(toNativePidLineage(lineage)),
           rollback: (snapshotId: string): Promise<void> =>
             nativeCheckpoint.rollback(snapshotId),
         }
@@ -360,7 +381,7 @@ export class Session {
 
   // see: cans/01-architecture.md#Dynamic-policy-rules-permit-signed-operator-lease-overrides
   async elevateLease(lease: string): Promise<void> {
-    // TODO (L3): verify the ed25519 signature against the pinned operator pubkey and forward the lease to the native session once the NAPI session exposes it.
+    // TODO (L3) [governance_tools]: verify the ed25519 signature against the pinned operator pubkey and forward the lease to the native session once the NAPI session exposes it; slop: lease never forwarded to the native session; unverified token counts as valid.
     this.leaseTokenValue = lease;
   }
 

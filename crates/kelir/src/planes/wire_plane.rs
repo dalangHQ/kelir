@@ -2,10 +2,17 @@ use std::path::PathBuf;
 
 use kelir_interface::credential_vault::CredentialDescriptor;
 
-#[derive(Debug, Clone)]
+// see: cans/07-wire-plane.md#Sinkhole-rules
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SinkholeRule {
+    pub host: String,
+    pub allow: bool,
+}
+
+// see: cans/07-wire-plane.md#Sinkhole-rules
+#[derive(Debug, Clone, Default)]
 pub struct SinkholeConfig {
-    pub allowlist: Vec<String>,
-    pub drop_all: bool,
+    pub rules: Vec<SinkholeRule>,
 }
 
 // see: cans/plugins/vault.md#In-ring-carrier-secret-injection

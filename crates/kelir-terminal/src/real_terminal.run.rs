@@ -5,18 +5,14 @@ use std::io::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::terminal::{
-    LogSegment, LogStream, PromptRuleConfig, TerminalOps, TerminalWiring, TokenShieldConfig,
-};
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
+use kelir_interface::terminal::{LogSegment, LogStream, TerminalOps, TerminalWiring};
 
 use crate::vt100::Vt100StateMachine;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TerminalConfig {
     pub(crate) filters: (bool, bool),
-    pub(crate) token_shield: Option<TokenShieldConfig>,
-    pub(crate) prompts: Vec<PromptRuleConfig>,
 }
 
 pub(crate) struct RealTerminalOps {
@@ -99,15 +95,7 @@ impl TerminalOps for RealTerminalOps {
 
     fn export_screen_matrix(&self) -> Result<Vec<u8>, PluginError> {
         let state = self.lock_state()?;
-        let (max_lines, max_bytes) = match self.config().token_shield.as_ref() {
-            Some(shield) => (shield.max_lines_total, shield.max_bytes_total),
-            None => (usize::MAX, usize::MAX),
-        };
-        Ok(crate::token_shield::apply_token_shield(
-            &crate::vt100::filter_ansi_shadow(&state.export()),
-            max_lines,
-            max_bytes,
-        ))
+        Ok(crate::vt100::filter_ansi_shadow(&state.export()))
     }
 
     // L3-GAP: [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
@@ -167,20 +155,10 @@ impl TerminalOps for RealTerminalOps {
         self.config().filters
     }
 
-    fn token_shield(&self) -> Option<TokenShieldConfig> {
-        self.config().token_shield
-    }
-
-    fn prompts(&self) -> Vec<PromptRuleConfig> {
-        self.config().prompts
-    }
-
     fn apply_wiring(&self, wiring: &TerminalWiring) -> Result<(), PluginError> {
         let mut config = self.lock_config()?;
         *config = TerminalConfig {
             filters: (wiring.drop_osc52, wiring.strip_title),
-            token_shield: wiring.token_shield.clone(),
-            prompts: wiring.prompts.clone(),
         };
         Ok(())
     }

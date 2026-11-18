@@ -9,18 +9,33 @@ use std::sync::{Arc, Mutex};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{KelirPlugin, LifecycleParticipant, PluginDeps};
 use kelir_interface::telemetry::CausalDelta;
-use kelir_otlp::registry_otlp::{MetricRegistry, MetricSnapshot};
-use kelir_otlp::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
+use kelir_interface::telemetry::{MetricRegistry, MetricSnapshot};
 
 pub mod compute_ledger;
 #[path = "otel_ledger.flow.rs"]
 pub mod otel_ledger;
+#[path = "otlp_encoder.flow.rs"]
+pub mod otlp_encoder;
+#[path = "otlp_encoder.run.rs"]
+pub mod otlp_encoder_run;
+#[path = "otlp_exporter.flow.rs"]
+pub mod otlp_exporter;
+#[path = "otlp_exporter.run.rs"]
+pub mod otlp_exporter_run;
+#[path = "otlp_records.flow.rs"]
+pub mod otlp_records;
+#[path = "otlp_span.flow.rs"]
+pub mod otlp_span;
 #[path = "wal.run.rs"]
 pub mod wal;
 #[path = "wal_ledger.flow.rs"]
 pub mod wal_ledger;
 
 pub use otel_ledger::TraceParent;
+pub use otlp_encoder::OtlpEncoder;
+pub use otlp_exporter::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
+pub use otlp_records::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
+pub use otlp_span::OtlpSpan;
 pub use wal_ledger::{
     DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, MerkleInclusionProof, OtlpLedgerSink,
     SignedTreeHead, WalRecord, WitnessClient, WitnessCosignature, dual_merkle_leaf,

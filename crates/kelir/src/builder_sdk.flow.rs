@@ -9,11 +9,12 @@ use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
-    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, PostExecGate,
-    StreamFrameSink, SystemTelemetryParticipant, TrapInterposer, Veto, VetoEvent, VetoList,
+    LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
+    SystemTelemetryParticipant, TrapInterposer, Veto, VetoEvent, VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+use plugin_step_eval::{PostExecGate, StepEvalConfig, StepEvaluator};
 
 use crate::builder_scopes::{FsScopeConfig, ScopeRules};
 
@@ -29,7 +30,7 @@ use crate::trap_filter::TrapFilter;
 #[cfg(feature = "plugin-tool-guard")]
 use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
 
-pub use crate::protocol_wire::{PostExecAction, StepVerdict};
+pub use plugin_step_eval::{PostExecAction, StepVerdict};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unsealed;
@@ -177,9 +178,6 @@ impl HookRegistry {
         }
         for stage in &self.telemetry {
             pipeline.bind_telemetry_scoped(Arc::clone(stage), scope.clone());
-        }
-        for gate in &self.post_exec {
-            pipeline.bind_post_exec_scoped(Arc::clone(gate), scope.clone());
         }
     }
 
@@ -685,25 +683,13 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         }
         engine.set_active_scope(MountScope::default());
         engine.seal()?;
-        let metrics = std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+        let metrics = std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let engine = engine.with_metrics(metrics.clone());
-        let synthetic_files = registration
-            .storage_cfg
-            .as_ref()
-            .map(|cfg| cfg.synthetic_files.clone())
-            .unwrap_or_default();
-        let mut snoops = registration
-            .storage_cfg
-            .as_ref()
-            .map(|cfg| cfg.snoops.clone())
-            .unwrap_or_default();
-        if let Some(fs) = registration.fs_cfg.as_ref() {
-            snoops.extend(fs.snoops.iter().cloned());
-        }
         // see: cans/01-architecture.md#Host-runtime
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        let checkpoint_ops = kelir_checkpoint::checkpoint_ops(metrics.clone());
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: registration.terminal_cfg.as_ref().map(|cfg| {
                 kelir_interface::terminal::TerminalWiring {
@@ -711,32 +697,21 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     rows: cfg.rows,
                     drop_osc52: cfg.drop_osc52,
                     strip_title: cfg.strip_title,
-                    token_shield: cfg.token_shield.clone(),
-                    prompts: cfg
-                        .prompts
-                        .iter()
-                        .map(|rule| kelir_interface::terminal::PromptRuleConfig {
-                            pattern: rule.pattern.clone(),
-                            timeout: rule.timeout,
-                            verify_foreground: rule.verify_foreground,
-                            action: {
-                                let action = Arc::clone(&rule.action);
-                                Arc::new(
-                                    move |event: &kelir_interface::protocol_wire::TrapEvent| {
-                                        action(event, crate::planes::terminal_plane::PromptStream)
-                                    },
-                                )
-                            },
-                        })
-                        .collect(),
                 }
             }),
             wire: registration.wire_cfg.as_ref().map(|cfg| {
                 kelir_interface::wire::net::WireWiring {
-                    sinkhole: kelir_interface::wire::net::SinkholeConfig::from_allowlist_drop_all(
-                        cfg.sinkhole.allowlist.clone(),
-                        cfg.sinkhole.drop_all,
-                    ),
+                    sinkhole: kelir_interface::wire::net::SinkholeConfig {
+                        rules: cfg
+                            .sinkhole
+                            .rules
+                            .iter()
+                            .map(|rule| kelir_interface::wire::net::SinkholeRule {
+                                host: rule.host.clone(),
+                                allow: rule.allow,
+                            })
+                            .collect(),
+                    },
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
                     vault_placeholders: cfg
                         .vaults
@@ -766,7 +741,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                 }
             }),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
-            checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics.clone())),
+            checkpoint_ops: Some(Arc::clone(&checkpoint_ops)),
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
             net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
             dns_ops: Some(dns_ops),
@@ -776,14 +751,12 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
             reconciler: None,
             fuse_ops: None,
             storage,
-            snoops,
         };
         let mut core = kelir_engine::Session::boot_with_engine(
             config,
             &plugins,
             engine,
             metrics,
-            synthetic_files,
             plane_wiring,
         )?;
         // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
@@ -795,11 +768,25 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         core.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
         core.run_lifecycle_hook(LifecycleEvent::VmReady).await?;
         core.begin_running()?;
-        Ok(Session::from_parts(core, self.plugins, registration))
+        // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
+        let mut gates = std::mem::take(&mut self.registry.post_exec);
+        for mounted in &mut registration.mounted {
+            gates.extend(std::mem::take(&mut mounted.registry.post_exec));
+        }
+        let step_evaluator = Arc::new(StepEvaluator::new(
+            checkpoint_ops,
+            StepEvalConfig::default(),
+            gates,
+        ));
+        Ok(Session::from_parts(
+            core,
+            self.plugins,
+            registration,
+            step_evaluator,
+        ))
     }
 
     // see: cans/05-storage-plane.md#Storage-architecture
-    // L3-GAP: [storage_plane]: snoop on_write closures register as engine FsInterposer hooks at seal per cans/02-plugin-model.md#Unified-interposition-pipeline.; slop: on_write closure dropped, hook never registered at seal
     fn storage_config(&self) -> kelir_engine::planes::storage::StorageConfig {
         let Some(cfg) = self.registration.storage_cfg.as_ref() else {
             let mut storage = kelir_engine::planes::storage::StorageConfig::default();
@@ -834,11 +821,6 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                 guest_uid: cfg.idmap.guest_uid,
                 host_uid: cfg.idmap.host_uid,
             }),
-            mask_read: Some(kelir_engine::planes::storage::MaskReadConfig {
-                engine: cfg.scan_engine,
-                carryover_bytes: cfg.carryover_bytes,
-                rules: cfg.mask_read.clone(),
-            }),
             encapsulation: cfg.encapsulation,
         };
         self.apply_fs_cfg(&mut storage);
@@ -857,17 +839,6 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                 },
                 non_blocking: broker.non_blocking,
             });
-        }
-        if fs.carryover_bytes.is_some() || fs.scan_engine.is_some() {
-            let mask = storage
-                .mask_read
-                .get_or_insert_with(kelir_engine::planes::storage::MaskReadConfig::default);
-            if let Some(bytes) = fs.carryover_bytes {
-                mask.carryover_bytes = bytes as usize;
-            }
-            if let Some(engine) = fs.scan_engine {
-                mask.engine = engine;
-            }
         }
     }
 }

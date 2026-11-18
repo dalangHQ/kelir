@@ -2257,7 +2257,7 @@ entries:
   - fs::exists('.kelir/audit.merkle.db') is false
   - otlp_mock_server_received_spans() >= 100 and gRPC frames sent > 0 (AS-02)
   code_todos:
-  - crates/kelir-otlp/src/lib.rs
+  - crates/kelir-plugins/plugin-ledger/src/otlp_exporter.flow.rs
   - crates/kelir-plugins/plugin-ledger/src/lib.rs
 - case_id: ta_05_w3c_traceparent_span_propagation
   status: gap

@@ -1,8 +1,12 @@
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
+use kelir_interface::plugin_model::TrapInterposer;
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
 use kelir_plugin_testkit::block_on;
@@ -251,5 +255,63 @@ fn gv_08_in_ring_carrier_secret_injection() -> Result<(), String> {
         matches!(err, Err(VaultError::Enodata(_))),
         "unregistered placeholder must fail closed with ENODATA, got {err:?}"
     );
+    Ok(())
+}
+
+// see: cans/plugins/vault.md#Plugin-vault
+#[test]
+fn vault_placeholder_in_env_rejected_with_esecurityviolation() -> Result<(), String> {
+    let plugin = VaultPlugin::new();
+    let ctx = handler_ctx([0u8; 16], 1);
+    let mut envp = HashMap::new();
+    envp.insert("API_KEY".to_string(), "vault://openai_key".to_string());
+    let event = TrapEvent {
+        seq: 1,
+        pid: 1,
+        ppid: 0,
+        task_id: 1,
+        binary_path: "/usr/bin/curl".into(),
+        binary_dev: 2049,
+        binary_ino: 1,
+        binary_blake3: [0u8; 32],
+        argv: vec!["curl".into()],
+        envp,
+        cwd: "/workspace".into(),
+        syscall: None,
+        ..Default::default()
+    };
+    match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
+        Verdict::Drop { errno, .. } => {
+            assert_eq!(
+                errno,
+                Errno::Esecurityviolation,
+                "vault:// in env must drop with ESecurityViolation"
+            );
+        }
+        verdict => {
+            return Err(format!("vault:// in env must drop, got {verdict:?}"));
+        }
+    }
+    let clean = TrapEvent {
+        seq: 2,
+        pid: 1,
+        ppid: 0,
+        task_id: 1,
+        binary_path: "/usr/bin/curl".into(),
+        binary_dev: 2049,
+        binary_ino: 1,
+        binary_blake3: [0u8; 32],
+        argv: vec!["curl".into()],
+        envp: HashMap::new(),
+        cwd: "/workspace".into(),
+        syscall: None,
+        ..Default::default()
+    };
+    match block_on(plugin.on_trap(&clean, &ctx)).map_err(|err| format!("{err:?}"))? {
+        Verdict::Pass => (),
+        verdict => {
+            return Err(format!("clean env must pass, got {verdict:?}"));
+        }
+    }
     Ok(())
 }

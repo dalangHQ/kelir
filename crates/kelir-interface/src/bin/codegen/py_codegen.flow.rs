@@ -302,5 +302,23 @@ pub fn emit_package_init(order: &[&str]) -> String {
         let _ = writeln!(out, "    {name},");
     }
     out.push_str(")\n");
+    out.push_str("\n__all__ = [\n");
+    for name in [
+        "HOOK_RINGS",
+        "LIFECYCLE_TAGS",
+        "HookStage",
+        "LifecycleTag",
+        "RingEvent",
+        "Channel",
+        "ExecStream",
+        "MsgType",
+        "StreamKind",
+    ] {
+        let _ = writeln!(out, "    \"{name}\",");
+    }
+    for name in order {
+        let _ = writeln!(out, "    \"{name}\",");
+    }
+    out.push_str("]\n");
     out
 }

@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use kelir_interface::host::HostOps;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 use crate::real_host::build_host_ops;
 

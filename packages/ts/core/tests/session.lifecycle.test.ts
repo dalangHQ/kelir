@@ -314,16 +314,23 @@ function fakeNativeSession(options?: {
               record("checkpoint.create", label);
               return NATIVE_SNAPSHOT;
             },
-            createStep: async (): Promise<number> => {
-              record("checkpoint.createStep");
+            snapshot: async (): Promise<number> => {
+              record("checkpoint.snapshot");
               return 1;
             },
-            commitStep: async (): Promise<number> => {
-              record("checkpoint.commitStep");
-              return 1;
+            fork: async (): Promise<void> => {
+              record("checkpoint.fork");
             },
-            revertStep: async (slot: number): Promise<void> => {
-              record("checkpoint.revertStep", slot);
+            branchFrom: async (): Promise<void> => {
+              record("checkpoint.branchFrom");
+            },
+            rollbackNode: async (): Promise<NativeSnapshotDescriptorRecord> => {
+              record("checkpoint.rollbackNode");
+              return NATIVE_SNAPSHOT;
+            },
+            compact: async (): Promise<number> => {
+              record("checkpoint.compact");
+              return 1;
             },
             rollback: async (snapshotId: string): Promise<void> => {
               record("checkpoint.rollback", snapshotId);

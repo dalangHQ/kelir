@@ -15,7 +15,7 @@ __all__ = [
 
 @dataclass
 class McpConfig:
-    pass
+    max_frame_bytes: int = 16_777_216
 
 
 class McpPlugin(BasePlugin[None, None]):

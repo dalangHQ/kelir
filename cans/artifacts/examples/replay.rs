@@ -62,7 +62,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let mut timestamps = Vec::new();
     for run in 0..2 {
-        let slot = session.checkpoint.create_step(
+        let slot = session.step_evaluator().begin_step(
             session.lineage(1),
             SnapshotDescriptor {
                 id: format!("replay-run-{run}"),
@@ -72,7 +72,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(session.lineage(1))?;
+        let node = session.step_evaluator().commit_step(session.lineage(1))?;
         eprintln!("[kelir] run {run} -> slot={slot} node={node}");
 
         let date_run = session.spawn("date", &["+%s.%N"], None).await?;
@@ -80,7 +80,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         timestamps.push(String::from_utf8_lossy(&date_run.stdout).trim().to_string());
 
         if run == 0 {
-            session.checkpoint.revert_step(slot)?;
+            session.step_evaluator().rollback_step(session.lineage(1))?;
         }
     }
 

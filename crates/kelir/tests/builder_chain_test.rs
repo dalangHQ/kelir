@@ -1,9 +1,9 @@
 // see: cans/02-plugin-model.md#Unified-builder
 use kelir::interface::driver_interface::VmConfig;
 use kelir::interface::plugin_model::{KelirPlugin, PluginError, Veto, VetoEvent};
-use kelir::interface::protocol_wire::{PostExecAction, Verdict};
+use kelir::interface::protocol_wire::Verdict;
 use kelir::plugin_model::FilterAction;
-use kelir::{HNil, Host, KelirBuilder, NoParams, TrapFilter, Unsealed};
+use kelir::{HNil, Host, KelirBuilder, NoParams, PostExecAction, TrapFilter, Unsealed};
 
 fn test_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
     KelirBuilder::new(VmConfig {

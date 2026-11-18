@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -13,10 +14,11 @@ use kelir_interface::protocol_wire::{StreamKind, SuspendUntil, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
-    AuditEvent, ByteRange, McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema,
-    ToolTaint, ToolsListResult, decode_tools_list,
+    AuditEvent, McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolTaint,
+    ToolsListResult, decode_tools_list,
 };
 use crate::{ToolGuardConfig, ToolSpec};
+use plugin_taint::ByteRange;
 
 impl Default for ToolGuardConfig {
     fn default() -> Self {
@@ -166,9 +168,29 @@ impl ToolGuardPlugin {
                 until: SuspendUntil::Approval,
             });
         }
-        let _ = frame;
+        // see: cans/plugins/tool-guard.md#MCP-schema-matching-surface-(tool-guard)
+        if !self
+            .registry
+            .match_with_params(&schema.name, &frame.arguments)
+            .await?
+        {
+            return Ok(Verdict::Drop {
+                errno: Errno::Eperm,
+                reason: format!(
+                    "tool {} arguments fail the pinned with_params schema",
+                    schema.name
+                ),
+            });
+        }
         // TODO (L3) [governance_tools]: secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch); slop: tainted mutation executes, secrets leak.
         Ok(Verdict::Pass)
+    }
+
+    // see: cans/plugins/tool-guard.md#Suspend-reason-ownership-(tool-guard)
+    pub fn human_authorization_hold() -> SuspendReason {
+        SuspendReason::External(ExternalSuspendKind::External(
+            "human-authorization-hold".to_string(),
+        ))
     }
 
     async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
@@ -204,6 +226,15 @@ impl ToolGuardCtx {
         request: &crate::service_tool_guard::ApprovalRequest,
     ) -> Result<(), PluginError> {
         self.registry.bind_approval(request).await
+    }
+
+    // see: cans/plugins/tool-guard.md#MCP-schema-matching-surface-(tool-guard)
+    pub async fn match_with_params(
+        &self,
+        tool: &str,
+        arguments: &[u8],
+    ) -> Result<bool, PluginError> {
+        self.registry.match_with_params(tool, arguments).await
     }
 
     // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating

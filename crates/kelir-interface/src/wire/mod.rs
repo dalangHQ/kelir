@@ -7,10 +7,6 @@ pub mod dns;
 pub mod l4;
 #[path = "l4_ops.flow.rs"]
 pub mod l4_flow;
-#[path = "l7_parser.flow.rs"]
-pub mod l7;
-#[path = "l7_tls.rs"]
-pub mod l7_tls;
 #[path = "net_ops.flow.rs"]
 pub mod net;
 #[path = "outbox.flow.rs"]
@@ -19,7 +15,6 @@ pub mod outbox;
 pub mod udp_nat;
 
 pub use connection_parking::{ConnectionParking, ConnectionParkingConfig, ParkedConnection};
-pub use l7::{HttpRequest, HttpResponse, JsonRpcEnvelope, L7ParseError, L7Parser, SseEvent};
 pub use outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxError, OutboxFrame};
 
 pub use dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};

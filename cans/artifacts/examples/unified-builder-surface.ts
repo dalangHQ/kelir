@@ -169,17 +169,13 @@ export function buildSurfaceHost() {
         .onProcessExit((_event) => {}),
     )
     // see: cans/02-plugin-model.md#Nested-scopes
-    // The host-only fs scope sub-nodes: config carries lockBroker,
-    // carryoverBytes, scanEngine, snoops; requires / forkWith / timeout /
-    // priority / rules pin the shared scope shape. The standalone
-    // lockBroker verb folds into this config.
+    // The host-only fs scope sub-nodes: config carries lockBroker;
+    // requires / forkWith / timeout / priority / rules pin the shared
+    // scope shape. The standalone lockBroker verb folds into this config.
     .fs((f) =>
       f
         .config({
           lockBroker: { globs: ["**/Cargo.lock", "**/package-lock.json"], nonBlocking: true },
-          carryoverBytes: 1024,
-          scanEngine: "FastRegex",
-          snoops: [],
         })
         .requires<"ledger">()
         .forkWith(() => buildPlainPlugin())

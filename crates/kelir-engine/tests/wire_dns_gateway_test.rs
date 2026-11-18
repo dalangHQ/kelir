@@ -30,10 +30,12 @@ fn wp_10_dns_edns0_downgrade_bit_strip() -> Result<(), String> {
 #[ignore]
 fn wp_02_synthetic_dns_nxdomain_enforcement() -> Result<(), String> {
     let wire = test_wire().with_wiring(WireWiring {
-        sinkhole: kelir_interface::wire::net::SinkholeConfig::from_allowlist_drop_all(
-            vec!["api.github.com".to_string()],
-            false,
-        ),
+        sinkhole: kelir_interface::wire::net::SinkholeConfig {
+            rules: vec![kelir_interface::wire::net::SinkholeRule {
+                host: "api.github.com".to_string(),
+                allow: true,
+            }],
+        },
         ..WireWiring::default()
     });
     let query: Vec<u8> = [

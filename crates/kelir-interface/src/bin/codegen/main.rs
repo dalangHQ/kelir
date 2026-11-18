@@ -127,17 +127,10 @@ fn main() -> ExitCode {
         "MaskedRecord",
         "StepLineageEntry",
         "FsVfsExt",
-        "NetL7SqlExt",
         "ExecutionReceipt",
         "CausalDelta",
     ];
-    const NATIVE_SKIP: &[&str] = &[
-        "ReceiptExtension",
-        "VerdictKind",
-        "HookSpan",
-        "FsVfsExt",
-        "NetL7SqlExt",
-    ];
+    const NATIVE_SKIP: &[&str] = &["ReceiptExtension", "VerdictKind", "HookSpan", "FsVfsExt"];
 
     let ts_telemetry =
         ts_codegen::emit_telemetry(&model, ORDER, NATIVE_SKIP).unwrap_or_else(|e| die(&e));
@@ -180,7 +173,7 @@ fn main() -> ExitCode {
             wire_codegen::emit_wire_h(),
         ),
         (
-            root.join("crates/kelir-otlp/src/records_otlp.flow.rs"),
+            root.join("crates/kelir-plugins/plugin-ledger/src/otlp_records.flow.rs"),
             otlp_records,
         ),
         (

@@ -29,11 +29,11 @@ use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
-            IdmapConfig, LockBrokerConfig, LockScope, ReadMaskEngine, StoragePlaneConfig,
+            IdmapConfig, LockBrokerConfig, LockScope, StoragePlaneConfig,
             WorkspaceEncapsulation,
         },
         terminal_plane::PtyConfig,
-        wire_plane::{SinkholeConfig, TapFilter, WireConfig},
+        wire_plane::{SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     },
     plugin_model::{
         AnyPlugin, FilterAction, MountScope, PluginError, Verdict, WatchdogVerdict,
@@ -220,8 +220,6 @@ pub fn build_host() -> SurfaceHostBuilder {
         rows: 40,
         drop_osc52: true,
         strip_title: true,
-        token_shield: None,
-        prompts: Vec::new(),
         stream_engine: "StatelessRegex".into(),
     })
     .storage(StoragePlaneConfig {
@@ -230,21 +228,17 @@ pub fn build_host() -> SurfaceHostBuilder {
             host_uid: 0,
         },
         shared_caches: Vec::new(),
-        synthetic_files: Vec::new(),
-        mask_read: Vec::new(),
         encapsulation: WorkspaceEncapsulation::Passthrough,
-        // lock_broker, carryover_bytes, scan_engine, and snoops ride
-        // .fs(|f| f.config(…)) below; the StoragePlaneConfig literals keep
-        // their live field set for the host face.
+        // lock_broker rides .fs(|f| f.config(…)) below; the StoragePlaneConfig
+        // literal keeps its live field set for the host face.
         lock_broker: true,
-        scan_engine: ReadMaskEngine::FastRegex,
-        carryover_bytes: 1024,
-        snoops: Vec::new(),
     })
     .wire(WireConfig {
         sinkhole: SinkholeConfig {
-            allowlist: Vec::new(),
-            drop_all: true,
+            rules: vec![SinkholeRule {
+                host: "*".into(),
+                allow: false,
+            }],
         },
         ssh_agent_bridge: false,
         vaults: Vec::new(),
@@ -276,10 +270,9 @@ pub fn build_host() -> SurfaceHostBuilder {
             .end()
     })
     // see: cans/02-plugin-model.md#Nested-scopes
-    // The host-only fs scope sub-nodes: config carries lock_broker,
-    // carryover_bytes, scan_engine, snoops; requires / fork_with /
-    // timeout / priority / rules pin the shared scope shape. The
-    // standalone lock_broker verb folds into this config.
+    // The host-only fs scope sub-nodes: config carries lock_broker;
+    // requires / fork_with / timeout / priority / rules pin the shared
+    // scope shape. The standalone lock_broker verb folds into this config.
     .fs(|f| {
         f.config(FsScopeConfig {
             lock_broker: Some(LockBrokerConfig {
@@ -289,9 +282,6 @@ pub fn build_host() -> SurfaceHostBuilder {
                 ]),
                 non_blocking: true,
             }),
-            carryover_bytes: Some(1024),
-            scan_engine: Some(ReadMaskEngine::FastRegex),
-            snoops: Vec::new(),
         })
         .requires::<LedgerPlugin>()
         .fork_with(|_id| Box::new(build_plain_plugin()) as Box<dyn AnyPlugin>)
@@ -354,9 +344,9 @@ pub fn build_host() -> SurfaceHostBuilder {
 pub fn host_only_verbs_rejected_on_plugin(
     plugin: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-    // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, token_shield: None, prompts: Vec::new(), stream_engine: "StatelessRegex".into() });
-    // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, synthetic_files: Vec::new(), mask_read: Vec::new(), encapsulation: WorkspaceEncapsulation::Passthrough, scan_engine: ReadMaskEngine::FastRegex, carryover_bytes: 1024 });
-    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { allowlist: Vec::new(), drop_all: true }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
+    // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, stream_engine: "StatelessRegex".into() });
+    // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, encapsulation: WorkspaceEncapsulation::Passthrough });
+    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { rules: vec![SinkholeRule { host: "*".into(), allow: false }] }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
     // plugin.fs(|f| f.config(Some(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true }), None, None, Vec::new()));
     // plugin.detached(true);
     // plugin.seal();

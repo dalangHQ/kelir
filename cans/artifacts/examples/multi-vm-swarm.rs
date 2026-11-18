@@ -130,7 +130,7 @@ async fn boot_swarm(
     let session = builder.seal()?.boot().await?;
 
     session.terminal.resize(120, 40)?;
-    session.checkpoint.create_step(
+    session.step_evaluator().begin_step(
         session.lineage(1),
         SnapshotDescriptor {
             id: "swarm-cache-ready".into(),
@@ -140,7 +140,7 @@ async fn boot_swarm(
             guest_clock: None,
         },
     )?;
-    session.checkpoint.commit_step(session.lineage(1))?;
+    session.step_evaluator().commit_step(session.lineage(1))?;
     cache_ready.store(true, Ordering::SeqCst);
 
     Ok(session)
@@ -151,7 +151,7 @@ async fn run_shard(
     shard_id: u32,
     total: u32,
 ) -> Result<(u32, i32), Box<dyn std::error::Error + Send + Sync>> {
-    child.checkpoint.create_step(
+    child.step_evaluator().begin_step(
         child.lineage(1),
         SnapshotDescriptor {
             id: format!("swarm-shard-{shard_id}/{total}"),
@@ -161,7 +161,7 @@ async fn run_shard(
             guest_clock: None,
         },
     )?;
-    child.checkpoint.commit_step(child.lineage(1))?;
+    child.step_evaluator().commit_step(child.lineage(1))?;
 
     // Map paravirtual virtio_shm region shared across child microVMs
     let mut _shm = child.shm(SWARM_REGION).await?;

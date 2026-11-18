@@ -371,36 +371,6 @@ impl Default for VmConfig {
     }
 }
 
-// see: cans/01-architecture.md#Embedded-profile
-#[deprecated(note = "use KelirBuilder typestate setters")]
-pub fn default_vm_config(
-    vcpus: Option<u8>,
-    memory_mb: Option<u32>,
-    kernel: Option<String>,
-    rootfs_erofs: Option<String>,
-    tsc_locked: Option<bool>,
-    enable_watchdog: Option<bool>,
-) -> VmConfig {
-    VmConfig {
-        vcpus: vcpus.unwrap_or(1),
-        memory_mb: memory_mb.unwrap_or(256),
-        kernel_path: PathBuf::from(kernel.unwrap_or_default()),
-        rootfs_erofs_path: PathBuf::from(rootfs_erofs.unwrap_or_default()),
-        tenant_id: None,
-        page_size_kb: 4,
-        tsc_locked: tsc_locked.unwrap_or(true),
-        entropy_seed: None,
-        driver_policy: DriverPolicy::default(),
-        enable_gpu_passthrough: false,
-        enable_watchdog: enable_watchdog.unwrap_or(false),
-        deterministic_clock: true,
-        pinned_clocksource: None,
-        ns_per_instruction: None,
-        preemption_grace_ms: 0,
-        network_off: true,
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct GuestClock {
     pub absolute_wall_clock_ns: u64,
@@ -447,17 +417,15 @@ pub struct WatchdogEvent {
     pub last_active_pid: Option<u32>,
 }
 
-// see: cans/artifacts/code/vmm-driver-trait.rs#ExternalSuspendKind
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// see: cans/08-lifecycle.md#Suspend-and-resume
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExternalSuspendKind {
-    HumanAuthorizationHold = 0x0001,
-    WireConnectionParking = 0x0002,
-    StepEvaluationYield = 0x0003,
-    HostPowerEventSnapshot = 0x0004,
+    External(String),
+    ExternalCode(u32),
 }
 
 // see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SuspendReason {
     External(ExternalSuspendKind),
     ResourcePressure,

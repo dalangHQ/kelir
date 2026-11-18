@@ -10,7 +10,7 @@ platform_target:
   hypervisor: "none"
 
 invariant:
-  law_reference: "cans/08-lifecycle.md#Autonomous-step-verification-loop"
+  law_reference: "cans/plugins/step-eval.md#Tainted-step-delta-verification-(binary-BLAKE3,-dirty-byte,-duration)"
   statement: "StepEvaluator validates causal deltas; unapproved writes under tainted state force rollback in ≤8ms. Gap: StepEvaluator, StepVerdict, and CheckpointService exist only in cans/08-lifecycle.md and cans/artifacts/code/step-evaluation-loop.ts (zero hits in crates/); the evaluation loop is specified against the spec text, not a live surface."
   blast_radius_if_breached: "Tainted agent instructions persist poisoned memory or corrupted files to disk."
 

@@ -64,8 +64,11 @@ fn u64_of(value: f64, what: &str) -> Result<u64> {
 }
 
 // see: cans/08-lifecycle.md#Suspend-and-resume
-const SDK_SUSPEND_REASON: SuspendReason =
-    SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
+fn sdk_suspend_reason() -> SuspendReason {
+    SuspendReason::External(ExternalSuspendKind::External(
+        "human-authorization-hold".to_string(),
+    ))
+}
 
 // see: cans/08-lifecycle.md#Suspend-and-resume
 #[napi(object)]
@@ -82,18 +85,9 @@ fn suspend_reason_of(record: NativeSuspendReasonRecord) -> Result<SuspendReason>
             let detail = record
                 .detail
                 .ok_or_else(|| missing("suspend reason external detail is missing"))?;
-            let kind = match detail.as_str() {
-                "human-authorization-hold" => ExternalSuspendKind::HumanAuthorizationHold,
-                "wire-connection-parking" => ExternalSuspendKind::WireConnectionParking,
-                "step-evaluation-yield" => ExternalSuspendKind::StepEvaluationYield,
-                "host-power-event-snapshot" => ExternalSuspendKind::HostPowerEventSnapshot,
-                other => {
-                    return Err(missing(&format!(
-                        "suspend reason detail `{other}` is not an ExternalSuspendKind"
-                    )));
-                }
-            };
-            Ok(SuspendReason::External(kind))
+            Ok(SuspendReason::External(ExternalSuspendKind::External(
+                detail,
+            )))
         }
         other => Err(missing(&format!(
             "suspend reason kind `{other}` is not external|resource-pressure"
@@ -269,7 +263,7 @@ impl NativeVmHandle {
     #[napi]
     pub async fn suspend(&self, path: String) -> Result<()> {
         self.vm
-            .suspend(SDK_SUSPEND_REASON, &path)
+            .suspend(sdk_suspend_reason(), &path)
             .await
             .map_err(halt)
     }
@@ -474,7 +468,7 @@ pub struct NativeStepHandle {}
 impl NativeStepHandle {
     #[napi]
     pub fn last(&self) -> Result<NativeSnapshotDescriptorRecord> {
-        // L3-GAP: [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
+        // L3-GAP: [lifecycle_checkpoint]: expose the active plugin-step-eval StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",
         ))

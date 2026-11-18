@@ -5,19 +5,22 @@ use std::thread::JoinHandle;
 use async_trait::async_trait;
 use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
+use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    PluginDeps, TokenRevocation, VirtioDevice,
+    FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
+    PipelineBinder, PluginDeps, TokenRevocation, TrapInterposer, VirtioDevice,
 };
+use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::service_vault::{
     CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken,
-    TokenRequest, VaultError,
+    TokenRequest, VAULT_PLACEHOLDER_PREFIX, VaultError,
 };
+use crate::synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 use crate::{METADATA_CREDENTIALS_PREFIX, VaultConfig, WIRE_PLANE_BRIDGE_CID};
 
 // see: cans/11-protocol.md#Wire-framing
@@ -114,6 +117,7 @@ pub struct VaultPlugin {
     config: VaultConfig,
     endpoint: Arc<MetadataEndpoint>,
     session_guest_cid: Option<u32>,
+    synthetic_files: Vec<SyntheticEnvFile>,
 }
 
 impl VaultPlugin {
@@ -125,6 +129,7 @@ impl VaultPlugin {
                 Arc::new(CredentialBroker::new(Vec::new())),
             )),
             session_guest_cid: None,
+            synthetic_files: Vec::new(),
         }
     }
 
@@ -147,6 +152,27 @@ impl VaultPlugin {
             self.config.clone(),
             Arc::new(CredentialBroker::new(descriptors)),
         ));
+        self
+    }
+
+    // see: cans/plugins/vault.md#Crate-dependencies-(vault)
+    pub fn boot_diversion(&self) -> crate::boot_diversion::ImdsBootDiversion {
+        crate::boot_diversion::ImdsBootDiversion::new(self.config.metadata_vsock_port)
+    }
+
+    // TODO (L3) [wire_plane]: install the boot diversion in the wire plane once a plugin-owned diversion sink exists; core carries no IMDS route; slop: guest metadata requests reach the real cloud IMDS endpoint instead of the vault diversion.
+    pub fn register_boot_diversion(
+        &self,
+    ) -> Result<crate::boot_diversion::ImdsBootDiversion, PluginError> {
+        let _ = self.boot_diversion();
+        Err(PluginError::Halt(
+            "vault IMDS boot diversion install is TODO (L3)".into(),
+        ))
+    }
+
+    // see: cans/plugins/vault.md#Synthetic-inode-ownership-(vault)
+    pub fn with_synthetic_files(mut self, files: Vec<SyntheticEnvFile>) -> Self {
+        self.synthetic_files = files;
         self
     }
 
@@ -208,6 +234,9 @@ impl KelirPlugin for VaultPlugin {
         MountScope::default().with_devices([VirtioDevice::Vsock])
     }
     fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        // see: cans/plugins/vault.md#Plugin-vault
+        let trap_stage: Arc<dyn TrapInterposer> = Arc::new(self.clone());
+        pipeline.bind_trap_scoped(trap_stage, self.default_scope());
         let handler: Arc<dyn VsockServiceHandler> = Arc::new(self.clone());
         pipeline.bind_vsock_service_scoped(
             VsockServiceSpec {
@@ -220,6 +249,29 @@ impl KelirPlugin for VaultPlugin {
         );
         // see: cans/08-lifecycle.md#Rollback
         pipeline.bind_token_revoker(self.endpoint.broker().clone());
+        // see: cans/plugins/vault.md#Synthetic-inode-ownership-(vault)
+        let fs_stage: Arc<dyn FsInterposer> =
+            Arc::new(VaultSyntheticFiles::new(self.synthetic_files.clone()));
+        pipeline.bind_fs_scoped(fs_stage, MountScope::default());
+    }
+}
+
+// see: cans/plugins/vault.md#Plugin-vault
+#[async_trait]
+impl TrapInterposer for VaultPlugin {
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        // TODO (L3) [gv_12_vault_placeholder_profile_resolution]: resolve the placeholder through the metadata service at exec; slop: vault:// placeholder resolves directly to the plaintext secret in the profile AST.
+        if let Some(key) = event
+            .envp
+            .iter()
+            .find_map(|(key, value)| value.contains(VAULT_PLACEHOLDER_PREFIX).then_some(key))
+        {
+            return Ok(Verdict::Drop {
+                errno: Errno::Esecurityviolation,
+                reason: format!("vault:// placeholder in env {key}"),
+            });
+        }
+        Ok(Verdict::Pass)
     }
 }
 

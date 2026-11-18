@@ -15,7 +15,7 @@ use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
 use crate::builder_sdk::{Host, KelirBuilder, Plugin, Unsealed};
 use crate::hlist_sdk::HList;
-use crate::planes::storage_plane::{LockBrokerConfig, ReadMaskEngine, SnoopRule};
+use crate::planes::storage_plane::LockBrokerConfig;
 
 // see: cans/02-plugin-model.md#Nested-scopes
 pub struct TrapScope<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList> {
@@ -183,9 +183,6 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 #[derive(Debug, Clone, Default)]
 pub struct FsScopeConfig {
     pub lock_broker: Option<LockBrokerConfig>,
-    pub carryover_bytes: Option<u32>,
-    pub scan_engine: Option<ReadMaskEngine>,
-    pub snoops: Vec<SnoopRule>,
 }
 
 // see: cans/02-plugin-model.md#Nested-scopes

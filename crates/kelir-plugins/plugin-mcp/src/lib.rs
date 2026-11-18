@@ -9,8 +9,12 @@ pub mod ast;
 #[path = "mcp_service.flow.rs"]
 pub mod mcp_service;
 
+#[path = "schema.flow.rs"]
+pub mod schema;
+
 pub use ast::{JsonRpcId, JsonRpcRequest, JsonRpcResponse, MAX_MCP_FRAME_BYTES, McpFrameAssembler};
 pub use mcp_service::{McpConfig, McpCtx, McpEndpointService, McpPlugin};
+pub use schema::WithParamsPredicate;
 
 // see: cans/plugins/mcp.md#Crate-dependencies-(mcp)
 pub const MCP_SOCKET_PATH: &str = "/run/kelir/mcp.sock";

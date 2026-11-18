@@ -1,7 +1,5 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { TrapContext } from "./context.lifecycle.types.js";
-
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/01-architecture.md#Embedded-profile
 export interface KelirConfig {
@@ -39,61 +37,20 @@ export interface TerminalConfig {
   readonly rows?: number;
   readonly dropOsc52?: boolean;
   readonly stripTitle?: boolean;
-  readonly tokenShield?: {
-    readonly maxBytesTotal: number;
-    readonly maxLinesTotal: number;
-    readonly clampStrategy: string;
-    readonly onClamp?: (stats: {
-      droppedBytes: number;
-      droppedLines: number;
-    }) => string;
-  };
-  readonly prompts?: readonly {
-    readonly match: RegExp;
-    readonly timeoutMs: number;
-    readonly verifyForeground: boolean;
-    readonly action: (
-      prompt: unknown,
-      stream: TerminalStream,
-    ) => Promise<void> | void;
-  }[];
   readonly streamEngine?: string;
 }
 
 // see: cans/05-storage-plane.md#Workspace-commit
-export interface StorageConfig<Ctx = unknown> {
+export interface StorageConfig {
   readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
   readonly sharedCaches?: readonly string[];
   readonly lockBroker?: boolean;
-  readonly syntheticFiles?: readonly {
-    readonly path: string;
-    readonly content: string | (() => string);
-    readonly mode?: number;
-  }[];
-  readonly maskRead?: readonly {
-    readonly glob: string;
-    readonly pattern: RegExp;
-    readonly replace: string;
-  }[];
-  readonly snoops?: readonly {
-    readonly path: string;
-    readonly sync: boolean;
-    readonly onWrite: (
-      path: string,
-      raw: Uint8Array,
-      c: TrapContext & Ctx,
-    ) => Promise<void> | void;
-  }[];
   readonly encapsulation?: string;
-  readonly scanEngine?: string;
-  readonly carryoverBytes?: number;
 }
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
 export interface SinkholeRule {
   readonly host: string;
-  readonly methods?: readonly string[];
-  readonly paths?: readonly string[];
   readonly allow?: boolean;
 }
 
@@ -112,9 +69,6 @@ export interface L4ProxyConfig {
 export interface WireConfig {
   readonly sinkhole?: {
     readonly rules?: readonly SinkholeRule[];
-    // see: cans/07-wire-plane.md#Sinkhole-rules
-    readonly dnsExcept?: readonly string[];
-    readonly dropAll?: boolean;
   };
   readonly sshAgentBridge?: boolean;
   readonly vaults?: readonly {

@@ -3,11 +3,17 @@
 
 use kelir_interface::errno_types::Errno;
 
+#[path = "interpreter.flow.rs"]
+pub mod interpreter;
 #[path = "state.flow.rs"]
 pub mod state;
 #[path = "wx_token.flow.rs"]
 pub mod wx_token;
 
+pub use interpreter::{
+    INTERPRETER_TABLE, UnwrappedExec, WRAPPER_COMMANDS, is_interpreter, resolve_shebang,
+    unwrap_interpreter,
+};
 pub use state::{SupplyChainCtx, SupplyChainPlugin};
 pub use wx_token::WxAllocToken;
 

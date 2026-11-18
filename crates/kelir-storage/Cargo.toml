@@ -9,7 +9,6 @@ publish = false
 kelir-interface = { path = "../kelir-interface" }
 kelir-engine = { path = "../kelir-engine" }
 kelir-storage-io = { path = "../kelir-storage-io" }
-kelir-otlp = { path = "../kelir-otlp" }
 async-trait = { workspace = true }
 libc = { workspace = true }
 

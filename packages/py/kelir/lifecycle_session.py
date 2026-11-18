@@ -28,7 +28,7 @@ from kelir import (
 # see: cans/08-lifecycle.md#Suspend-and-resume
 def _suspend_reason_record(reason: SuspendReason) -> dict[str, str]:
     if isinstance(reason, External):
-        return {"kind": "external", "detail": reason.kind.value}
+        return {"kind": "external", "detail": str(reason.kind)}
     return {"kind": "resource-pressure"}
 
 
@@ -81,7 +81,7 @@ class Session:
     async def elevate_lease(self, token: str) -> None:
         if not isinstance(token, str) or not token:
             raise EConfig("session elevate_lease expects a non-empty lease token")
-        # TODO (L3) [operator_lease]: verify the token signature against the ed25519 pubkey from the profile before accepting it.; slop: unverified token stored as the operator lease
+        # TODO (L3) [governance_tools]: verify the token signature against the ed25519 pubkey from the profile before accepting it.; slop: unverified token stored as the operator lease
         self._operator_lease_token = token
 
     # see: cans/03-sdk-architecture.md#Service-lookup-across-languages

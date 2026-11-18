@@ -1,11 +1,5 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
-
 use crate::plugin_model::PluginError;
-use crate::protocol_wire::TrapEvent;
 use crate::terminal::log::LogStream;
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -16,46 +10,12 @@ pub trait TerminalOps: Send + Sync {
     fn read_from(&self, port: u32, cursor: u64) -> Result<(Vec<u8>, u64), PluginError>;
     fn append_stream_chunk(&self, stream: LogStream, chunk: &[u8]) -> Result<u64, PluginError>;
     fn record_output(&self, stream: LogStream, bytes: &[u8]) -> Result<(), PluginError>;
+    fn write_console(&self, port: u32, bytes: &[u8]) -> Result<(), PluginError> {
+        self.record_output(LogStream::Port(port), bytes)
+    }
     fn output_filters(&self) -> (bool, bool);
-    fn token_shield(&self) -> Option<TokenShieldConfig>;
-    fn prompts(&self) -> Vec<PromptRuleConfig>;
     fn bind_session(&self, session_id: [u8; 16]);
     fn apply_wiring(&self, wiring: &TerminalWiring) -> Result<(), PluginError>;
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Debug, Clone)]
-pub struct TokenShieldConfig {
-    pub max_bytes_total: usize,
-    pub max_lines_total: usize,
-    pub clamp_strategy: String,
-    pub notice: String,
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-pub type PromptAction = Arc<
-    dyn Fn(&TrapEvent) -> Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>
-        + Send
-        + Sync,
->;
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Clone)]
-pub struct PromptRuleConfig {
-    pub pattern: String,
-    pub timeout: Duration,
-    pub verify_foreground: bool,
-    pub action: PromptAction,
-}
-
-impl std::fmt::Debug for PromptRuleConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PromptRuleConfig")
-            .field("pattern", &self.pattern)
-            .field("timeout", &self.timeout)
-            .field("verify_foreground", &self.verify_foreground)
-            .finish_non_exhaustive()
-    }
 }
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -65,6 +25,4 @@ pub struct TerminalWiring {
     pub rows: u16,
     pub drop_osc52: bool,
     pub strip_title: bool,
-    pub token_shield: Option<TokenShieldConfig>,
-    pub prompts: Vec<PromptRuleConfig>,
 }

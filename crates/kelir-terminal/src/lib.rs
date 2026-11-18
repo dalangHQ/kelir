@@ -7,8 +7,6 @@ mod log_segment;
 mod real_terminal;
 #[path = "terminal.flow.rs"]
 pub mod terminal;
-#[path = "token_shield.run.rs"]
-mod token_shield;
 #[path = "vt100.run.rs"]
 mod vt100;
 

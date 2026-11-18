@@ -15,7 +15,7 @@ use kelir::{
     ToolGuardPlugin, Unsealed, Verdict, VmConfig, WireIngressConfig, WireIngressPlugin,
     driver_interface::{DriverPolicy, WxPolicy},
     interface::driver_interface::{ExternalSuspendKind, SuspendReason},
-    planes::wire_plane::{SinkholeConfig, TapFilter, WireConfig},
+    planes::wire_plane::{SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     telemetry_attest::ExitKind,
 };
 
@@ -92,8 +92,10 @@ fn webhook_builder() -> KelirBuilder<
     .wire(
         WireConfig {
             sinkhole: SinkholeConfig {
-                allowlist: Vec::new(),
-                drop_all: true,
+                rules: vec![SinkholeRule {
+                    host: "*".into(),
+                    allow: false,
+                }],
             },
             ssh_agent_bridge: false,
             vaults: Vec::new(),
@@ -195,7 +197,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if served >= 1 {
             session
                 .suspend(SuspendReason::External(
-                    ExternalSuspendKind::HumanAuthorizationHold,
+                    ExternalSuspendKind::External("human-authorization-hold".into()),
                 ))
                 .await?;
             break;

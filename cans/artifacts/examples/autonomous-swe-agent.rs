@@ -18,11 +18,10 @@ use kelir::{
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
-            DynamicFile, IdmapConfig, MaskReadRule, ReadMaskEngine, SnoopRule, StoragePlaneConfig,
-            SyntheticFile, WorkspaceEncapsulation,
+            IdmapConfig, StoragePlaneConfig, WorkspaceEncapsulation,
         },
-        terminal_plane::{PromptRule, PtyConfig, TokenShieldConfig},
-        wire_plane::{L4Proxy, Mtls, SinkholeConfig, TapFilter, WireConfig},
+        terminal_plane::PtyConfig,
+        wire_plane::{L4Proxy, Mtls, SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError, TrapInterposer,
@@ -312,24 +311,6 @@ async fn build_runtime(
         rows: 40,
         drop_osc52: true,
         strip_title: true,
-        token_shield: Some(TokenShieldConfig {
-            max_bytes_total: 128 * 1024,
-            max_lines_total: 500,
-            clamp_strategy: "head-and-tail".into(),
-            notice: "⚠️ [SHIELD]".into(),
-        }),
-        prompts: vec![PromptRule {
-            pattern: r"(?i)Overwrite production schema\? \[y/N\]".into(),
-            timeout: Duration::from_secs(3),
-            verify_foreground: true,
-            action: Arc::new(|_, stream| {
-                Box::pin(async move {
-                    stream.write(b"y\n").await?;
-                    Ok(())
-                })
-            }),
-        }],
-
         stream_engine: "StatelessRegex".into(),
     })
     .storage(StoragePlaneConfig {
@@ -343,80 +324,28 @@ async fn build_runtime(
             "~/.cargo/registry".into(),
         ],
         lock_broker: true,
-        synthetic_files: vec![
-            SyntheticFile::static_(
-                "/workspace/.env.local",
-                "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n",
-            ),
-            SyntheticFile::dynamic("/workspace/identity.jwt", |_| {
-                Ok(DynamicFile {
-                    content: format!("Bearer {:032x}", std::process::id()),
-                    mode: 0o400,
-                })
-            }),
-        ],
-        mask_read: vec![MaskReadRule {
-            glob: "**/secrets/**".into(),
-            patterns: vec![
-                (
-                    r"sk_live_[0-9a-zA-Z]{24}".into(),
-                    "[STRIPE_VAULT_KEY]".into(),
-                ),
-                (r"AKIA[0-9A-Z]{16}".into(), "[AWS_IAM_REDACTED]".into()),
-            ],
-        }],
-        snoops: vec![SnoopRule {
-            path: "~/.claude/sessions/*.json".into(),
-            sync: true,
-            on_write: Arc::new({
-                let oracle = Arc::clone(&oracle);
-                move |path: &Path, raw: &[u8], ctx: &IfaceHandlerCtx| {
-                    let oracle = Arc::clone(&oracle);
-                    let path = path.to_path_buf();
-                    let raw = raw.to_vec();
-                    let ledger = ctx.cap::<LedgerHandle>().cloned();
-                    Box::pin(async move {
-                        let evt: kelir::serde_json::Value = kelir::serde_json::from_slice(&raw)
-                            .map_err(|err| {
-                                PluginError::Halt(format!("snoop payload decode failed: {err}"))
-                            })?;
-                        if evt
-                            .get("falsifiedResult")
-                            .and_then(|value| value.as_bool())
-                            .unwrap_or(false)
-                        {
-                            return Err(PluginError::Halt(format!(
-                                "harness hallucination at {} (EPERM)",
-                                path.display()
-                            )));
-                        }
-                        let producer_blake3 = match ledger {
-                            Some(ref l) => l
-                                .blake3_of_producing_process(&path)
-                                .await
-                                .unwrap_or_default(),
-                            None => String::new(),
-                        };
-                        oracle
-                            .ingest_harness_event(&path, &evt, &producer_blake3)
-                            .await
-                            .map_err(|err| PluginError::Halt(err.to_string()))
-                    })
-                }
-            }),
-        }],
         encapsulation: WorkspaceEncapsulation::Passthrough,
-        scan_engine: ReadMaskEngine::FastRegex,
-        carryover_bytes: 1024,
     })
     .wire(WireConfig {
         sinkhole: SinkholeConfig {
-            allowlist: vec![
-                "api.stripe.com".into(),
-                "github.com".into(),
-                "*.internal.net".into(),
+            rules: vec![
+                SinkholeRule {
+                    host: "api.stripe.com".into(),
+                    allow: true,
+                },
+                SinkholeRule {
+                    host: "github.com".into(),
+                    allow: true,
+                },
+                SinkholeRule {
+                    host: "*.internal.net".into(),
+                    allow: true,
+                },
+                SinkholeRule {
+                    host: "*".into(),
+                    allow: false,
+                },
             ],
-            drop_all: true,
         },
         ssh_agent_bridge: true,
 
@@ -706,7 +635,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let port = session.wire.forward_port(3000, Some(8080))?;
     eprintln!("[kelir] wire forward_port -> {port}");
 
-    session.checkpoint.create_step(
+    session.step_evaluator().begin_step(
         session.lineage(1),
         SnapshotDescriptor {
             id: "clean_base".into(),
@@ -716,7 +645,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let base = session.checkpoint.commit_step(session.lineage(1))?;
+    let base = session.step_evaluator().commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint base node={base}");
 
     let phase: Result<(), Box<dyn std::error::Error + Send + Sync>> = async {
@@ -733,7 +662,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 86400 * ((id as u64) - ('A' as u64) + 1),
                             ))
                             .await?;
-                        child.checkpoint.create_step(
+                        child.step_evaluator().begin_step(
                             child.lineage(1),
                             SnapshotDescriptor {
                                 id: format!("hypothesis-{id}"),
@@ -743,7 +672,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 guest_clock: None,
                             },
                         )?;
-                        child.checkpoint.commit_step(child.lineage(1))?;
+                        child.step_evaluator().commit_step(child.lineage(1))?;
                         let run = child
                             .spawn("npm", &["run", &format!("verify-hypothesis-{id}")], None)
                             .await?;
@@ -790,7 +719,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         session
             .suspend(SuspendReason::External(
-                ExternalSuspendKind::HumanAuthorizationHold,
+                ExternalSuspendKind::External("human-authorization-hold".into()),
             ))
             .await?;
         eprintln!("[kelir] suspended: host RSS = 0 MB; awaiting approval");
@@ -828,7 +757,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     if let Err(e) = session
         .suspend(SuspendReason::External(
-            ExternalSuspendKind::HumanAuthorizationHold,
+            ExternalSuspendKind::External("human-authorization-hold".into()),
         ))
         .await
     {

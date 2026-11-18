@@ -3,7 +3,7 @@
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction, Verdict, PatchPayload,
          type KelirBuilder, type ExecutionReceipt,
          type CausalDelta, type PolicyHandle, type LedgerHandle } from "@kelir/core";
-import { chaos, ledger } from "@kelir/core";
+import { chaos, ledger, redaction, terminalGuard, tokenShield } from "@kelir/core";
 
 declare const oracle: {
   currentTraceId(): string;
@@ -65,14 +65,17 @@ const runtime = kelir({
     fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "enospc", errorProbability: 0.05 }],
   }))
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
+  .use(tokenShield({ maxBytesTotal: 128 * 1024, maxLinesTotal: 500, clampStrategy: "head-and-tail", notice: "⚠️ [SHIELD]" }))
+  .use(terminalGuard({ prompts: [{ pattern: "(?i)Overwrite production schema\\? \\[y/N\\]", timeoutSeconds: 3,
+                                   verifyForeground: true, action: [...Buffer.from("y\n")] }] }))
+  .use(redaction({ maskRead: { engine: "fast-regex", carryoverBytes: 1024,
+    rules: [{ glob: "**/secrets/**", patterns: [["sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"],
+                                                 ["AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"]] }] } }))
 
   // 2. Planes and hooks mount next; c.cap("ledger") is statically inferred without manual generics
   .terminal({
     cols: 120, rows: 40,
     dropOsc52: true, stripTitle: true,
-    tokenShield: { maxBytesTotal: 128 * 1024, maxLinesTotal: 500, clampStrategy: "head-and-tail" },
-    prompts: [{ match: /Overwrite production schema\? \[y\/N\]/i, timeoutMs: 3000, verifyForeground: true,
-                action: async (_p, stream) => { stream.write("y\n"); } }],
     streamEngine: "StatelessRegex",
   })
 
@@ -80,27 +83,11 @@ const runtime = kelir({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
     sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
     lockBroker: true,
-    syntheticFiles: [
-      { path: "/workspace/.env.local", content: "DATABASE_URL=postgres://app:vault@127.0.0.1:5432/prod\n" },
-      { path: "/workspace/identity.jwt", content: () => "Bearer demo-static-token-00000000000000000000000000000000", mode: 0o400 },
-    ],
-    maskRead: [
-      { glob: "**/secrets/**", pattern: /sk_live_[0-9a-zA-Z]{24}/g, replace: "[STRIPE_VAULT_KEY]" },
-      { glob: "**/secrets/**", pattern: /AKIA[0-9A-Z]{16}/g, replace: "[AWS_IAM_REDACTED]" },
-    ],
-    snoops: [
-      { path: "~/.claude/sessions/*.json", sync: true,
-        onWrite: async (path, raw, c) => {
-          const evt = JSON.parse(raw.toString());
-          if (evt.falsifiedResult) throw new Error("EPERM: harness hallucination detected.");
-          const producerBlake3 = await c.cap<LedgerHandle>("ledger")!.blake3OfProducingProcess(path);
-          await oracle.ingestHarnessEvent({ path, event: evt, producerBlake3 });
-        } },
-    ],
   })
 
   .wire({
-    sinkhole: { dnsExcept: ["api.stripe.com", "github.com", "*.internal.net"] },
+    sinkhole: { rules: [{ host: "api.stripe.com", allow: true }, { host: "github.com", allow: true },
+                          { host: "*.internal.net", allow: true }, { host: "*", allow: false }] },
     sshAgentBridge: true,
     vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token", audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432", injectMtls: { certPath: "/etc/ssl/client.crt", keyPath: "/etc/ssl/client.key" } }],

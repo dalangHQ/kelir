@@ -7,4 +7,4 @@ pub mod log_flow;
 pub mod ops;
 
 pub use log::{LogCursor, LogSegment, LogStream};
-pub use ops::{PromptAction, PromptRuleConfig, TerminalOps, TerminalWiring, TokenShieldConfig};
+pub use ops::{TerminalOps, TerminalWiring};

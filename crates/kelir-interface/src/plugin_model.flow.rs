@@ -21,7 +21,7 @@ pub use crate::handlers_plugin::{
 };
 use crate::handles_lifecycle::VmHandle;
 use crate::protocol_wire::{
-    FilterAction, Heartbeat, PostExecAction, ProcessExit, SuspendUntil, TrapEvent, Verdict,
+    FilterAction, Heartbeat, ProcessExit, SuspendUntil, TrapEvent, Verdict,
 };
 use crate::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 
@@ -473,11 +473,6 @@ pub trait PipelineBinder {
         self.bind_trap_scoped(stage, MountScope::default());
     }
     fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope);
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    fn bind_post_exec(&mut self, gate: Arc<dyn PostExecGate>) {
-        self.bind_post_exec_scoped(gate, MountScope::default());
-    }
-    fn bind_post_exec_scoped(&mut self, gate: Arc<dyn PostExecGate>, scope: MountScope);
     fn bind_console(&mut self, stage: Arc<dyn ConsoleInterposer>) {
         self.bind_console_scoped(stage, MountScope::default());
     }
@@ -695,19 +690,6 @@ pub trait TrapInterposer: Send + Sync {
     ) -> Result<(), PluginError> {
         let _ = (event, ctx);
         Ok(())
-    }
-}
-
-// see: cans/10-attestation.md#Step-evaluation-loop
-#[async_trait]
-pub trait PostExecGate: Send + Sync {
-    async fn check(
-        &self,
-        event: &TrapEvent,
-        ctx: &HandlerCtx,
-    ) -> Result<PostExecAction, PluginError> {
-        let _ = (event, ctx);
-        Ok(PostExecAction::Proceed)
     }
 }
 

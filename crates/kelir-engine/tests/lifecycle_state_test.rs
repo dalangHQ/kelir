@@ -14,7 +14,7 @@ use kelir_interface::lifecycle_state::{LifecycleError, LifecycleState};
 use kelir_interface::plugin_model::{LifecycleCtx, PluginError, VetoList};
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
-    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let metrics = || Arc::new(kelir_interface::telemetry::MetricRegistry::new());
     let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
@@ -38,9 +38,9 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 }
 
 fn parked() -> LifecycleState {
-    LifecycleState::Suspended(SuspendReason::External(
-        ExternalSuspendKind::WireConnectionParking,
-    ))
+    LifecycleState::Suspended(SuspendReason::External(ExternalSuspendKind::External(
+        "wire-connection-parking".to_string(),
+    )))
 }
 
 // see: cans/08-lifecycle.md#State-machine
@@ -56,7 +56,7 @@ fn lifecycle_legal_edges_transition() -> Result<(), String> {
         (parked(), LifecycleState::Terminated),
     ];
     for (from, to) in edges {
-        match from.transition(to) {
+        match from.clone().transition(to.clone()) {
             Ok(next) => assert_eq!(next, to),
             Err(error) => return Err(format!("legal edge {from:?} -> {to:?} rejected: {error:?}")),
         }
@@ -81,7 +81,7 @@ fn lifecycle_illegal_edges_reject_with_typed_error() -> Result<(), String> {
         (LifecycleState::Terminated, LifecycleState::Terminated),
     ];
     for (from, to) in edges {
-        match from.transition(to) {
+        match from.clone().transition(to.clone()) {
             Ok(next) => {
                 return Err(format!(
                     "illegal edge {from:?} -> {to:?} accepted as {next:?}"
@@ -98,7 +98,7 @@ fn lifecycle_illegal_edges_reject_with_typed_error() -> Result<(), String> {
 // see: cans/08-lifecycle.md#State-machine
 #[test]
 fn lifecycle_boot_completes_to_running() -> Result<(), String> {
-    let session = Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
+    let session = Session::boot_with_plugins(boot_config(), &[], None, plane_wiring())
         .map_err(|e| e.to_string())?;
     assert_eq!(session.lifecycle_state(), LifecycleState::Running);
     assert!(!session.is_detached());
@@ -108,13 +108,12 @@ fn lifecycle_boot_completes_to_running() -> Result<(), String> {
 // see: cans/08-lifecycle.md#Hypervisor-primitives
 #[tokio::test]
 async fn lifecycle_suspend_holds_for_driver_backend() -> Result<(), String> {
-    let mut session =
-        Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
-            .map_err(|e| e.to_string())?;
+    let mut session = Session::boot_with_plugins(boot_config(), &[], None, plane_wiring())
+        .map_err(|e| e.to_string())?;
     match session
-        .suspend(SuspendReason::External(
-            ExternalSuspendKind::HumanAuthorizationHold,
-        ))
+        .suspend(SuspendReason::External(ExternalSuspendKind::External(
+            "human-authorization-hold".to_string(),
+        )))
         .await
     {
         Err(PluginError::Halt(message)) => assert!(
@@ -180,8 +179,8 @@ impl VmmDriver for WatchdogProbeDriver {
 fn lifecycle_boot_mounts_wire_plane_drop_all_when_network_off() -> Result<(), String> {
     let mut config = boot_config();
     config.network_off = true;
-    let session = Session::boot_with_plugins(config, &[], None, Vec::new(), plane_wiring())
-        .map_err(|e| e.to_string())?;
+    let session =
+        Session::boot_with_plugins(config, &[], None, plane_wiring()).map_err(|e| e.to_string())?;
     let wiring = session
         .wire
         .wiring()
@@ -202,7 +201,6 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         config,
         &[],
         None,
-        Vec::new(),
         kelir_engine::session_lifecycle::PlaneWiring {
             wire: Some(kelir_interface::wire::net::WireWiring::default()),
             ..plane_wiring()
@@ -223,7 +221,6 @@ fn lifecycle_boot_forces_drop_all_over_explicit_wiring_when_network_off() -> Res
         offline,
         &[],
         None,
-        Vec::new(),
         kelir_engine::session_lifecycle::PlaneWiring {
             wire: Some(kelir_interface::wire::net::WireWiring::default()),
             ..plane_wiring()
@@ -248,8 +245,8 @@ fn lifecycle_boot_warns_but_completes_with_non_default_boot_contract() -> Result
     config.page_size_kb = 16;
     config.pinned_clocksource = Some("kvm-clock".to_string());
     config.preemption_grace_ms = 250;
-    let session = Session::boot_with_plugins(config, &[], None, Vec::new(), plane_wiring())
-        .map_err(|e| e.to_string())?;
+    let session =
+        Session::boot_with_plugins(config, &[], None, plane_wiring()).map_err(|e| e.to_string())?;
     assert_eq!(
         session.lifecycle_state(),
         LifecycleState::Running,

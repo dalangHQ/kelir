@@ -435,7 +435,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-custom",
     ] {
-        let slot = session.checkpoint.create_step(
+        let slot = session.step_evaluator().begin_step(
             session.lineage(1),
             SnapshotDescriptor {
                 id: format!("policy-matrix-{binary}"),
@@ -445,7 +445,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 guest_clock: None,
             },
         )?;
-        let node = session.checkpoint.commit_step(session.lineage(1))?;
+        let node = session.step_evaluator().commit_step(session.lineage(1))?;
         eprintln!("[kelir] {binary} -> slot={slot} node={node}");
     }
 

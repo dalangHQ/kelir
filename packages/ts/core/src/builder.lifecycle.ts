@@ -109,7 +109,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private forkFn?: () => KelirBuilder<Name, Ctx, Deps, Params>;
   private detachedFlag: boolean;
   private terminalCfg: TerminalConfig | undefined;
-  private storageCfg: StorageConfig<any> | undefined;
+  private storageCfg: StorageConfig | undefined;
   private wireCfg: WireConfig | undefined;
   private paramsSchema: Schema<unknown> | undefined;
 
@@ -174,10 +174,10 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/05-storage-plane.md#Workspace-commit
-  storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Name, Ctx & C, Deps, Params> {
+  storage<C = Ctx>(config: StorageConfig): KelirBuilder<Name, Ctx & C, Deps, Params> {
     this.checkVerb(".storage");
     if (this.mode === "plugin") this.rejectHostOnly(".storage");
-    this.storageCfg = config as StorageConfig<any>;
+    this.storageCfg = config;
     return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
   }
 
@@ -910,22 +910,17 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       entropySeed: this.kelirConfig.entropySeed,
     });
     // L3-GAP: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
-    // TODO (L3): forward ffiBoundary.embedMode once the native constructor accepts it; the embed mode stays TypeScript-side until then.
+    // TODO (L3) [bindings_ts]: forward ffiBoundary.embedMode once the native constructor accepts it; the embed mode stays TypeScript-side until then; slop: embed mode stays TypeScript-side; the native constructor never sees it.
     if (this.terminalCfg) {
-      // L3-GAP: [bindings_ts]: tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.; slop: tokenShield/prompt actions never cross to native
       nativeBuilder.setTerminalConfig({
         cols: this.terminalCfg.cols,
         rows: this.terminalCfg.rows,
         dropOsc52: this.terminalCfg.dropOsc52,
         stripTitle: this.terminalCfg.stripTitle,
-        tokenShieldMaxBytesTotal: this.terminalCfg.tokenShield?.maxBytesTotal,
-        tokenShieldMaxLinesTotal: this.terminalCfg.tokenShield?.maxLinesTotal,
-        tokenShieldClampStrategy: this.terminalCfg.tokenShield?.clampStrategy,
         streamEngine: this.terminalCfg.streamEngine,
       });
     }
     if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
-      // L3-GAP: [bindings_ts]: snoop onWrite callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop onWrite never fires on guest writes
       nativeBuilder.setStorageConfig({
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
@@ -933,49 +928,21 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         lockBroker: this.storageCfg?.lockBroker ?? this.lockBrokerCfg !== undefined,
         lockBrokerGlobs: this.lockBrokerCfg?.globs as string[] | undefined,
         lockBrokerNonBlocking: this.lockBrokerCfg?.nonBlocking,
-        syntheticFiles: this.storageCfg?.syntheticFiles?.map((file) => ({
-          path: file.path,
-          content: typeof file.content === "function" ? file.content() : file.content,
-          mode: file.mode,
-        })),
-        maskRead: this.storageCfg?.maskRead?.map((rule) => ({
-          glob: rule.glob,
-          pattern: rule.pattern.source,
-          replace: rule.replace,
-        })),
         encapsulation: this.storageCfg?.encapsulation,
-        scanEngine: this.storageCfg?.scanEngine,
-        carryoverBytes: this.storageCfg?.carryoverBytes,
       });
     }
     if (this.wireCfg) {
       // see: cans/07-wire-plane.md#Sinkhole-rules
       const explicitRules = this.wireCfg.sinkhole?.rules?.map((rule) => ({
         host: rule.host,
-        methods: rule.methods as string[] | undefined,
-        paths: rule.paths as string[] | undefined,
         allow: rule.allow,
       }));
       nativeBuilder.setWireConfig({
         sinkhole:
-          explicitRules !== undefined
-            ? { rules: explicitRules }
-            : this.wireCfg.sinkhole !== undefined
-              ? {
-                  rules: [
-                    ...(this.wireCfg.sinkhole.dnsExcept ?? []).map((host) => ({
-                      host,
-                      allow: true,
-                    })),
-                    ...(this.wireCfg.sinkhole.dropAll === false
-                      ? []
-                      : [{ host: "*", allow: false }]),
-                  ],
-                }
-              : undefined,
+          explicitRules !== undefined ? { rules: explicitRules } : undefined,
         sshAgentBridge: this.wireCfg.sshAgentBridge,
         vaults: this.wireCfg.vaults,
-        // TODO (L3): forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then.
+        // TODO (L3) [wire_plane]: forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then; slop: unix-socket diversions stay TypeScript-side; the NAPI wire config never sees them.
         l4Proxies: this.wireCfg.l4Proxies
           ?.filter(
             (proxy): proxy is L4ProxyConfig & { readonly destination: string } =>

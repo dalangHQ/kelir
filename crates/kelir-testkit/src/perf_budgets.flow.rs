@@ -1,6 +1,4 @@
 // see: cans/15-operations.md#Coverage-gates
-use crate::perf_budgets_contract::Budgets;
-
 pub use crate::perf_budgets_contract::Budgets;
 
 // see: cans/15-operations.md#Coverage-gates

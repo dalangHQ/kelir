@@ -137,31 +137,6 @@ pub type Verdict = Action;
 // see: cans/02-plugin-model.md#Unified-verdict
 pub type FilterAction = Action;
 
-// see: cans/10-attestation.md#Step-evaluation-loop
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PostExecAction {
-    Proceed,
-    RollbackAndHalt,
-}
-
-// see: cans/10-attestation.md#Step-evaluation-loop
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StepVerdict {
-    Commit,
-    Rollback,
-    YieldToHost,
-}
-
-impl PostExecAction {
-    // see: cans/10-attestation.md#Step-evaluation-loop
-    pub const fn to_step_verdict(self) -> StepVerdict {
-        match self {
-            Self::Proceed => StepVerdict::Commit,
-            Self::RollbackAndHalt => StepVerdict::Rollback,
-        }
-    }
-}
-
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
 pub const PROT_NONE: u32 = 0;
 pub const PROT_READ: u32 = 1;
@@ -195,7 +170,7 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
-    // TODO (L3): fill tree_depth from the live trap path; 0 until the trap path records process depth.
+    // TODO (L3) [plugin_engine]: fill tree_depth from the live trap path; 0 until the trap path records process depth; slop: tree_depth stays 0; trap depth never recorded.
     #[serde(default)]
     pub tree_depth: u32,
     // see: cans/artifacts/code/messages.rs#TrapEvent — on-the-wire field, consumed there

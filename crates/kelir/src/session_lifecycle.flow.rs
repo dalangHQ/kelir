@@ -12,6 +12,7 @@ pub use kelir_interface::handles_lifecycle::{
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::{LifecycleEvent, MountScope, PipelineBinder, PluginError};
 use kelir_interface::spawn_transport::{SpawnRequest, SpawnTransport};
+use plugin_step_eval::{StepEvalConfig, StepEvaluator};
 use serde::Serialize;
 
 use crate::builder_sdk::Registration;
@@ -76,6 +77,8 @@ where
     plugins: Plugins,
     registration: Registration,
     operator_lease: Option<String>,
+    // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
+    step_evaluator: Arc<StepEvaluator>,
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub vm: VmHandle,
     pub vsock: VsockHandle,
@@ -87,6 +90,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         core: kelir_engine::Session,
         plugins: Plugins,
         registration: Registration,
+        step_evaluator: Arc<StepEvaluator>,
     ) -> Self {
         Self {
             vm: core.vm(),
@@ -95,6 +99,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             plugins,
             registration,
             operator_lease: None,
+            step_evaluator,
             _params: PhantomData,
         }
     }
@@ -153,6 +158,11 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         &self.core
     }
 
+    // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
+    pub fn step_evaluator(&self) -> &Arc<StepEvaluator> {
+        &self.step_evaluator
+    }
+
     // see: cans/10-attestation.md#Execution-receipts
     pub fn store_receipt(&self, receipt: kelir_interface::telemetry::ExecutionReceipt) {
         self.core.store_receipt(receipt);
@@ -163,7 +173,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.core.receipt(pid)
     }
 
-    // TODO (L3): verify the ed25519 signature on the lease token before storing it; presence-only until then.
+    // TODO (L3) [governance_tools]: verify the ed25519 signature on the lease token before storing it; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
     pub fn elevate_lease(&mut self, token: impl Into<String>) -> Result<(), PluginError> {
         self.operator_lease = Some(token.into());
         Ok(())
@@ -264,8 +274,6 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         Plugins: HList,
         Params2: 'static,
     {
-        let lineage = self.core.lineage(ctx.pid);
-        self.core.pipeline().hydrate_step(&mut *ctx, lineage)?;
         self.core
             .pipeline()
             .dispatch_trap_typed_with_session(event, ctx, &self.core)
@@ -341,6 +349,12 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         // see: cans/08-lifecycle.md#CoW-fork
         // see: cans/08-lifecycle.md#Watchdog
         child.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
+        // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
+        let step_evaluator = Arc::new(StepEvaluator::new(
+            Arc::clone(child.checkpoint.ops()),
+            self.step_evaluator.config().clone(),
+            self.step_evaluator.gates().to_vec(),
+        ));
         Ok(Self {
             vm: child.vm(),
             vsock: VsockHandle,
@@ -348,6 +362,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             plugins: self.plugins.clone(),
             registration,
             operator_lease: None,
+            step_evaluator,
             _params: PhantomData,
         })
     }
@@ -357,7 +372,18 @@ impl Session<HNil, NoParams> {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub async fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
         let core = kelir_engine::Session::attach(session_id)?;
-        Ok(Self::from_parts(core, HNil, Registration::default()))
+        // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
+        let step_evaluator = Arc::new(StepEvaluator::new(
+            Arc::clone(core.checkpoint.ops()),
+            StepEvalConfig::default(),
+            Vec::new(),
+        ));
+        Ok(Self::from_parts(
+            core,
+            HNil,
+            Registration::default(),
+            step_evaluator,
+        ))
     }
 }
 
@@ -435,7 +461,7 @@ impl Default for SpawnResult {
 }
 
 impl SpawnResult {
-    // TODO (L3): fill receipt and exit_kind from the live guest exec result; None and Normal until then.
+    // TODO (L3) [attestation_receipts]: fill receipt and exit_kind from the live guest exec result; None and Normal until then; slop: spawn results carry no receipt and Normal exit; exec outcomes unreported.
     pub fn receipt(&self) -> Option<&ExecutionReceipt> {
         self.receipt.as_ref()
     }

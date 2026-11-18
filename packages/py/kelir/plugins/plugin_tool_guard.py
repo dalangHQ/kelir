@@ -17,6 +17,10 @@ __all__ = [
 class ToolGuardConfig:
     max_invocations_per_trace: int = 50
     pin_schemas: bool = True
+    max_frame_bytes: int = 16_777_216
+    detect_semantic_rug_pull: bool = True
+    strict_ast_parameter_validation: bool = True
+    propagate_byte_range_taints: bool = True
 
 
 class ToolGuardPlugin(BasePlugin[None, None]):

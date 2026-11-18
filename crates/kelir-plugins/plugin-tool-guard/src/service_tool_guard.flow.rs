@@ -4,7 +4,9 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
+use plugin_mcp::WithParamsPredicate;
 use plugin_mcp::ast::{JsonRpcId, parse_json_rpc_request, parse_json_rpc_response};
+use plugin_taint::{ByteRange, TaintSet};
 use serde_json::Value;
 
 // see: cans/plugins/mcp.md#MCP-contract
@@ -155,56 +157,6 @@ fn schema_param_keys(input_schema: &[u8]) -> Vec<String> {
         .collect();
     keys.sort();
     keys
-}
-
-// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ByteRange {
-    pub start: usize,
-    pub end: usize,
-}
-
-// see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TaintSet {
-    ranges: Vec<ByteRange>,
-}
-
-impl TaintSet {
-    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-    pub fn mark(&mut self, range: ByteRange) {
-        if range.end > range.start && !self.ranges.contains(&range) {
-            self.ranges.push(range);
-        }
-    }
-
-    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-    pub fn propagate(&self, into_len: usize) -> Vec<ByteRange> {
-        self.ranges
-            .iter()
-            .filter_map(|range| {
-                let start = range.start.min(into_len);
-                let end = range.end.min(into_len);
-                if end > start {
-                    Some(ByteRange { start, end })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-    pub fn overlaps(&self, range: ByteRange) -> bool {
-        self.ranges
-            .iter()
-            .any(|tainted| range.start < tainted.end && tainted.start < range.end)
-    }
-
-    // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
-    pub fn is_empty(&self) -> bool {
-        self.ranges.is_empty()
-    }
 }
 
 // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating
@@ -388,9 +340,7 @@ impl ToolRegistry {
         from: &[ByteRange],
         into_len: usize,
     ) -> Result<Vec<ByteRange>, PluginError> {
-        let source = TaintSet {
-            ranges: from.to_vec(),
-        };
+        let source = TaintSet::from_ranges(from.to_vec());
         let propagated = source.propagate(into_len);
         if propagated.is_empty() {
             return Ok(Vec::new());
@@ -424,6 +374,28 @@ impl ToolRegistry {
         let canonical = canonical_catalog(&schemas);
         *self.lock_digest()? = Some(catalog_digest(&canonical));
         Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#MCP-schema-matching-surface-(tool-guard)
+    pub async fn match_with_params(
+        &self,
+        tool: &str,
+        arguments: &[u8],
+    ) -> Result<bool, PluginError> {
+        let schema = match self.lookup_schema(tool).await? {
+            Some(schema) => schema,
+            None => {
+                return Err(PluginError::Halt(format!(
+                    "EConfig: with_params for unpinned tool {tool}"
+                )));
+            }
+        };
+        if self.locked_digest()?.is_none() {
+            return Err(PluginError::Halt(format!(
+                "EConfig: with_params for tool {tool} before the schema lock"
+            )));
+        }
+        WithParamsPredicate::compile(tool, &schema.input_schema)?.matches(arguments)
     }
 
     // see: cans/plugins/tool-guard.md#Taint-tracking-and-mutation-gating

@@ -9,8 +9,5 @@ mod compaction;
 mod manifest_graph;
 #[path = "real_checkpoint.run.rs"]
 mod real_checkpoint;
-#[path = "step_slot.run.rs"]
-mod step_slot;
 
 pub use crate::checkpoint::checkpoint_ops;
-pub use kelir_interface::checkpoint::step_dag::{StepDag, StepDagConfig, StepDagError};

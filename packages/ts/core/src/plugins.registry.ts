@@ -1,18 +1,24 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type {
-  ChaosHandle,
-  ContainerHandle,
-  DbProxyHandle,
-  LedgerHandle,
-  MeshHandle,
-  TransactionHandle,
-} from "./context.lifecycle.types.js";
+import type { ChaosHandle, ContainerHandle, DbProxyHandle, LedgerHandle, MeshHandle, TransactionHandle } from "./context.lifecycle.types.js";
 import { createPlugin } from "./builder.lifecycle.js";
 import type { KelirBuilder } from "./builder.lifecycle.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;
+}
+
+
+export interface AnomalyConfig extends PluginEnablement {
+  readonly slidingWindowDepth?: number;
+  readonly exportFeatureVector?: boolean;
+  readonly featureExtraction?: boolean;
+  readonly surprisalThreshold?: number;
+}
+
+
+export function anomaly<P = unknown>(config: AnomalyConfig): KelirBuilder<"anomaly", unknown, never, P> {
+  return createPlugin<"anomaly", unknown, AnomalyConfig, never, P>("anomaly", { enabled: config.enabled, config });
 }
 
 
@@ -29,7 +35,7 @@ export interface NetworkFaultRule {
 
 export interface StorageFaultRule {
   readonly targetPath?: string;
-  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress" | "path-traversal" | "etimeout";
+  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress" | "path-traversal" | "etimeout" | "eafnosupport";
   readonly errorProbability?: number;
 }
 
@@ -55,6 +61,7 @@ export interface ContainerConfig extends PluginEnablement {
 }
 
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"container", { container: ContainerHandle }, never, P> {
   return createPlugin<"container", { container: ContainerHandle }, ContainerConfig, never, P>("container", { enabled: config.enabled, config });
 }
@@ -87,8 +94,46 @@ export interface DbProxyConfig extends PluginEnablement {
 }
 
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"db-proxy", { "db-proxy": DbProxyHandle }, never, P> {
   return createPlugin<"db-proxy", { "db-proxy": DbProxyHandle }, DbProxyConfig, never, P>("db-proxy", { enabled: config.enabled, config });
+}
+
+
+export interface EgressProxyConfig extends PluginEnablement {
+  readonly httpProxy?: string;
+  readonly httpsProxy?: string;
+  readonly allProxy?: string;
+  readonly noProxy?: readonly string[];
+}
+
+
+export function egressProxy<P = unknown>(config: EgressProxyConfig): KelirBuilder<"egress-proxy", unknown, never, P> {
+  return createPlugin<"egress-proxy", unknown, EgressProxyConfig, never, P>("egress-proxy", { enabled: config.enabled, config });
+}
+
+
+export interface SinkholeRule {
+  readonly host?: string;
+  readonly methods?: readonly string[];
+  readonly paths?: readonly string[];
+  readonly allow?: boolean;
+}
+
+
+export interface SinkholeConfig {
+  readonly rules?: readonly SinkholeRule[];
+}
+
+
+export interface L7HttpConfig extends PluginEnablement {
+  readonly sinkhole?: SinkholeConfig;
+  readonly protocolInspection?: boolean;
+}
+
+
+export function l7Http<P = unknown>(config: L7HttpConfig): KelirBuilder<"l7-http", unknown, never, P> {
+  return createPlugin<"l7-http", unknown, L7HttpConfig, never, P>("l7-http", { enabled: config.enabled, config });
 }
 
 
@@ -113,6 +158,10 @@ export interface LedgerConfig extends PluginEnablement {
   readonly store?: string;
   readonly merkleChain?: boolean;
   readonly suppressLocalDb?: boolean;
+  readonly hashingStandard?: string;
+  readonly recordPreRedactionHash?: boolean;
+  readonly includeHookSpansInRoot?: boolean;
+  readonly witnessCosigningEndpoint?: string;
   readonly otel?: OtelConfig;
   readonly receipts?: ReceiptConfig;
 }
@@ -125,6 +174,7 @@ export function ledger<P = unknown>(config: LedgerConfig): KelirBuilder<"ledger"
 
 
 export interface McpConfig extends PluginEnablement {
+  readonly maxFrameBytes?: number;
 }
 
 
@@ -177,6 +227,29 @@ export function profile<P = unknown>(config: ProfileConfig): KelirBuilder<"profi
 }
 
 
+export interface MaskReadRule {
+  readonly glob?: string;
+  readonly patterns?: readonly ([string, string])[];
+}
+
+
+export interface MaskReadConfig {
+  readonly engine?: "fast-regex" | "streaming-automata";
+  readonly carryoverBytes?: number;
+  readonly rules?: readonly MaskReadRule[];
+}
+
+
+export interface RedactionConfig extends PluginEnablement {
+  readonly maskRead?: MaskReadConfig;
+}
+
+
+export function redaction<P = unknown>(config: RedactionConfig): KelirBuilder<"redaction", unknown, never, P> {
+  return createPlugin<"redaction", unknown, RedactionConfig, never, P>("redaction", { enabled: config.enabled, config });
+}
+
+
 export interface ReplayConfig extends PluginEnablement {
   readonly stepWindow?: number;
   readonly kernelParams?: readonly string[];
@@ -187,6 +260,42 @@ export interface ReplayConfig extends PluginEnablement {
 
 export function replay<P = unknown>(config: ReplayConfig): KelirBuilder<"replay", unknown, never, P> {
   return createPlugin<"replay", unknown, ReplayConfig, never, P>("replay", { enabled: config.enabled, config });
+}
+
+
+export interface StepEvalAssertions {
+  readonly assertBinaryBlake3?: boolean;
+  readonly maxEgressBytesHermetic?: number;
+  readonly requireNonZeroDelta?: boolean;
+  readonly maxDurationSeconds?: number;
+}
+
+
+export interface StepEvaluationConfig {
+  readonly enabled?: boolean;
+  readonly defaultAction?: "proceed" | "rollback-and-halt";
+  readonly assertions?: StepEvalAssertions;
+}
+
+
+export interface StepDagConfig {
+  readonly enabled?: boolean;
+  readonly requireSignedAttribution?: boolean;
+  readonly requireSeparationOfDuties?: boolean;
+  readonly storage?: "content-addressed";
+}
+
+
+export interface StepEvalConfig extends PluginEnablement {
+  readonly sentinelPath?: string;
+  readonly ptyQuiescence?: boolean;
+  readonly stepDag?: StepDagConfig;
+  readonly stepEvaluation?: StepEvaluationConfig;
+}
+
+
+export function stepEval<P = unknown>(config: StepEvalConfig): KelirBuilder<"step-eval", unknown, never, P> {
+  return createPlugin<"step-eval", unknown, StepEvalConfig, never, P>("step-eval", { enabled: config.enabled, config });
 }
 
 
@@ -222,9 +331,54 @@ export function supplyChain<P = unknown>(config: SupplyChainConfig): KelirBuilde
 }
 
 
+export interface TaintConfig extends PluginEnablement {
+}
+
+
+export function taint<P = unknown>(config: TaintConfig): KelirBuilder<"taint", unknown, never, P> {
+  return createPlugin<"taint", unknown, TaintConfig, never, P>("taint", { enabled: config.enabled, config });
+}
+
+
+export interface PromptRuleConfig {
+  readonly pattern?: string;
+  readonly timeoutSeconds?: number;
+  readonly verifyForeground?: boolean;
+  readonly action?: readonly number[];
+}
+
+
+export interface TerminalGuardConfig extends PluginEnablement {
+  readonly prompts?: readonly PromptRuleConfig[];
+  readonly noticeTemplate?: string;
+}
+
+
+export function terminalGuard<P = unknown>(config: TerminalGuardConfig): KelirBuilder<"terminal-guard", unknown, never, P> {
+  return createPlugin<"terminal-guard", unknown, TerminalGuardConfig, never, P>("terminal-guard", { enabled: config.enabled, config });
+}
+
+
+export interface TokenShieldConfig extends PluginEnablement {
+  readonly maxBytesTotal?: number;
+  readonly maxLinesTotal?: number;
+  readonly clampStrategy?: "head-and-tail" | "head-only" | "tail-only";
+  readonly notice?: string;
+}
+
+
+export function tokenShield<P = unknown>(config: TokenShieldConfig): KelirBuilder<"token-shield", unknown, never, P> {
+  return createPlugin<"token-shield", unknown, TokenShieldConfig, never, P>("token-shield", { enabled: config.enabled, config });
+}
+
+
 export interface ToolGuardConfig extends PluginEnablement {
   readonly maxInvocationsPerTrace?: number;
   readonly pinSchemas?: boolean;
+  readonly maxFrameBytes?: number;
+  readonly detectSemanticRugPull?: boolean;
+  readonly strictAstParameterValidation?: boolean;
+  readonly propagateByteRangeTaints?: boolean;
 }
 
 
@@ -240,6 +394,7 @@ export interface TransactionConfig extends PluginEnablement {
 }
 
 
+// see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"transaction", { transaction: TransactionHandle }, never, P> {
   return createPlugin<"transaction", { transaction: TransactionHandle }, TransactionConfig, never, P>("transaction", { enabled: config.enabled, config });
 }

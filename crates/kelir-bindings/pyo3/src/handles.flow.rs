@@ -44,8 +44,11 @@ fn u64_of(value: f64, what: &str) -> PyResult<u64> {
 }
 
 // see: cans/08-lifecycle.md#Suspend-and-resume
-const SDK_SUSPEND_REASON: SuspendReason =
-    SuspendReason::External(ExternalSuspendKind::HumanAuthorizationHold);
+fn sdk_suspend_reason() -> SuspendReason {
+    SuspendReason::External(ExternalSuspendKind::External(
+        "human-authorization-hold".to_string(),
+    ))
+}
 
 // see: cans/08-lifecycle.md#Suspend-and-resume
 fn suspend_reason_of(record: &Bound<'_, PyDict>) -> PyResult<SuspendReason> {
@@ -60,18 +63,9 @@ fn suspend_reason_of(record: &Bound<'_, PyDict>) -> PyResult<SuspendReason> {
                 .get_item("detail")?
                 .ok_or_else(|| missing("suspend reason external detail is missing"))?
                 .extract()?;
-            let external = match detail.as_str() {
-                "human-authorization-hold" => ExternalSuspendKind::HumanAuthorizationHold,
-                "wire-connection-parking" => ExternalSuspendKind::WireConnectionParking,
-                "step-evaluation-yield" => ExternalSuspendKind::StepEvaluationYield,
-                "host-power-event-snapshot" => ExternalSuspendKind::HostPowerEventSnapshot,
-                other => {
-                    return Err(missing(&format!(
-                        "suspend reason detail `{other}` is not an ExternalSuspendKind"
-                    )));
-                }
-            };
-            Ok(SuspendReason::External(external))
+            Ok(SuspendReason::External(ExternalSuspendKind::External(
+                detail,
+            )))
         }
         other => Err(missing(&format!(
             "suspend reason kind `{other}` is not external|resource-pressure"
@@ -211,7 +205,7 @@ impl PyVmHandle {
 
     #[pyo3(signature = (path))]
     fn suspend(&self, path: String) -> PyResult<()> {
-        block_on(self.vm.suspend(SDK_SUSPEND_REASON, &path)).map_err(halt)
+        block_on(self.vm.suspend(sdk_suspend_reason(), &path)).map_err(halt)
     }
 
     #[pyo3(signature = (path))]
@@ -413,7 +407,7 @@ pub struct PyStepHandle {}
 #[pymethods]
 impl PyStepHandle {
     fn last(&self) -> PyResult<()> {
-        // L3-GAP: [lifecycle_checkpoint]: expose the active StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
+        // L3-GAP: [lifecycle_checkpoint]: expose the active plugin-step-eval StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step
         Err(missing(
             "step last: step slots live in the dispatch HandlerCtx (L3)",
         ))

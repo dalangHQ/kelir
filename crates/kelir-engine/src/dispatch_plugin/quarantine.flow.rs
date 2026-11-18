@@ -23,7 +23,7 @@ impl<F: Future> Future for Quarantined<F> {
                 "quarantined future polled after completion".into(),
             )));
         };
-        // L3-GAP: [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
+        // L3-GAP: [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active plugin-step-eval StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             Future::poll(inner.as_mut(), cx)
         })) {

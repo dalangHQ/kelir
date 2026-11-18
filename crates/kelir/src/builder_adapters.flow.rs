@@ -9,12 +9,10 @@ use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::fusion_plugin::FilterSnapshot;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
-    LifecycleParticipant, NetInterposer, PluginError, PostExecGate, SystemTelemetryParticipant,
-    TrapInterposer,
+    LifecycleParticipant, NetInterposer, PluginError, SystemTelemetryParticipant, TrapInterposer,
 };
-use kelir_interface::protocol_wire::{
-    FilterAction, Heartbeat, PostExecAction, ProcessExit, TrapEvent, Verdict,
-};
+use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use plugin_step_eval::{PostExecAction, PostExecGate};
 
 use crate::trap_filter::filter_matches;
 
@@ -51,13 +49,13 @@ pub struct TrapClosureAdapter<F, Verb> {
     pub(crate) verb: PhantomData<fn() -> Verb>,
 }
 
-// see: cans/10-attestation.md#Step-evaluation-loop
+// see: cans/02-plugin-model.md#Segregated-ring-traits
 pub struct AsyncTrapClosureAdapter<F> {
     pub(crate) filter: FilterSnapshot,
     pub(crate) handler: F,
 }
 
-// see: cans/10-attestation.md#Step-evaluation-loop
+// see: cans/plugins/step-eval.md#Plugin-step-eval
 pub struct PostExecGateAdapter<F> {
     pub(crate) filter: FilterSnapshot,
     pub(crate) handler: F,

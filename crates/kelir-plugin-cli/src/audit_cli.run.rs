@@ -16,7 +16,7 @@ const TESTKIT_CRATE: &str = "kelir-plugin-testkit";
 const INTERFACE_CRATE: &str = "kelir-interface";
 
 // see: cans/plugins/ledger.md#OpenTelemetry
-const ALLOWED_SUPPORT_CRATES: &[&str] = &["kelir-otlp"];
+const ALLOWED_SUPPORT_CRATES: &[&str] = &[];
 
 // see: cans/15-operations.md#Integration-tier
 const ALLOWED_DEV_CRATES: &[&str] = &["driver-rustvmm"];

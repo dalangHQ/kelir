@@ -6,10 +6,13 @@
 pub mod pgwire_db_proxy;
 #[path = "reassembler_wire.run.rs"]
 pub mod reassembler_wire;
+#[path = "receipt_sql.flow.rs"]
+pub mod receipt_sql;
 #[path = "service_db_proxy.flow.rs"]
 pub mod service_db_proxy;
 #[path = "sqlite_db_proxy.flow.rs"]
 pub mod sqlite_db_proxy;
+pub use receipt_sql::{NET_L7_SQL_NAMESPACE, NetL7SqlExt, SqlReceiptExt};
 pub use service_db_proxy::SqlProxyService;
 
 use std::sync::Arc;

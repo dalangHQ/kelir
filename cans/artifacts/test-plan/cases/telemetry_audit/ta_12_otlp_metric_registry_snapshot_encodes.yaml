@@ -3,7 +3,7 @@ case_id: "ta_12_otlp_metric_registry_snapshot_encodes"
 title: "MetricRegistry counters snapshot exactly and OtlpEncoder encode_metrics emits non-empty OTLP bytes"
 domain: "telemetry_audit"
 target_tier: "unit"
-target_crate: "crates/kelir-otlp"
+target_crate: "crates/kelir-plugins/plugin-ledger"
 platform_target:
   os: "any"
   arch: "any"

@@ -27,7 +27,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use kelir_interface::checkpoint::PidLineage;
 use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::{
@@ -37,12 +36,12 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
     LifecycleEvent, LifecycleParticipant, LockBrokerCoordination, MountScope, NetInterposer,
-    ParkedConnectionReset, PipelineBinder, PostExecGate, StreamFrameSink,
-    SystemTelemetryParticipant, TokenRevocation, TrapInterposer, VirtioDevice,
+    ParkedConnectionReset, PipelineBinder, StreamFrameSink, SystemTelemetryParticipant,
+    TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{
-    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, PostExecAction, ProcessExit,
-    StepVerdict, TrapEvent, Verdict,
+    EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, ProcessExit, TrapEvent,
+    Verdict,
 };
 use kelir_interface::telemetry::{
     ExecutionReceipt, HookPolicyDescriptor, HookSpan, ReceiptStore, VerdictKind,

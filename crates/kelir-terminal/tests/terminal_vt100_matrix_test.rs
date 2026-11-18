@@ -2,8 +2,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use kelir_interface::telemetry::MetricRegistry;
 use kelir_interface::terminal::{LogStream, TerminalOps, TerminalWiring};
-use kelir_otlp::registry_otlp::MetricRegistry;
 use kelir_terminal::terminal_ops;
 
 fn ops(session_id: [u8; 16]) -> Arc<dyn TerminalOps> {
@@ -152,8 +152,6 @@ fn tp_03_ansi_sanitizer_osc52_clipboard_drop() -> Result<(), String> {
         rows: 24,
         drop_osc52: true,
         strip_title: false,
-        token_shield: None,
-        prompts: Vec::new(),
     };
     let plane = ops(session_id);
     plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;
@@ -188,8 +186,6 @@ fn tp_04_ansi_sanitizer_title_spoof_strip() -> Result<(), String> {
         rows: 24,
         drop_osc52: false,
         strip_title: true,
-        token_shield: None,
-        prompts: Vec::new(),
     };
     let plane = ops(session_id);
     plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;
@@ -224,8 +220,6 @@ fn tp_06_placeholder_mask_carryover_window() -> Result<(), String> {
         rows: 24,
         drop_osc52: false,
         strip_title: false,
-        token_shield: None,
-        prompts: Vec::new(),
     };
     let plane = ops(session_id);
     plane.apply_wiring(&wiring).map_err(|e| e.to_string())?;

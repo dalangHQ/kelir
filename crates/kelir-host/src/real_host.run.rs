@@ -13,7 +13,7 @@ use kelir_interface::host::{
     ReclaimRequest,
 };
 use kelir_interface::plugin_model::PluginError;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 pub(crate) struct RealHostOps {
     pub(crate) reaper_kind: HostReaperKind,

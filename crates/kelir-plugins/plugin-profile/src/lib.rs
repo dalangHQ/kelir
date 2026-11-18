@@ -12,7 +12,11 @@ pub mod patch;
 #[path = "profile_state.flow.rs"]
 pub mod profile_state;
 
+#[path = "synthetic_identity.flow.rs"]
+pub mod synthetic_identity;
+
 pub use profile_state::{NamespaceRouter, ProfileCtx, ProfilePlugin};
+pub use synthetic_identity::{ProfileSyntheticFiles, SyntheticIdentityFile};
 
 pub trait ConfigurablePlugin: Send + Sync {
     fn configure(&mut self, fragment: &[u8]) -> Result<(), PluginError>;

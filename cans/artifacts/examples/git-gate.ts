@@ -50,11 +50,7 @@ const runtime = kelir({
     idmap: { guestUid: 0, hostUid: 0 },
     sharedCaches: [],
     lockBroker: false,
-    syntheticFiles: [],
-    maskRead: [],
     encapsulation: "passthrough",
-    scanEngine: "FastRegex",
-    carryoverBytes: 1024,
   })
   .use(gitGatePlugin);
 

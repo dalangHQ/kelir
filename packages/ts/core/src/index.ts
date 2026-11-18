@@ -1,7 +1,5 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
-// see: cans/10-attestation.md#Step-evaluation-loop
-import type { Session } from "./session.lifecycle.js";
 
 export * from "./types.core.js";
 export * from "./schema.config.js";
@@ -16,40 +14,4 @@ export * from "./hook.registry.js";
 export * from "./builder.lifecycle.js";
 export * from "./plugins.registry.js";
 export * from "./fusion.plugin.js";
-
-export interface IntentInput {
-  readonly binary: string;
-  readonly argv: readonly string[];
-  readonly lineage: number;
-}
-
-export interface VerificationIntent {
-  readonly isHypothesisValid: boolean;
-  readonly falsificationReason?: string;
-}
-
-export interface PhysicalReceipt {
-  readonly id: string;
-}
-
-export interface VerificationEvaluator {
-  analyzeIntent(input: IntentInput): Promise<VerificationIntent>;
-  verifyPhysicalReceipt(receipt: PhysicalReceipt): Promise<boolean>;
-}
-
-export type StepEvaluationOutcome = "passed" | "reverted" | "dropped";
-
-export interface StepEvaluationResult {
-  readonly outcome: StepEvaluationOutcome;
-  readonly reason?: string;
-}
-
-export async function runStepEvaluationLoop(
-  session: Session,
-  evaluator: VerificationEvaluator,
-): Promise<StepEvaluationResult> {
-  void session;
-  void evaluator;
-  // L3-GAP: [lc_03_step_evaluation_taint_rollback]: pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure.; slop: step passes without RAM/upper revert check
-  throw new Error("TODO: runStepEvaluationLoop (L3)");
-}
+export * from "./step-eval.protocol.js";

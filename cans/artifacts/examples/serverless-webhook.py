@@ -16,7 +16,6 @@ from kelir import (
     ExecutionReceipt,
     ExitKindNormal,
     External,
-    ExternalSuspendKind,
     Field,
     HandlerContext,
     KelirBuilder,
@@ -162,7 +161,7 @@ async def main() -> None:
 
         print(f"[kelir] served {served} webhook(s) across wake cycles")
         await session.suspend(
-            External(ExternalSuspendKind.HUMAN_AUTHORIZATION_HOLD),
+            External("human-authorization-hold"),
         )
 
 

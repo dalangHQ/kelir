@@ -33,7 +33,7 @@ class SqliteOverVsock:
 @dataclass
 class EphemeralCredentials:
     placeholder: str = ""
-    ttl_seconds: int = 0
+    ttl_seconds: int = 60
 
 
 @dataclass

@@ -15,10 +15,9 @@ use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleEvent, MountScope, PipelineBinder,
     PluginClone, PluginDeps, PluginError,
 };
-use kelir_interface::protocol_wire::{
-    FilterAction, Heartbeat, PostExecAction, ProcessExit, TrapEvent, Verdict,
-};
+use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+use plugin_step_eval::PostExecAction;
 
 use crate::builder_scopes::{
     ConsoleScope, ExecScope, FsScope, FsScopeConfig, HostScope, LifecycleScope, NetScope,
@@ -673,7 +672,7 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
 impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
 {
-    // see: cans/10-attestation.md#Step-evaluation-loop
+    // see: cans/02-plugin-model.md#Segregated-ring-traits
     pub fn trap_async<F, Fut>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
     where
         F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,
@@ -689,7 +688,7 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    // see: cans/10-attestation.md#Step-evaluation-loop
+    // see: cans/plugins/step-eval.md#Plugin-step-eval
     pub fn post_exec<F, Fut>(mut self, filter: impl Into<TrapFilter>, f: F) -> Self
     where
         F: Fn(HandlerCtx) -> Fut + Send + Sync + 'static,

@@ -6,7 +6,7 @@ use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::telemetry::ExitKind;
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
-    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let metrics = || Arc::new(kelir_interface::telemetry::MetricRegistry::new());
     let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
@@ -45,9 +45,8 @@ fn hd_12_arm64_stage2_4k_on_16k_host() -> Result<(), String> {
 // see: cans/artifacts/test-plan/cases/hypervisor_driver/hd_13_uart_early_boot_panic_scrape.yaml#case_id
 #[test]
 fn hd_13_uart_early_boot_panic_scrape() -> Result<(), String> {
-    let mut session =
-        Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
-            .map_err(|e| e.to_string())?;
+    let mut session = Session::boot_with_plugins(boot_config(), &[], None, plane_wiring())
+        .map_err(|e| e.to_string())?;
     session.record_early_boot_output(b"early boot ok\n");
     session.record_early_boot_output(b"Kernel panic - not syncing: test_early_boot_oops\n");
     match session.early_boot_exit() {

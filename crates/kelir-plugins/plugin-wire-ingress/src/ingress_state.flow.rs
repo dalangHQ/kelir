@@ -294,13 +294,16 @@ impl IngressRoutingService {
         self.state.is_parking()
     }
 
+    // see: cans/plugins/wire-ingress.md#Suspend-reason-ownership-(wire-ingress)
+    pub fn wire_connection_parking() -> SuspendReason {
+        SuspendReason::External(ExternalSuspendKind::External(
+            "wire-connection-parking".to_string(),
+        ))
+    }
+
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     pub async fn suspend_for_parking(&self, vm: &VmHandle, path: &str) -> Result<(), PluginError> {
-        vm.suspend(
-            SuspendReason::External(ExternalSuspendKind::WireConnectionParking),
-            path,
-        )
-        .await?;
+        vm.suspend(Self::wire_connection_parking(), path).await?;
         self.state.begin_parking()
     }
 

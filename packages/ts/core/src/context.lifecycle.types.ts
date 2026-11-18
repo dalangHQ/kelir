@@ -90,9 +90,11 @@ export interface ShmMapping {
 
 export interface CheckpointHandle {
   create(label: string): Promise<SnapshotDescriptor>;
-  createStep(lineage: PidLineage, descriptor: SnapshotDescriptor): Promise<number>;
-  commitStep(lineage: PidLineage): Promise<number>;
-  revertStep(slot: number): Promise<void>;
+  snapshot(lineage: PidLineage, descriptor: SnapshotDescriptor): Promise<number>;
+  fork(nodeId: number, lineage: PidLineage): Promise<void>;
+  branchFrom(nodeId: number, lineage: PidLineage): Promise<void>;
+  rollbackNode(nodeId: number, guestMonotonicNs?: number): Promise<SnapshotDescriptor>;
+  compact(lineage: PidLineage): Promise<number>;
   rollback(snapshotId: string): Promise<void>;
 }
 
@@ -123,6 +125,29 @@ export interface ContainerHandle {
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 export interface DbProxyHandle {
   readonly rewriteTarget: string;
+}
+
+// see: cans/plugins/db-proxy.md#SQL-receipt-extension
+export interface NetL7SqlExt {
+  readonly statements: number;
+  readonly distinctShapes: number;
+}
+
+// see: cans/plugins/db-proxy.md#SQL-receipt-extension
+export function netL7Sql(receipt: ExecutionReceipt): NetL7SqlExt | null {
+  const entry = receipt.extensions.find(
+    (extension) => extension.namespace === "net:l7:sql",
+  );
+  if (!entry || entry.payload.length !== 8) return null;
+  const view = new DataView(
+    entry.payload.buffer,
+    entry.payload.byteOffset,
+    entry.payload.byteLength,
+  );
+  return {
+    statements: view.getUint32(0, true),
+    distinctShapes: view.getUint32(4, true),
+  };
 }
 
 // see: cans/plugins/transaction.md#Plugin-transaction
@@ -172,7 +197,7 @@ export interface TrapContext {
   patch(mutation: PatchInput): Verdict;
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
-  // TODO (L3): verify the presented operator lease against the pinned ed25519 pubkey once the native handler context carries lease state.
+  // TODO (L3) [governance_tools]: verify the presented operator lease against the pinned ed25519 pubkey once the native handler context carries lease state; slop: operator lease never verified against the pinned pubkey; presence-only check.
   hasValidOperatorLease(): boolean;
   cap<T>(name: string): T | undefined;
 }

@@ -1629,18 +1629,18 @@ cases:
   note: 'Adapted: exhaustive MetricSnapshot destructure is the no-PMU-field proof; gauge half has no surface.'
 - case_id: ta_11_otlp_exporter_encodes_execution_receipt
   case_file: cases/telemetry_audit/ta_11_otlp_exporter_encodes_execution_receipt.yaml
-  target_crate: crates/kelir-otlp
+  target_crate: crates/kelir-plugins/plugin-ledger
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-otlp/tests/exporter_otlp_test.rs
+  test_file: crates/kelir-plugins/plugin-ledger/tests/otlp_exporter_test.rs
   test_fn: ta_11_otlp_exporter_encodes_execution_receipt
   note: 'Adapted: from_receipt field copies + 4 cumulative phase spans asserted; export_receipt encode is a NotImplemented stub.'
 - case_id: ta_12_otlp_metric_registry_snapshot_encodes
   case_file: cases/telemetry_audit/ta_12_otlp_metric_registry_snapshot_encodes.yaml
-  target_crate: crates/kelir-otlp
+  target_crate: crates/kelir-plugins/plugin-ledger
   target_tier: unit
   status: implemented
-  test_file: crates/kelir-otlp/tests/exporter_otlp_test.rs
+  test_file: crates/kelir-plugins/plugin-ledger/tests/otlp_exporter_test.rs
   test_fn: ta_12_otlp_metric_registry_snapshot_encodes
   note: 'Adapted: registry half asserted; encode_metrics is a NotImplemented stub.'
 - case_id: tp_01_host_terminal_guard_raii_restore
@@ -2023,6 +2023,10 @@ cases:
   test_fn: wp_17_wire_ingress_park_connection_suspends_session
   note: 'Partial: parking proven (decode round-trip + Parked + append-Parked + oversize Overflow + reset); is_suspended flag not asserted.'
 harness_tests:
+- file: crates/kelir-plugins/plugin-taint/tests/taint_tracking_test.rs
+  reason: Byte-range taint tracking unit test per cans/plugins/taint.md#Invariants-and-policy-(taint)
+    (TaintSet mark/propagate/overlaps, TaintTracker per-source labels); no dedicated plan case
+    covers byte-range taint yet (gt_03 covers tool-guard mutation gating, not byte ranges).
 - file: crates/kelir-engine/tests/panic_hunt.rs
   reason: Harness-level panic probe (hostile mux frame plus oversized control payload); not a case test.
     The mapped test for pm_11 lives in bus_mux_protocol_test.rs.

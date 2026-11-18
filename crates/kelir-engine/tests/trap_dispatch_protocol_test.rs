@@ -19,6 +19,7 @@ use kelir_interface::plugin_model::{
     MountScope, NetInterposer, PipelineBinder, PluginError, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{FilterAction, TrapEvent, Verdict};
+use plugin_step_eval::{StepEvalConfig, StepEvaluator};
 use std::sync::Mutex;
 
 fn trap_ctx() -> HandlerCtx<(), ()> {
@@ -41,7 +42,7 @@ fn boot_config() -> kelir_interface::driver_interface::VmConfig {
 }
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
-    let metrics = || Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+    let metrics = || Arc::new(kelir_interface::telemetry::MetricRegistry::new());
     let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
@@ -58,7 +59,7 @@ fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
 
 fn checkpoint_plane() -> Arc<CheckpointPlane> {
     Arc::new(CheckpointPlane::new(kelir_checkpoint::checkpoint_ops(
-        Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
+        Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
     )))
 }
 
@@ -342,9 +343,8 @@ fn pe_10_immutable_dispatch_table_post_seal() -> Result<(), String> {
         Err(e) => return Err(format!("second seal gave wrong error: {e}")),
         Ok(()) => return Err("second seal succeeded".to_string()),
     }
-    let mut session =
-        Session::boot_with_plugins(boot_config(), &[], None, Vec::new(), plane_wiring())
-            .map_err(|e| e.to_string())?;
+    let mut session = Session::boot_with_plugins(boot_config(), &[], None, plane_wiring())
+        .map_err(|e| e.to_string())?;
     assert!(!session.pipeline().is_sealed());
     session.pipeline_mut().seal().map_err(|e| e.to_string())?;
     assert!(session.pipeline().is_sealed());
@@ -511,36 +511,39 @@ fn pre_step_descriptor(id: &str) -> SnapshotDescriptor {
 }
 
 #[tokio::test]
-async fn hydrate_step_populates_handler_ctx_from_checkpoint_plane() -> Result<(), String> {
+async fn step_evaluator_begin_commit_clears_active_descriptor() -> Result<(), String> {
     let plane = checkpoint_plane();
     let lineage = PidLineage::new_in_session(1, [7u8; 16]);
-    plane
-        .create_step(lineage, pre_step_descriptor("pre-exec"))
+    let evaluator = StepEvaluator::new(
+        Arc::clone(plane.ops()),
+        StepEvalConfig::default(),
+        Vec::new(),
+    );
+    evaluator
+        .begin_step(lineage, pre_step_descriptor("pre-exec"))
         .map_err(|e| e.to_string())?;
-    let engine = PipelineEngine::new().with_checkpoint(Arc::clone(&plane));
-    let mut ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 1, (), Vec::new());
-    engine
-        .hydrate_step(&mut ctx, lineage)
-        .map_err(|e| e.to_string())?;
-    match ctx.step.last() {
+    match evaluator
+        .active_descriptor(lineage)
+        .map_err(|e| e.to_string())?
+    {
         Some(step) => assert_eq!(step.id, "pre-exec"),
-        None => return Err("hydrate_step left the pre-exec step stack empty".to_string()),
+        None => return Err("begin_step left no active step descriptor".to_string()),
     }
-    plane.commit_step(lineage).map_err(|e| e.to_string())?;
-    match plane.active_step(lineage) {
-        Ok(None) => {}
-        Ok(Some(step)) => return Err(format!("committed step stayed active: {}", step.id)),
-        Err(e) => return Err(format!("active_step after commit failed: {e}")),
+    evaluator.commit_step(lineage).map_err(|e| e.to_string())?;
+    match evaluator
+        .active_descriptor(lineage)
+        .map_err(|e| e.to_string())?
+    {
+        None => {}
+        Some(step) => return Err(format!("committed step stayed active: {}", step.id)),
     }
-    let mut post: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 1, (), Vec::new());
-    engine
-        .hydrate_step(&mut post, lineage)
-        .map_err(|e| e.to_string())?;
+    let engine = PipelineEngine::new().with_checkpoint(Arc::clone(&plane));
+    let post: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 1, (), Vec::new());
     match post.step.last() {
         None => {}
         Some(step) => {
             return Err(format!(
-                "hydrate pushed a step with no active slot: {}",
+                "dispatch pushed a step with no active slot: {}",
                 step.id
             ));
         }
@@ -558,15 +561,11 @@ async fn hydrate_step_populates_handler_ctx_from_checkpoint_plane() -> Result<()
 }
 
 #[tokio::test]
-async fn hydrate_step_without_checkpoint_plane_is_inert() -> Result<(), String> {
-    let engine = PipelineEngine::new();
-    let mut ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
-    engine
-        .hydrate_step(&mut ctx, PidLineage::new_in_session(1, [7u8; 16]))
-        .map_err(|e| e.to_string())?;
+async fn handler_ctx_without_step_slot_stays_empty() -> Result<(), String> {
+    let ctx: HandlerCtx<(), ()> = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     match ctx.step.last() {
         None => {}
-        Some(step) => return Err(format!("inert hydrate pushed a step: {}", step.id)),
+        Some(step) => return Err(format!("inert dispatch pushed a step: {}", step.id)),
     }
     Ok(())
 }
@@ -610,8 +609,7 @@ fn pe_03_overlapping_mutator_scope_eambiguous() -> Result<(), String> {
         boot_config(),
         &[],
         engine,
-        std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-        Vec::new(),
+        std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
         PlaneWiring::default(),
     )
     .map_err(|e| e.to_string())?;
@@ -643,13 +641,7 @@ fn pe_02_cyclic_dependency_graph_abort() -> Result<(), String> {
         PluginRegistration::new("plugin_a -> plugin_b", true),
         PluginRegistration::new("plugin_b -> plugin_a", true),
     ];
-    match Session::boot_with_plugins(
-        boot_config(),
-        &registrations,
-        None,
-        Vec::new(),
-        PlaneWiring::default(),
-    ) {
+    match Session::boot_with_plugins(boot_config(), &registrations, None, PlaneWiring::default()) {
         Err(PluginError::Halt(message)) => {
             let lowered = message.to_lowercase();
             assert!(
@@ -785,8 +777,7 @@ async fn pe_13_fork_state_specialization_isolation() -> Result<(), String> {
         boot_config(),
         &[PluginRegistration::new("fork-probe", true)],
         engine,
-        std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-        Vec::new(),
+        std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
         PlaneWiring::default(),
     )
     .map_err(|e| e.to_string())?;

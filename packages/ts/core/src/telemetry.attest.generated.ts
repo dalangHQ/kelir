@@ -80,11 +80,6 @@ export interface FsVfsExt {
   readonly roots: readonly string[];
 }
 
-export interface NetL7SqlExt {
-  readonly statements: number;
-  readonly distinctShapes: number;
-}
-
 export interface ExecutionReceipt {
   readonly pid: number;
   readonly binaryPath: string;
@@ -104,11 +99,8 @@ export interface ExecutionReceipt {
   readonly maskedRecords: readonly MaskedRecord[];
   readonly stepLineage: readonly StepLineageEntry[];
   readonly fsVfsExt?: FsVfsExt | null;
-  readonly netL7SqlExt?: NetL7SqlExt | null;
   // see: cans/10-attestation.md#Typed-extensions
   fsVfs(): FsVfsExt | null;
-  // see: cans/10-attestation.md#Typed-extensions
-  netL7Sql(): NetL7SqlExt | null;
 }
 
 export interface CausalDelta {
@@ -202,7 +194,6 @@ export interface NativeExecutionReceiptRecord {
   readonly maskedRecords: readonly MaskedRecord[];
   readonly stepLineage: readonly StepLineageEntry[];
   readonly fsVfsExt?: FsVfsExt | null;
-  readonly netL7SqlExt?: NetL7SqlExt | null;
 }
 
 export interface NativeCausalDeltaRecord {
@@ -288,12 +279,8 @@ export function fromNativeExecutionReceipt(raw: NativeExecutionReceiptRecord): E
     maskedRecords: raw.maskedRecords,
     stepLineage: raw.stepLineage,
     fsVfsExt: raw.fsVfsExt ?? null,
-    netL7SqlExt: raw.netL7SqlExt ?? null,
     fsVfs(): FsVfsExt | null {
       return raw.fsVfsExt ?? null;
-    },
-    netL7Sql(): NetL7SqlExt | null {
-      return raw.netL7SqlExt ?? null;
     },
   };
 }

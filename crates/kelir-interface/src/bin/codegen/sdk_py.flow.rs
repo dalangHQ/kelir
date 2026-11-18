@@ -683,6 +683,9 @@ pub fn emit_py_barrel(projections: &[Projection]) -> String {
     for name in &names {
         lines.push(format!("    \"{name}\","));
     }
+    for proj in &ordered {
+        lines.push(format!("    \"{}\",", proj.krate.module_name));
+    }
     lines.push("]".to_string());
     lines.push(String::new());
     lines.join("\n")

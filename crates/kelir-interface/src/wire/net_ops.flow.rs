@@ -9,13 +9,9 @@ use crate::frame_layout_views::{
 };
 use crate::plugin_model::PluginError;
 use crate::protocol_wire::FilterAction;
-use crate::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 
 pub const SYNTHETIC_DNS_GATEWAY_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 127, 1);
 pub const SYNTHETIC_DNS_PORT: u16 = 53;
-
-// see: cans/07-wire-plane.md#Pre-policy-drop-zones
-pub const LINK_LOCAL_IMDS_IP: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
 
 const UDP_HEADER_BYTES: usize = 8;
 const L4_PORT_PAIR_BYTES: usize = 4;
@@ -58,8 +54,6 @@ pub trait NetOps: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SinkholeRule {
     pub host: String,
-    pub methods: Option<Vec<String>>,
-    pub paths: Option<Vec<String>>,
     pub allow: bool,
 }
 
@@ -71,34 +65,11 @@ pub struct SinkholeConfig {
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
 impl SinkholeConfig {
-    pub fn from_allowlist_drop_all(allowlist: Vec<String>, drop_all: bool) -> Self {
-        let mut rules: Vec<SinkholeRule> = allowlist
-            .into_iter()
-            .map(|host| SinkholeRule {
-                host,
-                methods: None,
-                paths: None,
-                allow: true,
-            })
-            .collect();
-        if drop_all {
-            rules.push(SinkholeRule {
-                host: "*".to_string(),
-                methods: None,
-                paths: None,
-                allow: false,
-            });
-        }
-        Self { rules }
-    }
-
     // see: cans/07-wire-plane.md#Sinkhole-rules
     pub fn ensure_drop_all(&mut self) {
         if !self.rules.iter().any(|rule| !rule.allow) {
             self.rules.push(SinkholeRule {
                 host: "*".to_string(),
-                methods: None,
-                paths: None,
                 allow: false,
             });
         }
@@ -118,7 +89,7 @@ pub struct WireWiring {
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     pub default_egress: String,
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-    // TODO (L3): dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet.
+    // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
 }
 
@@ -143,20 +114,14 @@ pub enum FrameDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkLocalRoute {
     Drop,
-    VaultImds { vsock_port: u32 },
 }
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// L3-GAP: [wire_plane]: drop non-link-local cloud IMDS endpoints (e.g. Azure 168.63.129.16) at ingress; only the link-local 169.254.169.254 exception reaches the vault; slop: cloud IMDS endpoint reaches vault, quarantine bypassed
+// L3-GAP: [wire_plane]: drop non-link-local cloud IMDS endpoints at ingress; slop: cloud IMDS endpoint reaches the guest stack, quarantine bypassed
 pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
     let remote = frame_remote_ip(frame, direction)?;
     if !remote.is_link_local() {
         return None;
-    }
-    if direction == FrameDirection::Outbound && remote == LINK_LOCAL_IMDS_IP {
-        return Some(LinkLocalRoute::VaultImds {
-            vsock_port: VAULT_METADATA_VSOCK_PORT,
-        });
     }
     Some(LinkLocalRoute::Drop)
 }

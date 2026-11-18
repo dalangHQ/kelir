@@ -375,7 +375,7 @@ impl TerminalHandle {
     pub fn notice(&self, _msg: &str) {}
 }
 
-// see: cans/10-attestation.md#Step-evaluation-loop
+// see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
 // L3-GAP: [lc_base_snapshot_lifecycle]: pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.; slop: slots never popped, base digest leaks into manifest
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
@@ -387,7 +387,7 @@ impl StepStack {
         self.slots.last().cloned()
     }
 
-    // see: cans/10-attestation.md#Step-evaluation-loop
+    // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
     pub fn push(&mut self, descriptor: SnapshotDescriptor) {
         self.slots.push(descriptor);
     }

@@ -13,7 +13,6 @@ use kelir_interface::handles_lifecycle::{DriverVmControl, VmHandle};
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::lifecycle_state::LifecycleState;
 use kelir_interface::plugin_model::{LifecycleCtx, LifecycleEvent, VetoList};
-use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 #[derive(Default)]
@@ -31,7 +30,6 @@ pub struct PlaneWiring {
     pub fuse_ops: Option<Arc<dyn kelir_interface::storage::FuseOps>>,
     pub wire: Option<kelir_interface::wire::net::WireWiring>,
     pub storage: crate::planes::storage::StorageConfig,
-    pub snoops: Vec<kelir_interface::storage::SnoopRule>,
 }
 
 // see: cans/03-sdk-architecture.md#Params-typed-views
@@ -60,7 +58,7 @@ pub struct Session {
     checkpoint_ops: Arc<dyn kelir_interface::checkpoint::CheckpointOps>,
     host_ops: Arc<dyn kelir_interface::host::HostOps>,
     fuse_ops: Option<Arc<dyn kelir_interface::storage::FuseOps>>,
-    metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
+    metrics: std::sync::Arc<kelir_interface::telemetry::MetricRegistry>,
     uart: crate::uart_terminal::UartRingBuffer,
     driver: Option<Arc<tokio::sync::Mutex<Box<dyn kelir_interface::driver_interface::VmmDriver>>>>,
     owned_bus: crate::bus::OwnedBusDispatcher,
@@ -248,7 +246,7 @@ impl Session {
     pub fn boot(
         config: kelir_interface::driver_interface::VmConfig,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
-        Self::boot_with_plugins(config, &[], None, Vec::new(), PlaneWiring::default())
+        Self::boot_with_plugins(config, &[], None, PlaneWiring::default())
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -257,7 +255,6 @@ impl Session {
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         trampoline: Option<&kelir_interface::fusion_plugin::FusedTrampolineDescriptor>,
-        synthetic_files: Vec<kelir_interface::storage::SyntheticFile>,
         plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         let mut engine = crate::dispatch_plugin::PipelineEngine::new();
@@ -269,8 +266,7 @@ impl Session {
             config,
             plugins,
             engine,
-            std::sync::Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new()),
-            synthetic_files,
+            std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
             plane_wiring,
         )?;
         session.advance_lifecycle(LifecycleState::Running)?;
@@ -283,8 +279,7 @@ impl Session {
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
         engine: crate::dispatch_plugin::PipelineEngine,
-        metrics: std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry>,
-        synthetic_files: Vec<kelir_interface::storage::SyntheticFile>,
+        metrics: std::sync::Arc<kelir_interface::telemetry::MetricRegistry>,
         plane_wiring: PlaneWiring,
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         if let Some(reason) = config.missing_boot_path() {
@@ -313,9 +308,7 @@ impl Session {
             DEFAULT_WORKSPACE_QUOTA_BYTES,
             DEFAULT_WORKSPACE_QUOTA_INODES,
         )
-        .with_synthetic_files(synthetic_files)
         .with_wiring(plane_wiring.storage)
-        .with_snoops(plane_wiring.snoops)
         .with_io(storage_io);
         if let Some(reconciler) = plane_wiring.reconciler {
             storage = storage.with_reconciler(reconciler);
@@ -330,9 +323,6 @@ impl Session {
                 plane_wiring.wire,
                 config.network_off,
             ));
-        if let Some(handler) = engine.vsock_service(VAULT_METADATA_VSOCK_PORT) {
-            wire.bind_imds_sink(handler)?;
-        }
         let terminal = Arc::new(
             match &plane_wiring.terminal {
                 Some(wiring) => crate::planes::terminal::TerminalPlane::new(
@@ -450,7 +440,7 @@ impl Session {
     pub fn set_capabilities(&mut self, caps: kelir_interface::CapabilityRegistry) {
         self.capabilities = caps;
     }
-    pub fn metrics(&self) -> &std::sync::Arc<kelir_otlp::registry_otlp::MetricRegistry> {
+    pub fn metrics(&self) -> &std::sync::Arc<kelir_interface::telemetry::MetricRegistry> {
         &self.metrics
     }
 
@@ -573,7 +563,6 @@ impl Session {
         let storage_wiring = self.storage.wiring().clone();
         let storage_io = self.storage.storage_io();
         let storage_reconciler = self.storage.reconciler();
-        let storage_snoops = self.storage.snoops().to_vec();
         let wire_ops = self.wire.ops();
         let fuse_ops = self.fuse_ops.clone();
         let config = self.config.clone();
@@ -609,8 +598,7 @@ impl Session {
                 DEFAULT_WORKSPACE_QUOTA_INODES,
             )
             .with_wiring(storage_wiring)
-            .with_io(storage_io)
-            .with_snoops(storage_snoops);
+            .with_io(storage_io);
             if let Some(reconciler) = storage_reconciler {
                 storage = storage.with_reconciler(reconciler);
             }
@@ -674,7 +662,7 @@ impl Session {
             )
         })?;
         let guest_monotonic_ns = self.vm_handle().guest_monotonic_ns();
-        let snapshot = self.checkpoint.restore(node_id, guest_monotonic_ns)?;
+        let snapshot = self.checkpoint.rollback(node_id, guest_monotonic_ns)?;
         self.rollback_to(&snapshot).await
     }
 
@@ -733,7 +721,7 @@ impl Session {
 
     // see: cans/08-lifecycle.md#State-machine
     pub fn lifecycle_state(&self) -> LifecycleState {
-        self.state
+        self.state.clone()
     }
 
     // see: cans/08-lifecycle.md#State-machine
@@ -741,7 +729,7 @@ impl Session {
         &mut self,
         next: LifecycleState,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        self.state = self.state.transition(next).map_err(|error| {
+        self.state = self.state.clone().transition(next).map_err(|error| {
             kelir_interface::plugin_model::PluginError::Halt(format!("{error:?}"))
         })?;
         Ok(())
@@ -762,7 +750,7 @@ impl Session {
         driver
             .lock()
             .await
-            .suspend(reason, &path)
+            .suspend(reason.clone(), &path)
             .await
             .map_err(|error| {
                 kelir_interface::plugin_model::PluginError::Halt(format!(

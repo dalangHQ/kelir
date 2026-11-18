@@ -15,7 +15,7 @@ use crate::fusion_plugin::{
 };
 use crate::handles::NativeSessionHandle;
 use crate::handles::halt;
-use crate::storage_bridge::{self, storage_config};
+use crate::storage_bridge::storage_config;
 
 // see: cans/03-sdk-architecture.md#Session-control-surface
 #[napi(object)]
@@ -24,9 +24,6 @@ pub struct NativeTerminalConfig {
     pub rows: Option<u16>,
     pub drop_osc52: Option<bool>,
     pub strip_title: Option<bool>,
-    pub token_shield_max_bytes_total: Option<f64>,
-    pub token_shield_max_lines_total: Option<f64>,
-    pub token_shield_clamp_strategy: Option<String>,
     pub stream_engine: Option<String>,
 }
 
@@ -37,27 +34,7 @@ pub struct NativeStorageConfig {
     pub idmap_host_uid: Option<f64>,
     pub shared_caches: Option<Vec<String>>,
     pub lock_broker: Option<bool>,
-    pub synthetic_files: Option<Vec<NativeSyntheticFile>>,
-    pub mask_read: Option<Vec<NativeMaskRule>>,
     pub encapsulation: Option<String>,
-    pub scan_engine: Option<String>,
-    pub carryover_bytes: Option<f64>,
-}
-
-// see: cans/05-storage-plane.md#Workspace-commit
-#[napi(object)]
-pub struct NativeSyntheticFile {
-    pub path: String,
-    pub content: String,
-    pub mode: Option<f64>,
-}
-
-// see: cans/05-storage-plane.md#Workspace-commit
-#[napi(object)]
-pub struct NativeMaskRule {
-    pub glob: String,
-    pub pattern: String,
-    pub replace: String,
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
@@ -82,8 +59,6 @@ pub struct NativeL4Proxy {
 #[napi(object)]
 pub struct NativeSinkholeRule {
     pub host: String,
-    pub methods: Option<Vec<String>>,
-    pub paths: Option<Vec<String>>,
     pub allow: Option<bool>,
 }
 
@@ -96,8 +71,6 @@ pub struct NativeSinkholeConfig {
 // see: cans/07-wire-plane.md#DNS-policy-filter
 #[napi(object)]
 pub struct NativeWireConfig {
-    pub sinkhole_dns_except: Option<Vec<String>>,
-    pub sinkhole_drop_all: Option<bool>,
     pub sinkhole: Option<NativeSinkholeConfig>,
     pub ssh_agent_bridge: Option<bool>,
     pub vaults: Option<Vec<NativeVaultDescriptor>>,
@@ -271,18 +244,11 @@ impl NativeKelirBuilder {
         // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = self.plane_wiring()?;
-        let synthetic_files = self
-            .storage_cfg
-            .as_ref()
-            .map(storage_bridge::synthetic_files)
-            .transpose()?
-            .unwrap_or_default();
         let started = Instant::now();
         let session = Session::boot_with_plugins(
             self.config.clone(),
             &plugins,
             Some(descriptor),
-            synthetic_files,
             plane_wiring,
         )
         .map_err(halt)?;
@@ -303,7 +269,7 @@ impl Default for NativeKelirBuilder {
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 impl NativeKelirBuilder {
-    // L3-GAP: [bindings_ts]: token-shield clamps, prompt rules, snoop callbacks, and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops clamps, snoop, mtls
+    // L3-GAP: [bindings_ts]: snoop callbacks and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops snoop, mtls
     fn plane_wiring(&self) -> Result<kelir_engine::session_lifecycle::PlaneWiring> {
         let terminal =
             self.terminal_cfg
@@ -313,32 +279,24 @@ impl NativeKelirBuilder {
                     rows: cfg.rows.unwrap_or(24),
                     drop_osc52: cfg.drop_osc52.unwrap_or(false),
                     strip_title: cfg.strip_title.unwrap_or(false),
-                    token_shield: None,
-                    prompts: Vec::new(),
                 });
         let wire = self.wire_cfg.as_ref().map(|cfg| {
             // see: cans/07-wire-plane.md#Sinkhole-rules
-            let sinkhole = if let Some(rules) = cfg
-                .sinkhole
-                .as_ref()
-                .and_then(|sinkhole| sinkhole.rules.as_ref())
-            {
-                kelir_interface::wire::net::SinkholeConfig {
-                    rules: rules
-                        .iter()
-                        .map(|rule| kelir_interface::wire::net::SinkholeRule {
-                            host: rule.host.clone(),
-                            methods: rule.methods.clone(),
-                            paths: rule.paths.clone(),
-                            allow: rule.allow.unwrap_or(false),
-                        })
-                        .collect(),
-                }
-            } else {
-                kelir_interface::wire::net::SinkholeConfig::from_allowlist_drop_all(
-                    cfg.sinkhole_dns_except.clone().unwrap_or_default(),
-                    cfg.sinkhole_drop_all.unwrap_or(false),
-                )
+            let sinkhole = kelir_interface::wire::net::SinkholeConfig {
+                rules: cfg
+                    .sinkhole
+                    .as_ref()
+                    .and_then(|sinkhole| sinkhole.rules.as_ref())
+                    .map(|rules| {
+                        rules
+                            .iter()
+                            .map(|rule| kelir_interface::wire::net::SinkholeRule {
+                                host: rule.host.clone(),
+                                allow: rule.allow.unwrap_or(false),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             };
             kelir_interface::wire::net::WireWiring {
                 sinkhole,
@@ -374,7 +332,7 @@ impl NativeKelirBuilder {
             None => kelir_engine::planes::storage::StorageConfig::default(),
         };
         // see: cans/01-architecture.md#Host-runtime
-        let metrics = Arc::new(kelir_otlp::registry_otlp::MetricRegistry::new());
+        let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
@@ -392,7 +350,6 @@ impl NativeKelirBuilder {
             fuse_ops: None,
             wire,
             storage,
-            snoops: Vec::new(),
         })
     }
 }

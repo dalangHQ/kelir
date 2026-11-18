@@ -710,20 +710,27 @@ dependencies = [
  "kelir-engine",
  "kelir-host",
  "kelir-interface",
- "kelir-otlp",
  "kelir-storage",
  "kelir-storage-io",
  "kelir-terminal",
  "kelir-wire",
+ "plugin-anomaly",
  "plugin-chaos",
  "plugin-container",
  "plugin-db-proxy",
+ "plugin-egress-proxy",
+ "plugin-l7-http",
  "plugin-ledger",
  "plugin-mcp",
  "plugin-mesh",
  "plugin-profile",
+ "plugin-redaction",
  "plugin-replay",
+ "plugin-step-eval",
  "plugin-supply-chain",
+ "plugin-taint",
+ "plugin-terminal-guard",
+ "plugin-token-shield",
  "plugin-tool-guard",
  "plugin-transaction",
  "plugin-vault",
@@ -751,7 +758,6 @@ version = "1.0.0"
 dependencies = [
  "kelir-engine",
  "kelir-interface",
- "kelir-otlp",
 ]
 
 [[package]]
@@ -765,13 +771,14 @@ dependencies = [
  "kelir-checkpoint",
  "kelir-host",
  "kelir-interface",
- "kelir-otlp",
  "kelir-storage",
  "kelir-storage-io",
  "kelir-terminal",
  "kelir-transport",
  "kelir-wire",
  "libc",
+ "plugin-step-eval",
+ "plugin-vault",
  "serde",
  "smoltcp",
  "thiserror 2.0.21",
@@ -787,7 +794,6 @@ dependencies = [
  "async-trait",
  "kelir-engine",
  "kelir-interface",
- "kelir-otlp",
  "libc",
 ]
 
@@ -851,7 +857,6 @@ dependencies = [
  "kelir-engine",
  "kelir-host",
  "kelir-interface",
- "kelir-otlp",
  "kelir-storage",
  "kelir-storage-io",
  "kelir-terminal",
@@ -861,15 +866,6 @@ dependencies = [
  "napi-derive",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "kelir-otlp"
-version = "1.0.0"
-dependencies = [
- "kelir-interface",
- "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -922,7 +918,6 @@ dependencies = [
  "kelir-engine",
  "kelir-host",
  "kelir-interface",
- "kelir-otlp",
  "kelir-storage",
  "kelir-storage-io",
  "kelir-terminal",
@@ -951,7 +946,6 @@ dependencies = [
  "async-trait",
  "kelir-engine",
  "kelir-interface",
- "kelir-otlp",
  "kelir-storage-io",
  "libc",
 ]
@@ -970,7 +964,6 @@ version = "1.0.0"
 dependencies = [
  "kelir-engine",
  "kelir-interface",
- "kelir-otlp",
 ]
 
 [[package]]
@@ -1003,7 +996,6 @@ version = "1.0.0"
 dependencies = [
  "kelir-engine",
  "kelir-interface",
- "kelir-otlp",
  "kelir-transport",
  "smoltcp",
 ]
@@ -1250,6 +1242,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
+name = "plugin-anomaly"
+version = "1.0.0"
+dependencies = [
+ "kelir-interface",
+ "kelir-plugin-testkit",
+ "serde_json",
+]
+
+[[package]]
 name = "plugin-chaos"
 version = "1.0.0"
 dependencies = [
@@ -1276,16 +1277,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-egress-proxy"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+]
+
+[[package]]
+name = "plugin-l7-http"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "plugin-ledger"
 version = "1.0.0"
 dependencies = [
  "blake3",
  "ed25519-dalek",
  "kelir-interface",
- "kelir-otlp",
  "kelir-plugin-testkit",
  "serde",
  "sha2",
+ "thiserror 2.0.21",
+ "toml",
  "tracing",
 ]
 
@@ -1325,6 +1347,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-redaction"
+version = "1.0.0"
+dependencies = [
+ "kelir-interface",
+]
+
+[[package]]
 name = "plugin-replay"
 version = "1.0.0"
 dependencies = [
@@ -1336,7 +1365,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin-step-eval"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "blake3",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+ "serde",
+]
+
+[[package]]
 name = "plugin-supply-chain"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+]
+
+[[package]]
+name = "plugin-taint"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+]
+
+[[package]]
+name = "plugin-terminal-guard"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "kelir-interface",
+ "kelir-plugin-testkit",
+]
+
+[[package]]
+name = "plugin-token-shield"
 version = "1.0.0"
 dependencies = [
  "async-trait",
@@ -1353,6 +1420,7 @@ dependencies = [
  "kelir-interface",
  "kelir-plugin-testkit",
  "plugin-mcp",
+ "plugin-taint",
  "serde_json",
 ]
 

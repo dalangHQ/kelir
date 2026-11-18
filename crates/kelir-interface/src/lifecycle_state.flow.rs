@@ -2,7 +2,7 @@
 use crate::driver_interface::SuspendReason;
 
 // see: cans/08-lifecycle.md#State-machine
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LifecycleState {
     Initializing,
     Running,
@@ -24,7 +24,7 @@ impl LifecycleState {
     // see: cans/08-lifecycle.md#State-machine
     pub fn transition(self, next: LifecycleState) -> Result<LifecycleState, LifecycleError> {
         let legal = matches!(
-            (self, next),
+            (&self, &next),
             (Self::Initializing, Self::Running)
                 | (Self::Running, Self::Draining)
                 | (Self::Running, Self::Suspended(_))

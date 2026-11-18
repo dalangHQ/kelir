@@ -10,6 +10,7 @@ use kelir_interface::plugin_model::{
 use kelir_interface::protocol_wire::{PROT_EXEC, TrapEvent, TrappedSyscall, Verdict};
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
+use crate::unwrap_interpreter;
 use crate::wx_token::{WxAllocToken, WxTokenChannel, WxTokenLedger};
 use crate::{
     JitValidationService, PackageGuardConfig, SCRIPT_DENY_ERRNO, SupplyChainConfig,
@@ -249,7 +250,15 @@ impl TrapInterposer for SupplyChainPlugin {
             });
         }
         match &event.syscall {
-            None => self.mediate_execve(event),
+            // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+            None => {
+                let unwrapped = unwrap_interpreter(event);
+                let mut view = event.clone();
+                view.binary_path = unwrapped.binary_path;
+                view.argv = unwrapped.argv;
+                view.shell_payload = unwrapped.shell_payload;
+                self.mediate_execve(&view)
+            }
             Some(syscall) => self.mediate_memory_syscall(event, syscall),
         }
     }

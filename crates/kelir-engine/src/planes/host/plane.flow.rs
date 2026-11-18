@@ -9,7 +9,7 @@ use kelir_interface::host::{
     BalloonRequest, HostOps, PressureEvent, PressureLevel, PressureSubscription, ReclaimRequest,
 };
 use kelir_interface::plugin_model::PluginError;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 pub struct HostPlane {
     ops: Arc<dyn HostOps>,

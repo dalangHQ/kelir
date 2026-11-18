@@ -121,12 +121,8 @@ export const SuspendUntil: {
   },
 };
 
-// see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
-export type ExternalSuspendKind =
-  | "human-authorization-hold"
-  | "wire-connection-parking"
-  | "step-evaluation-yield"
-  | "host-power-event-snapshot";
+// see: cans/08-lifecycle.md#Suspend-and-resume
+export type ExternalSuspendKind = string | number;
 
 // see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
 export type SuspendReason =
@@ -143,11 +139,6 @@ export const SuspendReason: {
     return { kind: "external", detail };
   },
 };
-
-export enum PostExecAction {
-  Proceed = "proceed",
-  RollbackAndHalt = "rollback-and-halt",
-}
 
 export enum VetoEvent {
   Fork = "fork",

@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use kelir_interface::checkpoint::CheckpointOps;
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
 
 use crate::real_checkpoint::build_checkpoint_ops;
 

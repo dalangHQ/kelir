@@ -7,16 +7,10 @@ use crate::plugin_model::PluginError;
 
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
 pub trait CheckpointOps: Send + Sync {
-    fn create_step(
-        &self,
-        lineage: PidLineage,
-        base: SnapshotDescriptor,
-    ) -> Result<u64, PluginError>;
-    fn active_step(&self, lineage: PidLineage) -> Result<Option<SnapshotDescriptor>, PluginError>;
-    fn commit_step(&self, lineage: PidLineage) -> Result<u64, PluginError>;
-    fn rollback_step(&self, lineage: PidLineage) -> Result<SnapshotDescriptor, PluginError>;
+    fn snapshot(&self, lineage: PidLineage, base: SnapshotDescriptor) -> Result<u64, PluginError>;
+    fn fork(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError>;
     fn branch_from(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError>;
-    fn restore(
+    fn rollback(
         &self,
         node_id: u64,
         guest_monotonic_ns: u64,

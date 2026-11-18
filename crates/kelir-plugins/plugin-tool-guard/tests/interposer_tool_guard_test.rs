@@ -397,3 +397,21 @@ fn gt_12_model_controlled_flag_taint_override() -> Result<(), String> {
         Err(err) => Err(format!("taint read failed: {err:?}")),
     }
 }
+
+// see: cans/plugins/tool-guard.md#MCP-schema-matching-surface-(tool-guard)
+#[test]
+fn with_params_unconstrained_schema_matches_and_unpinned_tool_errors() -> Result<(), String> {
+    let plugin = ToolGuardPlugin::new();
+    pin_tool(&plugin, "write_file")?;
+    let registry = plugin.context().registry();
+    assert!(
+        block_on(registry.match_with_params("write_file", b"{\"path\":\"a.txt\"}"))
+            .map_err(|err| format!("{err:?}"))?,
+        "the unconstrained {{}} schema must match any arguments"
+    );
+    assert!(
+        block_on(registry.match_with_params("missing_tool", b"{}")).is_err(),
+        "with_params for an unpinned tool must fail with EConfig"
+    );
+    Ok(())
+}

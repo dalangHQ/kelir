@@ -2,9 +2,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::otlp_exporter::OtlpExporter;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, HookSpan};
-use kelir_otlp::OtlpExporter;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 

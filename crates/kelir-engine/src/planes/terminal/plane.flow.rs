@@ -3,10 +3,8 @@
 use std::sync::Arc;
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::terminal::{
-    LogStream, PromptRuleConfig, TerminalOps, TerminalWiring, TokenShieldConfig,
-};
-use kelir_otlp::registry_otlp::MetricRegistry;
+use kelir_interface::telemetry::MetricRegistry;
+use kelir_interface::terminal::{LogStream, TerminalOps, TerminalWiring};
 
 pub struct TerminalPlane {
     session_id: [u8; 16],
@@ -47,13 +45,8 @@ impl TerminalPlane {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    pub fn token_shield(&self) -> Option<TokenShieldConfig> {
-        self.ops.token_shield()
-    }
-
-    // see: cans/04-terminal-plane.md#Terminal-pipeline
-    pub fn prompts(&self) -> Vec<PromptRuleConfig> {
-        self.ops.prompts()
+    pub fn write_console(&self, port: u32, bytes: &[u8]) -> Result<(), PluginError> {
+        self.ops.write_console(port, bytes)
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), PluginError> {

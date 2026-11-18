@@ -37,13 +37,6 @@ pub struct FsVfsExt {
     pub roots: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetL7SqlExt {
-    pub statements: u32,
-    pub distinct_shapes: u32,
-}
-
 // see: cans/10-attestation.md#Hook-trace
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -166,8 +159,6 @@ pub struct ExecutionReceipt {
     pub step_lineage: Vec<StepLineageEntry>,
     #[serde(skip)]
     pub fs_vfs_ext: Option<FsVfsExt>,
-    #[serde(skip)]
-    pub net_l7_sql_ext: Option<NetL7SqlExt>,
 }
 
 // see: cans/10-attestation.md#Execution-receipts
@@ -256,7 +247,6 @@ impl ExecutionReceipt {
             masked_records,
             step_lineage,
             fs_vfs_ext: _,
-            net_l7_sql_ext: _,
         } = self;
         let Self {
             pid: other_pid,
@@ -277,7 +267,6 @@ impl ExecutionReceipt {
             masked_records: other_masked,
             step_lineage: other_lineage,
             fs_vfs_ext: _,
-            net_l7_sql_ext: _,
         } = other;
         pid == other_pid
             && binary_path == other_binary_path
@@ -325,11 +314,6 @@ impl ExecutionReceipt {
     // see: cans/10-attestation.md#Typed-extensions
     pub fn fs_vfs(&self) -> Option<&FsVfsExt> {
         self.fs_vfs_ext.as_ref()
-    }
-
-    // see: cans/10-attestation.md#Typed-extensions
-    pub fn net_l7_sql(&self) -> Option<&NetL7SqlExt> {
-        self.net_l7_sql_ext.as_ref()
     }
 
     // see: cans/10-attestation.md#Typed-extensions

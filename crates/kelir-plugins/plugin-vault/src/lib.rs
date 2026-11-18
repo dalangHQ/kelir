@@ -1,15 +1,24 @@
 // see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
+#[path = "boot_diversion.flow.rs"]
+pub mod boot_diversion;
 #[path = "metadata.run.rs"]
 pub mod metadata;
 #[path = "metadata_endpoint.flow.rs"]
 pub mod metadata_endpoint;
 #[path = "service_vault.flow.rs"]
 pub mod service_vault;
+#[path = "synthetic_env.flow.rs"]
+pub mod synthetic_env;
+
+pub use boot_diversion::{IMDS_DESTINATION, ImdsBootDiversion};
 
 pub use metadata_endpoint::{CredentialBrokerCtx, MetadataEndpoint, VaultPlugin};
-pub use service_vault::{CarrierInjector, MtlsMaterial, load_mtls_material};
+pub use service_vault::{
+    CarrierInjector, MtlsMaterial, VAULT_PLACEHOLDER_PREFIX, load_mtls_material,
+};
+pub use synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 
 // see: cans/plugins/vault.md#Metadata-service-(vault)
 pub const METADATA_CREDENTIALS_PREFIX: &str = "/kelir/credentials/";

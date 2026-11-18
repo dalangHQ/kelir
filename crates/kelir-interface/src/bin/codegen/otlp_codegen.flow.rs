@@ -67,14 +67,14 @@ const OTLP_SPECS: &[OtlpRecordSpec] = &[
             OtlpFieldSpec {
                 target: "spans",
                 source: None,
-                target_type: Some("Vec<crate::OtlpSpan>"),
-                init: Some("crate::phase_spans(receipt.phase_timings.as_ref())"),
+                target_type: Some("Vec<crate::otlp_span::OtlpSpan>"),
+                init: Some("crate::otlp_span::phase_spans(receipt.phase_timings.as_ref())"),
             },
             OtlpFieldSpec {
                 target: "hook_spans",
                 source: None,
-                target_type: Some("Vec<crate::OtlpSpan>"),
-                init: Some("crate::hook_spans(&receipt.hook_trace)"),
+                target_type: Some("Vec<crate::otlp_span::OtlpSpan>"),
+                init: Some("crate::otlp_span::hook_spans(&receipt.hook_trace)"),
             },
             OtlpFieldSpec {
                 target: "ext_raw",
@@ -97,7 +97,6 @@ const OTLP_SPECS: &[OtlpRecordSpec] = &[
             "masked_records",
             "step_lineage",
             "fs_vfs_ext",
-            "net_l7_sql_ext",
         ],
     },
     OtlpRecordSpec {

@@ -35,7 +35,7 @@ from kelir import (
 from kelir.sdk_errors import EConfig
 from kelir.plugin_fusion import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
 from kelir.plugins import LedgerPlugin
-from kelir.storage_planes import MaskRule, SyntheticFile
+from kelir.storage_planes import IdmapConfig
 
 
 def test_deadline_defaults_to_zero() -> None:
@@ -672,10 +672,6 @@ def test_sandbox_boot_requires_native_bridge(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_storage_planes_defaults() -> None:
-    assert MaskRule().glob == ""
-    assert MaskRule().patterns == []
-    static = SyntheticFile.static("/etc/motd", "hello")
-    assert static.path == "/etc/motd"
-    assert static.content == "hello"
-    assert static.dynamic_fn is None
-    assert SyntheticFile.dynamic("/proc/uptime", len).dynamic_fn is not None
+    assert IdmapConfig().guest_uid == 0
+    assert IdmapConfig().host_uid == 0
+    assert IdmapConfig(guest_uid=1000, host_uid=1000).guest_uid == 1000

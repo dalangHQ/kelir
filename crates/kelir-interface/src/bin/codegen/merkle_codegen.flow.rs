@@ -23,13 +23,7 @@ struct DomainLeafSpec {
 const DOMAIN_LEAVES: &[DomainLeafSpec] = &[DomainLeafSpec {
     struct_name: "ExecutionReceipt",
     domain: "kelir-receipt-leaf-v1",
-    skip: &[
-        "wall_clock_ns",
-        "phase_timings",
-        "hook_trace",
-        "fs_vfs_ext",
-        "net_l7_sql_ext",
-    ],
+    skip: &["wall_clock_ns", "phase_timings", "hook_trace", "fs_vfs_ext"],
 }];
 
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
@@ -307,6 +301,30 @@ fn emit_enum_hasher(def: &EnumDef, needs: &mut HashNeeds) -> Result<String, Stri
 }
 
 // see: cans/10-attestation.md#Execution-receipts
+fn write_use_super(out: &mut String, imports: &[String]) {
+    let single = format!("use super::{{{}}};", imports.join(", "));
+    if single.len() <= 100 {
+        let _ = writeln!(out, "{single}");
+        return;
+    }
+    let _ = writeln!(out, "use super::{{");
+    let mut line = String::from("    ");
+    for name in imports {
+        let piece = format!("{name},");
+        if line.len() > 4 && line.len() + 1 + piece.len() > 100 {
+            let _ = writeln!(out, "{line}");
+            line = String::from("    ");
+        }
+        if line.len() > 4 {
+            line.push(' ');
+        }
+        line.push_str(&piece);
+    }
+    let _ = writeln!(out, "{line}");
+    let _ = writeln!(out, "}};");
+}
+
+// see: cans/10-attestation.md#Execution-receipts
 pub fn emit_domain_leaves(model: &Model) -> Result<String, String> {
     let mut out = String::new();
     for spec in DOMAIN_LEAVES {
@@ -343,7 +361,7 @@ pub fn emit_domain_leaves(model: &Model) -> Result<String, String> {
         imports.sort();
         imports.dedup();
         out.push_str(MERKLE_SEE);
-        let _ = writeln!(out, "use super::{{{}}};", imports.join(", "));
+        write_use_super(&mut out, &imports);
         out.push('\n');
         out.push_str(&emit_hash_helpers(&needs));
         for hasher in &enum_hashers {

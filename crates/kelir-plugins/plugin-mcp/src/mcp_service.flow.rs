@@ -12,6 +12,7 @@ use kelir_interface::protocol_wire::{FilterAction, ProcessExit, StreamKind, Trap
 use kelir_interface::runtime_block::block_on;
 
 use crate::ast::{JsonRpcId, parse_json_rpc_request};
+use crate::schema::WithParamsPredicate;
 
 // see: cans/plugins/mcp.md#MCP-hook-wiring
 #[derive(Default)]
@@ -57,6 +58,15 @@ impl McpEndpointService {
             .lock()
             .map_err(|_| PluginError::Halt("mcp transaction table poisoned".into()))?
             .clone())
+    }
+
+    // see: cans/plugins/mcp.md#Invariants-and-policy-(mcp)
+    pub fn with_params(
+        &self,
+        tool: &str,
+        schema: &[u8],
+    ) -> Result<WithParamsPredicate, PluginError> {
+        WithParamsPredicate::compile(tool, schema)
     }
 
     // see: cans/plugins/mcp.md#MCP-contract

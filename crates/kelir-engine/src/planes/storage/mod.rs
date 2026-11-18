@@ -12,9 +12,6 @@ pub mod storage_quota;
 #[path = "unbound_io.flow.rs"]
 mod unbound_io;
 
-pub use config::{
-    IdmapConfig, LockBrokerWiring, MaskReadConfig, MaskReadRule, ReadMaskEngine, StorageConfig,
-    WorkspaceEncapsulation,
-};
+pub use config::{IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation};
 pub use plane::StoragePlane;
 pub use storage_quota::StorageQuota;

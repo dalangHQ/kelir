@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar, Union
 
 CtxT = TypeVar("CtxT")
 ParamsT = TypeVar("ParamsT")
@@ -130,16 +130,15 @@ def _snapshot_to_dict(snapshot: SnapshotDescriptor) -> dict[str, Any]:
 
 # see: cans/03-sdk-architecture.md#Python-SDK
 def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
-    # L3-GAP: [bindings_py]: token shields, prompts, and snoop callbacks cross once the FFI callback bridge lands.; slop: token shield/prompt/snoop dropped silently when bridge absent
+    # L3-GAP: [bindings_py]: snoop callbacks cross once the FFI callback bridge lands.; slop: snoop dropped silently when bridge absent
+    # L3-GAP: [bindings_py]: token shields and prompts cross once the FFI callback bridge lands.; slop: token shield/prompt dropped silently when bridge absent
     known = {
         "terminal": {
             "cols", "rows", "drop_osc52", "strip_title",
-            "token_shield", "prompts", "stream_engine",
+            "stream_engine",
         },
         "storage": {
-            "idmap", "shared_caches", "lock_broker", "synthetic_files",
-            "mask_read", "snoops", "encapsulation", "scan_engine",
-            "carryover_bytes",
+            "idmap", "shared_caches", "lock_broker", "encapsulation",
         },
         "wire": {
             "sinkhole", "ssh_agent_bridge", "vaults", "l4_proxies",
@@ -154,12 +153,19 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         )
     bridged: dict[str, Any] = {}
     for key, value in kwargs.items():
-        if key in ("token_shield", "prompts", "snoops"):
+        if key in ("snoops", "token_shield", "prompts"):
             continue
         if key == "sinkhole" and value is not None:
             bridged["sinkhole"] = {
-                "allowlist": list(value.allowlist),
-                "drop_all": bool(value.drop_all),
+                "rules": [
+                    {
+                        "host": rule.host,
+                        "methods": rule.methods,
+                        "paths": rule.paths,
+                        "allow": rule.allow,
+                    }
+                    for rule in value.rules
+                ],
             }
         elif key == "vaults" and value is not None:
             bridged["vaults"] = [
@@ -276,12 +282,8 @@ class Errno(str, Enum):
     ETIMEDOUT = "ETIMEDOUT"
 
 
-# see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
-class ExternalSuspendKind(str, Enum):
-    HUMAN_AUTHORIZATION_HOLD = "human-authorization-hold"
-    WIRE_CONNECTION_PARKING = "wire-connection-parking"
-    STEP_EVALUATION_YIELD = "step-evaluation-yield"
-    HOST_POWER_EVENT_SNAPSHOT = "host-power-event-snapshot"
+# see: cans/08-lifecycle.md#Suspend-and-resume
+ExternalSuspendKind = Union[str, int]
 
 
 # see: cans/artifacts/code/vmm-driver-trait.rs#SuspendReason
@@ -423,8 +425,19 @@ class Verdict:
         return cls("abort", reason=reason)
 
 
-class PostExecAction:
+# see: cans/02-plugin-model.md#Unified-verdict
+FilterAction = Verdict
 
+
+# see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
+class StepVerdict(str, Enum):
+    COMMIT = "commit"
+    ROLLBACK = "rollback"
+    YIELD_TO_HOST = "yield-to-host"
+
+
+# see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
+class PostExecAction:
     def __init__(self, kind: str) -> None:
         self.kind = kind
 
@@ -436,9 +449,10 @@ class PostExecAction:
     def rollback_and_halt(cls) -> PostExecAction:
         return cls("rollback_and_halt")
 
-
-# see: cans/02-plugin-model.md#Unified-verdict
-FilterAction = Verdict
+    def to_step_verdict(self) -> StepVerdict:
+        if self.kind == "proceed":
+            return StepVerdict.COMMIT
+        return StepVerdict.ROLLBACK
 
 
 
@@ -731,15 +745,31 @@ class CheckpointHandle:
         native = _require_native(self._native, "checkpoint create")
         return _snapshot_from_dict(native.create(label))
 
-    async def create_step(
+    async def snapshot(
         self, lineage: Any, descriptor: SnapshotDescriptor
     ) -> int:
-        native = _require_native(self._native, "checkpoint create_step")
-        return int(native.create_step(lineage, _snapshot_to_dict(descriptor)))
+        native = _require_native(self._native, "checkpoint snapshot")
+        return int(native.snapshot(lineage, _snapshot_to_dict(descriptor)))
 
-    async def commit_step(self, lineage: Any) -> int:
-        native = _require_native(self._native, "checkpoint commit_step")
-        return int(native.commit_step(lineage))
+    async def fork(self, node_id: int, lineage: Any) -> None:
+        native = _require_native(self._native, "checkpoint fork")
+        native.fork(node_id, lineage)
+
+    async def branch_from(self, node_id: int, lineage: Any) -> None:
+        native = _require_native(self._native, "checkpoint branch_from")
+        native.branch_from(node_id, lineage)
+
+    async def rollback_node(
+        self, node_id: int, guest_monotonic_ns: int = 0
+    ) -> SnapshotDescriptor:
+        native = _require_native(self._native, "checkpoint rollback_node")
+        return _snapshot_from_dict(
+            native.rollback_node(node_id, guest_monotonic_ns)
+        )
+
+    async def compact(self, lineage: Any) -> int:
+        native = _require_native(self._native, "checkpoint compact")
+        return int(native.compact(lineage))
 
     async def revert_step(self, slot: int) -> None:
         native = _require_native(self._native, "checkpoint revert_step")
@@ -791,7 +821,7 @@ class HandlerContext(Generic[CtxT, ParamsT]):
         self.params: ParamsT | None = params
 
     def has_valid_operator_lease(self) -> bool:
-        # TODO (L3) [operator_lease]: verify the stored token against the ed25519 pubkey from the profile.; slop: presence-only lease check, unverified token counts as valid
+        # TODO (L3) [governance_tools]: verify the stored token against the ed25519 pubkey from the profile.; slop: presence-only lease check, unverified token counts as valid
         session = self._session
         return session is not None and session._operator_lease_token is not None
 
@@ -908,6 +938,7 @@ __all__ = [
     "SnapshotDescriptor",
     "SpawnResult",
     "SqlProxyHandle",
+    "StepVerdict",
     "StreamKind",
     "SuspendReason",
     "Condition",

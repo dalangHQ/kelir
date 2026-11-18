@@ -6,7 +6,7 @@ use kelir::async_trait;
 use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{
-        IdmapConfig, ReadMaskEngine, StoragePlaneConfig, WorkspaceEncapsulation,
+        IdmapConfig, StoragePlaneConfig, WorkspaceEncapsulation,
     },
     plugin_model::{KelirPlugin, NoDeps, PluginDeps, PluginError, TrapInterposer, Verdict},
     protocol_wire::{ExecveMutation, PatchPayload, TrapEvent},
@@ -121,12 +121,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         },
         shared_caches: vec![],
         lock_broker: false,
-        synthetic_files: vec![],
-        mask_read: vec![],
         encapsulation: WorkspaceEncapsulation::Passthrough,
-        scan_engine: ReadMaskEngine::FastRegex,
-        carryover_bytes: 1024,
-        snoops: Vec::new(),
     })
     .plugin_instance(GitGatePlugin)
     .seal()?
@@ -134,7 +129,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .await?;
 
     session.terminal.resize(120, 40)?;
-    let slot = session.checkpoint.create_step(
+    let slot = session.step_evaluator().begin_step(
         session.lineage(1),
         SnapshotDescriptor {
             id: "git-gate-base".into(),
@@ -144,7 +139,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             guest_clock: None,
         },
     )?;
-    let node = session.checkpoint.commit_step(session.lineage(1))?;
+    let node = session.step_evaluator().commit_step(session.lineage(1))?;
     eprintln!("[kelir] checkpoint slot={slot} node={node}");
 
     // Test 1: Forced push gets stripped and disarmed via Verdict::Patch

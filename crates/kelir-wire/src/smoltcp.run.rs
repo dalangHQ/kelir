@@ -138,12 +138,6 @@ impl NetOps for RealNetOps {
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
                 });
             }
-            Some(LinkLocalRoute::VaultImds { .. }) => {
-                return Err(PluginError::Halt(
-                    "IMDS frame reached NetOps without a bound vault sink; route via WirePlane::route_imds_to_vault"
-                        .into(),
-                ));
-            }
             None => {}
         }
         match direction {
