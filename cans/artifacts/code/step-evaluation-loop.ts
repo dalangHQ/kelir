@@ -5,7 +5,11 @@
 // orchestrator scope, decoupled from hypervisor microkernel core.
 //
 // Full runnable example: artifacts/examples/autonomous-swe-agent.ts
-// Canonical spec home:    cans/10-attestation.md#Step-evaluation-loop
+// Canonical spec home:    cans/plugins/step-eval.md#Plugin-step-eval
+// Step verdicts (Commit | Rollback | YieldToHost) are plugin-owned;
+// core checkpoint exposes snapshot/fork/branch_from/rollback/compact only.
+// ExternalSuspendKind is opaque: External("step-evaluation-yield") is
+// emitted by plugin-step-eval, interpreted only there.
 
 import { kelir } from "@kelir/core";
 
@@ -13,6 +17,8 @@ const orchestrator = new VerificationEvaluator();
 let activeCheckpoint: SnapshotDescriptor | null = null;
 
 const session = await kelir({ vcpus: 2, memoryMb: 2048 })
+  // sentinelPath interpretation is plugin-step-eval-owned post-extraction;
+  // core checkpoint carries no /dev/kelir-gate awareness.
   .storage({ sentinelPath: "/dev/kelir-gate" })
   .trap("*", {
     pre: async (c) => {
@@ -45,6 +51,8 @@ const session = await kelir({ vcpus: 2, memoryMb: 2048 })
         // untouched (FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED));
         // rollback also closes host sockets, guest sees ECONNRESET/EPIPE.
         if (activeCheckpoint) await c.vm.rollback(activeCheckpoint);
+        // ANSI notice boxes are plugin-terminal-guard-owned; core
+        // exposes only write_console(port, bytes) + EventBus (Part 2/7).
         session.terminal.notice("⚡ [VERIFICATION ENGINE]: Reverted.\n");
       }
     },

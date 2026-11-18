@@ -9,17 +9,43 @@
 // identity stays (st_dev, st_ino, binary_blake3) per
 // cans/11-protocol.md#Trap-fast-path.
 //
+// ── Extraction boundary (Part 4/7) ─────────────────────────────────
+// Core predicates are POSIX process attributes only. The six builders
+// target five attribute families: binary, argv (positional membership
+// in `args` + regex in `argv_regex`), cwd (glob), env (key/value
+// equality), uid. NOT in core:
+//   - with_params (MCP tool-argument JSON schema validation)
+//       → plugins/mcp.md + plugins/tool-guard.md
+//   - interpreter unwrapping (python / node / bash / sh / perl / ruby,
+//     env / xargs / find -exec, recursive shebang / PT_INTERP, -c / -e
+//     string inspection)
+//       → plugins/supply-chain.md
+//   - vault:// placeholder rejection in env
+//       → plugins/vault.md (TrapInterposer)
+//   - cross-ring byte-range taint tracking
+//       → plugins/taint.md
+// Core resolves raw exec facts only: (st_dev, st_ino, binary_blake3,
+// argv, envp, pt_interp). Plugins consume those facts; none of the
+// above surfaces enter this file.
+//
 // All predicates on one TrapFilter are AND-ed: an event must satisfy
 // every populated predicate to reach the handler. An empty predicate
 // set (binary only) matches on binary name alone; the constructor
 // requires a non-empty binary (seal() triple: non-empty binary,
 // non-empty args — see cans/02-plugin-model.md#One-validation-at-seal-and-boot).
 // No predicate confers trust; a match admits the event to dispatch only.
+// MCP tool-argument schema validation is plugin-mcp + plugin-tool-guard
+// owned; core TrapFilter carries no schema awareness (Part 4/7).
 //
 // Owned by: cans/02-plugin-model.md#Segregated-ring-traits
 // see: cans/02-plugin-model.md#TrapFilter-predicates
 // see: cans/02-plugin-model.md#Hook-ordering
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
+// see: cans/plugins/supply-chain.md#Plugin-supply-chain
+// see: cans/plugins/mcp.md#Plugin-mcp
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+// see: cans/plugins/taint.md#Plugin-taint
+// see: cans/plugins/vault.md#Plugin-vault
 
 use std::collections::HashMap;
 
@@ -113,6 +139,10 @@ impl TrapFilter {
         // Binary predicate: the constructor's name equals the event
         // binary path, or equals the file name of that path (same rule
         // as the binary-list match: admission, never trust).
+        // No interpreter unwrapping here: core matches raw argv and
+        // binary_path only. Interpreter resolution, wrapper stripping,
+        // and shebang / PT_INTERP recursion are plugin-supply-chain-
+        // owned (Part 4/7). The facts core delivers are raw exec facts.
         let binary_ok = event.binary_path == self.binary
             || event.binary_path.rsplit('/').next() == Some(self.binary.as_str());
         if !binary_ok {

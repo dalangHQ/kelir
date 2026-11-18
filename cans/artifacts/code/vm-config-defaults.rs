@@ -5,6 +5,10 @@
 //   WireConfig/SinkholeConfig: crates/kelir/src/planes/wire_plane.rs
 //   PtyConfig: crates/kelir/src/planes/terminal_plane.flow.rs
 //   ContainerConfig: crates/kelir-plugins/plugin-container/src/lib.rs
+// Extracted fields are marked inline with their plugin destination:
+// Part 1/7 (wire), Part 2/7 (terminal), Part 5/7 (storage). Plugin
+// *Config types are the plugin-side pins; core structs carry the
+// primitive surface only.
 // Default values follow the Embedded-profile preset where one exists
 // (1 vCPU, 256MB RAM); adding a field is not a breaking change to callers.
 //
@@ -63,13 +67,6 @@ pub struct IdmapConfig {
     pub host_uid: u32,
 }
 
-// see: cans/05-storage-plane.md#In-flight-read-masking
-#[derive(Debug, Clone, Copy, Default)]
-pub enum ReadMaskEngine {
-    #[default]
-    FastRegex,
-}
-
 // see: cans/05-storage-plane.md#Storage-architecture
 #[derive(Debug, Clone, Copy, Default)]
 pub enum WorkspaceEncapsulation {
@@ -82,21 +79,15 @@ pub enum WorkspaceEncapsulation {
 pub struct StoragePlaneConfig {
     pub idmap: IdmapConfig,
     pub shared_caches: Vec<String>,
+    /// flock bridge: core-owned per 05-storage-plane (Part 5/7).
     pub lock_broker: bool,
-    pub synthetic_files: Vec<SyntheticFile>,
-    pub mask_read: Vec<MaskReadRule>,
+    /// openat2 containment: core-owned per 05-storage-plane (Part 5/7).
     pub encapsulation: WorkspaceEncapsulation,
-    pub scan_engine: ReadMaskEngine,
-    pub carryover_bytes: usize,
-}
-
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-#[derive(Debug, Clone, Default)]
-pub struct TokenShieldConfig {
-    pub max_bytes_total: usize,
-    pub max_lines_total: usize,
-    pub clamp_strategy: String,
-    pub notice: String,
+    // Extracted (Part 5/7):
+    //   synthetic_files  → plugins.vault.synthetic_files / plugins.profile.synthetic_files
+    //   mask_read        → plugins.redaction.mask_read.rules
+    //   scan_engine      → plugins.redaction.mask_read.engine
+    //   carryover_bytes  → plugins.redaction.mask_read.carryover_bytes
 }
 
 /// see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -104,25 +95,28 @@ pub struct TokenShieldConfig {
 pub struct PtyConfig {
     pub cols: u16,
     pub rows: u16,
+    // TO CONFIRM: Part 2/7 states core terminal stages are "raw VT100
+    // grid, byte-stream ring, index.bin replay only". If ESC sanitization
+    // follows that rule, drop_osc52 and strip_title move to
+    // plugin-terminal-guard. They are not explicitly named in the
+    // Part 2/7 removal list, so they stay here pending confirmation.
     pub drop_osc52: bool,
     pub strip_title: bool,
-    pub token_shield: Option<TokenShieldConfig>,
-    pub prompts: Vec<PromptRule>,
     pub stream_engine: String,
+    // Extracted (Part 2/7):
+    //   token_shield (incl. its notice: String) → plugins.token_shield
+    //   prompts                                 → plugins.terminal_guard.prompts
+    //   terminal.sanitizer.notice (ANSI box)    → plugins.terminal_guard.notice_template
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
+// Canonical shape: rules: Vec<SinkholeRule>; allowlist / drop_all are
+// sugar desugared by SinkholeConfig::from_allowlist
+// (see: artifacts/code/sinkhole-rules.rs). SinkholeRule carries
+// { host, allow }; methods / paths removed (Part 1/7).
 #[derive(Debug, Clone, Default)]
 pub struct SinkholeConfig {
-    pub allowlist: Vec<String>,
-    pub drop_all: bool,
-}
-
-// see: cans/07-wire-plane.md#L4-diversion
-#[derive(Debug, Clone, Default)]
-pub struct L4Proxy {
-    pub listen_port: u16,
-    pub destination: String,
+    pub rules: Vec<SinkholeRule>,
 }
 
 // see: cans/07-wire-plane.md#Wire-plane
@@ -137,9 +131,12 @@ pub enum TapFilter {
 pub struct WireConfig {
     pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
+    /// Interposition is plugin-vault (Part 1/7); this field declares
+    /// the vaults the plugin mounts. Retained pending confirmation.
     pub vaults: Vec<CredentialDescriptor>,
-    pub l4_proxies: Vec<L4Proxy>,
     pub tap_filter: TapFilter,
+    // Extracted (Part 1/7):
+    //   l4_proxies → plugins.egress_proxy.upstream_dial
 }
 
 // Plugin *Config exemplar; every plugin *Config follows the same contract.
@@ -157,10 +154,15 @@ pub struct ContainerConfig {
 // owning artifacts and are not duplicated here.
 // see: cans/artifacts/code/vmm-driver-trait.rs
 pub use crate::credential_vault::CredentialDescriptor;
-// see: cans/05-storage-plane.md#Storage-architecture
-pub use crate::storage_plane::{MaskReadRule, SyntheticFile};
-// see: cans/04-terminal-plane.md#Terminal-pipeline
-pub use crate::terminal_plane::PromptRule;
+// see: cans/artifacts/code/sinkhole-rules.rs (canonical shape)
+pub use kelir_interface::wire_plane::sinkhole_rules::SinkholeRule;
+// Extracted type re-exports removed (Parts 1/2/5):
+//   L4Proxy          → plugin-egress-proxy
+//   TokenShieldConfig→ plugin-token-shield
+//   ReadMaskEngine   → plugin-redaction (private; FastRegex | StreamingAutomata)
+//   MaskReadRule     → plugin-redaction
+//   SyntheticFile    → plugin-vault / plugin-profile
+//   PromptRule       → plugin-terminal-guard
 
 // see: cans/01-architecture.md#Embedded-profile
 // Typestate setters on KelirBuilder replace default_vm_config(...): the

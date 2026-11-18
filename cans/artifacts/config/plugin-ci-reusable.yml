@@ -7,6 +7,13 @@
 # Emits: signed attestation.json (commit SHA, tested core range, per-language
 # results, stable + canary channel outcomes). Canon repo consumes this via
 # registry-poll; never reads plugin source.
+#
+# Post-extraction note (Parts 1–7): this workflow is layout- and
+# key-stable. The `--channel` pin, `parity run`, and `attest --sign`
+# steps are unchanged. New plugin crates landing with the extraction
+# (l7-http, egress-proxy, token-shield, terminal-guard, step-eval,
+# taint, redaction, anomaly) consume this workflow as-is; no new
+# `with:` inputs. Plugin count in 00-overview.md is now 20.
 
 name: plugin-ci-reusable
 
