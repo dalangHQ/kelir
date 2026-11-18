@@ -5,6 +5,8 @@
       - Owner: `kelir-storage` (L3) + `kelir-storage-io` (L3) + `kelir-engine::planes::storage` (L2)
       - DAX window lifecycle governed by boot config, not plugin state
       - DAX window is not a stream kind; it is a host-side memory mapping
+      - StoragePlaneConfig is the canonical descriptor for declarative storage
+      - Maps 1:1 to [storage] table: broker, reconciler, quotas, scratch, caches
     - Crate topology
       - `kelir-interface::storage` (L1): `FuseOps`, `StorageIo`, `ReconcilerOps` traits + wire types
       - `kelir-engine::planes::storage` (L2): `StoragePlane` façade, `FuseDispatcher` delegating to `Arc<dyn FuseOps>`, `StorageQuota`

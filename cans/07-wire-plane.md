@@ -3,6 +3,8 @@
     - see: artifacts/diagrams/wire-plane.txt
     - Owner: `kelir-wire` (L3) + `kelir-engine::planes::wire` (L2) + `kelir-interface::wire` (L1)
     - Crate topology: `kelir-interface::wire` holds the `NetOps`, `DnsOps`, `UdpNatOps`, `L4DivertOps` traits and wire types; `kelir-wire` holds `RealNetOps`, `RealDnsOps`, `RealUdpNatOps`, `RealL4DivertOps`; `kelir-engine::planes::wire` holds the `WirePlane` facade over `Arc<dyn *Ops>`
+    - WireConfig is the canonical descriptor for declarative wire configuration
+    - Maps 1:1 to [wire] table: netstack, quarantine, dns, diversion, parking
     - Trait seam: the L2 facade holds `Arc<dyn NetOps>`, `Arc<dyn DnsOps>`, `Arc<dyn UdpNatOps>`, `Arc<dyn L4DivertOps>` and delegates every call; `kelir-engine` never names a `Real*Ops` type
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound, on_net_inbound, on_socket_connect
@@ -145,7 +147,9 @@
       - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
       - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
     - Diverted endpoints configured via MountScope port and CIDR allowlists
-  - Upstream dial transport    - Dial policy
+  - Upstream dial transport
+    - Upstream dial timeout defaults to 5000ms unless overridden
+    - Proxy chaining is first-class, not an afterthought
       - Proxy chaining is first-class, not an afterthought
         - Multi-hop: an upstream corporate proxy may itself dial through another
         - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec

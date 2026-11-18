@@ -3,7 +3,7 @@
 import { kelir, createPlugin, t, TrapFilter, LifecycleEvent, PostExecAction, SuspendReason, FilterAction, Verdict, PatchPayload,
          type KelirBuilder, type ExecutionReceipt,
          type CausalDelta, type PolicyHandle, type LedgerHandle } from "@kelir/core";
-import { chaos, ledger, redaction, terminalGuard, tokenShield } from "@kelir/core";
+import { chaos, ledger, redaction, terminalGuard, tokenShield, vault } from "@kelir/core";
 
 declare const oracle: {
   currentTraceId(): string;
@@ -71,6 +71,14 @@ const runtime = kelir({
   .use(redaction({ maskRead: { engine: "fast-regex", carryoverBytes: 1024,
     rules: [{ glob: "**/secrets/**", patterns: [["sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"],
                                                  ["AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"]] }] } }))
+  .use(vault({
+    credentials: [{
+      name: "STRIPE_SECRET",
+      placeholder: "vault://stripe_key",
+      type: "bearer_token",
+      audience: "api.stripe.com"
+    }]
+  }))
 
   // 2. Planes and hooks mount next; c.cap("ledger") is statically inferred without manual generics
   .terminal({
@@ -81,7 +89,11 @@ const runtime = kelir({
 
   .storage({
     idmap: { guestUid: 0, hostUid: process.getuid!() },
-    sharedCaches: ["~/.npm", "~/.cache/pip", "~/.cargo/registry"],
+    sharedCaches: [
+      { hostPath: "~/.npm", guestMount: "/root/.npm", readOnly: true },
+      { hostPath: "~/.cache/pip", guestMount: "/root/.cache/pip", readOnly: true },
+      { hostPath: "~/.cargo/registry", guestMount: "/usr/local/cargo/registry", readOnly: true }
+    ],
     lockBroker: true,
   })
 
@@ -89,7 +101,6 @@ const runtime = kelir({
     sinkhole: { rules: [{ host: "api.stripe.com", allow: true }, { host: "github.com", allow: true },
                           { host: "*.internal.net", allow: true }, { host: "*", allow: false }] },
     sshAgentBridge: true,
-    vaults: [{ name: "STRIPE_SECRET", kind: "bearer_token", audience: "api.stripe.com", placeholder: "vault://stripe_key" }],
     l4Proxies: [{ listenPort: 5432, destination: "pg.internal.net:5432", injectMtls: { certPath: "/etc/ssl/client.crt", keyPath: "/etc/ssl/client.key" } }],
     tapFilter: "AllowUdpProxied",
   })

@@ -19,12 +19,8 @@ const runtime = kelir({
   preemptionGraceMs: 0,
 })
   .use(replay({
-    stepWindow: 1_000_000,
-    kernelParams: [
-      "clocksource=kvm-clock",
-      "tsc=reliable",
-      "nohpet",
-    ],
+    stepWindowInstructions: 1_000_000,
+    pinnedClocksource: "kvm-clock",
     deterministicRngSeed: 0x5EED,
     networkIsolation: true,
   }));

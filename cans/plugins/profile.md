@@ -114,7 +114,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.initial_mb
       - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.pressure_reclaim
       - see: artifacts/examples/fixtures/kelir.yaml#session.balloon.reclaim_strategy
-      - session.balloon config struct: TBD (adjust_balloon is the driver verb)
+      - session.balloon maps to VmConfig.balloon: VmBalloonConfig
     - Session clock (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.clock.tsc_locked
       - see: artifacts/examples/fixtures/kelir.yaml#session.clock.pinned_clocksource
@@ -132,7 +132,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#session.devices.virtio_shm.regions
     - Session artifacts (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.artifacts
-      - session.artifacts.kernel_boot_params: list form TBD (GuestClock: one string)
+      - session.artifacts.kernel_boot_params maps to VmConfig.kernel_boot_params
     - Session shim (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.shim.max_exec_slots
       - see: artifacts/examples/fixtures/kelir.yaml#session.shim.hide_pid
@@ -149,8 +149,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.rollback_purge
       - see: artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.dir_merge_cache
       - storage.dax_window: auto | off | <size_mb> (default: off)
-      - storage.dax_window routes to KelirBuilder::dax_window at boot; no struct field
-      - storage.dax_window: no StorageConfig field (drift, owner WS-D1)
+      - storage.dax_window maps to StoragePlaneConfig.dax_window
     - Storage reconciler (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.atomic_leaf_commit
       - see: artifacts/examples/fixtures/kelir.yaml#storage.reconciler.traversal_guard
@@ -197,7 +196,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#wire.dns.allowlist
     - Wire L4 diversion (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.upstream_dial.env_lookup
-      - wire.l4_diversion.upstream_dial.dial_timeout_ms: TBD (no budget value in 07)
+      - wire.l4_diversion.upstream_dial.dial_timeout_ms defaults to 5000ms
       - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.proxies
       - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.udp_nat.enabled
       - see: artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.udp_nat.max_entries
@@ -235,7 +234,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.replay_log.bypass_sqlite_wal
     - Terminal wireframe grid (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#terminal.wireframe_grid.track_screen_matrix
-      - terminal.wireframe_grid.export_on_trap: no receipt screen field (drift, owner WS-D1)
+      - terminal.wireframe_grid maps to PtyConfig.wireframe_grid
   - Checkpoint schema (profile)
     - Checkpoint semantics: see: [2]
     - Lineage semantics (09-snapshots.md): see: [1]

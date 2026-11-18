@@ -10,7 +10,7 @@ from typing import Literal
 import kelir
 from kelir import BaseModel, Field, HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
 from kelir.plugins.db_proxy import (
-    DbProxyConfig, DbProxyPlugin, EphemeralCredentials,
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, PgSchemaRewrite,
     PgWireRewrite, SqliteOverVsock,
 )
 from kelir.plugins.ledger import (
@@ -77,8 +77,8 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             postgres=PgWireRewrite(
                 listen_port=5432,
                 upstream=f"{pg_host}:5432",
-                rewrite_rules=[
-                    ("public.", "migrate_schema."),
+                schema_rewrites=[
+                    PgSchemaRewrite(from_schema="public.", to_schema="migrate_schema."),
                 ],
             ),
             # see: cans/plugins/db-proxy.md#Ephemeral-credentials-injected-at-host-connection-boundary

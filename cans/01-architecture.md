@@ -31,15 +31,16 @@
           - Emulated fallback requires explicit opt-in via allow_emulated_fallback
           - Rootless container fallback exposes driver-bwrap and driver-proot
           - Emulated runs report Class 2 attestation: see: 10-attestation.md
+        - Isomorphic config law: profile tables map 1:1 to engine config structs
+        - Declarative profile parsing feeds identical types used by SDK builders
           - DriverPolicy: wx_enforcement, allow_emulated_fallback, driver
-            - DriverPolicy.driver is Option<String> naming backend backend
       - Multi-tenant isolation envelope
           - Every session binds an immutable OrgScope tenant identity
           - Storage, cgroups, and virtqueues partition by (tenant_id, session_id)
           - Cross-tenant directory traversal fails closed at host VFS layer
               - Names the selected backend, None for default
-              - Live: crates/kelir-interface/src/driver_interface.flow.rs:50-59
-              - The artifact DriverPolicy lacks the field (non-conforming here)
+          - DriverPolicy.driver is Option<String> selecting backend
+          - Complete DriverPolicy field set: see: [6]
             - Exercised by: see: artifacts/examples/replay.rs
         - Foreign runtime embedding
           - ForeignPluginProxy embeds V8 and Python event loops directly
@@ -156,8 +157,8 @@
           - DRY and SSOT: `kelir-interface` owns shared types; zero type duplication
           - YAGNI: concrete structs first; traits require multiple implementations
         - Config-default invariant
-          - Every VmConfig, StoragePlaneConfig, WireConfig, PtyConfig, DriverPolicy,
-            and plugin `*Config` struct derives `Default`; adding a field is not
+          - Every engine and plane config struct derives Default, Serialize, Deserialize
+          - Eliminates dual-source drift between declarative profiles and SDK structs
           - Field sets and typestate-setter spellings: see: artifacts/code/vm-config-defaults.rs
     - Params ingress contract
       - Structured configuration delivered via paravirtual configuration device

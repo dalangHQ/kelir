@@ -13,6 +13,9 @@
       - Rust: affine typestate; .plugin() consumes self by value
       - TypeScript: accumulation monad; each .use() returns a new typed builder
       - Python: fluent builder returning self with async context management
+      - Granular parity law: every TOML/YAML table maps to a typed SDK plane config
+      - .storage(StoragePlaneConfig), .wire(WireConfig), .host(HostConfig)
+      - .checkpoint(CheckpointConfig), .terminal(PtyConfig) accept full descriptors
     - Prerequisite gating across languages
       - Rust: compile-time, via Satisfies capability bounds and typestate
       - TypeScript: compile-time, via generic accumulation and requires constraint
@@ -299,8 +302,11 @@
       - Flattens profile into child VirtIO plugins via CompositePlugin
       - Transitions KelirBuilder<Unset> to KelirBuilder<Sealed> at boot
     - Bidirectional synchronization
-      - box.export_spec(path) serializes active topology back to disk
+      - box.export_spec(path) serializes active static topology to TOML/YAML
+      - KelirBuilder::from_config(path).export_spec(out) preserves full equivalence
+      - Round-trip invariant: exported profile boots bitwise identical configuration
       - File hydration leaves builder open for host programmatic hooks
+      - Declarative knobs load via from_config; dynamic closures bind via builder
     - Language parity (Sandbox)
       - TypeScript: Sandbox.fromConfig("kelir.toml")
       - Python: Sandbox.from_config("kelir.toml")

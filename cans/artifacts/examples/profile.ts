@@ -1,18 +1,20 @@
 // see: cans/plugins/profile.md#Plugin-profile
 // see: cans/plugins/profile.md#Declarative-profile-execution
+// see: cans/02-plugin-model.md#Unified-builder
 
-import { Sandbox } from "@kelir/core";
+import { KelirBuilder } from "@kelir/core";
 
 async function main() {
-  const box = await Sandbox.fromConfig("./fixtures/kelir.toml");
-  await box.boot();
+  const builder = await KelirBuilder.fromConfig("./fixtures/kelir.toml");
+  builder.seal();
+  const session = await builder.boot();
 
-  const r = await box.exec("git", ["status"]);
+  const r = await session.spawn("git", ["status"]);
   console.error(`[kelir] git status -> exit=${r.exitCode}`);
 
-  await box.exportSpec("./fixtures/kelir.exported.toml");
+  await session.exportSpec("./fixtures/kelir.exported.toml");
 
-  await box.terminate();
+  await session.terminate();
 }
 
 main().catch(console.error);

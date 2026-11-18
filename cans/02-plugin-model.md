@@ -593,6 +593,8 @@
       - Python enforces prerequisites at builder.boot() via EConfig
   - Unified builder
     - One builder type, one chain; a plugin IS a builder instance
+      - KelirBuilder::from_config(path) hydrates declarative profiles directly
+      - Loaded profile populates immutable static descriptors prior to hook chains
     - Host creation is KelirBuilder::new(VmConfig) in Rust
     - Plugin creation is KelirBuilder::named(name) in Rust
     - Mount is merging: host.plugin(plugin) moves the registry by value

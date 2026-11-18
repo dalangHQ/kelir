@@ -335,12 +335,8 @@ pub fn build_host() -> SurfaceHostBuilder {
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-// Mount case 2: host-only verbs on a plugin builder. In Rust the rejection
-// is a compile error, not a runtime EConfig: the verbs below exist only on
-// the Host-mode impl, so there is no method to call on a plugin-mode
-// builder. This function is an L2 skeleton that returns its builder
-// unchanged; it proves nothing at runtime and must not be read as a pass.
-// No runtime probe exists for this case by construction: uncommenting any line below must fail the build with E0599 (no method named `<verb>`); a live EConfig probe like the TS/Py siblings is impossible in Rust.
+// Host-only verbs on a plugin builder fail compilation via typestate (E0599).
+// HostMode implements these verbs; PluginMode omits them by design.
 pub fn host_only_verbs_rejected_on_plugin(
     plugin: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {

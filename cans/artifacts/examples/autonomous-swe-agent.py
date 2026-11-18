@@ -43,9 +43,10 @@ from kelir.plugins.plugin_terminal_guard import (
     PromptRuleConfig, TerminalGuardConfig, terminal_guard,
 )
 from kelir.plugins.plugin_token_shield import TokenShieldConfig, token_shield
+from kelir.plugins.vault import CredentialDescriptor, VaultConfig, VaultPlugin
 from kelir.storage_planes import IdmapConfig
 from kelir.wire_planes import (
-    L4Proxy, Mtls, SinkholeConfig, SinkholeRule, CredentialDescriptor
+    L4Proxy, Mtls, SharedCacheConfig, SinkholeConfig, SinkholeRule
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -339,7 +340,9 @@ async def build_runtime(
         .storage(
             idmap=IdmapConfig(guest_uid=0, host_uid=os.getuid()),
             shared_caches=[
-                "~/.npm", "~/.cache/pip", "~/.cargo/registry",
+                SharedCacheConfig(host_path="~/.npm", guest_mount="/root/.npm", read_only=True),
+                SharedCacheConfig(host_path="~/.cache/pip", guest_mount="/root/.cache/pip", read_only=True),
+                SharedCacheConfig(host_path="~/.cargo/registry", guest_mount="/usr/local/cargo/registry", read_only=True),
             ],
             lock_broker=True,
         )
@@ -380,6 +383,16 @@ async def build_runtime(
                 ],
             ),
         )))
+        .use(VaultPlugin(VaultConfig(
+            credentials=[
+                CredentialDescriptor(
+                    name="STRIPE_SECRET",
+                    placeholder="vault://stripe_key",
+                    kind="bearer_token",
+                    audience="api.stripe.com",
+                ),
+            ],
+        )))
 
 
         # see: cans/07-wire-plane.md#Vault-and-credential-flow
@@ -392,14 +405,6 @@ async def build_runtime(
                 + [SinkholeRule(host="*", allow=False)],
             ),
             ssh_agent_bridge=True,
-            vaults=[
-                CredentialDescriptor(
-                    name="STRIPE_SECRET",
-                    kind="bearer_token",
-                    audience="api.stripe.com",
-                    placeholder="vault://stripe_key",
-                ),
-            ],
             l4_proxies=[
                 L4Proxy(
                     listen_port=5432,

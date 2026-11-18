@@ -1,7 +1,6 @@
 # Profile fixture for profile.rs.
 # Demonstrates: plugins mount, monotonic limits.
 # Part 1/4 canonical shape (TOML form): invariants, driver, session.
-# Keys marked TBD exist in the schema only; no VmConfig/DriverPolicy field yet.
 
 version = 1
 
@@ -57,7 +56,6 @@ enabled = true
 initial_mb = 2048
 pressure_reclaim = true
 reclaim_strategy = "madvise_dontneed"
-# TBD: balloon is a schema section only; driver exposes adjust_balloon only
 
 [session.clock]
 tsc_locked = true
@@ -86,7 +84,6 @@ size_bytes = 33554432
 kernel_path = "./fixtures/vmlinux-6.6-kelir"
 rootfs_erofs_path = "./fixtures/rootfs-swebench.erofs"
 kernel_boot_params = ["kptr_restrict=2", "dmesg_restrict=1", "panic_on_oops=1", "slab_nomerge", "pti=on", "slub_debug=FZP", "quiet"]
-# TBD: boot_params list form (GuestClock carries one string)
 
 [session.shim]
 max_exec_slots = 4096
@@ -363,6 +360,7 @@ non_blocking = true
 
 [wire]
 userspace_netstack = true
+ssh_agent_bridge = true
 l7_protocol_inspection = true
 default_egress = "drop"
 allow_ipv6 = false
@@ -390,6 +388,7 @@ allowlist = ["api.stripe.com", "github.com", "api.github.com", "*.internal.net"]
 
 [wire.l4_diversion.upstream_dial]
 env_lookup = true
+dial_timeout_ms = 5000
 
 [[wire.l4_diversion.proxies]]
 listen_port = 5432

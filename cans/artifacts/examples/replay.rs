@@ -47,12 +47,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         entropy_seed: Some(0x5EED),
     })
     .plugin_instance(ReplayPlugin::new(ReplayConfig {
-        step_window: 1_000_000,
-        kernel_params: vec![
-            "clocksource=kvm-clock".into(),
-            "tsc=reliable".into(),
-            "nohpet".into(),
-        ],
+        step_window_instructions: 1_000_000,
+        pinned_clocksource: "kvm-clock".into(),
         deterministic_rng_seed: 0x5EED,
         network_isolation: true,
     }))

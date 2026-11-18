@@ -39,16 +39,16 @@ pub fn chaos_config() -> ChaosConfig {
         network: vec![NetworkFaultRule {
             target: "example.invalid".to_string(),
             direction: FaultDirection::Outbound,
-            base_ms: 0,
+            latency_ms: 0,
             jitter_ms: 0,
             drop_rate: 0.0,
             inject_rst: true,
             bandwidth_kbps: None,
         }],
-        fs: vec![StorageFaultRule {
-            target_path: "/workspace/scratch".to_string(),
-            simulate_error: Errno::Enospc,
-            error_probability: 1.0,
+        storage: vec![StorageFaultRule {
+            target_glob: "/workspace/scratch".to_string(),
+            simulate_errno: Errno::Enospc,
+            probability: 1.0,
         }],
     }
 }

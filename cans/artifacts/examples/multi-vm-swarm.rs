@@ -103,7 +103,7 @@ fn swarm_builder() -> KelirBuilder<Host, Unsealed, (), HNil, SwarmPlugins, NoPar
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
-        store: ".kelir/swarm-audit.merkle.db".into(),
+        store_path: ".kelir/swarm-audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
         hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),

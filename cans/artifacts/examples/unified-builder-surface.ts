@@ -210,13 +210,7 @@ export function buildSurfaceHost() {
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-// Mount case 2: host-only verbs on a plugin builder, expecting EConfig at
-// the call site. Live TypeScript rejects exactly these six verbs plus
-// boot() below; seal() and use() do not throw on a plugin-mode builder
-// live, although the spec lists them host-only, so they are not probed
-// here. The scope entries (.fs, .actions, .streams, .vsock, .params,
-// .deny) are both-modes surfaces; their host-only sub-config is what the
-// plugin-mode probe rejects.
+// Host-only verbs on a plugin builder throw EConfig synchronously at call site.
 export function hostOnlyVerbsRejectedOnPlugin(): string[] {
   const rejected: string[] = [];
   const plugin = createPlugin("surface");

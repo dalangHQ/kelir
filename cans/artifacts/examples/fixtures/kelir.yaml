@@ -298,6 +298,7 @@ wire:
     # Upstream corporate proxy chaining.
     upstream_dial:
       env_lookup: true                # Reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY
+      dial_timeout_ms: 5000
 
     # L4 TCP socket proxy mapping.
     proxies:

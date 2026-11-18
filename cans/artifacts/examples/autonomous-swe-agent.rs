@@ -13,6 +13,7 @@ use kelir::{Deserialize, Serialize};
 use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
+use kelir::{VaultConfig, VaultPlugin};
 
 use kelir::{
     interface::driver_interface::{DriverPolicy, WxPolicy},
@@ -349,12 +350,6 @@ async fn build_runtime(
         },
         ssh_agent_bridge: true,
 
-        vaults: vec![CredentialDescriptor {
-            name: "STRIPE_SECRET".into(),
-            kind: CredentialKind::BearerToken,
-            audience: "api.stripe.com".into(),
-            placeholder: "vault://stripe_key".into(),
-        }],
         l4_proxies: vec![L4Proxy {
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
@@ -427,6 +422,14 @@ async fn build_runtime(
             include_wall_clock_ns: true,
             include_phase_timings: false,
         },
+    }))
+    .plugin_instance(VaultPlugin::new(VaultConfig {
+        credentials: vec![CredentialDescriptor {
+            name: "STRIPE_SECRET".into(),
+            kind: CredentialKind::BearerToken,
+            audience: "api.stripe.com".into(),
+            placeholder: "vault://stripe_key".into(),
+        }],
     }))
     .plugin_instance(policy_plugin)
     .trap_async("*", {

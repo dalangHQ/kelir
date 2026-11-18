@@ -221,13 +221,7 @@ def build_host() -> KelirBuilder:
 
 
 # see: cans/02-plugin-model.md#Unified-builder
-# Mount case 2: host-only verbs on a plugin builder, expecting EConfig at
-# the call site. Live Python rejects exactly these probes plus boot()
-# below; seal() and use() do not raise on a plugin-mode builder live,
-# although the spec lists them host-only, so they are not probed here.
-# The scope entries (.fs, .actions, .streams, .vsock, .params, .deny)
-# are both-modes surfaces; their host-only sub-config is what the
-# plugin-mode probe rejects.
+# Host-only verbs on a plugin builder raise EConfig synchronously at call site.
 def host_only_verbs_rejected_on_plugin() -> list[str]:
     rejected: list[str] = []
     plugin = build_surface_plugin()
