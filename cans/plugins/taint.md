@@ -1,0 +1,24 @@
+- Plugin taint
+  - Crate dependencies (taint)
+    - Plugin identifier: plugin-taint
+    - Owner crate: crates/kelir-plugins/plugin-taint
+    - name() = "taint"
+    - Tier 2 cross-ring security governance (taint)
+    - Depends on (taint): kelir-interface (ring hooks + metadata store)
+    - Exposes: TaintTrackingService
+    - Lifecycle attachment (taint): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (taint)
+    - Exports TaintTrackingService via PipelineBinder for byte-range taint
+  - Invariants and policy (taint)
+    - Owns byte-range taint tracking across ring boundaries
+      - FUSE read → execve argv/envp → wire egress byte spans
+    - Consumes core hooks: FsInterposer, TrapInterposer, WireInterposer
+    - Uses opaque per-session metadata store from core for taint labels
+    - Taint state is plugin-private; core holds no byte-range semantics
+    - Escalation routes to plugin-tool-guard when mutating verbs match
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.taint
+  - Error and return semantics (taint)
+    - Hook signature (taint): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (taint)
+      - Untrusted ingress byte range → taint label; no errno
+      - Tainted mutating verb → delegates verdict to tool-guard

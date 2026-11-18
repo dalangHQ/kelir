@@ -1,0 +1,26 @@
+- Plugin token-shield
+  - Crate dependencies (token-shield)
+    - Plugin identifier: plugin-token-shield
+    - Owner crate: crates/kelir-plugins/plugin-token-shield
+    - name() = "token-shield"
+    - Tier 2 terminal output governance (token-shield)
+    - Depends on (token-shield): kelir-interface (ConsoleInterposer)
+    - Exposes: ScrollbackClampService
+    - Lifecycle attachment (token-shield): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (token-shield)
+    - Exports ScrollbackClampService via PipelineBinder for output clamping
+  - Invariants and policy (token-shield)
+    - Implements ConsoleInterposer::on_console_output
+    - Clamps scrollback to protect model context window
+      - max_bytes_total: per-execution byte ceiling
+      - max_lines_total: per-execution line ceiling
+      - clamp_strategy: head_and_tail | head_only | tail_only
+    - Emits notice line on clamp (plugin-private template)
+    - Context-window concept is plugin-owned; not a terminal primitive
+    - Core terminal carries no maxLines / maxBytes config
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.token_shield
+  - Error and return semantics (token-shield)
+    - Hook signature (token-shield): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (token-shield)
+      - Clamp is Pass with mutated byte buffer; no errno
+      - Misconfiguration → EConfig at boot

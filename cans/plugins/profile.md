@@ -295,6 +295,11 @@
       - Schema syntax or validation failure aborts boot with EConfig
       - Upstream lattice widening attempts abort with ESecurityViolation
       - Conflicting merge scopes abort with EAmbiguousMutation
+- Synthetic inode ownership (profile)
+  - Serves profile-scoped synthetic files through on_fs_lookup
+  - .gitconfig-shape identity files are plugin-private templates
+  - Content sourced from builder profile; never from core config
+  - Core only replies with Action::Patch(FsInode); no domain shapes
 
 - [1]: artifacts/examples/fixtures/kelir.yaml
 - [2]: 08-lifecycle.md

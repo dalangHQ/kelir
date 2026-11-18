@@ -1,0 +1,24 @@
+- Plugin l7-http
+  - Crate dependencies (l7-http)
+    - Plugin identifier: plugin-l7-http
+    - Owner crate: crates/kelir-plugins/plugin-l7-http
+    - name() = "l7-http"
+    - Tier 2 governance and protocol proxy (l7-http)
+    - Depends on (l7-http): kelir-interface (binds to native Wire Plane L4)
+    - Exposes: HttpPolicyService
+    - VirtIO attachment (l7-http): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (l7-http): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (l7-http)
+    - Exports HttpPolicyService via PipelineBinder for L7 verdicts
+  - Invariants and policy (l7-http)
+    - Owns all HTTP/1.1, HTTP/2, SSE, and JSON-RPC L7 parsing
+    - Owns TLS interception via host keyring (plugin-scoped, not core)
+    - Synthesizes policy-rejection receipts on the diverted L4 stream
+      - HTTP 403 {"error":"E_POLICY_DENIED", reason, pid, binary}
+    - SinkholeRule (methods, paths) is plugin-private config
+    - Core wire plane stops at L4; every byte above is owned here
+  - Error and return semantics (l7-http)
+    - Hook signature (l7-http): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (l7-http)
+      - Policy deny → 403 with E_POLICY_DENIED JSON body
+      - Upstream TLS failure → 502 with E_UPSTREAM_TLS

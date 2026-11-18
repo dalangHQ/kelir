@@ -44,3 +44,8 @@
       - FilterAction::Forward after in-place Q/P frame rewrite
         - Server sees rewritten frame as if client sent it
         - Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE
+- SQL receipt extension (db-proxy)
+  - Owns SqlReceiptExt::net_l7_sql(&receipt) extension trait
+  - Reads receipt.ext_raw() bytes; core receipt carries no SQL shape
+  - Extension trait lives in plugin crate; not in kelir-interface
+  - Consumers opt in by importing plugin-db-proxy

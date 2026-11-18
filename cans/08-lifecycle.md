@@ -5,8 +5,8 @@
       - Centralized Hypervisor Lifecycle State Machine:
         - States: Initializing, Running, Draining, Suspended(SuspendReason), Terminated
         - SuspendReason: External(ExternalSuspendKind) | ResourcePressure
-        - ExternalSuspendKind: HumanAuthorizationHold | WireConnectionParking
-          - StepEvaluationYield | HostPowerEventSnapshot
+        - ExternalSuspendKind is opaque: External(String) | External(u32)
+        - Reason-tag ownership lives with each issuing plugin
         - Approval holds freeze only calling task cgroup via granular_task_freeze
         - Held VirtIO descriptors yield immediately to prevent ring worker stalls
         - Independent peer tasks in guest continue execution during approval holds
@@ -260,35 +260,14 @@
     - Crate topology: kelir-checkpoint owns RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs); kelir-engine/src/planes/checkpoint/mod.rs is the thin L2 CheckpointPlane façade holding Arc<dyn CheckpointOps>
     - Trait seam: kelir-interface::checkpoint::CheckpointOps (create_step, active_step, commit_step, rollback_step, branch_from, restore, head, lineage, monotonic_watermark_ns, compact)
     - Zero-harness boundary detection
-      - Tracks process group exits and foreground PTY idle quiescence
-      - Traps sentinel FUSE inodes on unbacked virtual paths (/dev/kelir-gate)
       - Pre-checkpoint dentry trim: VirtIO-FS issues active FUSE forget pass
       - Unreferenced dentry nodes with zero open handles evicted before capture
       - Prevents checkpoint descriptor explosion from recursive directory sweeps
       - Intercepts configured clean execution targets before workload exit
-    - Autonomous step verification loop
-      - Host registers StepEvaluator closure through CheckpointPlane
-        - Session handle: session.checkpoint
-      - StepSlot supports branching DAGs with Ed25519 reviewer attribution
-      - Approvals commit signed reviewer identities into snapshot manifests
-      - Separation of duties enforces distinct actor identities across steps
-      - Captures atomic pre-step SnapshotDescriptor before workload execution
-      - Evaluates physical ExecutionReceipt upon trapped process exit
-      - Step outcomes (StepVerdict):
-        - StepVerdict::Commit: flushes staging delta, advances active step slot
-        - StepVerdict::Rollback(reason): calls session.rollback(lineage); RAM reverts in <8ms
-      - Tainted step verification
-        - StepEvaluator validates causal deltas against declared task scopes
-        - Unapproved filesystem writes or egress under tainted state force rollback
-        - Active delta is dropped in ≤8ms; memory reverts to pre-step slot base
-        - Rollback purges in-guest payload without persisting poisoned memory
-        - StepVerdict::YieldToHost: halts vCPU registers awaiting external input
-        - SDK post-exec gates return PostExecAction, mapped to this lattice
-        - PostExecAction::Proceed maps to StepVerdict::Commit
-        - PostExecAction::RollbackAndHalt maps to StepVerdict::Rollback
-        - YieldToHost is reached via Verdict::Suspend { until: Approval }
-      - Fail-closed invariant: unhandled post-execution failures or evaluation
-        - timeouts trigger rollback after trap release (see: #Rollback)
+    - Primitive surface: snapshot() | fork() | branch_from()
+    - Primitive surface: rollback(id) | compact()
+    - Content-addressed RAM+disk DAG owned by core
+    - Evaluation orchestration → plugins/step-eval.md
     - Delta chain compaction
       - A checkpoint chain holds: one immutable Base and N stacked WorkingDeltas
       - Depth is unbounded; lineage edges: 09-snapshots.md#Groups-and-lineage

@@ -103,18 +103,22 @@
     - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
     - In-guest root cannot mint setuid host binaries
   - Synthetic FUSE inodes
-    - Injects RAM-only configuration files (.env, .gitconfig) into guest VFS
+    - Core provides virtual inode reply: on_fs_lookup -> Action::Patch(FsInode)
+    - Synthetic content ownership → plugins/vault.md / plugins/profile.md
+    - Core carries no filename literals and no content templates
     - Lookups return synthetic FsInodeAttr (declared mode honored; 0o400 default)
     - Served directly from host supervisor memory; physically absent on host SSD
     - Synthetic inodes layer onto the host CoW broker namespace at lookup
   - In-flight read masking
     - Pipeline exposes synchronous FsInterposer::on_fs_read hooks across offsets
     - Reads dispatch through the pipeline engine, threading the buffer across mounted interposers in order
-    - Redaction and pattern replacement execute on the threaded buffer before guest VFS return
+    - Core exposes FsInterposer::on_fs_read with byte buffer + path
+    - Read masking ownership → plugins/redaction.md
+    - Core carries no regex engine and no pattern vocabulary
   - Write snoops
-    - .storage() snoops field: rules firing on guest writes to matching path globs
-    - SnoopRule: path glob, sync: bool, on_write: Fn(path, raw, ctx)
-    - Py spells the field glob (SnoopRule); TS spells it path with onWrite
+    - Core exposes FsInterposer::on_fs_write with path + buffer
+    - Write-snoop rule ownership → plugins/redaction.md
+    - Core carries no glob matcher and no snoop table
     - Fires via FsInterposer on the guest write path; see: #Write-gating
   - Host inode lock broker
     - Cross-VM advisory file lock mediation native to storage plane

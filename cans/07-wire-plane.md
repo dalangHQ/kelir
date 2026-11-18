@@ -40,8 +40,8 @@
       - Fast-fail TCP RST applies exclusively to interceptor Err(Reject)
     - Pre-policy drop zones
       - Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before policy
-      - Exception: 169.254.169.254 is intercepted at L3 and translated to vault vsock
-      - Cloud metadata IMDS endpoints except 169.254.169.254 dropped at L3 ingress
+      - Generic L3 drop rules; no address literals in core
+      - plugin-vault registers its own boot-time diversion (see: plugins/vault.md)
   - Raw packet interception points
     - Outbound frames: .intercept(Ring.NetOutbound, ...) dispatches L2/L4
     - Inbound frames: .intercept(Ring.NetInbound, ...) dispatches L2/L4
@@ -126,16 +126,14 @@
     - Directly diverts declared ports to host Unix domain sockets without netns
     - Guest TCP connects splice to host Unix listeners with zero TAP allocation
     - Exposes raw duplex stream to registered NetInterposer proxies
-    - Carrier supports in-ring L7 protocol inspection and TLS stream parsing
+    - L4 byte-stream diversion only; L7 payloads are opaque to core
     - Eliminates out-of-process proxy sidecars to preserve attestation chain
     - Workload TLS passes byte-for-byte; hypervisor never acts as TLS MITM proxy
-    - L7 interposition evaluates HTTP headers, SSE frames, and JSON-RPC bodies
+    - Diverted streams delivered raw to plugins/l7-http (see: plugins/l7-http.md)
     - Stream mutations apply in-place without breaking client keep-alive
   - Egress side-effect outbox
-    - Buffers outbound frames on declared irreversible network operations
-    - Holds physical egress until step verification succeeds: see: 08-lifecycle.md
-    - Step rollback silently purges buffered frames before wire transmission
-    - Compensating sagas trigger registered undo webhooks on step failure
+    - L4 stream pause / flush / drop primitives only
+    - Saga + undo-webhook ownership → plugins/transaction.md
     - Vault and credential flow
       - Default path: guest fetches scoped token from plugin-vault, presents it
       - Optional sidecar: see: plugins/vault.md#Optional-external-egress-rewriting
@@ -143,13 +141,13 @@
     - Diverted endpoints configured via MountScope port and CIDR allowlists
   - Upstream dial transport    - Dial policy
       - Proxy chaining is first-class, not an afterthought
-        - Protocols: HTTP CONNECT, SOCKS5 (RFC 1928), SOCKS5h (remote DNS)
-        - SOCKS5 auth extension: username/password (RFC 1929)
         - Multi-hop: an upstream corporate proxy may itself dial through another
         - Config sources: HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY, or builder spec
         - Explicit auth: username/password for SOCKS5; Basic or Bearer for CONNECT
         - Credentials read from host environment or host keyring; never persisted in profile files
       - Corporate egress (Zscaler, Squid, Envoy) works without guest cooperation
+    - L4 dialer trait exposed to plugins
+    - Handshake ownership → plugins/egress-proxy.md
     - Dial mechanics
       - Outbound TCP permitted by policy is dialed through the host netstack
       - The guest kernel believes it is dialing the raw target IP

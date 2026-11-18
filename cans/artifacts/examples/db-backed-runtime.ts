@@ -1,6 +1,7 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 // see: cans/plugins/ledger.md#Plugin-ledger
 // see: cans/plugins/transaction.md#Plugin-transaction
+// see: cans/plugins/db-proxy.md#SQL-receipt-extension
 
 import { kelir, t, TrapFilter, PostExecAction, Errno,
          type ExecutionReceipt, type LedgerHandle, type TransactionHandle,
@@ -74,7 +75,7 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       },
       post: async (c) => {
         const receipt: ExecutionReceipt = await c.receipt();
-        // see: cans/10-attestation.md#Typed-extensions
+        // receipt.net_l7_sql() moved to SqlReceiptExt::net_l7_sql(&receipt)
         if (!receipt.netL7Sql())
           return PostExecAction.RollbackAndHalt;
         return PostExecAction.Proceed;

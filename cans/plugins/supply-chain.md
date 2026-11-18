@@ -20,6 +20,12 @@
     - see: artifacts/examples/fixtures/kelir.yaml#plugins.supply_chain.package_guard.managers
     - Inspects binary_path and argv on TrapEvent for package managers (npm, pip)
     - Blocks execution of lifecycle scripts in dependency directories
+    - Interpreter unwrapping and payload inspection
+      - Owns the interpreter table: python, node, bash, sh, perl, ruby
+      - Owns wrapper unwrapping: env, xargs, find -exec
+      - Recursive shebang and PT_INTERP resolution is plugin-private
+      - Inspects -c / -e strings as code when interpreter is known
+      - Consumes core raw facts: (st_dev, st_ino, binary_blake3, argv, envp, pt_interp); core resolves none of this
     - Entropy analysis
       - Computes Shannon entropy of argv[1:] on every TrapEvent
       - Flags values above 5.2 bits/char as encrypted or base64-obfuscated

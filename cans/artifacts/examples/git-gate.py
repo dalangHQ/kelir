@@ -1,6 +1,6 @@
 # see: cans/02-plugin-model.md#Unified-interposition-pipeline
 # see: cans/05-storage-plane.md#Encapsulation-invariant
-# see: cans/05-storage-plane.md#In-flight-read-masking
+# see: cans/plugins/redaction.md#Plugin-redaction
 from __future__ import annotations
 
 import asyncio

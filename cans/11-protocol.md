@@ -130,7 +130,6 @@
       - Binary rooted in EROFS trusted prefix bypasses foreign FFI
       - /usr/bin, /bin, /usr/lib are trusted prefixes
       - Target script and argument paths must resolve strictly within EROFS
-      - Dynamic interpreters (python, node, bash, sh, perl, ruby) inspect argv[1..]
       - Script arguments targeting /workspace/** forfeit skip and traverse Gate 3
       - Gate 2 still evaluates; Allow proceeds without FFI crossing
       - Untrusted /workspace/** always traverses Gate 3
@@ -145,13 +144,12 @@
       - binary_path is a display hint; policy never matches on it alone
       - Resolved identity: see: artifacts/code/messages.rs
     - Interpreter unwrapping
-      - Resolve shebang, PT_INTERP, and shell -c/-e payloads recursively
-      - env, xargs, and find -exec re-exec count as unwrap steps
       - Depth cap: TBD (L3 sets the bound; overflow fails closed)
       - Unreadable payload or cycle fails closed with Drop, never Pass
-      - The -c/-e string is inspected as code, never as one argv entry
       - Terminal binary is the resolved identity; chain is audit only
       - Shell payload and chain: see: artifacts/code/messages.rs
+    - Core resolves raw exec facts: (st_dev, st_ino, binary_blake3, argv, envp, pt_interp)
+    - No interpreter knowledge in core; plugin-supply-chain consumes facts
     - Cost rationale
       - A single trap-on-every-syscall design adds ~µs per fork/exec at
         - toolchain scale; the allowlist exists to pay that cost only where policy is possible
@@ -234,7 +232,7 @@
         - Transport backend multiplexes channels over host-terminated rings
   - Policy rejection receipt
     - L7 wire-plane contract, not attestation state
-    - L7 rejections surface as synthetic HTTP frames in guest ingress ring
+    - Core emits raw trap verdict; on-wire HTTP 403 synthesis → plugins/l7-http.md
     - Body: {"error":"E_POLICY_DENIED","rule":"<rule_id>","target":"<target>"}
     - Content-Type: application/json
     - Status: 403 Forbidden
@@ -322,7 +320,7 @@
     - Env injection limits
       - set_env+unset_env total ≤ 32KB CBOR-encoded
       - Key length ≤ 128 bytes
-      - vault:// placeholder values reject ESecurityViolation
+    - Core carries no vault:// awareness; placeholder rejection → plugins/vault.md via TrapInterposer
     - Custom dispatch timeout
       - Exceeded handler falls through to Action::Pass (c.pass_() in Python)
       - Per-custom-action; defaults to 30s

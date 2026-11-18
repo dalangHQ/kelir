@@ -1,0 +1,28 @@
+- Plugin terminal-guard
+  - Crate dependencies (terminal-guard)
+    - Plugin identifier: plugin-terminal-guard
+    - Owner crate: crates/kelir-plugins/plugin-terminal-guard
+    - name() = "terminal-guard"
+    - Tier 2 interactive terminal governance (terminal-guard)
+    - Depends on (terminal-guard): kelir-interface (ConsoleInterposer)
+    - Exposes: PromptResponderService
+    - Lifecycle attachment (terminal-guard): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (terminal-guard)
+    - Exports PromptResponderService via PipelineBinder for prompt automation
+  - Invariants and policy (terminal-guard)
+    - Implements ConsoleInterposer::on_console_output
+    - Matches interactive prompts against plugin-private regex set
+      - Pattern, timeout_seconds, action bytes per rule
+      - verify_foreground: gate on issuing process owning active pgid
+    - Matches against shadow-stripped text; ANSI stripped before regex
+    - Renders ANSI notice boxes on Port 0 for user-facing disclosures
+      - Core exposes only raw write_console(port, bytes) + EventBus
+    - All prompt patterns and notice templates are plugin-private config
+    - Core terminal pipeline carries no prompt rules and no notice format
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.terminal_guard
+  - Error and return semantics (terminal-guard)
+    - Hook signature (terminal-guard): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (terminal-guard)
+      - Prompt match → write action bytes to Port 0; Pass verdict
+      - Timeout without match → no write; Pass verdict
+      - Foreground check fails → no write; Pass verdict with reason tag

@@ -8,6 +8,9 @@
     - Exposes: CredentialBrokerService
     - VirtIO device attachment (vault): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (vault): see: 08-lifecycle.md#Lifecycle-vetoes
+    - Registers L3/L4 packet-diversion rule at boot
+      - Redirects IMDS destination 169.254.169.254 to this vsock service
+      - Core wire plane carries no IMDS special-case
   - Service exports (vault)
     - Exports CredentialBrokerService via PipelineBinder for scoped token issuance
   - Invariants and policy (vault)
@@ -46,8 +49,9 @@
       - Guest cert store is untouched; no CA injection
       - Guest env vars are workload-owned; no forced CA env pointers
     - In-ring carrier secret injection
-      - Wire plane natively interposes outbound L7 streams matching vault rules
-      - Substitutes vault:// placeholders with real bearer tokens in flight
+      - Plugin interposes outbound L4-diverted streams matching vault rules
+      - Parses L7, substitutes vault:// placeholders with bearer tokens in flight
+      - Core wire plane delivers raw L4 streams; no L7 parse in core
       - Eliminates external sidecar daemons, preserving strict Class 1 attestation
     - Memory isolation and zeroization
       - Host keyring memory pinned with mlock(2); excluded from swap
@@ -64,3 +68,14 @@
       - Audience mismatch → EACCES
       - TTL request above ceiling → EINVAL
       - Metadata service request from non-session vsock peer → ECONNREFUSED
+- vault:// placeholder enforcement (vault)
+  - TrapInterposer rejects vault:// in env with ESecurityViolation
+  - Resolution path: placeholder → metadata-service fetch at exec
+  - Unresolvable placeholder → ENODATA; out-of-scope → EPERM
+  - Core Env injection limits carry no vault:// awareness
+- Synthetic inode ownership (vault)
+  - Serves .env-style synthetic files through FsInterposer::on_fs_lookup
+  - Content template and filename literal are plugin-private config
+  - Mode 0o400 enforced plugin-side; core replies with FsInode only
+  - In-flight read masking of credential patterns → plugins/redaction.md
+  - Core storage carries no filename literals and no content templates

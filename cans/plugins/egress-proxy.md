@@ -1,0 +1,21 @@
+- Plugin egress-proxy
+  - Crate dependencies (egress-proxy)
+    - Plugin identifier: plugin-egress-proxy
+    - Owner crate: crates/kelir-plugins/plugin-egress-proxy
+    - name() = "egress-proxy"
+    - Tier 2 egress mediation (egress-proxy)
+    - Depends on (egress-proxy): kelir-interface (L4 dialer trait)
+    - Exposes: EgressProxyService
+    - VirtIO attachment (egress-proxy): see: 01-architecture.md#VirtIO-Device-Complex
+    - Lifecycle attachment (egress-proxy): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (egress-proxy)
+    - Exports EgressProxyService via PipelineBinder for proxy chaining
+  - Invariants and policy (egress-proxy)
+    - Owns HTTP CONNECT and SOCKS5 negotiation end to end
+    - Reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY from env
+    - Core wire plane carries raw L4 splice only; no handshake parse
+  - Error and return semantics (egress-proxy)
+    - Hook signature (egress-proxy): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (egress-proxy)
+      - Upstream proxy auth failure → 407 passthrough to guest
+      - SOCKS5 method rejection → ECONNREFUSED

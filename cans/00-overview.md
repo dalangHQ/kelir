@@ -35,6 +35,7 @@
     - Standalone from external MCP server binaries
     - Zero background daemon architecture: see: 01-architecture.md#In-process-microkernel
     - Excludes CLI runners (no kelir run): see: 15-operations.md#Developer-CLI
+    - Excludes L7, agent, and heuristics concepts: plugins own those
   - Target audience
     - Audience matrix: see: artifacts/diagrams/target-audience.txt
     - Value and trigger per audience: in the matrix
@@ -69,7 +70,7 @@
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
     - Core foundation: see: 01-architecture.md
-    - Plugin model & catalog (13 optional domain plugins): see: 02-plugin-model.md
+    - Plugin model & catalog (20 optional domain plugins): see: 02-plugin-model.md
     - SDK architecture: see: 03-sdk-architecture.md (parity)
     - Terminal plane: see: [1] (engine native)
     - Storage plane: see: [2] (engine native)

@@ -156,6 +156,11 @@ enabled = false
 kind = "envoy"
 divert_l4_marked = true
 
+[[plugins.vault.synthetic_files]]
+path = "/workspace/repo/.env.local"
+mode = 0o400
+content = "NODE_ENV=test\nDATABASE_URL=postgres://app:vault@127.0.0.1:5432/db\n"
+
 [plugins.tool_guard]
 enabled = true
 
@@ -255,6 +260,13 @@ auto_rollback_on_taint = true
 timeout_ms = 30000
 flush_fuse_before_commit = true
 
+[plugins.transaction.outbox_deferral]
+enabled = true
+buffer_capacity_bytes = 67108864
+release_on_step_verification = true
+drop_on_rollback = true
+compensator_webhook_timeout_ms = 5000
+
 [plugins.profile]
 enabled = true
 rfc6902_dynamic_patching = true
@@ -263,6 +275,11 @@ enforce_monotonic_patches = true
 [plugins.profile.cdi_device_mapping]
 enabled = false
 spec_dir = "/etc/cdi"
+
+[[plugins.profile.synthetic_files]]
+path = "/workspace/repo/.gitconfig"
+mode = 0o400
+content = "[user]\n\tname = Kelir Agent\n\temail = agent@kelir.local\n"
 
 [plugins.mcp]
 enabled = true
@@ -277,6 +294,68 @@ enabled = true
 [plugins."repo-policy"]
 max_diff_bytes = 65536
 protected_branches = ["main", "master", "release/*"]
+
+[plugins.redaction.mask_read]
+engine = "FastRegex"
+carryover_bytes = 31
+
+[[plugins.redaction.mask_read.rules]]
+glob = "**/*.env*"
+
+[[plugins.redaction.mask_read.rules.patterns]]
+match = 'sk_live_[A-Za-z0-9]{24}'
+replacement = "[REDACTED_STRIPE_SECRET]"
+
+[[plugins.redaction.mask_read.rules.patterns]]
+match = 'AKIA[0-9A-Z]{16}'
+replacement = "[REDACTED_AWS_KEY]"
+
+[plugins.token_shield]
+enabled = true
+max_bytes_total = 131072
+max_lines_total = 500
+clamp_strategy = "head_and_tail"
+notice = "\n⚠️ [SHIELD]: Output clamped to protect model context window.\n"
+
+[[plugins.terminal_guard.prompts]]
+pattern = '(?i)overwrite production schema\? \[y/N\]'
+timeout_seconds = 3.0
+verify_foreground = true
+action = "y\n"
+
+[[plugins.terminal_guard.prompts]]
+pattern = '(?i)do you want to continue\? \[Y/n\]'
+timeout_seconds = 2.0
+verify_foreground = true
+action = "Y\n"
+
+[plugins.egress_proxy.upstream_dial]
+env_lookup = true
+
+[plugins.step_eval]
+sentinel_path = "/dev/kelir-gate"
+pty_quiescence = true
+
+[plugins.step_eval.step_dag]
+enabled = true
+require_signed_attribution = true
+require_separation_of_duties = true
+storage = "content_addressed"
+
+[plugins.step_eval.step_evaluation]
+enabled = true
+default_action = "proceed"
+
+[plugins.step_eval.step_evaluation.assertions]
+assert_binary_blake3 = true
+max_egress_bytes_hermetic = 0
+require_non_zero_delta = true
+max_duration_seconds = 120
+
+[plugins.anomaly]
+feature_extraction = true
+sliding_window_depth = 300
+export_feature_vector = true
 
 [storage]
 workspace_root = "/workspace/repo"
@@ -330,31 +409,6 @@ host_path = "~/.cargo/registry"
 guest_mount = "/usr/local/cargo/registry"
 read_only = true
 
-[[storage.synthetic_files]]
-path = "/workspace/repo/.env.local"
-mode = 0o400
-content = "NODE_ENV=test\nDATABASE_URL=postgres://app:vault@127.0.0.1:5432/db\n"
-
-[[storage.synthetic_files]]
-path = "/workspace/repo/.gitconfig"
-mode = 0o400
-content = "[user]\n\tname = Kelir Agent\n\temail = agent@kelir.local\n"
-
-[storage.mask_read]
-engine = "FastRegex"
-carryover_bytes = 31
-
-[[storage.mask_read.rules]]
-glob = "**/*.env*"
-
-[[storage.mask_read.rules.patterns]]
-match = 'sk_live_[A-Za-z0-9]{24}'
-replacement = "[REDACTED_STRIPE_SECRET]"
-
-[[storage.mask_read.rules.patterns]]
-match = 'AKIA[0-9A-Z]{16}'
-replacement = "[REDACTED_AWS_KEY]"
-
 [storage.lock_broker]
 enabled = true
 scope_globs = ["**/Cargo.lock", "**/package-lock.json"]
@@ -362,22 +416,13 @@ non_blocking = true
 
 [wire]
 userspace_netstack = true
-l7_protocol_inspection = true
 default_egress = "drop"
 allow_ipv6 = false
 allow_raw_sockets = false
 
-[wire.outbox_deferral]
-enabled = true
-buffer_capacity_bytes = 67108864
-release_on_step_verification = true
-drop_on_rollback = true
-compensator_webhook_timeout_ms = 5000
-
 [wire.quarantine]
 drop_link_local = true
 cloud_metadata_block = true
-imds_exception = "169.254.169.254"
 
 [wire.dns]
 synthetic_gateway = "192.168.127.1:53"
@@ -385,9 +430,6 @@ track_host_resolver = true
 edns0_downgrade = true
 socks5h_synthetic_pool = "198.18.0.0/15"
 allowlist = ["api.stripe.com", "github.com", "api.github.com", "*.internal.net"]
-
-[wire.l4_diversion.upstream_dial]
-env_lookup = true
 
 [[wire.l4_diversion.proxies]]
 listen_port = 5432
@@ -437,25 +479,6 @@ alloc_pty_default = false
 drop_osc52 = true
 strip_title = true
 
-[terminal.sanitizer.token_shield]
-enabled = true
-max_bytes_total = 131072
-max_lines_total = 500
-clamp_strategy = "head_and_tail"
-notice = "\n⚠️ [SHIELD]: Output clamped to protect model context window.\n"
-
-[[terminal.sanitizer.prompts]]
-pattern = '(?i)overwrite production schema\? \[y/N\]'
-timeout_seconds = 3.0
-verify_foreground = true
-action = "y\n"
-
-[[terminal.sanitizer.prompts]]
-pattern = '(?i)do you want to continue\? \[Y/n\]'
-timeout_seconds = 2.0
-verify_foreground = true
-action = "Y\n"
-
 [terminal.replay_log]
 enabled = true
 storage_path = "sessions/{id}/logs"
@@ -466,25 +489,7 @@ bypass_sqlite_wal = true
 track_screen_matrix = true
 
 [checkpoint.boundaries]
-sentinel_path = "/dev/kelir-gate"
-detect_pty_quiescence = true
 pre_checkpoint_dentry_trim = true
-
-[checkpoint.step_dag]
-enabled = true
-require_signed_attribution = true
-require_separation_of_duties = true
-storage = "content_addressed"
-
-[checkpoint.step_evaluation]
-enabled = true
-default_action = "proceed"
-
-[checkpoint.step_evaluation.assertions]
-assert_binary_blake3 = true
-max_egress_bytes_hermetic = 0
-require_non_zero_delta = true
-max_duration_seconds = 120
 
 [checkpoint.rollback]
 revert_memory_ms_target = 8
@@ -526,11 +531,6 @@ wal_mode = true
 busy_timeout_ms = 5000
 lease_ttl_seconds = 30
 prune_unreferenced_cas_blobs = true
-
-[host.telemetry_ring]
-feature_extraction = true
-sliding_window_depth = 300
-export_feature_vector = true
 
 [attestation.hardware_facts]
 measure_vmlinux_blake3 = true

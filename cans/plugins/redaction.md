@@ -1,0 +1,29 @@
+- Plugin redaction
+  - Crate dependencies (redaction)
+    - Plugin identifier: plugin-redaction
+    - Owner crate: crates/kelir-plugins/plugin-redaction
+    - name() = "redaction"
+    - Tier 2 storage read/write governance (redaction)
+    - Depends on (redaction): kelir-interface (FsInterposer)
+    - Exposes: RedactionService
+    - Lifecycle attachment (redaction): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (redaction)
+    - Exports RedactionService via PipelineBinder for read masking
+  - Invariants and policy (redaction)
+    - Read masking (FsInterposer::on_fs_read)
+      - Engine: FastRegex | StreamingAutomata (plugin-private)
+      - carryover_bytes sliding window across 64KB read chunks
+      - Rule shape: glob → ordered pattern list → replacement
+      - Split-token safety: window overlap covers pattern max length
+    - Write snoops (FsInterposer::on_fs_write)
+      - Glob-keyed rule set; each rule emits verdict or mutation
+      - Verdict flows through unified lattice; core carries no rule table
+    - Pattern vocabulary and glob set are plugin-private config
+    - Core storage plane delivers raw buffers; zero regex / zero glob
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.redaction
+  - Error and return semantics (redaction)
+    - Hook signature (redaction): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (redaction)
+      - Mask hit → Pass with mutated byte buffer; no errno
+      - Write snoop deny → Verdict::Deny(errno) from unified lattice
+      - Engine misconfiguration → EConfig at boot

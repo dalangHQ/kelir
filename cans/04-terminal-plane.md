@@ -1,7 +1,8 @@
 - Terminal plane
   - Terminal pipeline
-    - Token Shield and prompt stages are part of the fixed pipeline
-    - `TerminalWiring` carries `token_shield` and `prompts` from the builder
+    - Pipeline exposes ConsoleInterposer::on_console_output to plugins
+    - Plugin chain order is plugin-owned; core carries no fixed stages
+    - Core stages: raw VT100 grid, byte-stream ring, index.bin replay only
     - Crate topology: kelir-terminal owns RealTerminalOps (vt100.run.rs, token_shield.run.rs, log_segment.run.rs); kelir-engine/src/planes/terminal/mod.rs is the thin L2 TerminalPlane façade holding Arc<dyn TerminalOps>
     - Trait seam: kelir-interface::terminal::TerminalOps (resize, feed, export_screen_matrix, read_from, append_stream_chunk, record_output, output_filters, token_shield, prompts)
     - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
@@ -29,12 +30,6 @@
       - MsgType 0x02 (SignalForward): pushes signal and exec_id; shim resolves exec_id
       - SignalForward is the interactive PTY forward only, for the foreground exec
         - Programmatic signals never use it; they route over Channel 0x0000
-    - Host filter pipeline execution order
-      - 1. ANSI strip: drops OSC 52 (clipboard hijack) and strips OSC 0/1/2 (title spoof)
-      - 2. Prompt match: matches foreground prompts against ANSI-stripped shadow text
-      - 3. Token Shield: clamps scrollback grid to maxLines/maxBytes without mid-stream slicing
-      - 4. Interposer dispatch: fires ConsoleInterposer::on_console_output for in-place masking
-        - Maintains MAX_PLACEHOLDER_LEN - 1 carryover window across chunk boundaries
     - Headless VT100 wireframe grid
       - Lean embedded VT100 state machine tracks active terminal matrix
       - session.terminal.export_screen_matrix() yields deterministic terminal wireframe receipts
@@ -42,7 +37,8 @@
     - Mandatory host disclosure invariant: host mutations publish TerminalNotice to EventBus
     - c.terminal.notice(msg) is the canonical TerminalNotice publisher
       - Publishes to the EventBus like any host mutation; same notice in all SDKs
-    - Injects formatted ANSI box into host-to-guest console Port 0 stream
+    - Core exposes raw write_console(port, bytes) + EventBus emission
+    - ANSI notice-box rendering → plugins/terminal-guard.md
     - Disclosures render inline on workload TTY without corrupting cursor state
   - Binary exec channel (terminal plane)
     - Carries programmatic execution streams on stream kind EXEC (mux 0x0001)

@@ -71,3 +71,13 @@
         - message = user-defined reason or "Policy violation: tool execution rejected"
       - Schema drift or unpinned tool tampering returns -32601
         - (Method not found) + VM Security Panic
+- Suspend reason ownership (tool-guard)
+  - Emits ExternalSuspendKind::External("human-authorization-hold")
+  - Approval-hold reason is plugin-private; core treats tag as opaque
+  - Resumes only on RFC 6902 patch or explicit deny through SessionWakeHandle
+- MCP schema matching surface (tool-guard)
+  - Accepts with_params predicates forwarded from plugin-mcp
+  - Immutable schema lock: pins manifest at handshake; drift → EConfig
+  - Semantic rug-pull detection: parameter-name and type diff on resume
+  - Verdict from schema mismatch flows into taint escalation lattice
+  - Core TrapFilter stays POSIX-only; schema never enters core

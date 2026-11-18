@@ -22,6 +22,20 @@
         - see: plugins/db-proxy.md
       - plugin-supply-chain: L7 domain filter, package lifecycle guard proxy
         - see: plugins/supply-chain.md
+      - plugin-egress-proxy: CONNECT / SOCKS5 handshake
+        - see: plugins/egress-proxy.md
+      - plugin-l7-http: HTTP/SSE/JSON-RPC parse, TLS, 403 receipts
+        - see: plugins/l7-http.md
+      - plugin-redaction: read masking + write snoops
+        - see: plugins/redaction.md
+      - plugin-step-eval: StepSlot / StepVerdict / reviewer attribution
+        - see: plugins/step-eval.md
+      - plugin-taint: cross-ring byte-range taint
+        - see: plugins/taint.md
+      - plugin-terminal-guard: prompt responder + ANSI disclosures
+        - see: plugins/terminal-guard.md
+      - plugin-token-shield: scrollback clamp
+        - see: plugins/token-shield.md
       - Tier 2 plugins depend on kelir-interface and consume Tier 1 services via ServiceRegistry
     - Tier 3 cross-cutting aggregators
       - plugin-ledger: audit aggregation over Tier 1 and Tier 2 plugins
@@ -32,6 +46,8 @@
         - see: plugins/chaos.md
       - plugin-transaction: multi-resource 2PC coordination aggregator
         - see: plugins/transaction.md
+      - plugin-anomaly: feature extraction + surprisal escalation
+        - see: plugins/anomaly.md
       - Tier 3 plugins depend on kelir-interface and consume peer services via ServiceRegistry
     - Dependency invariant: Zero concrete peer imports within the same tier
     - Direct Cargo dependencies are acyclic: no plugin imports a higher tier
@@ -142,9 +158,15 @@
         - ConsoleInterposer: console input, console output, window resize, disclosure
           - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
           - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
-        - Dynamic byte-level taint tracking propagates labels across ring boundaries
-        - Taint tags set on FUSE reads follow data into process arguments and wire egress
-          - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
+        - Core exposes ring hooks and opaque per-session metadata store
+        - Taint tracking ownership → plugins/taint.md
+        - FsInterposer::on_fs_read(path, buffer) -> mutated buffer
+        - FsInterposer::on_fs_write(path, buffer) -> Verdict
+        - FsInterposer::on_fs_lookup(path) -> Action::Patch(FsInode)
+        - TrapInterposer::on_trap(event) -> Verdict
+        - ConsoleInterposer::on_console_output(port, bytes) -> mutated bytes
+        - WireInterposer::on_net_outbound(frame) -> FilterAction
+        - Ring hooks are core; verdicts and mutations are plugin-owned
         - FsInterposer: fs lookup, read, write, lock, unlink, rename; sync hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
         - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
@@ -163,8 +185,8 @@
           - Py/TS spellings: with_cwd / withCwd, with_env / withEnv,
             with_uid / withUid, argv_matches / argvMatches; with_arg is
             with_arg / withArg in all three SDKs
-        - with_params: matches structured JSON arguments on MCP tool traps
-        - Parameter matching verifies types via precompiled schema validators
+        - Core predicates: binary | argv | cwd | env | uid (POSIX only)
+        - MCP schema predicates → plugins/mcp.md + plugins/tool-guard.md
         - AND semantics: every populated predicate on one filter must hold
           - Predicates are AND-ed, never OR-ed; each narrows the match
           - Repeatable predicates (with_arg, with_env) accumulate; all entries must match

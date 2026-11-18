@@ -3,6 +3,7 @@
 # see: cans/plugins/mcp.md#Plugin-mcp
 # see: cans/plugins/tool-guard.md#Plugin-tool-guard
 # see: cans/plugins/ledger.md#Plugin-ledger
+# see: cans/plugins/step-eval.md#Plugin-step-eval
 from __future__ import annotations
 
 import asyncio

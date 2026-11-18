@@ -1,0 +1,23 @@
+- Plugin anomaly
+  - Crate dependencies (anomaly)
+    - Plugin identifier: plugin-anomaly
+    - Owner crate: crates/kelir-plugins/plugin-anomaly
+    - name() = "anomaly"
+    - Tier 3 cross-cutting telemetry aggregator (anomaly)
+    - Depends on (anomaly): kelir-interface (EventBus + metric registry)
+    - Exposes: AnomalyDetectionService
+    - Lifecycle attachment (anomaly): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (anomaly)
+    - Exports AnomalyDetectionService via PipelineBinder for escalation
+  - Invariants and policy (anomaly)
+    - Extracts normalized 16-dimensional feature vectors from telemetry
+    - Sliding window (300 entries) over syscall rate, argv entropy, burstiness
+    - Surprisal threshold breach triggers policy escalation
+    - Computed and policy-bearing metrics are plugin-owned, not core
+    - Consumes zero-alloc metric registry and EventBus from core
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.anomaly
+  - Error and return semantics (anomaly)
+    - Hook signature (anomaly): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (anomaly)
+      - Surprisal breach → escalation event on EventBus; no errno
+      - Feature extraction fault → EIO to host caller; window preserved

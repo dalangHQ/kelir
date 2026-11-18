@@ -103,3 +103,9 @@
         - Accessor home: see: 03-sdk-architecture.md#Service-lookup-across-languages
       - Session-level facade access lands on the bindings (L3)
     - Causal deltas are produced by plugin-ledger over the delta chain
+- OTLP export ownership (ledger)
+  - Native gRPC and HTTP exporters via OpenTelemetry SDK
+  - OTLP is the default export surface when ledger is mounted
+  - W3C traceparent continuity across guest-originated requests
+  - Core observability carries no exporter and no traceparent injection
+  - Core exposes zero-alloc metric registry + EventBus + index.bin only

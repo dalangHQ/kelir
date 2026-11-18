@@ -130,11 +130,12 @@
     - Typed extensions
       - Typed accessors replace the bare extensions walk
         - receipt.fs_vfs() -> Option<&FsVfsExt>
-        - receipt.net_l7_sql() -> Option<&NetL7SqlExt>
         - receipt.hooks() -> &[HookSpan]
         - receipt.ext_raw() -> &[(String, Vec<u8>)] — third-party fallback
         - Accessor shapes and the two typed payloads:
           - see: artifacts/code/hook-trace.rs
+      - Core receipt exposes only ext_raw() -> &[u8] plus typed core fields
+      - Domain accessors → extension traits owned by plugins
       - Namespaces keep their strings: fs:vfs, net:l7:sql
         - A typed accessor returns None when no producer emitted the namespace
       - Third-party extensions ride ext_raw; the payload stays opaque bytes
@@ -188,13 +189,8 @@
     - Checkpoint descriptors are retained in userland orchestrator state
     - Post-step verification compares logical receipts against pre-step states
       - syscall trace, I/O streams, seeded RNG output, frozen clock
-    - StepSlot semantics
-      - Single slot per active PID lineage; sub-steps fold into Base on
-        - StepVerdict::Commit, discard on StepVerdict::Rollback
-        - see: 08-lifecycle.md#Delta-chain-compaction
-      - StepSlot managed natively by kelir-engine::checkpoint
-      - Fork operations clone active StepSlot state into child sessions
-      - Post-hook failure triggers immediate session.rollback(lineage) to slot base
+    - Step loop ownership → plugins/step-eval.md
+    - Core receipts expose raw facts only; no verdict field
     - Typical wiring
       - Trap match triggers pre-hook: checkpoint creation & intent analysis
       - Guest executes process

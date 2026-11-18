@@ -15,7 +15,13 @@
     - Exports McpEndpointService via PipelineBinder for JSON-RPC transport routing
   - Invariants and policy (mcp)
     - Thin in-process adapter routing JSON-RPC stdio directly to VirtIO rings
+    - Owns all JSON-RPC L7 parsing; core wire plane carries raw L4 only
     - MCP plugin: maps tools directly to virtio-console, virtio-fs, and traps
+    - Owns MCP tool-argument schema matching (with_params surface)
+      - Precompiled JSON schema validators are plugin-private
+      - Compiles against MCP tool manifest at transport bring-up
+      - Verdict dispatch through plugin-tool-guard when taint-bearing
+      - Core TrapFilter carries no schema awareness
     - MCP hook wiring
       - on_vm_ready: setup JSON-RPC transport, advertise capabilities
       - on_console_output / on_console_input: stream terminal to/from MCP client

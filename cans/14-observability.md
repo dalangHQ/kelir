@@ -14,14 +14,14 @@
   - Metrics pipeline
     - A shared registry exports machine readable counters
       - Exporters ship to stdout or an otel compatible endpoint
-    - OTLP is the default export surface
-      - Native gRPC and HTTP exporters via OpenTelemetry SDK
       - Metrics: counters (execs, syscalls, drops, backpressure events),
+    - Core exposes zero-alloc metric registry + EventBus + flat index.bin
+    - OTLP export ownership → plugins/ledger.md
+    - W3C traceparent continuity → plugins/ledger.md
   - Online statistical feature extraction
-    - Telemetry ring buffers extract normalized 16-dimensional feature vectors
-    - Sliding window (300 entries) tracks syscall rate, argument entropy, burst
+    - Core emits raw counters and event stream only
+    - Feature extraction and surprisal escalation → plugins/anomaly.md
     - Zero-copy shared memory exports vector directly to host anomaly filters
-    - High-surprisal actions trigger policy escalation without foreign FFI hops
       - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
       - Traces: one span per receipt phase (trap_ingress, ffi_hop, policy,

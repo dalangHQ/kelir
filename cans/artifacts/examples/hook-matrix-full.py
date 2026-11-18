@@ -1,7 +1,7 @@
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
 # see: cans/02-plugin-model.md#TrapFilter-predicates
-# see: cans/05-storage-plane.md#In-flight-read-masking
-# see: cans/04-terminal-plane.md#Terminal-pipeline
+# see: cans/plugins/redaction.md#Plugin-redaction
+# see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
 from __future__ import annotations
 
 import asyncio
@@ -122,7 +122,7 @@ class HookMatrixFullPlugin(BasePlugin):
             content=IDENTITY_CONTENT,
         ))
 
-    # see: cans/05-storage-plane.md#In-flight-read-masking
+    # see: cans/plugins/redaction.md#Plugin-redaction
     def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
         window = self._state.tail + buffer
         masked = mask_tokens(window)
@@ -189,11 +189,11 @@ class HookMatrixFullPlugin(BasePlugin):
     ) -> None:
         self._state.post_commits += 1
 
-    # see: cans/04-terminal-plane.md#Terminal-pipeline
+    # see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
     async def on_console_input(self, port: int, data: bytes) -> bytes:
         return _OSC52_RE.sub(b"", data)
 
-    # see: cans/04-terminal-plane.md#Terminal-pipeline
+    # see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
         window = self._state.console_tail + chunk
         masked = mask_tokens(window)

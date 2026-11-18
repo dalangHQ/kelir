@@ -51,6 +51,10 @@
       - Uncommitted transactions exceeding timeout_ms abort automatically
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.transaction.two_phase_commit
     - Two-phase commit demonstration: see: artifacts/examples/db-backed-runtime.py
+    - Compensating sagas and undo webhooks
+      - Irreversible-operation outboxes owned here, not core
+      - On step failure, dispatch undo webhooks for registered operations
+      - Core wire plane exposes only L4 stream pause/flush/drop primitives
   - Error and return semantics (transaction)
     - Hook signature (transaction): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (transaction)

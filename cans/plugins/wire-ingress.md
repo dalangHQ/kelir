@@ -39,3 +39,7 @@
         - Pre-handshake: TCP RST, no HTTP status
       - Overflow
         - 503 + Retry-After: 1 when backlog.maxConnections exceeded
+- Suspend reason ownership (wire-ingress)
+  - Emits ExternalSuspendKind::External("wire-connection-parking")
+  - Connection-park reason is plugin-private; core treats tag as opaque
+  - Wakes target microVM on inbound frame arrival

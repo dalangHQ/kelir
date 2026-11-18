@@ -466,10 +466,10 @@
         - x86_64 probe: asserts invariant TSC and Leaf 0x1 TSC-deadline in CPUID
       - `kelir doctor --enforce`: Writes immutable /etc/kelir/hw.lock
       - `kelir setup`: Executes host machine hardening against bare-metal runs:
-        - shims: Prepends ~/.kelir/shims to PATH for claude, pytest, python
         - lsm: Attaches eBPF/LSM execve killswitch to designated workspace dirs
-        - vault: Migrates plaintext host credentials into Kelir host keyring
         - hw-lock: Enforces strict permissions on /dev/kvm (group: kelir, 0660)
+      - kelir setup dispatches plugin setup hooks only
+      - Shim set and migration steps owned by adapter / plugin crates
       - `kelir spec check <file>`: AOT validation of kelir.toml or kelir.yaml:
         - Validates syntax and TypeBox/Serde schema without compiling code
         - Asserts acyclic inheritance trees across extends pointers

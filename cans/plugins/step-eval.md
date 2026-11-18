@@ -1,0 +1,27 @@
+- Plugin step-eval
+  - Crate dependencies (step-eval)
+    - Plugin identifier: plugin-step-eval
+    - Owner crate: crates/kelir-plugins/plugin-step-eval
+    - name() = "step-eval"
+    - Tier 2 governance and orchestration (step-eval)
+    - Depends on (step-eval): kelir-interface (checkpoint DAG primitives)
+    - Exposes: StepEvaluationService
+    - Lifecycle attachment (step-eval): see: 08-lifecycle.md#Lifecycle-vetoes
+  - Service exports (step-eval)
+    - Exports StepEvaluationService via PipelineBinder for step verdicts
+  - Invariants and policy (step-eval)
+    - Owns StepSlot, StepEvaluator, StepVerdict, PostExecAction
+    - Verdicts: Commit | Rollback | YieldToHost dispatched here, not core
+    - Ed25519 reviewer attribution and separation-of-duties enforcement
+    - Tainted-step delta verification (binary BLAKE3, dirty-byte, duration)
+    - PTY idle quiescence heuristics for step boundaries
+    - Owns /dev/kelir-gate sentinel path interpretation
+    - Emits ExternalSuspendKind::External("step-evaluation-yield")
+    - Core checkpoint offers snapshot/fork/rollback/compact only
+    - see: artifacts/examples/fixtures/kelir.yaml#plugins.step_eval
+  - Error and return semantics (step-eval)
+    - Hook signature (step-eval): see: artifacts/code/plugin-trait.rs
+    - Return errno and rejection behavior (step-eval)
+      - Rejected step → Rollback verdict; host DAG unwinds to parent
+      - Missing reviewer attribution → EPERM on commit attempt
+      - Zero dirty-byte delta → ERANGE on commit when required
