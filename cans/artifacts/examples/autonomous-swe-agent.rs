@@ -221,6 +221,17 @@ impl FsInterposer for RepoPolicyPlugin {
         }
         Ok(FilterAction::Forward)
     }
+
+    fn on_fs_unlink(&self, path: &Path, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        // Prevents agents from deleting validation suites or package manifests to fake green runs
+        if path.ends_with("package.json") || path.ends_with("Cargo.toml") || path.to_string_lossy().contains("test") {
+            let quarantined = Path::new("/workspace/.agentsh_trash").join(path.file_name().unwrap());
+            return Ok(Verdict::Patch(PatchPayload::FsPathRedirect {
+                target_path: quarantined.to_string_lossy().to_string(),
+            }));
+        }
+        Ok(Verdict::Pass)
+    }
 }
 
 impl RepoPolicyPlugin {
@@ -756,9 +767,9 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
 
         let mut winner_info = None;
-        for id in ['A', 'B', 'C', 'D'] {
-            if let Some((_, Ok(delta))) = exit_codes.iter().find(|(branch, _)| *branch == id) {
-                winner_info = Some((id, delta.clone()));
+        for branch_id in ['A', 'B', 'C', 'D'] {
+            if let Some((_, Ok(delta))) = exit_codes.iter().find(|(branch, res)| *branch == branch_id && res.is_ok()) {
+                winner_info = Some((branch_id, delta.clone()));
                 break;
             }
         }

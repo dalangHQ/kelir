@@ -123,10 +123,12 @@
       - Host resolver state and policy outcomes are unchanged by downgrade
   - Transparent L4 stream diversion
     - Directs guest TCP streams across VirtIO ring to designated host socket
+    - Directly diverts declared ports to host Unix domain sockets without netns
+    - Guest TCP connects splice to host Unix listeners with zero TAP allocation
     - Exposes raw duplex stream to registered NetInterposer proxies
     - Carrier supports in-ring L7 protocol inspection and TLS stream parsing
-    - In-ring TLS inspection decrypts and validates streams via host keyring
     - Eliminates out-of-process proxy sidecars to preserve attestation chain
+    - Workload TLS passes byte-for-byte; hypervisor never acts as TLS MITM proxy
     - L7 interposition evaluates HTTP headers, SSE frames, and JSON-RPC bodies
     - Stream mutations apply in-place without breaking client keep-alive
   - Egress side-effect outbox

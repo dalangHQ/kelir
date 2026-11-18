@@ -66,6 +66,8 @@ def build_surface_plugin() -> KelirBuilder:
             .on_fs_read(lambda path, data: data)
             .on_fs_write(lambda path, data, pid, ctx: FilterAction.forward())
             .on_fs_lock(lambda path, cmd, typ, pid: Verdict.pass_())
+            .on_fs_unlink(lambda _p, _c: Verdict.pass_())
+            .on_fs_rename(lambda _src, _dst, _c: Verdict.pass_())
         )
         .net(
             lambda scope: scope.on_net_outbound(lambda frame: FilterAction.forward())
@@ -132,6 +134,7 @@ def build_host() -> KelirBuilder:
             memory_mb=2048,
             kernel=f"./fixtures/vmlinux-6.6-{platform.machine()}-kelir",
             rootfs_erofs="./fixtures/rootfs-surface.erofs",
+            embed_mode="in_process_libkelir",
             tsc_locked=True,
             enable_watchdog=True,
             driver="auto",
@@ -275,6 +278,8 @@ def build_flat_fold_plugin() -> KelirBuilder:
             .on_fs_read(lambda path, data: data)
             .on_fs_write(lambda path, data, pid, ctx: FilterAction.forward())
             .on_fs_lock(lambda path, cmd, typ, pid: Verdict.pass_())
+            .on_fs_unlink(lambda _p, _c: Verdict.pass_())
+            .on_fs_rename(lambda _src, _dst, _c: Verdict.pass_())
         )
         .net(
             lambda scope: scope.on_net_outbound(lambda frame: FilterAction.forward())

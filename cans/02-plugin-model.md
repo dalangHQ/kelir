@@ -145,7 +145,7 @@
         - Dynamic byte-level taint tracking propagates labels across ring boundaries
         - Taint tags set on FUSE reads follow data into process arguments and wire egress
           - PTY (Port 0) path unchanged; exec path uses exec_id rather than port
-        - FsInterposer: fs lookup, read, write, lock; synchronous hot path
+        - FsInterposer: fs lookup, read, write, lock, unlink, rename; sync hot path
         - NetInterposer: net outbound, net inbound; synchronous hot path
         - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
       - Identity markers
@@ -240,7 +240,7 @@
           - TCP RST or ICMP Port Unreachable, L7 gets a synthetic 403 JSON receipt)
         - The one host-response suppression is chaos loss injection, where the
           - driver suppresses the response (plugins/chaos.md)
-      - Patch payload is registered per ring: ExecveMutation, FsInode,
+      - Patch payload is registered per ring: ExecveMutation, FsInode, FsPathRedirect,
         - Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
       - Hook-return pin (SSOT-A1): one Action enum is canonical
@@ -704,7 +704,7 @@
       - Python host: KelirBuilder(...) with VmConfig kwargs
       - Python plugin: KelirBuilder.plugin(name) classmethod
     - Verbs in both modes
-      - 24 ring verbs and 8 scopes exist in host mode and plugin mode
+      - 26 ring verbs and 8 scopes exist in host mode and plugin mode
       - trap(filter, handler) and trap_scope(closure) exist in both modes
       - The filter argument may be a bare string in all three SDKs
       - Rust: the scope form is trap_scope; the filter form is trap
@@ -759,7 +759,8 @@
         - A ring verb is reached through its scope closure; there is no unscoped call surface
       - Eight scope entry points, one per ring group
         - trap: .on_trap, .on_process_exit
-        - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
+        - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock,
+          - .on_fs_unlink, .on_fs_rename
         - net: .on_net_outbound, .on_net_inbound
         - console: .on_console_input, .on_console_output
         - exec: .on_exec_stdout, .on_exec_stderr

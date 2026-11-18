@@ -106,6 +106,8 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
                 .on_fs_read(|_, data| Ok(data.to_vec()))
                 .on_fs_write(|_, _, _, _| Ok(FilterAction::Forward))
                 .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
+                .on_fs_unlink(|_, _| Ok(Verdict::Pass))
+                .on_fs_rename(|_, _, _| Ok(Verdict::Pass))
                 .end()
         })
         .net(|n| {
@@ -176,6 +178,7 @@ pub fn build_host() -> SurfaceHostBuilder {
         memory_mb: 2048,
         kernel_path: format!("./fixtures/vmlinux-6.6-{}-kelir", std::env::consts::ARCH).into(),
         rootfs_erofs_path: "./fixtures/rootfs-surface.erofs".into(),
+        embed_mode: "in_process_libkelir".into(), // Direct C-ABI host linkage; zero daemon
         tsc_locked: true,
         enable_watchdog: true,
         enable_gpu_passthrough: false,
@@ -387,6 +390,8 @@ pub fn build_flat_fold_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil
                 .on_fs_read(|_, data| Ok(data.to_vec()))
                 .on_fs_write(|_, _, _, _| Ok(FilterAction::Forward))
                 .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
+                .on_fs_unlink(|_, _| Ok(Verdict::Pass))
+                .on_fs_rename(|_, _, _| Ok(Verdict::Pass))
                 .end()
         })
         .net(|n| {

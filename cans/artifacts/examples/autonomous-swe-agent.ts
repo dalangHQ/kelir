@@ -35,6 +35,16 @@ const repoPolicyPlugin = (
         .replace(/sk_live_[0-9a-zA-Z]{24}/g, (m) => "*".repeat(m.length));
       buffer.set(Buffer.from(redacted, "utf8"), 0);
       return FilterAction.Forward;
+    })
+    .onFsUnlink((path: string) => {
+      // Prevent rogue agent deletion of validation fixtures or manifests
+      if (path.endsWith("package.json") || path.includes("/tests/")) {
+        const filename = path.split("/").pop();
+        return Verdict.Patch(PatchPayload.FsPathRedirect({
+          targetPath: `/workspace/.agentsh_trash/${filename}`,
+        }));
+      }
+      return Verdict.Pass;
     });
 
 const runtime = kelir({

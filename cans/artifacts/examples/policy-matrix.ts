@@ -29,6 +29,15 @@ const policyPlugin = createPlugin("policy-matrix")
         });
       case "policy-abort":
         return c.abort("EPOLICY: abort row");
+        if (binary === "policy-escalate") {
+          if (c.hasValidOperatorLease()) {
+            return c.pass();
+          }
+          return c.drop(Errno.Eperm, "ESECURITYVIOLATION: capability widening requires signed operator lease");
+        }
+        if (binary === "policy-syscall-block") {
+          return c.drop(Errno.Eafnosupport, "EAFNOSUPPORT: socket family AF_RXRPC blocked");
+        }
       case "policy-yield":
         await c.checkpoint.create("policy-yield");
         return c.suspend(SuspendUntil.approval);
@@ -104,9 +113,24 @@ async function main() {
 
   for (const binary of ["policy-allow", "policy-deny", "policy-rewrite",
                         "policy-abort", "policy-yield", "policy-approval",
-                        "policy-custom"]) {
+                        "policy-escalate", "policy-syscall-block", "policy-custom"]) {
     const run = await session.spawn(binary, ["--policy-matrix"]);
     console.log(`[kelir] ${binary} -> exit=${run.exitCode}`);
+    if (binary === "policy-approval") {
+      if (run.exitCode !== 0) throw new Error("approval failed");
+    } else if (binary === "policy-escalate") {
+      if (run.exitCode === 0) throw new Error("escalate should fail without signed lease");
+      await session.elevateLease("signed_jws_operator_lease_token_payload");
+      const elevated = await session.spawn(binary, ["--policy-matrix"]);
+      if (elevated.exitCode !== 0) throw new Error("escalation failed post-signature");
+    } else if (binary === "policy-syscall-block") {
+      if (run.exitCode === 0) throw new Error("syscall block should fail execution");
+    } else if (binary === "policy-custom") {
+      if (run.exitCode !== 0) throw new Error("custom failed");
+    }
+
+    const receipt = run.receipt;
+    if (!receipt || receipt.wallClockNs === 0) throw new Error("missing raw hardware receipt");
   }
 
   policyState.plannedSuspend = true;

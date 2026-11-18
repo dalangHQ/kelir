@@ -19,7 +19,8 @@
       - Guest sees one POSIX filesystem; zero union-driver behavior in guest
     - Interception pipeline
       - FUSE bridge directly links guest VFS to host broker
-      - Pipeline engine exposes synchronous lookup, read, write, and lock interception
+      - Pipeline engine exposes synchronous lookup, read, write, lock, unlink, rename
+      - Destructive unlinks can be redirected host-side via PatchPayload::FsPathRedirect
       - FUSE lookup, read, write, and lock dispatch runs through the pipeline engine across all mounted interceptors with scope filtering and one fused crossing per ring event
       - Emits physical StorageDelta events directly to host event bus on commit
     - Host I/O invariants
@@ -91,6 +92,8 @@
   - Containment
     - Strict containment: rejects symlink hops and traversals outside host root
     - Multi-tenant root isolation partitions workspaces by tenant organization
+    - FsPathRedirect targets must remain strictly rooted beneath tenant workspace
+    - Path redirections escaping root fail closed with EXDEV at host VFS layer
     - Host containment engine resolves paths rooted at tenant workspace directory
     - Host containment engine resolves via platform-native root handle
       - Linux: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)

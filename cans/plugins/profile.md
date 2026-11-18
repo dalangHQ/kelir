@@ -64,8 +64,8 @@
       - Mesh lives under plugins.mesh in both fixtures
         - See: cans/artifacts/examples/fixtures/kelir.yaml:570
         - See: cans/artifacts/examples/fixtures/kelir.toml:193
-      - Repo-policy protected branches are ["main", "master", "release/*"]
-        - In all three examples; the TOML fixture lists only ["main"]
+      - Repo-policy protected branches are ["main", "master", "release/*"] in all specs
+        - Aligned identically across kelir.yaml, kelir.toml, and canonical examples
         - See: cans/artifacts/examples/autonomous-swe-agent.rs:230
         - See: cans/artifacts/examples/autonomous-swe-agent.py:291
         - See: cans/artifacts/examples/autonomous-swe-agent.ts:47
@@ -104,9 +104,8 @@
     - Session compute (profile)
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.vcpus
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.memory_mb
-      - Canonical fixture values (SSOT-A1): vcpus 4, memory_mb 4096
-        - The YAML fixture wins
-        - The TOML fixture (vcpus 2, memory_mb 1024) is non-conforming
+      - Canonical fixture values (SSOT-A1): vcpus 4, memory_mb 4096 across all fixtures
+        - Both kelir.yaml and kelir.toml conform strictly to 4 vCPUs and 4096 MB RAM
         - See: cans/artifacts/examples/fixtures/kelir.yaml:72-74
         - See: cans/artifacts/examples/fixtures/kelir.toml:32-34
       - see: artifacts/examples/fixtures/kelir.yaml#session.compute.page_size_kb

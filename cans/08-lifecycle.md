@@ -7,7 +7,9 @@
         - SuspendReason: External(ExternalSuspendKind) | ResourcePressure
         - ExternalSuspendKind: HumanAuthorizationHold | WireConnectionParking
           - StepEvaluationYield | HostPowerEventSnapshot
-        - Approval holds freeze the trapped task cgroup, keeping peer tasks alive
+        - Approval holds freeze only calling task cgroup via granular_task_freeze
+        - Held VirtIO descriptors yield immediately to prevent ring worker stalls
+        - Independent peer tasks in guest continue execution during approval holds
         - Inbound network connections remain parked during approval holds
         - Rejections return synthetic refusal frames, allowing agent recovery
         - Eliminates independent suspend implementations outside core

@@ -161,6 +161,16 @@ class RepoPolicyPlugin(BasePlugin):
             )
         return FilterAction.forward()
 
+    def on_fs_unlink(self, path: Path, ctx: HandlerContext) -> Verdict:
+        path_str = str(path)
+        # Intercept and quarantine destructive deletion of lockfiles or test harnesses
+        if path_str.endswith("package.json") or "test" in path_str:
+            filename = path.name
+            return Verdict.patch(PatchPayload.fs_path_redirect(
+                target_path=f"/workspace/.agentsh_trash/{filename}"
+            ))
+        return Verdict.pass_()
+
     # see: cans/04-terminal-plane.md#Terminal-pipeline
     async def disclosure_annotation(self) -> bytes:
         n = self.handle().violations
@@ -544,10 +554,14 @@ async def main() -> None:
         branches = await asyncio.gather(*(
             fork_and_verify(session, hid) for hid in "ABCD"
         ))
-        winner = next(
-            ((hid, d) for hid, run, d in branches if run.exit_code == 0),
-            None,
-        )
+        # Deterministic winner evaluation in declared branch order (SSOT-A1)
+        winner = None
+        for candidate_id in ["A", "B", "C", "D"]:
+            match = next((b for b in branches if b.id == candidate_id and b.exit_code == 0), None)
+            if match:
+                winner = match
+                break
+            
         if winner is None:
             await session.vm.rollback(base)
             return

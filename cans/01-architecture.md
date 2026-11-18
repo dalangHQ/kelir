@@ -13,6 +13,8 @@
           - Core owns five native engine planes: Terminal, Storage, Wire, Checkpoint, Host
           - Hardware backends: driver-rustvmm, driver-hvf, driver-openvmm, driver-avf
           - No dockerd, containerd, background root socket, daemon maintenance
+          - In-process C-ABI (libkelir) embeds microkernel directly into foreign runtimes
+          - Background supervisor daemons remain forbidden across all orchestrators
         - Fallback policy
           - Hardware virtualization is the default execution tier
           - Emulated fallback requires explicit opt-in via allow_emulated_fallback
@@ -57,6 +59,7 @@
           - Authority containment enforced at physical boundaries, not prompt filters
           - MMU and W^X invariants remain strictly monotonic and immutable
           - Dynamic policy rules permit signed operator lease overrides
+          - Signed operator leases relax runtime ceilings via session.elevate_lease()
           - Operator leases relax runtime gates without tearing down sessions
           - Semantic prompt inspection is banned; policy gates act on side-effects
         - Hardware memory execution policy: strict W^X enforced at MMU boundary

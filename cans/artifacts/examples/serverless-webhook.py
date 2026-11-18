@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from typing import Literal
+from kelir import Verdict, PostExecAction, SuspendReason, ExitKind
 
 import kelir
 from kelir import (
@@ -61,6 +62,10 @@ class DispatchWebhook(BaseModel, frozen=True):
 
 
 async def handle_webhook(req: WebhookRequest, session: kelir.Session) -> WebhookResponse:
+    if req.headers.get("x-fault-injection") == "abort":
+        await session.wire.purge_parked_with_rst(req.id)
+        return WebhookResponse(status=503, body=b'{"error":"rollback_rst"}')
+
     res = await session.spawn(
         "/usr/bin/webhook-worker",
         ["--request-id", req.id],
@@ -80,11 +85,14 @@ def build_runtime() -> KelirBuilder:
     # see: cans/10-attestation.md#Execution-receipts
     async def post_dispatch(c: HandlerContext) -> PostExecAction:
         receipt: ExecutionReceipt = await c.receipt()
+        if receipt.exit_kind != ExitKind.NORMAL:
+            return PostExecAction.ROLLBACK_AND_HALT
+        assert receipt.wall_clock_ns > 0
         if receipt.dirty_bytes == 0:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
-    return (
+    builder = (
         kelir.builder(
             vcpus=2, memory_mb=512, driver="auto",
             kernel="./fixtures/vmlinux-6.6-arm64-kelir",
@@ -131,6 +139,15 @@ def build_runtime() -> KelirBuilder:
         .on(LifecycleEvent.VmShutdown, lambda ctx: ctx.cap("ledger").flush())
         .seal()
     )
+    builder.wire(
+        userspace_netstack=True,
+        default_egress="drop",
+        divert_ports=[
+            (5433, "/run/agentsh/pgwire.sock"),
+            (8000, "/run/agentsh/mcp.sock"),
+        ]
+    )
+    return builder
 
 
 async def main() -> None:
