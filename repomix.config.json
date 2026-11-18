@@ -32,7 +32,12 @@
      "cans/",
       "cans/artifacts/examples",
     //  "crates",
-    //    "packages"
+    //    "packages",
+        
+        
+ //          "cans/artifacts/code",
+ //     "cans/artifacts/config",
+ //     "cans/artifacts/diagrams",
   ],
   "ignore": {
     "useGitignore": true,
@@ -50,7 +55,7 @@
       "cans/artifacts/code",
       "cans/artifacts/config",
       "cans/artifacts/diagrams",
- //    "cans/artifacts/examples",
+  //   "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html",
             "**/tests/**",
  //            "cans/artifacts/",
