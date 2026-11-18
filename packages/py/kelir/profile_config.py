@@ -83,7 +83,9 @@ class ShimProfile(BaseModel):
     hide_pid: ProfileInt | None = None
     anti_toctou_cgroups: ProfileBool | None = None
     granular_task_freeze: ProfileBool | None = None
+    task_freeze_timeout_ms: ProfileInt | None = None
     rejection_mode: str | None = None
+    mask_proc_environ: ProfileBool | None = None
 
 
 class DriverProfile(BaseModel):

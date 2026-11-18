@@ -139,6 +139,7 @@ session:
     hide_pid: 2                       # Remounts /proc with hidepid=2 to conceal peer processes
     anti_toctou_cgroups: true         # Freezes task group via cgroup v2 during syscall traps
     granular_task_freeze: true        # Freezes calling task only; yields VirtIO queue slot (no ring deadlock)
+    task_freeze_timeout_ms: 300000    # 5m human-in-the-loop approval ceiling before auto-refusal
     rejection_mode: synthetic_refusal
     mask_proc_environ: true           # seccomp blocks /proc/[pid]/environ and process_vm_readv
 

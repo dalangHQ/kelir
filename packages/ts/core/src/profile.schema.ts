@@ -97,7 +97,9 @@ const ProfileSchema = Type.Object(
             hide_pid: Type.Optional(Type.Integer()),
             anti_toctou_cgroups: Type.Optional(Type.Boolean()),
             granular_task_freeze: Type.Optional(Type.Boolean()),
+            task_freeze_timeout_ms: Type.Optional(Type.Integer()),
             rejection_mode: Type.Optional(Type.String()),
+            mask_proc_environ: Type.Optional(Type.Boolean()),
           }),
         ),
         driver: Type.Optional(

@@ -93,6 +93,7 @@ max_exec_slots = 4096
 hide_pid = 2
 anti_toctou_cgroups = true
 granular_task_freeze = true
+task_freeze_timeout_ms = 300000
 rejection_mode = "synthetic_refusal"
 mask_proc_environ = true
 

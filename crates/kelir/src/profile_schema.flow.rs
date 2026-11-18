@@ -309,6 +309,8 @@ pub struct ShimProfile {
     pub task_freeze_timeout_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rejection_mode: Option<RejectionMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_proc_environ: Option<bool>,
 }
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
