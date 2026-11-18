@@ -40,6 +40,15 @@ pub struct TrapScope {
 pub struct FsScope {
     pub(crate) builder: KelirBuilder,
 }
+    }
+    pub fn on_signal<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_signal(f);
+        self
+    }
+    pub fn on_fork<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fork(f);
+        self
+    }
 
 // see: cans/02-plugin-model.md#Unified-builder
 pub struct NetScope {
@@ -80,12 +89,52 @@ impl TrapScope {
         self.builder = self.builder.on_trap(f);
         self
     }
+    pub fn on_fs_unlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_unlink(f);
+        self
+    }
+    pub fn on_fs_rename<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_rename(f);
+        self
+    }
+    pub fn on_fs_setattr<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_setattr(f);
+        self
+    }
+    pub fn on_fs_symlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_symlink(f);
+        self
+    }
+    pub fn on_fs_mkdir<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_mkdir(f);
+        self
+    }
+    pub fn on_fs_readdir<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_readdir(f);
+        self
+    }
+    pub fn on_fs_readlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_readlink(f);
+        self
+    }
 
     pub fn on_process_exit<F>(mut self, f: F) -> Self
     where
         F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_process_exit(f);
+        self
+    }
+    pub fn on_socket_connect<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_socket_connect(f);
+        self
+    }
+    pub fn on_dns_query<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_dns_query(f);
+        self
+    }
+    pub fn on_socket_bind<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_socket_bind(f);
         self
     }
 
@@ -111,6 +160,10 @@ impl FsScope {
         self.builder = self.builder.on_fs_read(f);
         self
     }
+    pub fn on_exec_stdin<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_exec_stdin(f);
+        self
+    }
 
     pub fn on_fs_write<F>(mut self, f: F) -> Self
     where
@@ -128,6 +181,10 @@ impl FsScope {
         F: Fn(&Path, i32, i16, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_fs_lock(f);
+        self
+    }
+    pub fn on_host_containment_breach<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_host_containment_breach(f);
         self
     }
 

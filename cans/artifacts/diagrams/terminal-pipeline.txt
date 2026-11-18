@@ -13,6 +13,9 @@
 │ HOST SUPERVISOR (kelir-terminal RealTerminalOps + kelir-engine facade)        │
 │   │                                                                         │
 │   ├── Port Multiplexer ─────────► Routes port IDs to discrete dispatchers   │
+│   ├── Geometry Pump ────────────► set_winsize injects ioctl(slave, TIOCSWINSZ)│
+│   │                               kelir-shim broadcasts SIGWINCH to guest    │
+│   │                               pgrp; prevents ANSI / TokenShield desync   │
 │   ├── Interceptor Pipeline ─────► Synchronous ConsoleInterposer execution   │
 │   │                                (PTY policy: see 04-terminal-plane.md)   │
 │    │                                Masking keeps MAX_PLACEHOLDER_LEN - 1   │

@@ -69,6 +69,12 @@ export interface TrapScope<Name extends string, Ctx, Deps extends string> {
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): TrapScope<Name, Ctx, Deps>;
+  onSignal(
+    handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict,
+  ): TrapScope<Name, Ctx, Deps>;
+  onFork(
+    handler: (parent: number, child: number) => Promise<Verdict> | Verdict,
+  ): TrapScope<Name, Ctx, Deps>;
   end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
@@ -94,6 +100,17 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
       pid: number,
     ) => Verdict,
   ): FsScope<Name, Ctx, Deps>;
+  onFsUnlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsRename(handler: (src: string, dst: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsSetattr(
+    handler: (path: string, mode: number, size: number) => Verdict,
+  ): FsScope<Name, Ctx, Deps>;
+  onFsSymlink(handler: (target: string, link: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsMkdir(handler: (path: string, mode: number) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsReaddir(
+    handler: (path: string, entries: unknown[]) => FilterAction,
+  ): FsScope<Name, Ctx, Deps>;
+  onFsReadlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
   end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
@@ -101,6 +118,15 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
 export interface NetScope<Name extends string, Ctx, Deps extends string> {
   onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
   onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
+  onSocketConnect(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
+  ): NetScope<Name, Ctx, Deps>;
+  onDnsQuery(
+    handler: (pid: number, domain: string, qtype: number) => unknown,
+  ): NetScope<Name, Ctx, Deps>;
+  onSocketBind(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
+  ): NetScope<Name, Ctx, Deps>;
   end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
@@ -131,6 +157,13 @@ export interface ExecScope<Name extends string, Ctx, Deps extends string> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): ExecScope<Name, Ctx, Deps>;
+  onExecStdin(
+    handler: (
+      pid: number,
+      execId: number,
+      chunk: Uint8Array,
+    ) => Promise<Uint8Array> | Uint8Array,
+  ): ExecScope<Name, Ctx, Deps>;
   end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
 
@@ -143,6 +176,9 @@ export interface HostScope<Name extends string, Ctx, Deps extends string> {
   onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Name, Ctx, Deps>;
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
+  ): HostScope<Name, Ctx, Deps>;
+  onHostContainmentBreach(
+    handler: (pid: number, path: string, kind: string) => void,
   ): HostScope<Name, Ctx, Deps>;
   end(): KelirBuilder<Name, Ctx, Deps, unknown>;
 }
@@ -224,6 +260,12 @@ export declare class KelirBuilder<
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
+onSignal(
+    handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onFork(
+    handler: (parent: number, child: number) => Promise<Verdict> | Verdict,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
   onFsLookup(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
   onFsRead(
     handler: (path: string, buffer: Uint8Array) => Uint8Array,
@@ -239,11 +281,31 @@ export declare class KelirBuilder<
   onFsLock(
     handler: (path: string, flockCmd: number, flockType: number, pid: number) => Verdict,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsUnlink(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsRename(handler: (src: string, dst: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsSetattr(
+    handler: (path: string, mode: number, size: number) => Verdict,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsSymlink(handler: (target: string, link: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsMkdir(handler: (path: string, mode: number) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsReaddir(
+    handler: (path: string, entries: unknown[]) => FilterAction,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onFsReadlink(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
   onNetOutbound(
     handler: (frame: Uint8Array) => FilterAction,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
   onNetInbound(
     handler: (frame: Uint8Array) => FilterAction,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onSocketConnect(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onDnsQuery(
+    handler: (pid: number, domain: string, qtype: number) => unknown,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onSocketBind(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
   onConsoleInput(
     handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array,
@@ -257,6 +319,9 @@ export declare class KelirBuilder<
   onExecStderr(
     handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
+onExecStdin(
+    handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
   onHostLsmExec(
     handler: (path: string, pid: number) => Verdict,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
@@ -265,6 +330,9 @@ export declare class KelirBuilder<
   ): KelirBuilder<Name, Ctx, Deps, Params>;
   onHostKeyringAccess(
     handler: (key: string) => Verdict,
+  ): KelirBuilder<Name, Ctx, Deps, Params>;
+onHostContainmentBreach(
+    handler: (pid: number, path: string, kind: string) => void,
   ): KelirBuilder<Name, Ctx, Deps, Params>;
   onVmInit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,

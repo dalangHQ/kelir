@@ -58,16 +58,29 @@ type ForkFn = Arc<dyn Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync>;
 
 struct OnTrap;
 struct OnProcessExit;
+struct OnSignal;
+struct OnFork;
 struct OnFsLookup;
 struct OnFsRead;
 struct OnFsWrite;
 struct OnFsLock;
+struct OnFsUnlink;
+struct OnFsRename;
+struct OnFsSetattr;
+struct OnFsSymlink;
+struct OnFsMkdir;
+struct OnFsReaddir;
+struct OnFsReadlink;
 struct OnNetOutbound;
 struct OnNetInbound;
+struct OnSocketConnect;
+struct OnDnsQuery;
+struct OnSocketBind;
 struct OnConsoleInput;
 struct OnConsoleOutput;
 struct OnExecStdout;
 struct OnExecStderr;
+struct OnExecStdin;
 struct OnHostLsmExec;
 struct OnHostPressure;
 struct OnHostKeyringAccess;
@@ -77,6 +90,7 @@ struct OnVmShutdown;
 struct OnPreCommit;
 struct OnPostCommit;
 struct OnHostPreempt;
+struct OnHostContainmentBreach;
 struct OnMemoryPressure;
 struct OnHeartbeat;
 struct OnWatchdog;
@@ -131,6 +145,15 @@ pub struct TelemetryClosureAdapter<F, Verb> {
 // keeps plane config, mounted plugins, and host-only registrations
 // only; the former on_vm_init / on_vm_ready / on_vm_shutdown
 // single-handler fields were folded into the lifecycle vec, and the
+    }
+    pub fn on_signal<F>(mut self, f: F) -> Self {
+        self.registry.trap.push(Arc::new(TrapClosureAdapter::<_, OnSignal> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fork<F>(mut self, f: F) -> Self {
+        self.registry.trap.push(Arc::new(TrapClosureAdapter::<_, OnFork> { f, _marker: PhantomData }));
+        self
+    }
 // on_vm_init / on_vm_ready / on_vm_shutdown methods remain as the ring
 // verbs that append to it. Registration, TrapFilter, CustomActionEntry,
 // StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.flow.rs
@@ -238,12 +261,52 @@ impl KelirBuilder {
         self.scope = scope;
         self
     }
+    pub fn on_fs_unlink<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsUnlink> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_rename<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsRename> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_setattr<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsSetattr> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_symlink<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsSymlink> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_mkdir<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsMkdir> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_readdir<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsReaddir> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_fs_readlink<F>(mut self, f: F) -> Self {
+        self.registry.fs.push(Arc::new(FsClosureAdapter::<_, OnFsReadlink> { f, _marker: PhantomData }));
+        self
+    }
 
     pub fn fork_with(
         mut self,
         fork: impl Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
     ) -> Self {
         self.fork = Some(Arc::new(fork));
+        self
+    }
+    pub fn on_socket_connect<F>(mut self, f: F) -> Self {
+        self.registry.net.push(Arc::new(NetClosureAdapter::<_, OnSocketConnect> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_dns_query<F>(mut self, f: F) -> Self {
+        self.registry.net.push(Arc::new(NetClosureAdapter::<_, OnDnsQuery> { f, _marker: PhantomData }));
+        self
+    }
+    pub fn on_socket_bind<F>(mut self, f: F) -> Self {
+        self.registry.net.push(Arc::new(NetClosureAdapter::<_, OnSocketBind> { f, _marker: PhantomData }));
         self
     }
 
@@ -263,6 +326,10 @@ impl KelirBuilder {
             handler: f,
             verb: PhantomData,
         }));
+        self
+    }
+    pub fn on_exec_stdin<F>(mut self, f: F) -> Self {
+        self.registry.console.push(Arc::new(ConsoleClosureAdapter::<_, OnExecStdin> { f, _marker: PhantomData }));
         self
     }
 
@@ -285,6 +352,10 @@ impl KelirBuilder {
             handler: f,
             verb: PhantomData,
         }));
+        self
+    }
+    pub fn on_host_containment_breach<F>(mut self, f: F) -> Self {
+        self.registry.host.push(Arc::new(HostClosureAdapter::<_, OnHostContainmentBreach> { f, _marker: PhantomData }));
         self
     }
 

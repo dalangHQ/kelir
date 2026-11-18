@@ -185,6 +185,8 @@ impl MountScope {
             },
             paths: match (&self.paths, &parent.paths) {
                 (Some(a), Some(b)) => Some(a.iter().filter(|x| b.contains(x)).cloned().collect()),
+    async fn on_signal(&self, _sender: u32, _target: u32, _sig: i32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    async fn on_fork(&self, _parent: u32, _child: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
                 (Some(a), None) => Some(a.clone()),
                 (None, Some(b)) => Some(b.clone()),
                 (None, None) => None,
@@ -423,6 +425,7 @@ pub trait ConsoleInterposer {
     /// Stream mux 0x0001, stream kind EXEC 0x0001, stderr sub-lane 0x02;
     /// same no-PTY, exec_id-keyed contract as on_exec_stdout.
     async fn on_exec_stderr(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
+    async fn on_exec_stdin(&self, _pid: u32, _exec_id: u64, _chunk: &mut Vec<u8>) -> Result<(), PluginError> { Ok(()) }
 }
 
 #[async_trait]
@@ -447,6 +450,13 @@ pub trait FsInterposer {
     fn on_fs_lock(
         &self, _path: &Path, _flock_cmd: i32, _flock_type: i16, _pid: u32,
     ) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_unlink(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_rename(&self, _src: &Path, _dst: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_setattr(&self, _path: &Path, _mode: u32, _size: u64) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_fs_readdir(&self, _path: &Path, _entries: &mut Vec<crate::storage::DirEntry>) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
+    fn on_fs_readlink(&self, _path: &Path) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
 pub trait NetInterposer {
@@ -455,12 +465,16 @@ pub trait NetInterposer {
     fn on_net_outbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
     /// Sync L2 inbound buffer transform. Same contract as outbound.
     fn on_net_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> { Ok(FilterAction::Forward) }
+    fn on_socket_connect(&self, _pid: u32, _proto: u8, _ip: [u8; 4], _port: u16) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_dns_query(&self, _pid: u32, _domain: &str, _qtype: u16) -> Result<crate::wire::DnsVerdict, PluginError> { Ok(crate::wire::DnsVerdict::Forward) }
+    fn on_socket_bind(&self, _pid: u32, _proto: u8, _ip: [u8; 4], _port: u16) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
 }
 
 pub trait HostInterposer {
     fn on_host_lsm_exec(&self, _path: &Path, _pid: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     fn on_host_pressure(&self, _level: u32) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
     fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> { Ok(Verdict::Pass) }
+    fn on_host_containment_breach(&self, _pid: u32, _path: &Path, _kind: &str) -> Result<(), PluginError> { Ok(()) }
 }
 
 /// Object-safe clone bridge powering default fork_state implementation.

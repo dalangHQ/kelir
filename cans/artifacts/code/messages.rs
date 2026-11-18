@@ -82,6 +82,32 @@ pub struct Heartbeat {
     pub uptime_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignalEvent {
+    pub sender_pid: u32,
+    pub target_pid: u32,
+    pub signal: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForkEvent {
+    pub parent_pid: u32,
+    pub child_pid: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContainmentBreachEvent {
+    pub pid: u32,
+    pub target_path: String,
+    pub breach_kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DnsVerdict {
+    Forward,
+    Sinkhole { rcode: u8 },
+}
+
 // ── Wire enums ───────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -164,6 +190,8 @@ pub enum PatchPayload {
     /// Served inode for on_fs_lookup: same fields as FsInodeAttr, carried
     /// on the wire so lookup serve is not confused with write mutation.
     FsInode { mode: u32, uid: u32, gid: u32, size: u64, content: Vec<u8> },
+    /// Redirect destination path for on_fs_unlink operations.
+    FsPathRedirect { target_path: String },
     Custom { name: String, cbor: ciborium::value::Value },
 }
 

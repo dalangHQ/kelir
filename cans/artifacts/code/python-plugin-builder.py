@@ -108,6 +108,9 @@ class TrapScope:
         self._builder._on("on_process_exit", handler)
         return self
 
+    def on_signal(self, handler: Callable[..., Any]) -> "TrapScope": ...
+    def on_fork(self, handler: Callable[..., Any]) -> "TrapScope": ...
+
 
 # see: cans/02-plugin-model.md#Unified-builder
 class FsScope:
@@ -133,6 +136,14 @@ class FsScope:
         self._builder._on("on_fs_lock", handler)
         return self
 
+    def on_fs_unlink(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_rename(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_setattr(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_symlink(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_mkdir(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_readdir(self, handler: Callable[..., Any]) -> "FsScope": ...
+    def on_fs_readlink(self, handler: Callable[..., Any]) -> "FsScope": ...
+
 
 # see: cans/02-plugin-model.md#Unified-builder
 class NetScope:
@@ -149,6 +160,10 @@ class NetScope:
     def on_net_inbound(self, handler: Callable[..., Any]) -> NetScope:
         self._builder._on("on_net_inbound", handler)
         return self
+
+    def on_socket_connect(self, handler: Callable[..., Any]) -> "NetScope": ...
+    def on_dns_query(self, handler: Callable[..., Any]) -> "NetScope": ...
+    def on_socket_bind(self, handler: Callable[..., Any]) -> "NetScope": ...
 
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -184,6 +199,8 @@ class ExecScope:
         self._builder._on("on_exec_stderr", handler)
         return self
 
+    def on_exec_stdin(self, handler: Callable[..., Any]) -> "ExecScope": ...
+
 
 # see: cans/02-plugin-model.md#Unified-builder
 class HostScope:
@@ -208,6 +225,8 @@ class HostScope:
     def on_host_preempt(self, handler: Callable[..., Any]) -> HostScope:
         self._builder._on("on_host_preempt", handler)
         return self
+
+    def on_host_containment_breach(self, handler: Callable[..., Any]) -> "HostScope": ...
 
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -420,6 +439,9 @@ class KelirBuilder:
     def on_process_exit(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_process_exit", handler)
 
+    def on_signal(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fork(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+
     def on_fs_lookup(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_fs_lookup", handler)
 
@@ -432,11 +454,23 @@ class KelirBuilder:
     def on_fs_lock(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_fs_lock", handler)
 
+    def on_fs_unlink(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_rename(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_setattr(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_symlink(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_mkdir(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_readdir(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_fs_readlink(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+
     def on_net_outbound(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_net_outbound", handler)
 
     def on_net_inbound(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_net_inbound", handler)
+
+    def on_socket_connect(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_dns_query(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
+    def on_socket_bind(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
 
     def on_console_input(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_console_input", handler)
@@ -449,6 +483,8 @@ class KelirBuilder:
 
     def on_exec_stderr(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_exec_stderr", handler)
+
+    def on_exec_stdin(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
 
     def on_host_lsm_exec(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_host_lsm_exec", handler)
@@ -476,6 +512,8 @@ class KelirBuilder:
 
     def on_host_preempt(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_host_preempt", handler)
+
+    def on_host_containment_breach(self, handler: Callable[..., Any]) -> "KelirBuilder": ...
 
     def on_memory_pressure(self, handler: Callable[..., Any]) -> KelirBuilder:
         return self._on("on_memory_pressure", handler)

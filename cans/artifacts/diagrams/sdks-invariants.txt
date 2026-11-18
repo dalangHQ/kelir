@@ -5,19 +5,18 @@
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ Rust         │ Monomorphic HList accumulation:    │ `c.params::<T>()` deserializes     │ RAII `Drop` terminates hypervisor; │
 │              │ each `.plugin()` appends P::Context│ via Serde; failure halts spawn     │ Compile-time validation (rustc)    │
-│              │ to Plugins; `c.ctx::<T>()`         │ before traps execute               │                                    │
+│              │ to Plugins; `c.cap::<T>()`         │ before traps execute               │                                    │
 │              │ infallible via `Plugins: Has<T>`   │                                    │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ TypeScript   │ Generic accumulation monad:        │ `.params(schema)` pins TParams =   │ `try...finally` / `using` cleanup; │
 │              │ KelirBuilder<TPlugins, TParams>;   │ Static<TSchema>; `c.params` typed  │ `.error()` maps host exceptions to │
-│              │ `.use()` accumulates context;      │ from TSchema; `c.<pluginKey>` is   │ POSIX errnos before crash/abort    │
-│              │ compile-time prereq enforcement    │ statically derived from TPlugins   │                                    │
+│              │ `.use()` accumulates context;      │ from TSchema; `c.cap("name")` is   │ POSIX errnos before crash/abort    │
+│              │ compile-time prereq enforcement    │ statically typed via TCtx          │                                    │
 ├──────────────┼────────────────────────────────────┼────────────────────────────────────┼────────────────────────────────────┤
 │ Python       │ Flat builder returning self;       │ `.params(schema: type[TParams])`   │ `async with` __aexit__ terminates; │
 │              │ `.use()` overloads; prereq         │ pins TParams; `c.params` typed     │ boot-time EConfig; perimeter       │
-│              │ validation at builder.boot()      │ from the Pydantic model class      │ validation                         │
-│              │ raises EConfig;                │                                    │                                    │
-│              │ `c.cap.<plugin_key>` static    │                                    │                                    │
+│              │ validation at builder.boot()      │ from the Pydantic model class;     │ validation                         │
+│              │ raises EConfig;                    │ `c.cap("name")` typed capability   │                                    │
 └──────────────┴────────────────────────────────────┴────────────────────────────────────┴────────────────────────────────────┘
 AOT hook fusion: NAPI/PyO3 pipeline handlers fuse to one native closure per event.
 Fork isolation: Inline trap closures and stateless plugins inherit CoW state automatically;

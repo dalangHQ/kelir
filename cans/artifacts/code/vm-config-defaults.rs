@@ -43,6 +43,8 @@ pub struct DriverPolicy {
 // see: cans/01-architecture.md#VmmDriver-trait
 #[derive(Debug, Clone, Default)]
 pub struct VmConfig {
+    /// Masks /proc/[pid]/environ and process_vm_readv in-guest via seccomp.
+    pub mask_proc_environ: bool,
     pub vcpus: u8,
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
@@ -129,6 +131,8 @@ pub enum TapFilter {
 /// see: cans/07-wire-plane.md#Wire-plane
 #[derive(Debug, Clone, Default)]
 pub struct WireConfig {
+    /// Blocks in-guest AF_UNIX sockets with leading null bytes (abstract sockets).
+    pub block_abstract_unix_sockets: bool,
     pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
     /// Interposition is plugin-vault (Part 1/7); this field declares

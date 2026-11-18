@@ -7,6 +7,9 @@
 │   │     - Boot params (unconditional): kptr_restrict=2 dmesg_restrict=1                 │
 │   │       panic_on_oops=1 slab_nomerge pti=on slub_debug=FZP; shim remounts             │
 │   │       /proc with hidepid=2; kallsyms / firmware / version leaks suppressed          │
+│   │       shim writes -1000 to /proc/1/oom_score_adj pre-workload (OOM immunity);       │
+│   │       session.shim.mask_proc_environ blocks /proc/[pid]/environ via seccomp;        │
+│   │       S_IFSOCK sockets isolated strictly to guest ephemeral tmpfs mounts            │
 │   │     - macOS ARM64: Rosetta mounted at /run/rosetta (read-only VirtIO-FS);           │
 │   │       shim registers it in /proc/sys/fs/binfmt_misc; x86_64 runs transparently      │
 │   │                                                                                     │

@@ -36,6 +36,17 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
   onFsLock(
     handler: (path: string, flockCmd: number, flockType: number, pid: number) => Verdict,
   ): FsScope<Name, Ctx, Deps>;
+  onFsUnlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsRename(handler: (src: string, dst: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsSetattr(
+    handler: (path: string, mode: number, size: number) => Verdict,
+  ): FsScope<Name, Ctx, Deps>;
+  onFsSymlink(handler: (target: string, link: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsMkdir(handler: (path: string, mode: number) => Verdict): FsScope<Name, Ctx, Deps>;
+  onFsReaddir(
+    handler: (path: string, entries: unknown[]) => FilterAction,
+  ): FsScope<Name, Ctx, Deps>;
+  onFsReadlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
   config(cfg: {
     lockBroker?: unknown;
     carryoverBytes?: number;
@@ -56,6 +67,12 @@ export interface TrapScope<Name extends string, Ctx, Deps extends string> {
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): TrapScope<Name, Ctx, Deps>;
+  onSignal(
+    handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict,
+  ): TrapScope<Name, Ctx, Deps>;
+  onFork(
+    handler: (parent: number, child: number) => Promise<Verdict> | Verdict,
+  ): TrapScope<Name, Ctx, Deps>;
   config(cfg: unknown): TrapScope<Name, Ctx, Deps>;
   requires<Req extends string>(): TrapScope<Name, Ctx, Deps>;
   forkWith(fn: () => KelirBuilder<Name, Ctx, Deps, unknown>): TrapScope<Name, Ctx, Deps>;
@@ -69,6 +86,52 @@ export interface TrapScope<Name extends string, Ctx, Deps extends string> {
 // params, deny. Ring scopes (net, console, exec, host, lifecycle,
 // telemetry) mirror the two above; each lists only its own ring verbs
 // plus the shared sub-nodes.
+export interface NetScope<Name extends string, Ctx, Deps extends string> {
+  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
+  onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
+  onSocketConnect(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
+  ): NetScope<Name, Ctx, Deps>;
+  onDnsQuery(
+    handler: (pid: number, domain: string, qtype: number) => unknown,
+  ): NetScope<Name, Ctx, Deps>;
+  onSocketBind(
+    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
+  ): NetScope<Name, Ctx, Deps>;
+  config(cfg: unknown): NetScope<Name, Ctx, Deps>;
+  requires<Req extends string>(): NetScope<Name, Ctx, Deps>;
+  forkWith(fn: () => KelirBuilder<Name, Ctx, Deps, unknown>): NetScope<Name, Ctx, Deps>;
+  timeout(seconds: number): NetScope<Name, Ctx, Deps>;
+  priority(i: number): NetScope<Name, Ctx, Deps>;
+  rules(rules: ScopeRules): NetScope<Name, Ctx, Deps>;
+}
+
+export interface ExecScope<Name extends string, Ctx, Deps extends string> {
+  onExecStdout(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): ExecScope<Name, Ctx, Deps>;
+  onExecStderr(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): ExecScope<Name, Ctx, Deps>;
+  onExecStdin(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): ExecScope<Name, Ctx, Deps>;
+  config(cfg: unknown): ExecScope<Name, Ctx, Deps>;
+  requires<Req extends string>(): ExecScope<Name, Ctx, Deps>;
+  forkWith(fn: () => KelirBuilder<Name, Ctx, Deps, unknown>): ExecScope<Name, Ctx, Deps>;
+  timeout(seconds: number): ExecScope<Name, Ctx, Deps>;
+  priority(i: number): ExecScope<Name, Ctx, Deps>;
+  rules(rules: ScopeRules): ExecScope<Name, Ctx, Deps>;
+}
+
+export interface HostScope<Name extends string, Ctx, Deps extends string> {
+  onHostLsmExec(handler: (path: string, pid: number) => Verdict): HostScope<Name, Ctx, Deps>;
+  onHostPressure(handler: (level: number) => Verdict): HostScope<Name, Ctx, Deps>;
+  onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Name, Ctx, Deps>;
+  onHostPreempt(handler: (ctx: LifecycleContext) => Promise<void> | void): HostScope<Name, Ctx, Deps>;
+  onHostContainmentBreach(handler: (pid: number, path: string, kind: string) => void): HostScope<Name, Ctx, Deps>;
+  config(cfg: unknown): HostScope<Name, Ctx, Deps>;
+  requires<Req extends string>(): HostScope<Name, Ctx, Deps>;
+  forkWith(fn: () => KelirBuilder<Name, Ctx, Deps, unknown>): HostScope<Name, Ctx, Deps>;
+  timeout(seconds: number): HostScope<Name, Ctx, Deps>;
+  priority(i: number): HostScope<Name, Ctx, Deps>;
+  rules(rules: ScopeRules): HostScope<Name, Ctx, Deps>;
+}
+
 export interface ActionsScope<Name extends string, Ctx, Deps extends string> {
   register(
     name: string,

@@ -116,6 +116,11 @@ class FsInode:
 
 
 @dataclass(frozen=True)
+class FsPathRedirect:
+    """Target redirect path for on_fs_unlink operations."""
+    target_path: str
+
+@dataclass(frozen=True)
 class Custom:
     """Custom dispatch payload: name + CBOR; the name resolves at SDK
     registration (11-protocol.md#Custom-dispatch-contract)."""
@@ -126,7 +131,7 @@ class Custom:
 
 # Patch payload is registered per ring: ExecveMutation (constructed
 # through Action.patch kwargs), FsInode, Custom.
-PatchPayload = Union[Any, FsInode, Custom]
+PatchPayload = Union[Any, FsInode, FsPathRedirect, Custom]
 
 
 @dataclass(frozen=True)

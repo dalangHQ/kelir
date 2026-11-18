@@ -60,6 +60,8 @@ pub struct ExecutionReceipt {
     pub correlation_token: Option<String>,
     /// Hypervisor dirty-byte counter; always populated.
     /// Byte-not-page reason: see cans/01-architecture.md#VmmDriver-trait
+    /// Stage-2 MMU tracks physical dirty pages directly in hardware;
+    /// captures mmap(MAP_SHARED) writes that bypass VFS and on_fs_write.
     pub dirty_bytes: u64,
     /// Populated when ReceiptConfig::include_syscall_count.
     pub syscall_count: Option<u64>,

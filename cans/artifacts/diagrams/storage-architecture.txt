@@ -6,6 +6,11 @@
 │    - Cold-mounted as block device. Zero tarball decompression.              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │ 2. HOST COW BROKER (VirtIO-FS only, no in-guest overlay):                  │
+│    - FUSE 11-verb pipeline: lookup, read, write, lock, unlink, rename,      │
+│      setattr, symlink, mkdir, readdir, readlink.                            │
+│    - Stage-2 MMU physical dirty-byte tracking records mmap(MAP_SHARED)      │
+│      writes that bypass VFS and on_fs_write.                                │
+│    - S_IFSOCK containment: guest sockets confined strictly to memory tmpfs. │
 │    - Base host workspace mounted STRICTLY READ-ONLY as broker lower layer.  │
 │    - Writes land in a per-session sparse upper file owned by the broker.    │
 │    - Deletions are recorded as explicit tombstones in broker state;         │

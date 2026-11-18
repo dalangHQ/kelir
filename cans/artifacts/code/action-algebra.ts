@@ -79,6 +79,7 @@ export type PatchPayload =
       size: number;
       content: Uint8Array;
     } }
+  | { fsPathRedirect: { targetPath: string } }
   | { custom: { name: string; cbor: unknown } };
 
 /**

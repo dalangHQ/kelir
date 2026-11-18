@@ -58,6 +58,34 @@ impl FsScope {
         );
         self
     }
+    pub fn on_fs_unlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_unlink(f);
+        self
+    }
+    pub fn on_fs_rename<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_rename(f);
+        self
+    }
+    pub fn on_fs_setattr<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_setattr(f);
+        self
+    }
+    pub fn on_fs_symlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_symlink(f);
+        self
+    }
+    pub fn on_fs_mkdir<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_mkdir(f);
+        self
+    }
+    pub fn on_fs_readdir<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_readdir(f);
+        self
+    }
+    pub fn on_fs_readlink<F>(mut self, f: F) -> Self {
+        self.builder = self.builder.on_fs_readlink(f);
+        self
+    }
 
     // see: cans/02-plugin-model.md#Nested-scopes
     // Scope-level deps: the Rust form is requires::<P>().

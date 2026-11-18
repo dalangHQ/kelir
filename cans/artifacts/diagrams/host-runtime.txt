@@ -10,9 +10,12 @@
 │               ▼                                             ▼                           │
 │  ┌───────────────────────────────────────────────────────────────────────────────────┐  │
 │  │                        kelir-engine (Stripped Microkernel, #![forbid(unsafe_code)])                          │  │
+│  │   ├── Pre-flight Gates: macOS hypervisor entitlement, Linux /dev/kvm (0660),       │  │
+│  │   │   and in-memory kelir-pack OCI->EROFS compiler verified before first vCPU cycle│  │
 │  │   ├── Native tier plugins: In-memory Rust execution at the latency ceiling        │  │
 │  │   ├── Foreign tier Filter-Before-FFI Gate: MountScope drops unmonitored events    │  │
-│  │   ├── BusDispatcher: Zero-copy multiplexer for the 4 VirtIO Rings                 │  │
+│  │   ├── BusDispatcher: Zero-copy multiplexer for 38 ring verbs across 8 scopes      │  │
+│  │   │   (trap: 4, fs: 11, net: 5, console: 2, exec: 3, host: 5, lifecycle: 5, telem: 3)│
 │  │   ├── PipelineEngine: Panic-quarantined execution tables (catch_unwind protected)        │  │
 │  │   ├── EventBus: Unified compile-time and async hook pipeline                      │  │
 │  │   ├── Transport: SPSC rings primary; AF_VSOCK / named-pipe fallback                │ │

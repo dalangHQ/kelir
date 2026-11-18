@@ -115,7 +115,8 @@ pub struct GuestClock {
 #[derive(Debug, Clone)]
 pub struct SnapshotDescriptor {
     pub id: String,
-    /// Byte count; see cans/01-architecture.md#VmmDriver-trait
+    /// Byte count tracked via hardware Stage-2 MMU page dirty logs.
+    /// Captures mmap(MAP_SHARED) writes that bypass VFS and on_fs_write.
     pub dirty_bytes: u64,
     pub created_at_ns: u64,
     /// Parent in the snapshot chain. Depth is unbounded and restore
@@ -313,6 +314,8 @@ pub trait VmmDriver: Send + Sync {
     /// Arms the hardware watchdog: when no heartbeat arrives within `timeout`,
     /// the driver executes `action` (Reboot / Terminate)
     async fn set_watchdog(&mut self, timeout: Duration, action: WatchdogAction) -> Result<(), VmmError>;
+    /// Injects PTY window resize (TIOCSWINSZ) and triggers guest SIGWINCH pump
+    async fn set_winsize(&mut self, cols: u16, rows: u16) -> Result<(), VmmError>;
 
     /// Yields raw duplex channel to the Transport backend multiplexer.
     fn transport_connect(&self, channel_id: u32) -> Result<tokio::net::UnixStream, VmmError>;

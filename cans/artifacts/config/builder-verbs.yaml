@@ -127,6 +127,26 @@ verbs:
     args: "sync (event: ProcessExit) => Result<(), PluginError>"
     notes: null
 
+  - name: on_signal
+    rust: on_signal
+    typescript: onSignal
+    python: on_signal
+    placement: scoped-entry
+    scope: trap
+    returns: scope
+    args: "async (sender: u32, target: u32, sig: i32) => Result<Verdict, PluginError>"
+    notes: Intercepts in-guest signals (SIGKILL/SIGTERM) before task delivery.
+
+  - name: on_fork
+    rust: on_fork
+    typescript: onFork
+    python: on_fork
+    placement: scoped-entry
+    scope: trap
+    returns: scope
+    args: "async (parent: u32, child: u32) => Result<Verdict, PluginError>"
+    notes: Intercepts fork/clone syscalls; guards against fork bombs before vCPU allocation.
+
   # ── Fs ring ─────────────────────────────────────────────────────
   # see: cans/02-plugin-model.md#Segregated-ring-traits
   - name: on_fs_lookup
@@ -169,6 +189,76 @@ verbs:
     args: "sync (path: &Path, flock_cmd: i32, flock_type: i16, pid: u32) => Result<Verdict, PluginError>"
     notes: null
 
+  - name: on_fs_unlink
+    rust: on_fs_unlink
+    typescript: onFsUnlink
+    python: on_fs_unlink
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (path: &Path) => Result<Verdict, PluginError>"
+    notes: Supports FsPathRedirect in PatchPayload; redirects destructive unlinks.
+
+  - name: on_fs_rename
+    rust: on_fs_rename
+    typescript: onFsRename
+    python: on_fs_rename
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (src: &Path, dst: &Path) => Result<Verdict, PluginError>"
+    notes: Intercepts renameat2 operations before broker staging.
+
+  - name: on_fs_setattr
+    rust: on_fs_setattr
+    typescript: onFsSetattr
+    python: on_fs_setattr
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (path: &Path, mode: u32, size: u64) => Result<Verdict, PluginError>"
+    notes: Traps ftruncate, chmod, and chown before inode modification.
+
+  - name: on_fs_symlink
+    rust: on_fs_symlink
+    typescript: onFsSymlink
+    python: on_fs_symlink
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (target: &Path, link: &Path) => Result<Verdict, PluginError>"
+    notes: Blocks path traversal escapes at symlink creation boundary.
+
+  - name: on_fs_mkdir
+    rust: on_fs_mkdir
+    typescript: onFsMkdir
+    python: on_fs_mkdir
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (path: &Path, mode: u32) => Result<Verdict, PluginError>"
+    notes: Validates directory quota and path containment pre-creation.
+
+  - name: on_fs_readdir
+    rust: on_fs_readdir
+    typescript: onFsReaddir
+    python: on_fs_readdir
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (path: &Path, entries: &mut [DirEntry]) => Result<FilterAction, PluginError>"
+    notes: Scrubs sensitive host artifacts from directory listing buffers.
+
+  - name: on_fs_readlink
+    rust: on_fs_readlink
+    typescript: onFsReadlink
+    python: on_fs_readlink
+    placement: scoped-entry
+    scope: fs
+    returns: scope
+    args: "sync (path: &Path) => Result<Verdict, PluginError>"
+    notes: Validates canonical symlink destinations against MountScope.
+
   # ── Net ring ────────────────────────────────────────────────────
   # see: cans/02-plugin-model.md#Segregated-ring-traits
   # see: cans/07-wire-plane.md
@@ -191,6 +281,36 @@ verbs:
     returns: scope
     args: "sync (buf: &mut [u8]) => Result<FilterAction, PluginError>"
     notes: null
+
+  - name: on_socket_connect
+    rust: on_socket_connect
+    typescript: onSocketConnect
+    python: on_socket_connect
+    placement: scoped-entry
+    scope: net
+    returns: scope
+    args: "sync (pid: u32, proto: u8, ip: [u8; 4], port: u16) => Result<Verdict, PluginError>"
+    notes: Per-process network access control (PNACL); resolves caller PID via netlink.
+
+  - name: on_dns_query
+    rust: on_dns_query
+    typescript: onDnsQuery
+    python: on_dns_query
+    placement: scoped-entry
+    scope: net
+    returns: scope
+    args: "sync (pid: u32, domain: &str, qtype: u16) => Result<DnsVerdict, PluginError>"
+    notes: Resolves domain queries before synthetic gateway forward; returns Forward | Sinkhole.
+
+  - name: on_socket_bind
+    rust: on_socket_bind
+    typescript: onSocketBind
+    python: on_socket_bind
+    placement: scoped-entry
+    scope: net
+    returns: scope
+    args: "sync (pid: u32, proto: u8, ip: [u8; 4], port: u16) => Result<Verdict, PluginError>"
+    notes: Denies in-guest listening socket creation outside authorized ports.
 
   # ── Console ring ────────────────────────────────────────────────
   # see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -237,6 +357,16 @@ verbs:
     args: "sync (pid: u32, seq: u64, buf: &[u8]) => Result<Vec<u8>, PluginError>"
     notes: null
 
+  - name: on_exec_stdin
+    rust: on_exec_stdin
+    typescript: onExecStdin
+    python: on_exec_stdin
+    placement: scoped-entry
+    scope: exec
+    returns: scope
+    args: "sync (pid: u32, seq: u64, buf: &[u8]) => Result<Vec<u8>, PluginError>"
+    notes: Filter ring; mutates or sanitizes guest stdin chunks before delivery to process.
+
   # ── Host ring ───────────────────────────────────────────────────
   # see: cans/02-plugin-model.md#Segregated-ring-traits
   # see: cans/01-architecture.md#Host-ops
@@ -279,6 +409,16 @@ verbs:
     returns: scope
     args: "async (c: &mut LifecycleCtx<'_>) => Result<(), PluginError>"
     notes: Reachable via .host() but binds the lifecycle ring (see rust-plugin-builder-scopes.rs).
+
+  - name: on_host_containment_breach
+    rust: on_host_containment_breach
+    typescript: onHostContainmentBreach
+    python: on_host_containment_breach
+    placement: scoped-entry
+    scope: host
+    returns: scope
+    args: "sync (pid: u32, path: &Path, kind: &str) => Result<(), PluginError>"
+    notes: Emits high-severity security telemetry on openat2 RESOLVE_BENEATH violation.
 
   # ── Telemetry ring ──────────────────────────────────────────────
   # see: cans/02-plugin-model.md#Segregated-ring-traits

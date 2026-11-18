@@ -6,6 +6,10 @@
   Guest virtio-net Ethernet frames Hook on frames leaving       Hook on frames arriving
   terminate in host process memory; the guest.                    at the guest.
   no TAP device, no CAP_NET_ADMIN, no host routing change.
+  Abstract socket fence: wire.block_abstract_unix_sockets denies null-byte
+  (\0) AF_UNIX paths lacking VFS inodes/IPs at kernel socket alloc.
+  PNACL: on_socket_connect resolves caller PID via netlink before TCP SYN.
+  Port guard: on_socket_bind blocks unauthorized listening socket allocation.
   Link-local quarantine: 169.254.0.0/16 and fe80::/10 dropped before
   policy eval; cloud metadata IMDS endpoints except 169.254.169.254
   dropped unconditionally at the L3 ingress ring. That one address is
