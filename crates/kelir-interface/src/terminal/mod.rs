@@ -1,7 +1,9 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
-#[path = "log.flow.rs"]
+#[path = "log.rs"]
 pub mod log;
-#[path = "ops.flow.rs"]
+#[path = "log.flow.rs"]
+pub mod log_flow;
+#[path = "ops.rs"]
 pub mod ops;
 
 pub use log::{LogCursor, LogSegment, LogStream};

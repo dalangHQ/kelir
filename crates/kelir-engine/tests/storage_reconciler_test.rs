@@ -355,6 +355,26 @@ impl StorageIo for EbusyThenOkIo {
         std::fs::remove_file(path)?;
         Ok(())
     }
+    fn write(&self, _path: &Path, _offset: u64, _data: &[u8]) -> Result<u64, PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+        ))
+    }
+    fn mkdir(&self, _path: &Path, _mode: u32) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+        ))
+    }
+    fn unlink(&self, _path: &Path) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+        ))
+    }
+    fn rename(&self, _from: &Path, _to: &Path) -> Result<(), PluginError> {
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+        ))
+    }
 }
 
 // see: cans/artifacts/test-plan/cases/storage_plane/sp_10_reconciler_busy_lock_retry_backoff.yaml#case_id

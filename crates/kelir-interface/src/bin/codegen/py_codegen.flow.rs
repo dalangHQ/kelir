@@ -45,7 +45,7 @@ fn py_type(ty: &Ty) -> String {
             Ty::U8 => "bytes".to_string(),
             Ty::Str | Ty::PathBuf => "list[str]".to_string(),
             Ty::U32 => "list[int]".to_string(),
-            Ty::Custom(name) => format!("list[{}]", name),
+            Ty::Custom(name) => format!("list[{name}]"),
             other => format!("list[{}]", py_type(other)),
         },
         Ty::ByteArray(_) => "str".to_string(),
@@ -87,7 +87,7 @@ fn py_default(ty: &Ty) -> String {
             "Field(default_factory=VerdictKindPass)".to_string()
         }
         Ty::Custom(name) if name == "TrampolineRing" => "RingEvent.TRAP".to_string(),
-        Ty::Custom(name) => format!("Field(default_factory={})", name),
+        Ty::Custom(name) => format!("Field(default_factory={name})"),
     }
 }
 
@@ -221,7 +221,7 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
         if *name == "ExecutionReceipt" {
             out.push_str("# L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK\n");
         }
-        let _ = writeln!(out, "class {}(BaseModel):", name);
+        let _ = writeln!(out, "class {name}(BaseModel):");
         for field in &def.fields {
             let _ = writeln!(
                 out,
@@ -259,7 +259,7 @@ pub fn emit_protocol() -> String {
     let _ = writeln!(out, "class ExecStream(IntEnum):");
     for (name, value) in EXEC_STREAMS {
         let short = name.strip_prefix("EXEC_STREAM_").unwrap_or(name);
-        let _ = writeln!(out, "    {short} = {value:#04x}", short = short);
+        let _ = writeln!(out, "    {short} = {value:#04x}");
     }
     out.push('\n');
     for (name, value) in [
@@ -299,7 +299,7 @@ pub fn emit_package_init(order: &[&str]) -> String {
     );
     out.push_str("from kelir.generated.attest_telemetry import (\n");
     for name in order {
-        let _ = writeln!(out, "    {},", name);
+        let _ = writeln!(out, "    {name},");
     }
     out.push_str(")\n");
     out

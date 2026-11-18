@@ -77,4 +77,45 @@ impl StorageIo for RealStorageIo {
             "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::remove_file needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
         ))
     }
+
+    fn write(
+        &self,
+        path: &Path,
+        offset: u64,
+        data: &[u8],
+    ) -> Result<u64, kelir_interface::plugin_model::PluginError> {
+        let _ = (path, offset, data);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+        ))
+    }
+
+    fn mkdir(
+        &self,
+        path: &Path,
+        mode: u32,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = (path, mode);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+        ))
+    }
+
+    fn unlink(&self, path: &Path) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = path;
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+        ))
+    }
+
+    fn rename(
+        &self,
+        from: &Path,
+        to: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        let _ = (from, to);
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+        ))
+    }
 }

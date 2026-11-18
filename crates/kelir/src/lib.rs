@@ -23,8 +23,9 @@ pub mod planes;
 pub mod plugin_model;
 #[path = "profile_schema.flow.rs"]
 pub mod profile_schema;
-#[path = "profile_validate.flow.rs"]
 pub mod profile_validate;
+#[path = "profile_validate.flow.rs"]
+mod profile_validate_flow;
 pub mod protocol_wire;
 #[path = "sandbox_runtime.flow.rs"]
 pub mod sandbox_runtime;

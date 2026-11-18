@@ -1,7 +1,9 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
+#[path = "attribution.rs"]
+pub mod attribution;
 #[path = "graph.flow.rs"]
 pub mod graph;
-#[path = "ops.flow.rs"]
+#[path = "ops.rs"]
 pub mod ops;
 #[path = "step_dag.flow.rs"]
 pub mod step_dag;

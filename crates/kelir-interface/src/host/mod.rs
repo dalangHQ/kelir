@@ -1,5 +1,5 @@
 // see: cans/01-architecture.md#Host-plane-subsystem
-#[path = "ops.flow.rs"]
+#[path = "ops.rs"]
 pub mod ops;
 
 pub use ops::{

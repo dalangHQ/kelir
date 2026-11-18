@@ -77,8 +77,8 @@ pub struct Session {
 }
 
 // see: cans/01-architecture.md#Host-state-root
-use crate::session_paths::{ensure_workspace_root, register_catalog_row, tenant_id};
-pub use crate::session_paths::{reap_ephemeral_session_dir, session_dir};
+use crate::session_paths_flow::{ensure_workspace_root, register_catalog_row, tenant_id};
+pub use crate::session_paths_flow::{reap_ephemeral_session_dir, session_dir};
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 #[derive(Debug, Clone)]

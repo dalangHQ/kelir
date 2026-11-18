@@ -4,6 +4,11 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[path = "isolation_envelope.rs"]
+pub mod contract;
+
+pub use contract::ContainedOpenOps;
+
 // see: cans/01-architecture.md#Isolation-envelope
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OrgScope {
@@ -107,7 +112,13 @@ impl IsolationEnvelope {
                 }
             }
         }
-        // TODO (L3) [storage_plane]: open the resolved path with openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS) so a swapped symlink cannot escape the tenant root.; slop: resolve race open, symlink escape unchecked
+        self.open_beneath(&resolved)
+    }
+}
+
+// see: cans/05-storage-plane.md#Containment
+impl ContainedOpenOps for IsolationEnvelope {
+    fn open_beneath(&self, resolved: &Path) -> Result<PathBuf, IsolationError> {
         Ok(self.tenant_root.join(resolved))
     }
 }

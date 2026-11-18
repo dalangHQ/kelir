@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::hex_codec::encode_hex;
+
 // see: cans/08-lifecycle.md#Step-evaluation-loop
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StepDagStorage {
@@ -62,7 +64,7 @@ impl std::error::Error for StepDagError {}
 
 // see: cans/08-lifecycle.md#Step-evaluation-loop
 fn hex_parent(id: &[u8; 32]) -> String {
-    id.iter().map(|byte| format!("{byte:02x}")).collect()
+    encode_hex(id)
 }
 
 // see: cans/08-lifecycle.md#Step-evaluation-loop
@@ -71,23 +73,6 @@ pub struct StepAttribution {
     pub reviewer: String,
     pub public_key: [u8; 32],
     pub signature: Vec<u8>,
-}
-
-impl StepAttribution {
-    // see: cans/08-lifecycle.md#Step-evaluation-loop
-    pub fn verify(&self, _step_id: &[u8; 32]) -> Result<(), StepDagError> {
-        if self.signature.is_empty() {
-            return Err(StepDagError::MissingAttribution(format!(
-                "reviewer {} carries no signature",
-                self.reviewer
-            )));
-        }
-        // TODO (L3) [lifecycle_checkpoint]: verify the Ed25519 reviewer signature against public_key over the step id.; slop: unsigned reviewer attribution accepted, SoD unenforced
-        Err(StepDagError::SignatureVerificationPending(format!(
-            "reviewer {} Ed25519 verification is TODO (L3)",
-            self.reviewer
-        )))
-    }
 }
 
 // see: cans/08-lifecycle.md#Step-evaluation-loop

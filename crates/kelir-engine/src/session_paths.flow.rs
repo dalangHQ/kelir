@@ -22,7 +22,6 @@ pub fn session_dir(
 }
 
 // see: cans/01-architecture.md#Host-state-root
-// L3-GAP: [lifecycle_checkpoint]: the runtime child janitor sweeps orphaned session dirs on startup; slop: orphaned session dirs never swept, disk leaks
 pub fn reap_ephemeral_session_dir(
     session_id: &[u8; 16],
 ) -> Result<(), kelir_interface::plugin_model::PluginError> {
@@ -46,8 +45,6 @@ pub(crate) fn ensure_workspace_root(
 }
 
 // see: cans/06-storage-catalog.md#Entity-model
-// L3-GAP: [lc_16_session_incarnation_cas_guard]: swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof; slop: destructive verb skips incarnation CAS, stale row deleted
-// L3-GAP: [lc_14_detached_session_lease_heartbeat]: detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle; slop: detached row stays Ephemeral, expires_at never advances
 pub(crate) fn register_catalog_row(
     session_id: [u8; 16],
     incarnation_id: [u8; 16],

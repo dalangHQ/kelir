@@ -3,10 +3,14 @@
 pub mod connection_parking;
 #[path = "dns_ops.flow.rs"]
 pub mod dns;
-#[path = "l4_ops.flow.rs"]
+#[path = "l4_ops.rs"]
 pub mod l4;
+#[path = "l4_ops.flow.rs"]
+pub mod l4_flow;
 #[path = "l7_parser.flow.rs"]
 pub mod l7;
+#[path = "l7_tls.rs"]
+pub mod l7_tls;
 #[path = "net_ops.flow.rs"]
 pub mod net;
 #[path = "outbox.flow.rs"]

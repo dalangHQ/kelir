@@ -1,6 +1,7 @@
 // see: cans/15-operations.md#Developer-CLI
 #![forbid(unsafe_code)]
 
+#[path = "attach_cli.run.rs"]
 pub mod attach_cli;
 #[path = "attest_cli.flow.rs"]
 pub mod attest_cli;
@@ -29,6 +30,7 @@ pub mod parity_cli;
 pub mod registry_cli;
 #[path = "rings_cli.run.rs"]
 pub mod rings_cli;
+#[path = "scaffold_cli.run.rs"]
 pub mod scaffold_cli;
 #[path = "setup_cli.flow.rs"]
 pub mod setup_cli;

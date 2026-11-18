@@ -19,12 +19,8 @@ pub fn compute_causal_delta(
     storage: &StorageDelta,
     receipt: &ExecutionReceipt,
 ) -> Result<CausalDelta, PluginError> {
-    Ok(CausalDelta::new(
-        storage.memory_diff_bytes,
-        storage.modified_inodes.clone(),
-        storage.spawned_pids.clone(),
-        storage.egress_bytes,
-        storage.storage_delta_root,
-        receipt.leaf_hash(),
+    let _ = (storage, receipt);
+    Err(PluginError::Halt(
+        "TODO (L3) [ar_09_causal_delta_aggregation_merkle]: causal-delta assembly pending; slop: delta fabricated, merkle aggregation skipped".into(),
     ))
 }

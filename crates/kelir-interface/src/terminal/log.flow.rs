@@ -2,9 +2,9 @@
 use std::path::PathBuf;
 
 use crate::plugin_model::PluginError;
+use crate::terminal::log::{LogCursor, LogSegment, LogStream};
 
-pub struct LogCursor(pub u64);
-
+// see: cans/04-terminal-plane.md#Stream-replay
 impl LogCursor {
     pub fn start() -> Self {
         Self(0)
@@ -19,19 +19,6 @@ impl LogCursor {
 }
 
 // see: cans/04-terminal-plane.md#Stream-replay
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LogStream {
-    Port(u32),
-    Exec { id: u64, lane: u8 },
-}
-
-pub struct LogSegment {
-    pub stream: LogStream,
-    pub head: LogCursor,
-    pub bytes: Vec<u8>,
-    pub log_path: PathBuf,
-}
-
 impl LogSegment {
     pub fn new(stream: LogStream, log_path: PathBuf) -> Self {
         Self {

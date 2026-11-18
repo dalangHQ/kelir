@@ -2,9 +2,8 @@
 use super::*;
 
 // see: cans/03-sdk-architecture.md#Params-typed-views
+// TODO (L3): hydrate the exec-param buffer in params_hydration.flow.rs; contract keeps the signature.
 pub fn hydrate_params_ctx(ctx: &HandlerCtx, session: Option<&Session>) -> Option<HandlerCtx> {
-    let exec_ctx = ctx.exec_ctx.as_ref()?;
-    let session = session?;
-    let buffer = session.exec_params(exec_ctx.exec_id, exec_ctx.stream_id)?;
-    Some(ctx.clone().with_params_buffer(buffer))
+    let _ = (ctx, session);
+    None
 }

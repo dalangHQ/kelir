@@ -14,8 +14,9 @@ pub mod planes;
 pub mod plugin_registry;
 #[path = "session_lifecycle.flow.rs"]
 pub mod session_lifecycle;
-#[path = "session_paths.flow.rs"]
 pub mod session_paths;
+#[path = "session_paths.flow.rs"]
+mod session_paths_flow;
 #[path = "session_support.flow.rs"]
 pub mod session_support;
 #[path = "trap_gate.flow.rs"]

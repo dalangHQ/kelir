@@ -106,7 +106,6 @@ impl SandboxProfile {
         policy
     }
 
-    // L3-GAP: [hypervisor_driver]: consume max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
     pub fn to_vm_config(&self) -> VmConfig {
         let session = self.session.as_ref();
         let compute = session.and_then(|s| s.compute.as_ref());
@@ -148,7 +147,6 @@ impl SandboxProfile {
         if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
             config.preemption_grace_ms = grace;
         }
-        // L3-GAP: [hd_fast_boot_backend_change]: route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
         config
     }
 

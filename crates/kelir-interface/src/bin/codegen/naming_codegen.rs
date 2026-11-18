@@ -1,80 +1,36 @@
 // see: cans/15-operations.md#Multi-language-parity-gate
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
+#![allow(dead_code)]
 pub fn split_camel(name: &str) -> Vec<String> {
-    let chars: Vec<char> = name.chars().collect();
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    for (index, ch) in chars.iter().enumerate() {
-        if ch.is_uppercase() && index > 0 {
-            let prev = chars[index - 1];
-            let next_lower = chars.get(index + 1).is_some_and(|n| n.is_lowercase());
-            if prev.is_lowercase() || prev.is_numeric() || (prev.is_uppercase() && next_lower) {
-                parts.push(std::mem::take(&mut current));
-            }
-        }
-        current.push(*ch);
-    }
-    parts.push(current);
-    parts
+    // TODO (L3) [plugin_engine]: camel-boundary scanner pending; slop: SDK naming conversion unimplemented
+    let _ = name;
+    Vec::new()
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 pub fn screaming(name: &str) -> String {
-    split_camel(name)
-        .iter()
-        .map(|p| p.to_uppercase())
-        .collect::<Vec<_>>()
-        .join("_")
+    // TODO (L3) [plugin_engine]: screaming-case conversion pending; slop: SDK naming conversion unimplemented
+    let _ = name;
+    String::new()
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 pub fn kebab(name: &str) -> String {
-    split_camel(name)
-        .iter()
-        .map(|p| p.to_lowercase())
-        .collect::<Vec<_>>()
-        .join("-")
+    // TODO (L3) [plugin_engine]: kebab-case conversion pending; slop: SDK naming conversion unimplemented
+    let _ = name;
+    String::new()
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 pub fn camel(name: &str) -> String {
-    if name.contains('_') {
-        let mut out = String::new();
-        for (index, part) in name.split('_').filter(|p| !p.is_empty()).enumerate() {
-            if index == 0 {
-                out.push_str(part);
-            } else {
-                let mut chars = part.chars();
-                if let Some(first) = chars.next() {
-                    out.extend(first.to_uppercase());
-                    out.push_str(chars.as_str());
-                }
-            }
-        }
-        return out;
-    }
-    let parts = split_camel(name);
-    let mut out = String::new();
-    for (index, part) in parts.iter().enumerate() {
-        let lower = part.to_lowercase();
-        if index == 0 {
-            out.push_str(&lower);
-        } else {
-            let mut chars = lower.chars();
-            if let Some(first) = chars.next() {
-                out.extend(first.to_uppercase());
-                out.push_str(chars.as_str());
-            }
-        }
-    }
-    out
+    // TODO (L3) [plugin_engine]: camel-case conversion pending; slop: SDK naming conversion unimplemented
+    let _ = name;
+    String::new()
 }
 
 // see: cans/10-attestation.md#Execution-receipts
 pub fn snake(name: &str) -> String {
-    split_camel(name)
-        .iter()
-        .map(|p| p.to_lowercase())
-        .collect::<Vec<_>>()
-        .join("_")
+    // TODO (L3) [plugin_engine]: snake-case conversion pending; slop: SDK naming conversion unimplemented
+    let _ = name;
+    String::new()
 }

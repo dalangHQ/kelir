@@ -7,7 +7,10 @@ mod fusion_codegen;
 mod merkle_codegen;
 #[path = "model_codegen.flow.rs"]
 mod model_codegen;
+#[path = "naming_codegen.flow.rs"]
 mod naming_codegen;
+#[path = "naming_codegen.rs"]
+mod naming_codegen_contract;
 #[path = "otlp_codegen.flow.rs"]
 mod otlp_codegen;
 #[path = "plugin_builder_codegen.flow.rs"]

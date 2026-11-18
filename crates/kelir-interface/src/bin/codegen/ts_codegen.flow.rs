@@ -46,7 +46,7 @@ fn ts_type(ty: &Ty) -> String {
             Ty::U8 => "Uint8Array".to_string(),
             Ty::Str | Ty::PathBuf => "readonly string[]".to_string(),
             Ty::U32 => "readonly number[]".to_string(),
-            Ty::Custom(name) => format!("readonly {}[]", name),
+            Ty::Custom(name) => format!("readonly {name}[]"),
             other => format!("readonly {}[]", ts_type(other)),
         },
         Ty::ByteArray(_) => "string".to_string(),

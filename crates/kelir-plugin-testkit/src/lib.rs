@@ -1,11 +1,13 @@
 // see: cans/02-plugin-model.md#Plugin-testkit
 #![forbid(unsafe_code)]
 
+#[path = "assertions_testkit.rs"]
+pub mod assertions_contract;
+#[path = "assertions_testkit.flow.rs"]
 pub mod assertions_testkit;
 pub mod fixtures_testkit;
 #[path = "handlers_testkit.run.rs"]
 pub mod handlers_testkit;
-pub mod vectors_chain_testkit;
 #[path = "vectors_parse.flow.rs"]
 pub mod vectors_parse;
 #[path = "vectors_scope_cases.flow.rs"]

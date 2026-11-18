@@ -716,7 +716,7 @@ impl PipelineEngine {
         session: Option<&Session>,
     ) -> Result<Verdict, PluginError> {
         // see: cans/03-sdk-architecture.md#Params-typed-views
-        let params_hydrated_ctx = params_hydration::hydrate_params_ctx(ctx, session);
+        let params_hydrated_ctx = params_hydration_flow::hydrate_params_ctx(ctx, session);
         let ctx = params_hydrated_ctx.as_ref().unwrap_or(ctx);
         // see: cans/10-attestation.md#Execution-receipts
         let hydrated;

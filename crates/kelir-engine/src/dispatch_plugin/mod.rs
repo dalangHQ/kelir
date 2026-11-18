@@ -11,6 +11,8 @@ mod host_dispatch;
 #[path = "lifecycle_dispatch.flow.rs"]
 mod lifecycle_dispatch;
 mod params_hydration;
+#[path = "params_hydration.flow.rs"]
+mod params_hydration_flow;
 #[path = "plugin_registration.flow.rs"]
 mod plugin_registration;
 #[path = "quarantine.flow.rs"]

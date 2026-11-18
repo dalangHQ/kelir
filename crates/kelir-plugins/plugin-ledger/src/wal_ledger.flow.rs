@@ -3,15 +3,31 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::telemetry::{CausalDelta, HookSpan};
+use kelir_interface::telemetry::{CausalDelta, ExecutionReceipt, HookSpan};
 use kelir_otlp::OtlpExporter;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
 use crate::OtelConfig;
+use crate::compute_ledger::StorageDelta;
 
 pub trait LedgerSink: Send + Sync {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError>;
+}
+
+// see: cans/10-attestation.md#Causal-delta
+pub fn compute_causal_delta(
+    storage: &StorageDelta,
+    receipt: &ExecutionReceipt,
+) -> Result<CausalDelta, PluginError> {
+    Ok(CausalDelta::new(
+        storage.memory_diff_bytes,
+        storage.modified_inodes.clone(),
+        storage.spawned_pids.clone(),
+        storage.egress_bytes,
+        storage.storage_delta_root,
+        receipt.leaf_hash(),
+    ))
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
