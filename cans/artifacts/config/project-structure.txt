@@ -17,6 +17,8 @@ kelir/
 ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
 ├── patch.md                           # Primitives patch series, 6 parts: canonical engine fixtures & schemas (applied)
 ├── patch2.md                          # Primitives patch series, 5 parts: core architecture & framing invariants (applied)
+├── verb-addition.patch.md             # Verb-addition patch series, 7 waves, 24 sub-patches: 38-verb ring bus corpus alignment (applied)
+├── verb-addition-artifacts.patch.md   # Verb-addition artifacts patch series, 4 waves, 23 sub-patches: 38-verb ring surface artifact sync (applied)
 ├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml                # PNPM workspace definition
 ├── pyproject.toml                     # Root Python configuration (Ruff/Mypy/Hatchling)
@@ -28,9 +30,6 @@ kelir/
 │   └── workflows/
 │       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, Audit-slop, KVM test)
 │       └── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
-│
-├── _collab/                       # Conflicts, handoffs, task tracking
-│   └── handoffs.md
 │
 ├── cans/                              # ── SPECIFICATION (CANS corpus) ──
 │   ├── 00-overview.md to 15-operations.md  # 16 core spec files
@@ -74,7 +73,7 @@ kelir/
 │       │   └── wire-protocol.rs
 │       ├── diagrams/                  # ASCII architecture diagrams
 │       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
-│       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
+│       ├── config/                    # builder-verbs.yaml, ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
 │       ├── test-plan/                 # Canonical test plan: manifest.yaml, scenarios.yaml, matrix.yaml, structure doc, cases/, scenarios/, fixtures/
 │       ├── README.md                  # SSOT contract for artifacts
 │       ├── scorecard.md               # Generated scorecard (just scorecard / check-scorecard)
