@@ -28,11 +28,11 @@
     }
   },
   "include": [
-   //     "AGENTS.md",
-     "cans/",
-      "cans/artifacts/examples",
-    //  "crates",
-    //    "packages",
+        "AGENTS.md",
+  //   "cans/",
+ //     "cans/artifacts/examples",
+      "crates",
+        "packages",
         
         
  //          "cans/artifacts/code",
@@ -52,10 +52,10 @@
       "cans/_collab",
       "cans/_tasks",
       //"cans/AGENTS.md",
-      "cans/artifacts/code",
+     "cans/artifacts/code",
       "cans/artifacts/config",
       "cans/artifacts/diagrams",
-  //   "cans/artifacts/examples",
+     "cans/artifacts/examples",
         "cans/artifacts/taxonomy.html",
             "**/tests/**",
  //            "cans/artifacts/",
