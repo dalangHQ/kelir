@@ -53,19 +53,25 @@ import {
 
 import type {
   KelirConfig,
+  FfiBoundaryProfile,
+  L4ProxyConfig,
   TerminalStream,
   TerminalConfig,
   StorageConfig,
   WireConfig,
+  WireScope,
   LockBrokerConfig,
   CreatePluginOptions,
 } from "./builder.config.js";
 export type {
   KelirConfig,
+  FfiBoundaryProfile,
+  L4ProxyConfig,
   TerminalStream,
   TerminalConfig,
   StorageConfig,
   WireConfig,
+  WireScope,
   LockBrokerConfig,
   CreatePluginOptions,
 };
@@ -176,10 +182,41 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/07-wire-plane.md#DNS-policy-filter
-  wire(config: WireConfig): this {
+  wire(config: WireConfig): this;
+  wire(fn: (scope: WireScope) => WireScope | void): this;
+  wire(
+    configOrFn: WireConfig | ((scope: WireScope) => WireScope | void),
+  ): this {
     this.checkVerb(".wire");
     if (this.mode === "plugin") this.rejectHostOnly(".wire");
-    this.wireCfg = config;
+    if (typeof configOrFn === "function") {
+      const diversions: {
+        readonly listenPort: number;
+        readonly forwardUnixSocket: string;
+      }[] = [];
+      const scope: WireScope = {
+        divertPortToUnix(listenPort, unixSocket) {
+          if (
+            !Number.isInteger(listenPort) ||
+            listenPort < 1 ||
+            listenPort > 65535
+          ) {
+            throw new EConfig(
+              `divertPortToUnix port ${String(listenPort)} outside u16`,
+            );
+          }
+          diversions.push({ listenPort, forwardUnixSocket: unixSocket });
+          return scope;
+        },
+      };
+      configOrFn(scope);
+      this.wireCfg = {
+        ...(this.wireCfg ?? {}),
+        l4Proxies: [...(this.wireCfg?.l4Proxies ?? []), ...diversions],
+      };
+      return this;
+    }
+    this.wireCfg = configOrFn;
     return this;
   }
 
@@ -585,6 +622,14 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.checkVerb(".onFsLock"); this.registry.onFsLock(handler); return this;
   }
 
+  onFsUnlink(handler: (path: string, ctx: TrapContext & Ctx) => Verdict): this {
+    this.checkVerb(".onFsUnlink"); this.registry.onFsUnlink(handler); return this;
+  }
+
+  onFsRename(handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict): this {
+    this.checkVerb(".onFsRename"); this.registry.onFsRename(handler); return this;
+  }
+
   onConsoleInput(handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
     this.checkVerb(".onConsoleInput"); this.registry.onConsoleInput(handler); return this;
   }
@@ -865,6 +910,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       entropySeed: this.kelirConfig.entropySeed,
     });
     // L3-GAP: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
+    // TODO (L3): forward ffiBoundary.embedMode once the native constructor accepts it; the embed mode stays TypeScript-side until then.
     if (this.terminalCfg) {
       // L3-GAP: [bindings_ts]: tokenShield.onClamp and prompt actions stay TypeScript-side until threadsafe-function bridging lands.; slop: tokenShield/prompt actions never cross to native
       nativeBuilder.setTerminalConfig({
@@ -929,12 +975,18 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
               : undefined,
         sshAgentBridge: this.wireCfg.sshAgentBridge,
         vaults: this.wireCfg.vaults,
-        l4Proxies: this.wireCfg.l4Proxies?.map((proxy) => ({
-          listenPort: proxy.listenPort,
-          destination: proxy.destination,
-          injectMtlsCertPath: proxy.injectMtls?.certPath,
-          injectMtlsKeyPath: proxy.injectMtls?.keyPath,
-        })),
+        // TODO (L3): forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then.
+        l4Proxies: this.wireCfg.l4Proxies
+          ?.filter(
+            (proxy): proxy is L4ProxyConfig & { readonly destination: string } =>
+              proxy.destination !== undefined,
+          )
+          .map((proxy) => ({
+            listenPort: proxy.listenPort,
+            destination: proxy.destination,
+            injectMtlsCertPath: proxy.injectMtls?.certPath,
+            injectMtlsKeyPath: proxy.injectMtls?.keyPath,
+          })),
         tapFilter: this.wireCfg.tapFilter,
       });
     }

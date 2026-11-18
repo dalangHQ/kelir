@@ -138,6 +138,7 @@ export function buildSurfaceHost() {
     memoryMb: 2048,
     kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
     rootfsErofs: "./fixtures/rootfs-surface.erofs",
+    ffiBoundary: { embedMode: "in_process_libkelir" },
     tscLocked: true,
     enableWatchdog: true,
     driver: "auto",
@@ -296,7 +297,9 @@ export function buildFlatFoldPlugin() {
           .onFsLookup((_path) => Verdict.Pass)
           .onFsRead((_path, buffer) => buffer)
           .onFsWrite((_path, _buffer, _pid, _ctx) => FilterAction.Forward)
-          .onFsLock((_path, _flockCmd, _flockType, _pid) => Verdict.Pass),
+          .onFsLock((_path, _flockCmd, _flockType, _pid) => Verdict.Pass)
+          .onFsUnlink((_path, _ctx) => Verdict.Pass)
+          .onFsRename((_src, _dst, _ctx) => Verdict.Pass),
       )
       .net((n) =>
         n

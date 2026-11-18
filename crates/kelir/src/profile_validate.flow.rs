@@ -167,13 +167,27 @@ impl SandboxProfile {
                 .as_ref()
                 .and_then(|i| i.policy_plane_mutability),
             inheritance_lattice: self.invariants.as_ref().and_then(|i| i.inheritance_lattice),
+            operator_lease: self
+                .invariants
+                .as_ref()
+                .and_then(|i| i.operator_lease.clone()),
+            embed_mode: self
+                .driver
+                .as_ref()
+                .and_then(|d| d.ffi_boundary.as_ref())
+                .and_then(|f| f.embed_mode),
             driver_policy: self.to_driver_policy(),
             vm_config: self.to_vm_config(),
             tenant_id: self.effective_tenant_id(),
             org_id: session.and_then(|s| s.org_id.clone()),
             isolation_envelope: session.and_then(|s| s.isolation_envelope.clone()),
             granular_task_freeze: shim.and_then(|s| s.granular_task_freeze),
+            task_freeze_timeout_ms: shim.and_then(|s| s.task_freeze_timeout_ms),
             rejection_mode: shim.and_then(|s| s.rejection_mode),
+            cow_broker: self.storage.as_ref().and_then(|s| s.cow_broker.clone()),
+            userspace_netstack: wire.and_then(|w| w.userspace_netstack),
+            default_egress: wire.and_then(|w| w.default_egress.clone()),
+            l4_diversion: wire.and_then(|w| w.l4_diversion.clone()),
             l7_protocol_inspection: wire.and_then(|w| w.l7_protocol_inspection),
             outbox_deferral: wire.and_then(|w| w.outbox_deferral.clone()),
             step_dag: checkpoint.and_then(|c| c.step_dag.clone()),

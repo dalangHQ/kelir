@@ -20,6 +20,12 @@ export interface KelirConfig {
   readonly networkOff?: boolean;
   readonly nsPerInstruction?: number;
   readonly entropySeed?: number;
+  readonly ffiBoundary?: FfiBoundaryProfile;
+}
+
+// see: cans/01-architecture.md#Embedded-profile
+export interface FfiBoundaryProfile {
+  readonly embedMode: "in_process_libkelir";
 }
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
@@ -92,6 +98,17 @@ export interface SinkholeRule {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
+export interface L4ProxyConfig {
+  readonly listenPort: number;
+  readonly destination?: string;
+  readonly forwardUnixSocket?: string;
+  readonly injectMtls?: {
+    readonly certPath: string;
+    readonly keyPath: string;
+  };
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
 export interface WireConfig {
   readonly sinkhole?: {
     readonly rules?: readonly SinkholeRule[];
@@ -106,15 +123,13 @@ export interface WireConfig {
     readonly audience: string;
     readonly placeholder: string;
   }[];
-  readonly l4Proxies?: readonly {
-    readonly listenPort: number;
-    readonly destination: string;
-    readonly injectMtls?: {
-      readonly certPath: string;
-      readonly keyPath: string;
-    };
-  }[];
+  readonly l4Proxies?: readonly L4ProxyConfig[];
   readonly tapFilter?: string;
+}
+
+// see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+export interface WireScope {
+  divertPortToUnix(listenPort: number, unixSocket: string): WireScope;
 }
 
 // see: cans/05-storage-plane.md#Host-inode-lock-broker

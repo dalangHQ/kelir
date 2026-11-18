@@ -37,6 +37,8 @@ pub enum Errno {
     PathTraversal,
     #[serde(rename = "ETIMEDOUT")]
     Etimeout,
+    #[serde(rename = "EAFNOSUPPORT")]
+    Eafnosupport,
 }
 
 impl Errno {
@@ -66,6 +68,7 @@ impl Errno {
             Self::Eclockregress => "EClockRegress",
             Self::PathTraversal => "PathTraversal",
             Self::Etimeout => "ETIMEDOUT",
+            Self::Eafnosupport => "EAFNOSUPPORT",
         }
     }
 
@@ -88,6 +91,7 @@ impl Errno {
             Self::Enodata => libc::ENODATA,
             Self::Eproto => libc::EPROTO,
             Self::Etimeout => libc::ETIMEDOUT,
+            Self::Eafnosupport => libc::EAFNOSUPPORT,
             Self::PathTraversal | Self::Epolicy | Self::Esecurityviolation | Self::Ewxviolation => {
                 libc::EPERM
             }
@@ -115,6 +119,7 @@ impl Errno {
             libc::ENODATA => Some(Self::Enodata),
             libc::EPROTO => Some(Self::Eproto),
             libc::ETIMEDOUT => Some(Self::Etimeout),
+            libc::EAFNOSUPPORT => Some(Self::Eafnosupport),
             _ => None,
         }
     }
@@ -167,6 +172,7 @@ impl std::str::FromStr for Errno {
             "EClockRegress" => Ok(Self::Eclockregress),
             "PathTraversal" => Ok(Self::PathTraversal),
             "ETIMEDOUT" => Ok(Self::Etimeout),
+            "EAFNOSUPPORT" => Ok(Self::Eafnosupport),
             _ => Err(UnknownErrno(value.to_string())),
         }
     }

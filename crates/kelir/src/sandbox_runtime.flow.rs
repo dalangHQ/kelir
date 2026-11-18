@@ -14,14 +14,16 @@ use plugin_profile::{ProfileCtx, ProfilePlugin};
 
 pub use crate::profile_schema::{
     ArtifactsProfile, BalloonProfile, BudgetProfile, CatalogProfile, CheckpointProfile,
-    ClockProfile, ComputeProfile, DevicesProfile, DriverProfile, DriverProfileTop, EffectiveConfig,
-    EmulatedTierClassification, FfiBoundaryProfile, HashingStandard, HostProfile,
-    InheritanceLattice, InvariantsProfile, IsolationEnvelopeProfile, LedgerPluginProfile,
-    McpInterpositionProfile, McpPluginProfile, MemorySafety, MerkleWalProfile, OtelProfile,
-    OutboxDeferralProfile, PhysicalityCheck, PluginsProfile, PolicyPlaneMutability, RejectionMode,
-    SessionProfile, ShimProfile, StepDagProfile, StepDagStorage, StorageProfile,
-    TaintGovernanceProfile, TelemetryRingProfile, ToolGuardPluginProfile, VirtioRngProfile,
-    VirtioShmProfile, VirtioShmRegionProfile, WatchdogProfile, WireProfile,
+    ClockProfile, ComputeProfile, CowBrokerProfile, DevicesProfile, DriverProfile,
+    DriverProfileTop, EffectiveConfig, EmbedMode, EmulatedTierClassification, FfiBoundaryProfile,
+    HashingStandard, HostProfile, InheritanceLattice, InvariantsProfile, IsolationEnvelopeProfile,
+    L4DiversionMtlsProfile, L4DiversionProfile, L4DiversionProxyProfile, LedgerPluginProfile,
+    McpInterpositionProfile, McpPluginProfile, MemorySafety, MerkleWalProfile,
+    OperatorLeaseProfile, OtelProfile, OutboxDeferralProfile, PhysicalityCheck, PluginsProfile,
+    PolicyPlaneMutability, RejectionMode, SessionProfile, ShimProfile, StepDagProfile,
+    StepDagStorage, StorageProfile, StorageTopProfile, TaintGovernanceProfile,
+    TelemetryRingProfile, ToolGuardPluginProfile, VirtioRngProfile, VirtioShmProfile,
+    VirtioShmRegionProfile, WatchdogProfile, WireProfile,
 };
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -38,7 +40,7 @@ pub struct SandboxProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<SessionProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub storage: Option<serde_json::Value>,
+    pub storage: Option<StorageTopProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wire: Option<WireProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

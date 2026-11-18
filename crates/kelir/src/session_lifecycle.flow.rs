@@ -18,6 +18,7 @@ use crate::builder_sdk::Registration;
 use crate::hlist_sdk::{HList, HNil, NoParams};
 use kelir_interface::plugin_model::HandlerCtx;
 use kelir_interface::protocol_wire::{ProcessLimits, StreamKind, TrapEvent, Verdict};
+use kelir_interface::telemetry::{ExecutionReceipt, ExitKind};
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 pub trait Plane: std::any::Any {
@@ -74,6 +75,7 @@ where
     core: kelir_engine::Session,
     plugins: Plugins,
     registration: Registration,
+    operator_lease: Option<String>,
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub vm: VmHandle,
     pub vsock: VsockHandle,
@@ -92,6 +94,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             core,
             plugins,
             registration,
+            operator_lease: None,
             _params: PhantomData,
         }
     }
@@ -158,6 +161,12 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     // see: cans/10-attestation.md#Execution-receipts
     pub fn receipt(&self, pid: u32) -> Option<kelir_interface::telemetry::ExecutionReceipt> {
         self.core.receipt(pid)
+    }
+
+    // TODO (L3): verify the ed25519 signature on the lease token before storing it; presence-only until then.
+    pub fn elevate_lease(&mut self, token: impl Into<String>) -> Result<(), PluginError> {
+        self.operator_lease = Some(token.into());
+        Ok(())
     }
 
     // see: cans/03-sdk-architecture.md#Session-surfaces
@@ -338,6 +347,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             core: child,
             plugins: self.plugins.clone(),
             registration,
+            operator_lease: None,
             _params: PhantomData,
         })
     }
@@ -403,11 +413,32 @@ pub struct SpawnOpts {
 }
 
 // see: cans/03-sdk-architecture.md#Idiomatic-Surfaces-Law
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SpawnResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+    pub exit_kind: ExitKind,
+    pub receipt: Option<ExecutionReceipt>,
+}
+
+impl Default for SpawnResult {
+    fn default() -> Self {
+        Self {
+            exit_code: 0,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            exit_kind: ExitKind::Normal,
+            receipt: None,
+        }
+    }
+}
+
+impl SpawnResult {
+    // TODO (L3): fill receipt and exit_kind from the live guest exec result; None and Normal until then.
+    pub fn receipt(&self) -> Option<&ExecutionReceipt> {
+        self.receipt.as_ref()
+    }
 }
 
 // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress

@@ -41,6 +41,8 @@ struct HookState {
     failures: usize,
     traps: usize,
     fs_locks: usize,
+    fs_unlinks: usize,
+    fs_renames: usize,
     net_inbound: usize,
     exec_stdout: usize,
     exec_stderr: usize,
@@ -86,6 +88,12 @@ impl HookHandle {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .fs_locks
+    }
+    pub fn fs_unlinks(&self) -> usize {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).fs_unlinks
+    }
+    pub fn fs_renames(&self) -> usize {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).fs_renames
     }
     pub fn net_inbound(&self) -> usize {
         self.state
@@ -393,6 +401,41 @@ impl FsInterposer for HookMatrixFullPlugin {
             .fs_locks += 1;
         Ok(Verdict::Pass)
     }
+
+    fn on_fs_unlink(&self, path: &Path, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.fs_unlinks += 1;
+
+        // Destructive delete interception: redirect to quarantine or trigger task-scoped approval
+        if path.ends_with(".protected_source") {
+            // Non-deadlocking task freeze: calling process suspended, VirtIO ring yields
+            return Ok(Verdict::Suspend {
+                until: SuspendUntil::Approval,
+            });
+        }
+
+        if path.extension().is_some_and(|ext| ext == "trashable") {
+            if let Some(name) = path.file_name() {
+                let quarantined = Path::new("/workspace/.agentsh_trash").join(name);
+                return Ok(Verdict::Patch(PatchPayload::FsPathRedirect {
+                    target_path: quarantined.to_string_lossy().to_string(),
+                }));
+            }
+        }
+
+        Ok(Verdict::Pass)
+    }
+
+    fn on_fs_rename(&self, _src: &Path, dst: &Path, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner()).fs_renames += 1;
+        if escapes_workspace(dst) {
+            return Ok(Verdict::Drop {
+                errno: Errno::PathTraversal,
+                reason: "rename destination escapes /workspace".into(),
+            });
+        }
+        Ok(Verdict::Pass)
+    }
 }
 
 impl HostInterposer for HookMatrixFullPlugin {
@@ -486,8 +529,13 @@ async fn on_exec_stdin(&self, _pid: u32, _id: u64, chunk: &[u8]) -> Result<Vec<u
 
 #[async_trait]
 impl TrapInterposer for HookMatrixFullPlugin {
-    async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).traps += 1;
+
+        // Process lineage validation without host ptrace
+        if event.tree_depth > 16 {
+            return Ok(Verdict::Abort { reason: "fork bomb mitigation: max process depth exceeded".into() });
+        }
         Ok(Verdict::Pass)
     }
 
@@ -677,6 +725,11 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[kelir] cat identity -> exit={}", probe.exit_code);
     assert_eq!(probe.exit_code, 0);
     assert_eq!(probe.stdout.as_slice(), IDENTITY_CONTENT);
+
+    // Drive VFS mutation interposer: unlink redirection test
+    let unlink_test = session.spawn("rm", &["/workspace/file.trashable"], None).await?;
+    assert_eq!(unlink_test.exit_code, 0);
+    assert!(handle.fs_unlinks() > 0, "on_fs_unlink failed to intercept deletion");
 
     kelir::time::sleep(Duration::from_millis(100)).await;
     eprintln!(

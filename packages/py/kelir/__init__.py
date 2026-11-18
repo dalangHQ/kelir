@@ -17,6 +17,7 @@ from kelir.generated.attest_telemetry import (
     CausalDelta as CausalDelta,
     ExecutionReceipt as ExecutionReceipt,
     ExitKind as ExitKind,
+    ExitKindNormal as ExitKindNormal,
     GuestClock as GuestClock,
     PhaseTimings as PhaseTimings,
     ReceiptExtension as ReceiptExtension,
@@ -142,7 +143,8 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         },
         "wire": {
             "sinkhole", "ssh_agent_bridge", "vaults", "l4_proxies",
-            "tap_filter",
+            "tap_filter", "userspace_netstack", "default_egress",
+            "divert_ports",
         },
     }[kind]
     unknown = set(kwargs) - known
@@ -176,6 +178,13 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
                     "destination": proxy.destination,
                 }
                 for proxy in value
+            ]
+        elif key == "divert_ports" and value is not None:
+            bridged["divert_ports"] = [
+                entry
+                if isinstance(entry, dict)
+                else {"listen_port": entry[0], "forward_unix_socket": entry[1]}
+                for entry in value
             ]
         else:
             bridged[key] = value
@@ -258,6 +267,7 @@ class Errno(str, Enum):
     EPOLICY = "EPOLICY"
     ETOOLQUOTA = "ETOOLQUOTA"
     EWXVIOLATION = "EWXVIOLATION"
+    EAFNOSUPPORT = "EAFNOSUPPORT"
     E_CONFIG = "EConfig"
     E_SECURITY_VIOLATION = "ESecurityViolation"
     E_UNKNOWN_KIND = "EUnknownKind"
@@ -327,6 +337,20 @@ class ExecveMutation:
             "set_env": [[key, value] for key, value in self.env.items()],
             "unset_env": self.unset_env,
         }
+
+
+# see: cans/05-storage-plane.md#Interception-pipeline
+@dataclass
+class PatchPayload:
+    kind: str = "fs-path-redirect"
+    target_path: str = ""
+
+    @classmethod
+    def fs_path_redirect(cls, *, target_path: str) -> PatchPayload:
+        return cls(target_path=target_path)
+
+    def to_wire(self) -> dict[str, Any]:
+        return {"kind": self.kind, "target_path": self.target_path}
 
 
 class Verdict:
@@ -424,6 +448,7 @@ class TrapEvent:
     argv: list[str] = field(default_factory=list)
     pid: int = 0
     ppid: int = 0
+    tree_depth: int = 0
     cwd: str = ""
     binary_blake3: str = ""
 
@@ -534,6 +559,9 @@ class SpawnResult:
     exit_code: int = 0
     stdout: bytes = b""
     stderr: bytes = b""
+    # see: cans/10-attestation.md#Execution-receipts
+    receipt: ExecutionReceipt | None = None
+    exit_kind: ExitKind = field(default_factory=ExitKindNormal)
 
 
 @dataclass
@@ -749,9 +777,11 @@ class HandlerContext(Generic[CtxT, ParamsT]):
         cap: Caps | None = None,
         ctx: CtxT | None = None,
         params: ParamsT | None = None,
+        session: Session | None = None,
     ) -> None:
         self.trap: TrapEvent = trap if trap is not None else TrapEvent()
-        self.vm = VmHandle(Session())
+        self._session: Session | None = session
+        self.vm = VmHandle(session if session is not None else Session())
         self.checkpoint = CheckpointHandle()
         self.fs = FsHandle()
         self.terminal = TerminalHandle()
@@ -759,6 +789,11 @@ class HandlerContext(Generic[CtxT, ParamsT]):
         self.step = StepHandle()
         self.cap = cap if cap is not None else Caps()
         self.params: ParamsT | None = params
+
+    def has_valid_operator_lease(self) -> bool:
+        # TODO (L3) [operator_lease]: verify the stored token against the ed25519 pubkey from the profile.; slop: presence-only lease check, unverified token counts as valid
+        session = self._session
+        return session is not None and session._operator_lease_token is not None
 
     async def receipt(self) -> ExecutionReceipt:
         # L3-GAP: [ar_01_execution_receipt_blake3_binding]: fetch the trap's execution receipt via the PyO3 _kelir bridge.; slop: receipt fabricated without binary BLAKE3 binding
@@ -860,6 +895,7 @@ __all__ = [
     "MeshHandle",
     "MsgType",
     "ParamsT",
+    "PatchPayload",
     "PhaseTimings",
     "PostExecAction",
     "ReceiptExtension",

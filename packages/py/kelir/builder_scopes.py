@@ -19,6 +19,8 @@ _VERB_ARITY: dict[str, tuple[int, ...]] = {
     "on_fs_read": (2,),
     "on_fs_write": (4,),
     "on_fs_lock": (4,),
+    "on_fs_unlink": (2,),
+    "on_fs_rename": (3,),
     "on_net_outbound": (1,),
     "on_net_inbound": (1,),
     "on_console_input": (2,),

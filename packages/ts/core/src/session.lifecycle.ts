@@ -222,6 +222,7 @@ export class Session {
   readonly step: StepHandle;
   private readonly native: NativeSessionHandle;
   private suspendedReasonValue: SuspendReason | undefined;
+  private leaseTokenValue: string | undefined;
 
   constructor(native: NativeSessionHandle) {
     // L3-GAP: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
@@ -355,6 +356,16 @@ export class Session {
     options?: SpawnOptions,
   ): Promise<SpawnResult> {
     return this.native.execInGuest(binary, argv, options);
+  }
+
+  // see: cans/01-architecture.md#Dynamic-policy-rules-permit-signed-operator-lease-overrides
+  async elevateLease(lease: string): Promise<void> {
+    // TODO (L3): verify the ed25519 signature against the pinned operator pubkey and forward the lease to the native session once the NAPI session exposes it.
+    this.leaseTokenValue = lease;
+  }
+
+  hasValidOperatorLease(): boolean {
+    return this.leaseTokenValue !== undefined;
   }
 
   // see: cans/08-lifecycle.md#Suspend-and-resume

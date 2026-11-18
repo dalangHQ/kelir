@@ -220,6 +220,20 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         # L3-GAP: [storage_plane]: dispatch fs write to the plugin; slop: fs write never dispatched, quota never enforced
         return FilterAction.forward()
 
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_unlink(
+        self, path: Path, ctx: HandlerContext[CtxT, ParamsT]
+    ) -> Verdict:
+        # L3-GAP: [storage_plane]: dispatch fs unlink to the plugin; slop: fs unlink never dispatched, destructive delete unintercepted
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_rename(
+        self, src: Path, dst: Path, ctx: HandlerContext[CtxT, ParamsT]
+    ) -> Verdict:
+        # L3-GAP: [storage_plane]: dispatch fs rename to the plugin; slop: fs rename never dispatched, escape unintercepted
+        return Verdict.pass_()
+
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
         # L3-GAP: [wire_plane]: dispatch outbound frame to the plugin; slop: outbound frame never dispatched, egress unfiltered
         return FilterAction.forward()

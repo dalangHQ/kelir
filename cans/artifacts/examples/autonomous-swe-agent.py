@@ -28,6 +28,7 @@ from kelir import (
     FilterAction,
     HandlerContext,
     KelirBuilder,
+    PatchPayload,
     PostExecAction,
     Session,
     SnapshotDescriptor,

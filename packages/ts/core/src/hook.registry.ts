@@ -105,6 +105,12 @@ export interface FsScope<Ctx, Owner = unknown> {
       pid: number,
     ) => Verdict,
   ): FsScope<Ctx, Owner>;
+  onFsUnlink(
+    handler: (path: string, ctx: TrapContext & Ctx) => Verdict,
+  ): FsScope<Ctx, Owner>;
+  onFsRename(
+    handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict,
+  ): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
   config(cfg: FsScopeConfig<Ctx>): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
@@ -267,6 +273,8 @@ function unpack(event: unknown): readonly unknown[] {
 const KNOWN_RINGS: ReadonlySet<string> = new Set<string>([
   ...Object.values(RingEvent),
   "fs-lock",
+  "fs-unlink",
+  "fs-rename",
   "host-lsm-exec",
   "host-pressure",
   "host-keyring-access",
@@ -457,6 +465,14 @@ export class HookRegistry<Ctx = unknown> {
       },
       onFsLock(handler) {
         registry.onFsLock(handler);
+        return scope;
+      },
+      onFsUnlink(handler) {
+        registry.onFsUnlink(handler);
+        return scope;
+      },
+      onFsRename(handler) {
+        registry.onFsRename(handler);
         return scope;
       },
       config(cfg) {
@@ -749,6 +765,39 @@ export class HookRegistry<Ctx = unknown> {
           args[1] as number,
           args[2] as number,
           args[3] as number,
+        );
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsUnlink(
+    handler: (path: string, ctx: TrapContext & Ctx) => Verdict,
+  ): this {
+    this.addHook({
+      ring: "fs-unlink" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as string, args[1] as TrapContext & Ctx);
+      },
+    });
+    return this;
+  }
+
+  onFsRename(
+    handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict,
+  ): this {
+    this.addHook({
+      ring: "fs-rename" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(
+          args[0] as string,
+          args[1] as string,
+          args[2] as TrapContext & Ctx,
         );
       },
     });

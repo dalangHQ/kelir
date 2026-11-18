@@ -10,6 +10,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, NoReturn, Self
 
 from kelir.builder_scopes import _VERB_ARITY, _VERB_RINGS
+from kelir.wire_planes import WireConfig, apply_wire_config
 from kelir.service_caps import materialize_cap
 from kelir.plugin_fusion import (
     FusedTrampoline,
@@ -41,7 +42,7 @@ class VsockServiceEntry:
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 _SCOPE_VERBS: dict[str, tuple[str, ...]] = {
     "trap": ("on_trap", "on_process_exit", "on_trap_deny"),
-    "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock"),
+    "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock", "on_fs_unlink", "on_fs_rename"),
     "net": ("on_net_outbound", "on_net_inbound"),
     "console": ("on_console_input", "on_console_output"),
     "exec": ("on_exec_stdout", "on_exec_stderr"),
@@ -188,6 +189,7 @@ class KelirBuilder:
         network_off: bool | None = None,
         ns_per_instruction: int | None = None,
         entropy_seed: int | None = None,
+        embed_mode: str | None = None,
     ) -> None:
         self._plugins: list[object] = []
         self._plugin_registrations: list[PluginRegistration] = []
@@ -211,6 +213,7 @@ class KelirBuilder:
             "network_off": network_off,
             "ns_per_instruction": ns_per_instruction,
             "entropy_seed": entropy_seed,
+            "embed_mode": embed_mode,
         }
         self._mode: Literal["host", "plugin"] = "host"
         self._name: str | None = None
@@ -288,6 +291,13 @@ class KelirBuilder:
         if self._mode == "plugin":
             self._raise_host_only("wire")
         self._config["wire"] = kwargs
+        return self
+
+    # see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    def wire_config(self, fn: Callable[[WireConfig], Any]) -> Self:
+        if self._mode == "plugin":
+            self._raise_host_only("wire_config")
+        self._config["wire"] = apply_wire_config(self._config.get("wire") or {}, fn)
         return self
 
     # see: cans/03-sdk-architecture.md#Python-SDK
@@ -436,6 +446,12 @@ class KelirBuilder:
 
     def on_fs_lock(self, handler: Handler) -> Self:
         return self._on("on_fs_lock", handler)
+
+    def on_fs_unlink(self, handler: Handler) -> Self:
+        return self._on("on_fs_unlink", handler)
+
+    def on_fs_rename(self, handler: Handler) -> Self:
+        return self._on("on_fs_rename", handler)
 
     def on_net_outbound(self, handler: Handler) -> Self:
         return self._on("on_net_outbound", handler)
@@ -833,7 +849,7 @@ class KelirBuilder:
             enable_watchdog=self._config["enable_watchdog"],
             driver=self._config["driver"],
         )
-        # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
+        # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms/embed_mode once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
         if "terminal" in self._config:
             # L3-GAP: [bindings_py]: token_shield and prompt callbacks stay Python-side until the FFI callback bridge lands.; slop: token shield/prompt callbacks never cross to native
             native.set_terminal_config(
@@ -906,6 +922,7 @@ def builder(
     network_off: bool | None = None,
     ns_per_instruction: int | None = None,
     entropy_seed: int | None = None,
+    embed_mode: str | None = None,
 ) -> KelirBuilder:
     return KelirBuilder(
         vcpus=vcpus,
@@ -923,4 +940,5 @@ def builder(
         network_off=network_off,
         ns_per_instruction=ns_per_instruction,
         entropy_seed=entropy_seed,
+        embed_mode=embed_mode,
     )

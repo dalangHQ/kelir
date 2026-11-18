@@ -34,12 +34,14 @@ def test_ring_event_wire_values() -> None:
     assert RingEvent.CUSTOM_ACTION.value == "custom-action"
     assert RingEvent.VSOCK_SERVICE.value == "vsock-service"
     assert RingEvent.FS_LOCK.value == "fs-lock"
+    assert RingEvent.FS_UNLINK.value == "fs-unlink"
+    assert RingEvent.FS_RENAME.value == "fs-rename"
     assert RingEvent.HOST_LSM_EXEC.value == "host-lsm-exec"
     assert RingEvent.HOST_PRESSURE.value == "host-pressure"
     assert RingEvent.HOST_KEYRING_ACCESS.value == "host-keyring-access"
     assert RingEvent.HOST_PREEMPT.value == "host-preempt"
     assert RingEvent.MEMORY_PRESSURE.value == "memory-pressure"
-    assert len(RingEvent) == 23
+    assert len(RingEvent) == 25
 
 
 def test_hook_stage_values() -> None:

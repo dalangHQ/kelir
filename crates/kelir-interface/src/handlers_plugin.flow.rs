@@ -130,6 +130,7 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
     pub console_ctx: Option<ConsoleContext>,
     pub exec_ctx: Option<ExecContext>,
     pub receipt: Option<ExecutionReceipt>,
+    pub operator_lease: Option<String>,
     plugins: Plugins,
     params_buffer: Vec<u8>,
     _params: PhantomData<fn() -> Params>,
@@ -152,10 +153,21 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             console_ctx: None,
             exec_ctx: None,
             receipt: None,
+            operator_lease: None,
             plugins,
             params_buffer,
             _params: PhantomData,
         }
+    }
+
+    pub fn with_operator_lease(mut self, token: impl Into<String>) -> Self {
+        self.operator_lease = Some(token.into());
+        self
+    }
+
+    // TODO (L3): verify the ed25519 signature on the stored operator lease token; presence-only until then.
+    pub fn has_valid_operator_lease(&self) -> bool {
+        self.operator_lease.is_some()
     }
 
     pub fn with_trap(mut self, trap: TrapEvent) -> Self {
@@ -214,6 +226,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
             receipt: self.receipt,
+            operator_lease: self.operator_lease,
             plugins: self.plugins,
             params_buffer: self.params_buffer,
             _params: PhantomData,
@@ -238,6 +251,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
             receipt: self.receipt,
+            operator_lease: self.operator_lease,
             plugins: f(self.plugins),
             params_buffer: self.params_buffer,
             _params: PhantomData,
@@ -280,6 +294,9 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         }
         if let Some(receipt) = &self.receipt {
             erased = erased.with_receipt(receipt.clone());
+        }
+        if let Some(lease) = &self.operator_lease {
+            erased = erased.with_operator_lease(lease.clone());
         }
         erased
     }

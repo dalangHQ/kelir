@@ -196,8 +196,8 @@ verbs:
     placement: scoped-entry
     scope: fs
     returns: scope
-    args: "sync (path: &Path) => Result<Verdict, PluginError>"
-    notes: Supports FsPathRedirect in PatchPayload; redirects destructive unlinks.
+    args: "sync (path: &Path, c: &HandlerCtx) => Result<Verdict, PluginError>"
+    notes: Accepts Pass | Drop | Suspend | Abort | Patch(FsPathRedirect). No Forward.
 
   - name: on_fs_rename
     rust: on_fs_rename
@@ -206,8 +206,8 @@ verbs:
     placement: scoped-entry
     scope: fs
     returns: scope
-    args: "sync (src: &Path, dst: &Path) => Result<Verdict, PluginError>"
-    notes: Intercepts renameat2 operations before broker staging.
+    args: "sync (src: &Path, dst: &Path, c: &HandlerCtx) => Result<Verdict, PluginError>"
+    notes: Accepts Pass | Drop | Suspend | Abort. No Forward, no Patch.
 
   - name: on_fs_setattr
     rust: on_fs_setattr

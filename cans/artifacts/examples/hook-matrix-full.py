@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import kelir
-from kelir import Deadline, Errno, FilterAction, TrapFilter, Verdict
+from kelir import Approval, Deadline, Errno, FilterAction, PatchPayload, TrapFilter, Verdict
 from kelir.plugin_model import (
     BasePlugin,
     FsInodeAttr,
@@ -62,6 +62,8 @@ class HookState:
     failures: int = 0
     traps: int = 0
     fs_locks: int = 0
+    fs_unlinks: int = 0
+    fs_renames: int = 0
     net_inbound: int = 0
     exec_stdout: int = 0
     exec_stderr: int = 0
@@ -86,6 +88,8 @@ class HookMatrixFullPlugin(BasePlugin):
 
     async def on_trap(self, event: Any) -> Optional[Verdict]:
         self._state.traps += 1
+        if getattr(event, "tree_depth", 0) > 16:
+            return Verdict.abort(reason="fork bomb mitigation: max depth exceeded")
         return Verdict.Pass
 
     # see: cans/07-wire-plane.md#Wire-plane
@@ -142,6 +146,24 @@ class HookMatrixFullPlugin(BasePlugin):
     ) -> Verdict:
         self._state.fs_locks += 1
         return Verdict.Pass
+
+    def on_fs_unlink(self, path: Path, ctx: Any) -> Verdict:
+        self._state.fs_unlinks += 1
+        path_str = str(path)
+        if path_str.endswith(".protected_source"):
+            return Verdict.suspend(until=Approval())
+        if path_str.endswith(".trashable"):
+            filename = path.name
+            return Verdict.patch(PatchPayload.fs_path_redirect(
+                target_path=f"/workspace/.agentsh_trash/{filename}"
+            ))
+        return Verdict.pass_()
+
+    def on_fs_rename(self, src: Path, dst: Path, ctx: Any) -> Verdict:
+        self._state.fs_renames += 1
+        if escapes_workspace(str(dst)):
+            return Verdict.drop(errno=Errno.PATH_TRAVERSAL, reason="rename escapes /workspace")
+        return Verdict.pass_()
 
     def on_host_lsm_exec(self, path: Path, pid: int) -> Verdict:
         return Verdict.Pass
@@ -287,6 +309,11 @@ async def main() -> None:
             "cat", [IDENTITY_PATH], cwd="/workspace",
         )
         print(f"[kelir] cat identity -> exit={probe.exit_code}")
+
+        rm_probe = await session.spawn("rm", ["/workspace/test.trashable"])
+        assert rm_probe.exit_code == 0
+        print(f"[kelir] rm probe -> fs_unlinks={plugin.state.fs_unlinks} "
+              f"fs_renames={plugin.state.fs_renames}")
 
         await asyncio.sleep(0.1)
         s = plugin.state

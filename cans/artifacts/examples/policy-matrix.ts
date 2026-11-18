@@ -34,6 +34,13 @@ const policyPlugin = createPlugin("policy-matrix")
         return c.suspend(SuspendUntil.approval);
       case "policy-approval":
         return c.suspend(SuspendUntil.deadline(500));
+      case "policy-escalate":
+        if (c.hasValidOperatorLease()) {
+          return c.pass();
+        }
+        return c.drop(Errno.EPERM, "ESECURITYVIOLATION: capability widening requires signed operator lease");
+      case "policy-syscall-block":
+        return c.drop(Errno.EAFNOSUPPORT, "EAFNOSUPPORT: socket family AF_RXRPC blocked");
       // see: cans/11-protocol.md#Custom-payload:-c.patch(Custom-{-name,-cbor-})
       case "policy-custom":
         return c.patch({
@@ -104,9 +111,24 @@ async function main() {
 
   for (const binary of ["policy-allow", "policy-deny", "policy-rewrite",
                         "policy-abort", "policy-yield", "policy-approval",
-                        "policy-custom"]) {
+                        "policy-escalate", "policy-syscall-block", "policy-custom"]) {
     const run = await session.spawn(binary, ["--policy-matrix"]);
     console.log(`[kelir] ${binary} -> exit=${run.exitCode}`);
+    if (binary === "policy-approval") {
+      if (run.exitCode !== 0) throw new Error("approval failed");
+    } else if (binary === "policy-escalate") {
+      if (run.exitCode === 0) throw new Error("escalate should fail without signed lease");
+      await session.elevateLease("signed_jws_operator_lease_token_payload");
+      const elevated = await session.spawn(binary, ["--policy-matrix"]);
+      if (elevated.exitCode !== 0) throw new Error("escalation failed post-signature");
+    } else if (binary === "policy-syscall-block") {
+      if (run.exitCode === 0) throw new Error("syscall block should fail execution");
+    } else if (binary === "policy-custom") {
+      if (run.exitCode !== 0) throw new Error("custom failed");
+    }
+
+    const receipt = run.receipt;
+    if (!receipt || receipt.wallClockNs === 0) throw new Error("missing raw hardware receipt");
   }
 
   policyState.plannedSuspend = true;

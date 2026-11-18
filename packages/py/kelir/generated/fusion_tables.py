@@ -26,6 +26,8 @@ class RingEvent(str, Enum):
     CUSTOM_ACTION = "custom-action"
     VSOCK_SERVICE = "vsock-service"
     FS_LOCK = "fs-lock"
+    FS_UNLINK = "fs-unlink"
+    FS_RENAME = "fs-rename"
     HOST_LSM_EXEC = "host-lsm-exec"
     HOST_PRESSURE = "host-pressure"
     HOST_KEYRING_ACCESS = "host-keyring-access"
@@ -74,6 +76,8 @@ HOOK_RINGS: dict[str, tuple[RingEvent, LifecycleTag | None]] = {
     "on_vm_shutdown": (RingEvent.LIFECYCLE, "vm-shutdown"),
     "on_watchdog": (RingEvent.WATCHDOG, None),
     "on_fs_lock": (RingEvent.FS_LOCK, None),
+    "on_fs_unlink": (RingEvent.FS_UNLINK, None),
+    "on_fs_rename": (RingEvent.FS_RENAME, None),
     "on_net_inbound": (RingEvent.NET_INBOUND, None),
     "on_host_lsm_exec": (RingEvent.HOST_LSM_EXEC, None),
     "on_host_pressure": (RingEvent.HOST_PRESSURE, None),

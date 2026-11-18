@@ -15,6 +15,8 @@ use kelir::{
     ToolGuardPlugin, Unsealed, Verdict, VmConfig, WireIngressConfig, WireIngressPlugin,
     driver_interface::{DriverPolicy, WxPolicy},
     interface::driver_interface::{ExternalSuspendKind, SuspendReason},
+    planes::wire_plane::{SinkholeConfig, TapFilter, WireConfig},
+    telemetry_attest::ExitKind,
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
@@ -86,6 +88,23 @@ fn webhook_builder() -> KelirBuilder<
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     // see: cans/plugins/wire-ingress.md#On-rollback:-parked-connections-get-TCP-RST-(post-handshake:-503-close)
     // WireIngressConfig::default is exactly the TS port's config: 8443/https, 64KB/30s parking, wake on mux 0x0001, 256/reject-503 backlog.
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    .wire(
+        WireConfig {
+            sinkhole: SinkholeConfig {
+                allowlist: Vec::new(),
+                drop_all: true,
+            },
+            ssh_agent_bridge: false,
+            vaults: Vec::new(),
+            l4_proxies: Vec::new(),
+            tap_filter: TapFilter::AllowUdpProxied,
+            userspace_netstack: true,
+            default_egress: "drop".into(),
+        }
+        .divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
+        .divert_port_to_unix(8000, "/run/agentsh/mcp.sock"),
+    )
     .plugin_instance(WireIngressPlugin::with_config(WireIngressConfig::default()))
     // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
     .plugin_instance(McpPlugin::new())
@@ -124,6 +143,12 @@ fn webhook_builder() -> KelirBuilder<
     .post_exec("dispatch-webhook", |c: HandlerCtx<_, _>| async move {
         // see: cans/10-attestation.md#Execution-receipts
         let receipt = c.receipt().await?;
+        if receipt.exit_kind != ExitKind::Normal {
+            eprintln!("[kelir] step execution tainted, triggering hardware rollback and TCP RST purge");
+            return Ok(PostExecAction::RollbackAndHalt);
+        }
+        assert!(receipt.wall_clock_ns > 0);
+        assert!(receipt.dirty_bytes > 0);
         if receipt.dirty_bytes == 0 {
             Ok(PostExecAction::RollbackAndHalt)
         } else {

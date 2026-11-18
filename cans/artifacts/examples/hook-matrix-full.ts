@@ -1,7 +1,7 @@
 // see: cans/02-plugin-model.md#Segregated-ring-traits
 // see: cans/02-plugin-model.md#TrapFilter-predicates
 
-import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil, Errno,
+import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil, Errno, PatchPayload,
          TrapFilter, type Session, type WatchdogVerdict } from "@kelir/core";
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
@@ -34,6 +34,8 @@ const hookState = {
   failures: 0,
   traps: 0,
   fsLocks: 0,
+  fsUnlinks: 0,
+  fsRenames: 0,
   netInbound: 0,
   execStdout: 0,
   execStderr: 0,
@@ -109,6 +111,26 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.fsLocks += 1;
     return Verdict.Pass;
   })
+  .onFsUnlink((path, _ctx) => {
+    hookState.fsUnlinks += 1;
+    if (path.endsWith(".protected_source")) {
+      return Verdict.Suspend({ until: SuspendUntil.approval });
+    }
+    if (path.endsWith(".trashable")) {
+      const filename = path.split("/").pop();
+      return Verdict.Patch(PatchPayload.FsPathRedirect({
+        targetPath: `/workspace/.agentsh_trash/${filename}`,
+      }));
+    }
+    return Verdict.Pass;
+  })
+  .onFsRename((_src, dst, _ctx) => {
+    hookState.fsRenames += 1;
+    if (escapesWorkspace(dst)) {
+      return Verdict.Drop(Errno.PATH_TRAVERSAL, "rename escapes /workspace");
+    }
+    return Verdict.Pass;
+  })
   // see: cans/04-terminal-plane.md#1.-ANSI-strip:-drops-OSC-52-(clipboard-hijack)-and-strips-OSC-0/1/2-(title-spoof)
   .onConsoleInput(async (_port, bytes) => {
     const text = Buffer.from(bytes).toString("latin1");
@@ -177,8 +199,11 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.memoryPressures += 1;
   })
   // see: cans/02-plugin-model.md#TrapInterposer:-trap,-process-exit,-pressure,-heartbeat,-port,-signal
-  .onTrap(async (_event, _c) => {
+  .onTrap(async (event, _c) => {
     hookState.traps += 1;
+    if (event.treeDepth > 16) {
+      return Verdict.Abort({ reason: "fork bomb mitigation: max depth exceeded" });
+    }
     return Verdict.Pass;
   })
   .onProcessExit(async (event) => {
@@ -231,6 +256,10 @@ async function main() {
   const probe = await session.spawn("cat", [IDENTITY_PATH],
                                     { cwd: "/workspace" });
   console.log(`[kelir] cat identity -> exit=${probe.exitCode}`);
+
+  const rmProbe = await session.spawn("rm", ["/workspace/test.trashable"]);
+  if (rmProbe.exitCode !== 0) throw new Error("unlink hook failed");
+  if (hookState.fsUnlinks === 0) throw new Error("onFsUnlink was not invoked");
 
   await new Promise((r) => setTimeout(r, 100));
   console.log(`[kelir] heartbeats=${hookState.heartbeats} ` +

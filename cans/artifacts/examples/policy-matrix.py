@@ -97,6 +97,19 @@ async def row_approval(c: HandlerContext) -> Verdict:
     return Verdict.suspend(until=Deadline(500))
 
 
+async def row_escalate(c: HandlerContext) -> Verdict:
+    if getattr(c, "has_valid_operator_lease", lambda: False)():
+        return Verdict.pass_()
+    return Verdict.drop(
+        errno=Errno.EPERM,
+        reason="ESECURITYVIOLATION: capability widening requires signed operator lease"
+    )
+
+
+async def row_syscall_block(c: HandlerContext) -> Verdict:
+    return Verdict.drop(errno=Errno.EAFNOSUPPORT, reason="EAFNOSUPPORT: socket family AF_RXRPC blocked")
+
+
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
 async def row_custom(c: HandlerContext) -> Verdict:
     return Verdict.patch(
@@ -149,6 +162,8 @@ def build_runtime() -> KelirBuilder:
         .trap(TrapFilter.binary("policy-abort"), pre=row_abort)
         .trap(TrapFilter.binary("policy-yield"), pre=row_yield)
         .trap(TrapFilter.binary("policy-approval"), pre=row_approval)
+        .trap(TrapFilter.binary("policy-escalate"), pre=row_escalate)
+        .trap(TrapFilter.binary("policy-syscall-block"), pre=row_syscall_block)
         .trap(TrapFilter.binary("policy-custom"), pre=row_custom)
         .seal()
     )
@@ -167,9 +182,22 @@ async def main() -> None:
 
         for binary in ["policy-allow", "policy-deny", "policy-rewrite",
                        "policy-abort", "policy-yield", "policy-approval",
+                       "policy-escalate", "policy-syscall-block",
                        "policy-custom"]:
             run = await session.spawn(binary, ["--policy-matrix"])
             print(f"[kelir] {binary} -> exit={run.exit_code}")
+            if binary == "policy-approval":
+                assert run.exit_code == 0
+            elif binary == "policy-escalate" and run.exit_code != 0:
+                await session.elevate_lease("signed_jws_operator_lease_token_payload")
+                elevated = await session.spawn(binary, ["--policy-matrix"])
+                assert elevated.exit_code == 0
+            elif binary == "policy-custom":
+                assert run.exit_code == 0
+
+            receipt = getattr(run, "receipt", None)
+            if receipt is not None:
+                assert receipt.wall_clock_ns > 0
 
         POLICY_STATE.planned_suspend = True
         await session.suspend(ResourcePressure())

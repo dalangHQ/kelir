@@ -100,6 +100,9 @@ pub enum PatchPayload {
         size: u64,
         content: Vec<u8>,
     },
+    FsPathRedirect {
+        target_path: String,
+    },
     Custom {
         name: String,
         cbor: ciborium::value::Value,
@@ -192,6 +195,9 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
+    // TODO (L3): fill tree_depth from the live trap path; 0 until the trap path records process depth.
+    #[serde(default)]
+    pub tree_depth: u32,
     // see: cans/artifacts/code/messages.rs#TrapEvent — on-the-wire field, consumed there
     pub task_id: u64,
     pub binary_path: String,

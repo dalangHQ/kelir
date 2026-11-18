@@ -46,6 +46,18 @@ pub struct InvariantsProfile {
     pub memory_safety: Option<MemorySafety>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_plane_mutability: Option<PolicyPlaneMutability>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_lease: Option<OperatorLeaseProfile>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#invariants.operator_lease
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperatorLeaseProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify_ed25519_pubkey: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_runtime_escalation: Option<bool>,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.emulated_tier_classification
@@ -64,9 +76,18 @@ impl EmulatedTierClassification {
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EmbedMode {
+    #[serde(rename = "in_process_libkelir")]
+    InProcessLibkelir,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#driver.ffi_boundary
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FfiBoundaryProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embed_mode: Option<EmbedMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker_threads: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -285,6 +306,8 @@ pub struct ShimProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub granular_task_freeze: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_freeze_timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rejection_mode: Option<RejectionMode>,
 }
 
@@ -302,6 +325,37 @@ pub struct DriverProfile {
 pub struct StorageProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dax_window: Option<String>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#storage
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StorageTopProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dax_window: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cow_broker: Option<CowBrokerProfile>,
+    #[serde(default, flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#storage.cow_broker
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CowBrokerProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse_upper: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intercept_vfs_mutations: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_path_redirection: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tombstone_tracking: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rollback_purge: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir_merge_cache: Option<bool>,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.outbox_deferral
@@ -324,11 +378,50 @@ pub struct OutboxDeferralProfile {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub userspace_netstack: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_egress: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub l4_diversion: Option<L4DiversionProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub l7_protocol_inspection: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outbox_deferral: Option<OutboxDeferralProfile>,
     #[serde(default, flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct L4DiversionProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxies: Option<Vec<L4DiversionProxyProfile>>,
+    #[serde(default, flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.proxies
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct L4DiversionProxyProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listen_port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_unix_socket: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inject_mtls: Option<L4DiversionMtlsProfile>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#wire.l4_diversion.proxies.inject_mtls
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct L4DiversionMtlsProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cert_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_path: Option<String>,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#checkpoint.step_dag.storage
@@ -547,13 +640,20 @@ pub struct PluginsProfile {
 pub struct EffectiveConfig {
     pub policy_plane_mutability: Option<PolicyPlaneMutability>,
     pub inheritance_lattice: Option<InheritanceLattice>,
+    pub operator_lease: Option<OperatorLeaseProfile>,
+    pub embed_mode: Option<EmbedMode>,
     pub driver_policy: DriverPolicy,
     pub vm_config: VmConfig,
     pub tenant_id: Option<String>,
     pub org_id: Option<String>,
     pub isolation_envelope: Option<IsolationEnvelopeProfile>,
     pub granular_task_freeze: Option<bool>,
+    pub task_freeze_timeout_ms: Option<u64>,
     pub rejection_mode: Option<RejectionMode>,
+    pub cow_broker: Option<CowBrokerProfile>,
+    pub userspace_netstack: Option<bool>,
+    pub default_egress: Option<String>,
+    pub l4_diversion: Option<L4DiversionProfile>,
     pub l7_protocol_inspection: Option<bool>,
     pub outbox_deferral: Option<OutboxDeferralProfile>,
     pub step_dag: Option<StepDagProfile>,

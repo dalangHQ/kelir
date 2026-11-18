@@ -115,6 +115,22 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub fn on_fs_unlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_unlink(f);
+        self
+    }
+
+    pub fn on_fs_rename<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_rename(f);
+        self
+    }
+
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
     pub fn config(mut self, cfg: FsScopeConfig) -> Self {
         self.builder = self.builder.fs_config(cfg);

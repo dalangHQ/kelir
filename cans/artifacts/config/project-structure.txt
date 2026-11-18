@@ -17,7 +17,6 @@ kelir/
 ├── package.json                       # Root devDependencies (Turborepo/Biome/TypeScript)
 ├── patch.md                           # Primitives patch series, 6 parts: canonical engine fixtures & schemas (applied)
 ├── patch2.md                          # Primitives patch series, 5 parts: core architecture & framing invariants (applied)
-├── plan.md
 ├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml                # PNPM workspace definition
 ├── pyproject.toml                     # Root Python configuration (Ruff/Mypy/Hatchling)
@@ -30,6 +29,9 @@ kelir/
 │       ├── ci.yml                     # Unified fast CI (Lint, Typecheck, Cross-Shim, Parity, Audit-slop, KVM test)
 │       └── plugin-ci-reusable.yml     # workflow_call: audit, vectors, matrix, attest
 │
+├── _collab/                       # Conflicts, handoffs, task tracking
+│   └── handoffs.md
+│
 ├── cans/                              # ── SPECIFICATION (CANS corpus) ──
 │   ├── 00-overview.md to 15-operations.md  # 16 core spec files
 │   ├── _rules.yaml                    # Checker rules: node length, refs, aliasing, forbidden targets
@@ -41,7 +43,35 @@ kelir/
 │       │   ├── rust-plugin-builder.rs # Fluent plugin-creation builder, Rust surface (illustrative)
 │       │   ├── typescript-plugin-builder.ts # Fluent plugin-creation builder, TS surface (illustrative)
 │       │   ├── python-plugin-builder.py # Fluent plugin-creation builder, Python surface (illustrative)
-│       │   └── plugin-builder-vectors.rs # plugin_builder parity vector case shape (illustrative)
+│       │   ├── plugin-builder-vectors.rs # plugin_builder parity vector case shape (illustrative)
+│       │   ├── action-algebra.py
+│       │   ├── action-algebra.rs
+│       │   ├── action-algebra.ts
+│       │   ├── causal-delta.rs
+│       │   ├── container-service.rs
+│       │   ├── execution-receipt.rs
+│       │   ├── hook-trace.rs
+│       │   ├── ledger-service.rs
+│       │   ├── messages.rs
+│       │   ├── plugin-trait.rs
+│       │   ├── python-raii-pydantic.py
+│       │   ├── python-scope-protocol.py
+│       │   ├── reconciler.rs
+│       │   ├── rust-handle-injection.rs
+│       │   ├── rust-plugin-builder-scopes.rs
+│       │   ├── scope-builders.rs
+│       │   ├── session-accessors.py
+│       │   ├── session-accessors.rs
+│       │   ├── session-accessors.ts
+│       │   ├── sinkhole-rules.rs
+│       │   ├── step-evaluation-loop.ts
+│       │   ├── transaction-service.rs
+│       │   ├── trap-filter-predicates.rs
+│       │   ├── typescript-accumulation.ts
+│       │   ├── typescript-scope-interface.ts
+│       │   ├── vm-config-defaults.rs
+│       │   ├── vmm-driver-trait.rs
+│       │   └── wire-protocol.rs
 │       ├── diagrams/                  # ASCII architecture diagrams
 │       ├── examples/                  # Demonstrating examples (Rust/TS/Python)
 │       ├── config/                    # ci.yml, justfile, plugin-ci-reusable.yml, project-structure.txt
@@ -66,6 +96,7 @@ kelir/
 │   │   │   ├── plugin_model.rs              # Facade plugin re-exports
 │   │   │   ├── profile_schema.flow.rs        # Typed profile schema: every kelir.toml/kelir.yaml key
 │   │   │   ├── profile_validate.flow.rs      # Monotonic ceiling validation, deny_unknown_fields
+│   │   │   ├── profile_validate.rs
 │   │   │   ├── protocol_wire.rs            # Facade protocol re-exports
 │   │   │   ├── sandbox_runtime.flow.rs             # Sandbox entrypoint
 │   │   │   ├── session_lifecycle.flow.rs             # Session assembly from builder parts
@@ -159,7 +190,7 @@ kelir/
 │   │   │   ├── Cargo.toml
 │   │   │   ├── src/
 │   │   │   │   ├── lib.rs
-│   │   │   │   └── sys_driver.run.rs             # Raw Hypervisor.framework bindings
+│   │   │   │   └── sys_driver.rs
 │   │   │   └── tests/
 │   │   │       ├── balloon_purge_driver_test.rs
 │   │   │       ├── lazy_construction_driver_test.rs
@@ -197,6 +228,7 @@ kelir/
 │   │   │   ├── lib.rs                 # Core initialization exports
 │   │   │   ├── session_lifecycle.flow.rs             # Session lifecycle assembly
 │   │   │   ├── session_paths.flow.rs             # Session-dir and catalog path helpers (split from session_lifecycle)
+│   │   │   ├── session_paths.rs
 │   │   │   ├── session_support.flow.rs               # NullDriver, mint_uuid_v7, workspace quota consts
 │   │   │   ├── trap_gate.flow.rs           # Filter-before-FFI trampoline & entropy analyzer
 │   │   │   ├── uart_terminal.flow.rs                # Early-boot UART scrape
@@ -211,6 +243,7 @@ kelir/
 │   │   │   │   ├── host_dispatch.flow.rs
 │   │   │   │   ├── lifecycle_dispatch.flow.rs
 │   │   │   │   ├── mod.rs
+│   │   │   │   ├── params_hydration.flow.rs
 │   │   │   │   ├── params_hydration.rs
 │   │   │   │   ├── plugin_registration.flow.rs
 │   │   │   │   ├── quarantine.flow.rs
@@ -309,6 +342,7 @@ kelir/
 │   │   │   │       ├── main.rs
 │   │   │   │       ├── merkle_codegen.flow.rs
 │   │   │   │       ├── model_codegen.flow.rs
+│   │   │   │       ├── naming_codegen.flow.rs
 │   │   │   │       ├── naming_codegen.rs
 │   │   │   │       ├── otlp_codegen.flow.rs
 │   │   │   │       ├── plugin_builder_codegen.flow.rs # Per-plugin fluent-builder wrapper factories (TS registry + Py modules)
@@ -319,19 +353,22 @@ kelir/
 │   │   │   │       ├── ts_codegen.flow.rs
 │   │   │   │       └── wire_codegen.flow.rs
 │   │   │   ├── checkpoint/
+│   │   │   │   ├── attribution.rs
 │   │   │   │   ├── graph.flow.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── ops.flow.rs
+│   │   │   │   ├── ops.rs
 │   │   │   │   └── step_dag.flow.rs           # Content-addressed step DAG, branching heads, SoD, Merkle root
 │   │   │   ├── host/
 │   │   │   │   ├── mod.rs
-│   │   │   │   └── ops.flow.rs
+│   │   │   │   └── ops.rs
 │   │   │   ├── storage/
 │   │   │   │   ├── fuse_ops.flow.rs            # FuseOps trait, FuseRequest/Reply/Response, FuseOpcode
 │   │   │   │   ├── isolation_envelope.flow.rs  # OrgScope isolation envelope, tenant partition
+│   │   │   │   ├── isolation_envelope.rs
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── storage_io.rs          # StorageIo trait, RootHandle, HostFileLock
 │   │   │   │   ├── storage_reconciler.rs  # ReconcilerOps trait, FsReconcileRequest, CommitStats
+│   │   │   │   ├── storage_snoop.flow.rs
 │   │   │   │   ├── storage_snoop.rs       # SnoopRule, MaskReadRule, ReadMaskEngine (in-flight read masking)
 │   │   │   │   ├── storage_synthetic.flow.rs   # SyntheticFile, DynamicFile
 │   │   │   │   └── uapi_fuse.rs           # Generated FUSE UAPI tables (linux/fuse.h oracle)
@@ -343,13 +380,16 @@ kelir/
 │   │   │   │   └── telemetry_ring.flow.rs         # 300-entry telemetry ring, 16-dim feature vector, OTLP export
 │   │   │   ├── terminal/
 │   │   │   │   ├── log.flow.rs
+│   │   │   │   ├── log.rs
 │   │   │   │   ├── mod.rs
-│   │   │   │   └── ops.flow.rs
+│   │   │   │   └── ops.rs
 │   │   │   └── wire/
 │   │   │       ├── connection_parking.flow.rs    # Inbound TCP parking during suspend holds
 │   │   │       ├── dns_ops.flow.rs             # DnsOps trait, DnsQuery, DnsResponse, DnsRcode (#[path] keeps module name dns)
 │   │   │       ├── l4_ops.flow.rs              # L4DivertOps trait, L4Stream (#[path] keeps module name l4)
+│   │   │       ├── l4_ops.rs
 │   │   │       ├── l7_parser.flow.rs           # L7 HTTP/1.1 parser, SSE, JSON-RPC (TLS decrypt L3)
+│   │   │       ├── l7_tls.rs
 │   │   │       ├── mod.rs
 │   │   │       ├── net_ops.flow.rs             # NetOps trait, frame classification, WireWiring (#[path] keeps module name net)
 │   │   │       ├── outbox.flow.rs              # Egress side-effect outbox: deferral buffer, release, purge
@@ -359,6 +399,10 @@ kelir/
 │   │       ├── clock_reject_interface_test.rs
 │   │       ├── errno_serde_test.rs
 │   │       └── error_envelope_mapping_test.rs
+│   ├── kelir-interface-macros/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       └── lib.rs
 │   ├── kelir-maturity/                # Maturity checker: filename level ∈ crate allowed_levels + structural rules S1-S5
 │   │   ├── Cargo.toml                 # Depends on serde, toml, regex, walkdir
 │   │   ├── src/
@@ -386,7 +430,7 @@ kelir/
 │   ├── kelir-plugin-cli/              # Plugin tooling: scaffold, check, vectors, parity diff
 │   │   ├── Cargo.toml
 │   │   ├── src/
-│   │   │   ├── attach_cli.rs              # Session attach
+│   │   │   ├── attach_cli.run.rs
 │   │   │   ├── attest_cli.flow.rs
 │   │   │   ├── audit_cli.run.rs               # Same audit as CI
 │   │   │   ├── budgets_cli.run.rs             # Hard performance budget validator
@@ -403,7 +447,7 @@ kelir/
 │   │   │   ├── parity_cli.run.rs              # Parity runner: vectors + AST surface diff
 │   │   │   ├── registry_cli.rs            # Registry attestation and verification commands
 │   │   │   ├── rings_cli.run.rs               # plugin rings --show: ring inventory and masks
-│   │   │   ├── scaffold_cli.rs            # plugin new: scaffold crate, trait stubs, empty vectors
+│   │   │   ├── scaffold_cli.run.rs
 │   │   │   ├── setup_cli.flow.rs               # kelir setup: host hardening, shims, LSM, hw-lock
 │   │   │   ├── spec_cli.run.rs                # kelir spec check/export: AOT profile validation, canonical emit
 │   │   │   └── vectors_cli.run.rs             # Regenerate vectors.json from testkit fixtures
@@ -414,10 +458,10 @@ kelir/
 │   │   ├── Cargo.toml                 # Depends on kelir-interface, async-trait, tokio, ciborium, serde, serde_json
 │   │   ├── src/
 │   │   │   ├── assertions_testkit.rs          # assert_rewrite, assert_deny, assert_env_injected, assert_disclosure
+│   │   │   ├── assertions_testkit.flow.rs
 │   │   │   ├── fixtures_testkit.rs            # Synthetic PTY streams, broker upper files, synthetic configs
 │   │   │   ├── handlers_testkit.run.rs            # HandlerCtx + LifecycleCtx constructors from synthetic events
 │   │   │   ├── lib.rs
-│   │   │   ├── vectors_chain_testkit.rs
 │   │   │   ├── vectors_parse.flow.rs
 │   │   │   ├── vectors_scope_cases.flow.rs       # Unified-builder scope vector cases
 │   │   │   └── vectors_testkit.flow.rs             # vectors.json fixture loading
@@ -587,14 +631,12 @@ kelir/
 │   │       ├── case_map.rs
 │   │       ├── lib.rs
 │   │       ├── perf_budgets.rs
-│   │       ├── scenario_catalog.run.rs    # Scenario tier model shared by the gates: loading, plane map, composition
+│   │       ├── perf_budgets.flow.rs
 │   │       ├── spec_anchors.run.rs        # Spec heading/anchor extraction shared by the gates
 │   │       └── bin/
 │   │           ├── anchors_testkit.run.rs         # Spec anchor index generator (committed anchors.json)
 │   │           ├── check_manifest.run.rs  # Manifest-disk parity, law_reference and platform_target checks
-│   │           ├── check_scenarios.run.rs # Scenario tier gate: ref resolution, assert substrings, plane-pair coverage
-│   │           ├── check_tests.run.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..NG-07
-│   │           └── scorecard_testkit.run.rs       # Scorecard generator and verification gate
+│   │           └── check_tests.run.rs     # Anti-slop AST linter: AS-01..AS-08 + filename grammar NG-01..NG-07
 │   ├── kelir-transport/               # Supporting crate: Stream trait + SPSC ring, AF_VSOCK, named-pipe backends
 │   │   ├── Cargo.toml
 │   │   ├── src/
@@ -629,7 +671,6 @@ kelir/
 │   │   │   ├── kelir_builder_scope.py     # Builder scope split: _Scope, trap-deny wrap, Handler
 │   │   │   ├── lifecycle_sandbox.py   # Sandbox entrypoint
 │   │   │   ├── lifecycle_session.py
-│   │   │   ├── model_plugin.py        # Plugin registration surface
 │   │   │   ├── plugin_fusion.py       # AOT hook-fusion client
 │   │   │   ├── plugin_model.py        # Plugin model types: KelirPlugin, MountScope, PluginError
 │   │   │   ├── profile_config.py
@@ -677,6 +718,7 @@ kelir/
 │   │   └── tests/                     # test_<domain>_<entity>.py naming
 │   │       ├── test_attest_receipt.py
 │   │       ├── test_lifecycle_session.py
+│   │       ├── test_mirrored_patch_surface.py
 │   │       ├── test_plugin_fluent_builder.py
 │   │       ├── test_plugin_fusion.py
 │   │       ├── test_policy_matrix_gate.py

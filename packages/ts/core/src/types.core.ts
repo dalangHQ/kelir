@@ -6,6 +6,8 @@
 export * from "./telemetry.attest.generated.js";
 export * from "./generated/protocol.wire.generated.js";
 
+import type { ExecutionReceipt, ExitKind } from "./telemetry.attest.generated.js";
+
 export interface SpawnOptions {
   readonly cwd?: string;
   readonly params?: Record<string, unknown>;
@@ -17,6 +19,8 @@ export interface SpawnResult {
   readonly exitCode: number;
   readonly stdout?: Uint8Array;
   readonly stderr?: Uint8Array;
+  readonly receipt?: ExecutionReceipt;
+  readonly exitKind?: ExitKind;
 }
 
 export interface TrapInfo {
@@ -26,6 +30,7 @@ export interface TrapInfo {
   readonly binaryBlake3: string;
   readonly argv: string[];
   readonly cwd: string;
+  readonly treeDepth: number;
   readonly syscallNr?: number;
   readonly protFlags?: number;
   readonly memfdFlags?: number;
@@ -51,7 +56,21 @@ export interface CustomActionPayload {
   readonly cbor: unknown;
 }
 
-export type PatchInput = ExecveMutation | CustomActionPayload | FsInodeAttr;
+// see: cans/05-storage-plane.md#Interception-pipeline
+export interface FsPathRedirect {
+  readonly targetPath: string;
+}
+
+export type PatchInput = ExecveMutation | CustomActionPayload | FsInodeAttr | FsPathRedirect;
+
+// see: cans/02-plugin-model.md#Unified-verdict
+export const PatchPayload: {
+  FsPathRedirect(attr: { readonly targetPath: string }): FsPathRedirect;
+} = {
+  FsPathRedirect(attr: { readonly targetPath: string }): FsPathRedirect {
+    return { targetPath: attr.targetPath };
+  },
+};
 
 export interface HeartbeatEvent {
   readonly uptimeMs: number;
@@ -89,6 +108,7 @@ export interface NativeTrapInfoRecord {
   readonly binary_blake3: string;
   readonly argv: string[];
   readonly cwd: string;
+  readonly tree_depth?: number;
   readonly syscall_nr?: number;
   readonly prot_flags?: number;
   readonly memfd_flags?: number;
@@ -102,6 +122,7 @@ export function fromNativeTrapInfo(raw: NativeTrapInfoRecord): TrapInfo {
     binaryBlake3: raw.binary_blake3,
     argv: raw.argv,
     cwd: raw.cwd,
+    treeDepth: raw.tree_depth ?? 0,
     syscallNr: raw.syscall_nr,
     protFlags: raw.prot_flags,
     memfdFlags: raw.memfd_flags,

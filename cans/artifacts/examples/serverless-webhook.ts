@@ -62,6 +62,12 @@ const runtime = kelir({
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
   }))
 
+  .wire((w) => {
+    // Transparent L4 divert to host Go proxies without TAP or netns
+    w.divertPortToUnix(5433, "/run/agentsh/pgwire.sock");
+    w.divertPortToUnix(8000, "/run/agentsh/mcp.sock");
+  })
+
   .params(t.Object({
     action: t.Literal("dispatch-webhook"),
     webhookId: t.String(),
@@ -74,6 +80,9 @@ const runtime = kelir({
     // see: cans/10-attestation.md#Execution-receipts
     post: async (c) => {
       const receipt: ExecutionReceipt = await c.receipt();
+      if (receipt.exitKind.kind !== "normal") {
+        return PostExecAction.RollbackAndHalt;
+      }
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
     },

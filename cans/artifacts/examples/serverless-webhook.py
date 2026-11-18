@@ -14,6 +14,7 @@ import kelir
 from kelir import (
     BaseModel,
     ExecutionReceipt,
+    ExitKindNormal,
     External,
     ExternalSuspendKind,
     Field,
@@ -38,6 +39,7 @@ from kelir.plugins.plugin_tool_guard import (
 from kelir.plugins.plugin_ledger import (
     LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig,
 )
+from kelir.wire_planes import WireConfig
 
 
 @dataclass
@@ -81,9 +83,18 @@ def build_runtime() -> KelirBuilder:
     # see: cans/10-attestation.md#Execution-receipts
     async def post_dispatch(c: HandlerContext) -> PostExecAction:
         receipt: ExecutionReceipt = await c.receipt()
+        if receipt.exit_kind != ExitKindNormal():
+            return PostExecAction.rollback_and_halt()
+        assert receipt.wall_clock_ns > 0
         if receipt.dirty_bytes == 0:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
+
+    def _wire(w: WireConfig) -> None:
+        w.userspace_netstack = True
+        w.default_egress = "drop"
+        w.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
+        w.divert_port_to_unix(8000, "/run/agentsh/mcp.sock")
 
     return (
         kelir.builder(
@@ -126,6 +137,7 @@ def build_runtime() -> KelirBuilder:
             ),
             receipts=ReceiptConfig(),
         )))
+        .wire_config(_wire)
         .params(DispatchWebhook)
         .trap("dispatch-webhook", pre=pre_dispatch, post=post_dispatch)
         .on(LifecycleEvent.VmReady, lambda ctx: ctx.vm.adjust_balloon(384))

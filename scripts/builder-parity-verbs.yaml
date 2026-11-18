@@ -318,6 +318,20 @@ verbs:
     sdks: rust,ts,py
     status: fixed
     note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_unlink:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_rename:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
   on_net_outbound:
     placement: scoped
     scope: net

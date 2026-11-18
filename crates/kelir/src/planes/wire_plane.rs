@@ -19,6 +19,8 @@ pub struct Mtls {
 pub struct L4Proxy {
     pub listen_port: u16,
     pub destination: String,
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    pub forward_unix_socket: Option<PathBuf>,
     pub inject_mtls: Option<Mtls>,
 }
 
@@ -34,4 +36,21 @@ pub struct WireConfig {
     pub vaults: Vec<CredentialDescriptor>,
     pub l4_proxies: Vec<L4Proxy>,
     pub tap_filter: TapFilter,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.userspace_netstack
+    pub userspace_netstack: bool,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
+    pub default_egress: String,
+}
+
+impl WireConfig {
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    pub fn divert_port_to_unix(mut self, listen_port: u16, socket: impl Into<PathBuf>) -> Self {
+        self.l4_proxies.push(L4Proxy {
+            listen_port,
+            destination: String::new(),
+            forward_unix_socket: Some(socket.into()),
+            inject_mtls: None,
+        });
+        self
+    }
 }

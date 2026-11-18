@@ -221,6 +221,22 @@ impl FsInterposer for RepoPolicyPlugin {
         }
         Ok(FilterAction::Forward)
     }
+
+    fn on_fs_unlink(&self, path: &Path, _ctx: &IfaceHandlerCtx) -> Result<Verdict, PluginError> {
+        // Prevents agents from deleting validation suites or package manifests to fake green runs
+        if path.ends_with("package.json")
+            || path.ends_with("Cargo.toml")
+            || path.to_string_lossy().contains("test")
+        {
+            if let Some(name) = path.file_name() {
+                let quarantined = Path::new("/workspace/.agentsh_trash").join(name);
+                return Ok(Verdict::Patch(PatchPayload::FsPathRedirect {
+                    target_path: quarantined.to_string_lossy().to_string(),
+                }));
+            }
+        }
+        Ok(Verdict::Pass)
+    }
 }
 
 impl RepoPolicyPlugin {
@@ -413,6 +429,7 @@ async fn build_runtime(
         l4_proxies: vec![L4Proxy {
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
+            forward_unix_socket: None,
             inject_mtls: Some(Mtls {
                 cert_path: pg_cert,
                 key_path: pg_key,
@@ -420,6 +437,8 @@ async fn build_runtime(
         }],
 
         tap_filter: TapFilter::AllowUdpProxied,
+        userspace_netstack: true,
+        default_egress: "drop".into(),
     })
     .plugin_instance(ChaosPlugin::new(ChaosConfig {
         network: vec![

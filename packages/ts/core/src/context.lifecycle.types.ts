@@ -2,9 +2,8 @@
 
 import type {
   CausalDelta,
-  CustomActionPayload,
-  ExecveMutation,
   ExecutionReceipt,
+  PatchInput,
   SnapshotDescriptor,
   SpawnResult,
   TrapInfo,
@@ -170,9 +169,11 @@ export interface TrapContext {
   receipt(): Promise<ExecutionReceipt>;
   pass(): Verdict;
   drop(errno: string, reason?: string): Verdict;
-  patch(mutation: ExecveMutation | CustomActionPayload): Verdict;
+  patch(mutation: PatchInput): Verdict;
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
+  // TODO (L3): verify the presented operator lease against the pinned ed25519 pubkey once the native handler context carries lease state.
+  hasValidOperatorLease(): boolean;
   cap<T>(name: string): T | undefined;
 }
 

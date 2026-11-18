@@ -364,6 +364,9 @@ impl NativeKelirBuilder {
                     })
                     .unwrap_or_default(),
                 allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
+                userspace_netstack: false,
+                default_egress: String::new(),
+                l4_unix_diversions: Vec::new(),
             }
         });
         let storage = match &self.storage_cfg {

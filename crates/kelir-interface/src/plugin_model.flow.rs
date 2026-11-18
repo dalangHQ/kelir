@@ -792,6 +792,19 @@ pub trait FsInterposer: Send + Sync {
         let _ = (path, flock_cmd, flock_type, pid);
         Ok(Verdict::Pass)
     }
+    fn on_fs_unlink(&self, path: &Path, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        let _ = (path, ctx);
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_rename(
+        &self,
+        src: &Path,
+        dst: &Path,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        let _ = (src, dst, ctx);
+        Ok(Verdict::Pass)
+    }
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#NetInterposer

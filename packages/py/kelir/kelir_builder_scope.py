@@ -79,6 +79,12 @@ class _Scope:
     def on_fs_lock(self, handler: Handler) -> Self:
         return self._scoped_on("on_fs_lock", handler)
 
+    def on_fs_unlink(self, handler: Handler) -> Self:
+        return self._scoped_on("on_fs_unlink", handler)
+
+    def on_fs_rename(self, handler: Handler) -> Self:
+        return self._scoped_on("on_fs_rename", handler)
+
     def on_net_outbound(self, handler: Handler) -> Self:
         return self._scoped_on("on_net_outbound", handler)
 

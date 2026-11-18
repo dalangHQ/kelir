@@ -250,6 +250,8 @@ pub fn build_host() -> SurfaceHostBuilder {
         vaults: Vec::new(),
         l4_proxies: Vec::new(),
         tap_filter: TapFilter::AllowUdpProxied,
+        userspace_netstack: true,
+        default_egress: "drop".into(),
     })
     .detached(false)
     .plugin_instance(LedgerPlugin::new(true))
@@ -354,7 +356,7 @@ pub fn host_only_verbs_rejected_on_plugin(
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
     // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, token_shield: None, prompts: Vec::new(), stream_engine: "StatelessRegex".into() });
     // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, synthetic_files: Vec::new(), mask_read: Vec::new(), encapsulation: WorkspaceEncapsulation::Passthrough, scan_engine: ReadMaskEngine::FastRegex, carryover_bytes: 1024 });
-    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { allowlist: Vec::new(), drop_all: true }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied });
+    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { allowlist: Vec::new(), drop_all: true }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
     // plugin.fs(|f| f.config(Some(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true }), None, None, Vec::new()));
     // plugin.detached(true);
     // plugin.seal();
@@ -401,6 +403,8 @@ pub fn build_flat_fold_plugin() -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil
                 .on_fs_read(|_, data| Ok(data.to_vec()))
                 .on_fs_write(|_, _, _, _| Ok(FilterAction::Forward))
                 .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
+                .on_fs_unlink(|_, _| Ok(Verdict::Pass))
+                .on_fs_rename(|_, _, _| Ok(Verdict::Pass))
                 .end()
         })
         .net(|n| {

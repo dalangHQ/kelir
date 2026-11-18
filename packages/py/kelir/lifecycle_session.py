@@ -47,6 +47,7 @@ class Session:
         self._native: Any = None
         self.driver_name: str = ""
         self.boot_ms: int = 0
+        self._operator_lease_token: str | None = None
         self.cap = Caps()
         self.suspended_reason: SuspendReason | None = None
         self.vm = VmHandle(self)
@@ -76,6 +77,12 @@ class Session:
     async def fork(self) -> Session:
         native = kelir._require_native(self._native, "session fork")
         return Session.from_native(native.fork())
+
+    async def elevate_lease(self, token: str) -> None:
+        if not isinstance(token, str) or not token:
+            raise EConfig("session elevate_lease expects a non-empty lease token")
+        # TODO (L3) [operator_lease]: verify the token signature against the ed25519 pubkey from the profile before accepting it.; slop: unverified token stored as the operator lease
+        self._operator_lease_token = token
 
     # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     def cap_for(self, name: str) -> Any | None:

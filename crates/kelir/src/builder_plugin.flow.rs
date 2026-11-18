@@ -31,10 +31,11 @@ use crate::trap_filter::{TrapFilter, filter_matches};
 use crate::builder_adapters::{
     AsyncTrapClosureAdapter, ConsoleClosureAdapter, FsClosureAdapter, HostClosureAdapter,
     LifecycleClosureAdapter, NetClosureAdapter, OnConsoleInput, OnConsoleOutput, OnExecStderr,
-    OnExecStdout, OnFsLock, OnFsLookup, OnFsRead, OnFsWrite, OnHeartbeat, OnHostKeyringAccess,
-    OnHostLsmExec, OnHostPreempt, OnHostPressure, OnMemoryPressure, OnNetInbound, OnNetOutbound,
-    OnPostCommit, OnPreCommit, OnProcessExit, OnTrap, OnVmInit, OnVmReady, OnVmShutdown,
-    OnWatchdog, PostExecGateAdapter, TelemetryClosureAdapter, TrapClosureAdapter,
+    OnExecStdout, OnFsLock, OnFsLookup, OnFsRead, OnFsRename, OnFsUnlink, OnFsWrite, OnHeartbeat,
+    OnHostKeyringAccess, OnHostLsmExec, OnHostPreempt, OnHostPressure, OnMemoryPressure,
+    OnNetInbound, OnNetOutbound, OnPostCommit, OnPreCommit, OnProcessExit, OnTrap, OnVmInit,
+    OnVmReady, OnVmShutdown, OnWatchdog, PostExecGateAdapter, TelemetryClosureAdapter,
+    TrapClosureAdapter,
 };
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -279,6 +280,32 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.registry
             .fs
             .push(Arc::new(FsClosureAdapter::<_, OnFsLock> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_unlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsUnlink> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_rename<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsRename> {
                 handler: f,
                 verb: PhantomData,
             }));

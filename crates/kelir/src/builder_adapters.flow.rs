@@ -24,6 +24,8 @@ pub(crate) struct OnFsLookup;
 pub(crate) struct OnFsRead;
 pub(crate) struct OnFsWrite;
 pub(crate) struct OnFsLock;
+pub(crate) struct OnFsUnlink;
+pub(crate) struct OnFsRename;
 pub(crate) struct OnNetOutbound;
 pub(crate) struct OnNetInbound;
 pub(crate) struct OnConsoleInput;
@@ -198,6 +200,29 @@ where
         pid: u32,
     ) -> Result<Verdict, PluginError> {
         (self.handler)(path, flock_cmd, flock_type, pid)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsUnlink>
+where
+    F: Fn(&Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_unlink(&self, path: &Path, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
+        (self.handler)(path, ctx)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsRename>
+where
+    F: Fn(&Path, &Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_rename(
+        &self,
+        src: &Path,
+        dst: &Path,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        (self.handler)(src, dst, ctx)
     }
 }
 

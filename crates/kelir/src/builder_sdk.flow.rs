@@ -747,9 +747,22 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     l4_proxies: cfg
                         .l4_proxies
                         .iter()
+                        .filter(|proxy| proxy.forward_unix_socket.is_none())
                         .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
                         .collect(),
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
+                    userspace_netstack: cfg.userspace_netstack,
+                    default_egress: cfg.default_egress.clone(),
+                    l4_unix_diversions: cfg
+                        .l4_proxies
+                        .iter()
+                        .filter_map(|proxy| {
+                            proxy
+                                .forward_unix_socket
+                                .as_ref()
+                                .map(|socket| (proxy.listen_port, socket.clone()))
+                        })
+                        .collect(),
                 }
             }),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),

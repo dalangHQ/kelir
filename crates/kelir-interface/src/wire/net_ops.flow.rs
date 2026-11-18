@@ -1,6 +1,7 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Userspace-network-stack
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 
 use crate::frame_layout_views::{
     ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IPV4_MIN_HEADER_BYTES, Ipv4View,
@@ -112,6 +113,13 @@ pub struct WireWiring {
     pub vault_placeholders: Vec<String>,
     pub l4_proxies: Vec<(u16, String)>,
     pub allow_udp_proxied: bool,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.userspace_netstack
+    pub userspace_netstack: bool,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
+    pub default_egress: String,
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    // TODO (L3): dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet.
+    pub l4_unix_diversions: Vec<(u16, PathBuf)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

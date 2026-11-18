@@ -167,6 +167,25 @@ impl FsScope {
         self.builder = self.builder.on_fs_lock(f);
         self
     }
+
+    pub fn on_fs_unlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_unlink(f);
+        self
+    }
+
+    pub fn on_fs_rename<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &Path, &HandlerCtx) -> Result<Verdict, PluginError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.builder = self.builder.on_fs_rename(f);
+        self
+    }
 }
 
 // see: cans/02-plugin-model.md#Nested-scopes

@@ -25,6 +25,7 @@ use kelir::{
         WatchdogEvent, WatchdogVerdict,
     },
     protocol_wire::{Errno, ExecveMutation, PatchPayload, SuspendUntil, TrapEvent},
+    telemetry_attest::ExitKind,
     HCons, HNil, Host, KelirBuilder, NoParams, SnapshotDescriptor, Unsealed, VmConfig,
 };
 
@@ -200,6 +201,24 @@ impl TrapInterposer for PolicyMatrixPlugin {
 
             "policy-approval" => Ok(Verdict::Suspend {
                 until: SuspendUntil::Deadline(500),
+            }),
+
+            // Row 7: Signed Operator Lease Escalation (Permits widening via Ed25519 signature)
+            "policy-escalate" => {
+                if ctx.has_valid_operator_lease() {
+                    Ok(Verdict::Pass)
+                } else {
+                    Ok(Verdict::Drop {
+                        errno: Errno::Eperm,
+                        reason: "ESECURITYVIOLATION: capability widening requires signed operator lease".into(),
+                    })
+                }
+            }
+
+            // Row 8: In-Guest Syscall/Protocol Block (Hardware attack surface reduction)
+            "policy-syscall-block" => Ok(Verdict::Drop {
+                errno: Errno::Eafnosupport,
+                reason: "EAFNOSUPPORT: socket family AF_RXRPC blocked (CVE mitigation)".into(),
             }),
 
             "policy-custom" => Ok(Verdict::Patch(PatchPayload::Custom {
@@ -449,6 +468,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-abort",
         "policy-yield",
         "policy-approval",
+        "policy-escalate",
+        "policy-syscall-block",
         "policy-custom",
     ] {
         let run = session.spawn(binary, &["--policy-matrix"], None).await?;
@@ -460,9 +481,29 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "policy-abort" => assert_ne!(run.exit_code, 0),
             "policy-yield" => assert_eq!(run.exit_code, 0),
             "policy-approval" => assert_eq!(run.exit_code, 0),
+            "policy-escalate" => {
+                // Prior to lease elevation: must fail closed with EPERM
+                assert_ne!(run.exit_code, 0);
+                // Inject signed operator lease and verify runtime elevation
+                session.elevate_lease("signed_jws_operator_lease_token_payload")?;
+                let elevated = session.spawn(binary, &["--policy-matrix"], None).await?;
+                assert_eq!(elevated.exit_code, 0);
+            }
+            "policy-syscall-block" => {
+                assert_ne!(run.exit_code, 0);
+                assert!(matches!(&run.exit_kind, ExitKind::Signal(_)));
+            }
             "policy-custom" => assert_eq!(run.exit_code, 0),
             _ => {}
         }
+
+        // Verify hardware-anchored ExecutionReceipt is directly available without LedgerPlugin
+        let receipt = match run.receipt() {
+            Some(receipt) => receipt,
+            None => return Err("hardware receipt missing from execution".into()),
+        };
+        assert!(receipt.wall_clock_ns > 0);
+        assert!(!receipt.binary_blake3.is_empty());
     }
 
     // Verify Custom action triggered and recorded state
