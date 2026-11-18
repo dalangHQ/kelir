@@ -263,7 +263,7 @@ where
     F: Fn(&Path, u32, u32, u32, u64, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync,
 {
     fn on_fs_setattr(&self, path: &Path, mode: u32, size: u64) -> Result<Verdict, PluginError> {
-        // TODO (L3): thread the live uid, gid and HandlerCtx from the FUSE setattr dispatch; the trait carries path, mode and size only.
+        // TODO (L3) [plugin_engine]: thread the live uid, gid and HandlerCtx from the FUSE setattr dispatch; the trait carries path, mode and size only.; slop: setattr handler sees zero uid/gid and a synthetic ctx.
         let ctx = HandlerCtx::new([0; 16], 0, (), Vec::new());
         (self.handler)(path, mode, 0, 0, size, &ctx)
     }

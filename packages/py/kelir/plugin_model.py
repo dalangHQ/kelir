@@ -251,27 +251,27 @@ class BasePlugin(Generic[CtxT, ParamsT]):
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict:
-        # TODO (L3): dispatch fs setattr to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fs setattr to the plugin.; slop: fs setattr never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_symlink(self, target: Path, link: Path) -> Verdict:
-        # TODO (L3): dispatch fs symlink to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fs symlink to the plugin.; slop: fs symlink never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_mkdir(self, path: Path, mode: int) -> Verdict:
-        # TODO (L3): dispatch fs mkdir to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fs mkdir to the plugin.; slop: fs mkdir never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_readdir(self, path: Path, entries: list[DirEntry]) -> FilterAction:
-        # TODO (L3): dispatch fs readdir to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fs readdir to the plugin.; slop: fs readdir never reaches the plugin, the guest action runs unobserved.
         return FilterAction.forward()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_readlink(self, path: Path) -> Verdict:
-        # TODO (L3): dispatch fs readlink to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fs readlink to the plugin.; slop: fs readlink never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
@@ -282,19 +282,19 @@ class BasePlugin(Generic[CtxT, ParamsT]):
     def on_socket_connect(
         self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
     ) -> Verdict:
-        # TODO (L3): dispatch socket connect to the plugin.
+        # TODO (L3) [bindings_py]: dispatch socket connect to the plugin.; slop: socket connect never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_dns_query(self, pid: int, domain: str, qtype: int) -> DnsVerdict:
-        # TODO (L3): dispatch dns query to the plugin.
+        # TODO (L3) [bindings_py]: dispatch dns query to the plugin.; slop: dns query never reaches the plugin, the guest action runs unobserved.
         return DnsVerdict.Forward
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_socket_bind(
         self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
     ) -> Verdict:
-        # TODO (L3): dispatch socket bind to the plugin.
+        # TODO (L3) [bindings_py]: dispatch socket bind to the plugin.; slop: socket bind never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
@@ -317,7 +317,7 @@ class BasePlugin(Generic[CtxT, ParamsT]):
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stdin(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # TODO (L3): dispatch EXEC stream stdin to the plugin.
+        # TODO (L3) [bindings_py]: dispatch EXEC stream stdin to the plugin.; slop: EXEC stream stdin never reaches the plugin, the guest action runs unobserved.
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:
@@ -329,11 +329,11 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         pass
 
     async def on_signal(self, sender: int, target: int, sig: int) -> Verdict:
-        # TODO (L3): dispatch signal to the plugin.
+        # TODO (L3) [bindings_py]: dispatch signal to the plugin.; slop: signal never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     async def on_fork(self, parent: int, child: int) -> Verdict:
-        # TODO (L3): dispatch fork to the plugin.
+        # TODO (L3) [bindings_py]: dispatch fork to the plugin.; slop: fork never reaches the plugin, the guest action runs unobserved.
         return Verdict.pass_()
 
     async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
@@ -353,5 +353,5 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         return WatchdogVerdict.ExecuteDefault
 
     def on_host_containment_breach(self, pid: int, path: Path, kind: str) -> None:
-        # TODO (L3): dispatch host containment breach to the plugin.
+        # TODO (L3) [bindings_py]: dispatch host containment breach to the plugin.; slop: host containment breach never reaches the plugin, the guest action runs unobserved.
         pass
