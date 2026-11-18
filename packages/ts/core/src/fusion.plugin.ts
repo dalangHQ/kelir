@@ -187,8 +187,14 @@ export interface FusedTrampolineDescriptor {
 export interface NativeTerminalConfigBinding {
   readonly cols?: number;
   readonly rows?: number;
-  readonly dropOsc52?: boolean;
-  readonly stripTitle?: boolean;
+  readonly wireframeGrid?: {
+    readonly trackScreenMatrix?: boolean;
+    readonly exportOnTrap?: boolean;
+  };
+  readonly sanitizer?: {
+    readonly dropOsc52?: boolean;
+    readonly stripTitle?: boolean;
+  };
   readonly streamEngine?: string;
 }
 
@@ -196,11 +202,16 @@ export interface NativeTerminalConfigBinding {
 export interface NativeStorageConfigBinding {
   readonly idmapGuestUid?: number;
   readonly idmapHostUid?: number;
-  readonly sharedCaches?: string[];
+  readonly sharedCaches?: readonly {
+    readonly hostPath: string;
+    readonly guestMount: string;
+    readonly readOnly?: boolean;
+  }[];
   readonly lockBroker?: boolean;
   readonly lockBrokerGlobs?: string[];
   readonly lockBrokerNonBlocking?: boolean;
   readonly encapsulation?: string;
+  readonly daxWindow?: string;
 }
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
@@ -213,15 +224,11 @@ export interface NativeSinkholeRuleBinding {
 export interface NativeWireConfigBinding {
   readonly sinkhole?: { readonly rules?: readonly NativeSinkholeRuleBinding[] };
   readonly sshAgentBridge?: boolean;
-  readonly vaults?: readonly {
-    readonly name: string;
-    readonly kind: string;
-    readonly audience: string;
-    readonly placeholder: string;
-  }[];
+  readonly dialTimeoutMs?: number;
   readonly l4Proxies?: readonly {
     readonly listenPort: number;
     readonly destination: string;
+    readonly forwardUnixSocket?: string;
     readonly injectMtlsCertPath?: string;
     readonly injectMtlsKeyPath?: string;
   }[];

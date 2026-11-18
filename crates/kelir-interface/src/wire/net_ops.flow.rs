@@ -77,11 +77,11 @@ impl SinkholeConfig {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WireWiring {
     pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
-    pub vault_placeholders: Vec<String>,
+    pub dial_timeout_ms: u64,
     pub l4_proxies: Vec<(u16, String)>,
     pub allow_udp_proxied: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.userspace_netstack
@@ -91,6 +91,22 @@ pub struct WireWiring {
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
     // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
+}
+
+// see: cans/07-wire-plane.md#Upstream-dial-transport
+impl Default for WireWiring {
+    fn default() -> Self {
+        Self {
+            sinkhole: SinkholeConfig::default(),
+            ssh_agent_bridge: false,
+            dial_timeout_ms: 5000,
+            l4_proxies: Vec::new(),
+            allow_udp_proxied: false,
+            userspace_netstack: false,
+            default_egress: String::new(),
+            l4_unix_diversions: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -46,7 +46,7 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
 
     // see: cans/plugins/ledger.md#Merkle-WAL
     .use(ledger({
-      store: "sqlite://.kelir/migrate-audit.merkle.db",
+      storePath: ".kelir/migrate-audit.merkle.db",
       merkleChain: true,
       otel: undefined,
       receipts: { includeSyscallCount: false },

@@ -18,32 +18,56 @@ pub use kelir_interface::fusion_plugin::{
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub struct PyFusedCallback {
-    callable: Py<PyAny>,
+    chain: Vec<(u32, Py<PyAny>)>,
 }
 
 impl PyFusedCallback {
-    pub fn new(callable: Py<PyAny>) -> Self {
-        Self { callable }
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    pub fn new(chain: Vec<(u32, Py<PyAny>)>) -> Self {
+        Self { chain }
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: marshal the ring event payload into the single GIL crossing so every callable of the chain receives the ring event object; slop: ring event payload stays unmarshaled, callables receive tag and ordinal only
+    fn marshal_chain_event(&self, _ring: TrampolineRing) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: copy back the writable bytearray Py write hooks mutate during the single GIL traversal and map the callable return value into the folded Verdict; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+    fn copyback_chain_buffers(
+        &self,
+        _ring: TrampolineRing,
+        _ordinal: u32,
+    ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
     }
 }
 
 impl FusedTrampolineCallback for PyFusedCallback {
-    fn run(&self, ring: TrampolineRing, ordinal: u32) -> Result<Verdict, PluginError> {
-        let outcome = Python::with_gil(|py| {
-            self.callable
-                .bind(py)
-                .call1((ring.as_tag(), ordinal))
-                .map(|_| ())
-        });
-        outcome.map_err(|error| {
-            PluginError::Halt(format!(
-                "fused trampoline callable on ring {} ordinal {ordinal} failed: {error}",
-                ring.as_tag()
-            ))
-        })?;
-        // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
-        // L3-GAP: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; Py write hooks receive a writable bytearray and return a bytes snapshot; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
-        Ok(Verdict::Pass)
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    fn run(&self, ring: TrampolineRing, _ordinal: u32) -> Result<Verdict, PluginError> {
+        self.marshal_chain_event(ring)?;
+        Python::with_gil(|py| {
+            let mut verdict = Verdict::Pass;
+            for (hook_ordinal, callable) in &self.chain {
+                let invoked = callable
+                    .bind(py)
+                    .call1((ring.as_tag(), *hook_ordinal))
+                    .map(|_| ());
+                invoked.map_err(|error| {
+                    PluginError::Halt(format!(
+                        "fused trampoline single crossing to ring {} failed at ordinal {hook_ordinal}: {error}",
+                        ring.as_tag()
+                    ))
+                })?;
+                verdict = self.copyback_chain_buffers(ring, *hook_ordinal)?;
+                if !matches!(verdict, Verdict::Pass) {
+                    break;
+                }
+            }
+            Ok(verdict)
+        })
     }
 }
 
@@ -52,6 +76,7 @@ pub fn attach_runs(
     descriptor: &mut FusedTrampolineDescriptor,
     runs: &Bound<'_, PyList>,
 ) -> PyResult<()> {
+    let mut grouped: Vec<(TrampolineRing, Vec<(u32, Py<PyAny>)>)> = Vec::new();
     for run_value in runs.iter() {
         let run_entry = run_value.downcast::<PyDict>()?;
         let ring_tag = required_str(run_entry, "ring", "run entry")?;
@@ -76,22 +101,39 @@ pub fn attach_runs(
                 )));
             }
         };
-        let callback = Arc::new(PyFusedCallback::new(callable));
-        let Some(chain) = descriptor
-            .rings
-            .iter_mut()
-            .find(|chain| chain.ring == ring_kind)
-        else {
+        match grouped.iter().position(|(ring, _)| *ring == ring_kind) {
+            Some(index) => {
+                if grouped[index].1.iter().any(|(known, _)| *known == ordinal) {
+                    return Err(PyValueError::new_err(format!(
+                        "fused trampoline declares duplicate run ordinal {ordinal} on ring {ring_tag}"
+                    )));
+                }
+                grouped[index].1.push((ordinal, callable));
+            }
+            None => grouped.push((ring_kind, vec![(ordinal, callable)])),
+        }
+    }
+    for (ring_kind, mut fused) in grouped {
+        let Some(chain) = descriptor.rings.iter_mut().find(|chain| chain.ring == ring_kind) else {
             return Err(PyValueError::new_err(format!(
-                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
+                "fused trampoline run on ring {} has no matching descriptor ring",
+                ring_kind.as_tag()
             )));
         };
-        let Some(hook) = chain.hooks.iter_mut().find(|hook| hook.ordinal == ordinal) else {
-            return Err(PyValueError::new_err(format!(
-                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
-            )));
-        };
-        hook.run = Some(callback);
+        fused.sort_by_key(|(ordinal, _)| *ordinal);
+        for (ordinal, _) in &fused {
+            if !chain.hooks.iter().any(|hook| hook.ordinal == *ordinal) {
+                return Err(PyValueError::new_err(format!(
+                    "fused trampoline run on ring {} ordinal {ordinal} has no matching descriptor hook",
+                    ring_kind.as_tag()
+                )));
+            }
+        }
+        let head = fused[0].0;
+        let dispatcher = Arc::new(PyFusedCallback::new(fused));
+        if let Some(hook) = chain.hooks.iter_mut().find(|hook| hook.ordinal == head) {
+            hook.run = Some(dispatcher);
+        }
     }
     Ok(())
 }

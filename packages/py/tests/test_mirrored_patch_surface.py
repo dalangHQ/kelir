@@ -134,10 +134,11 @@ def test_wire_config_divert_port_to_unix() -> None:
 
     builder.wire_config(_wire)
     assert builder._config["wire"] == {
+        "dial_timeout_ms": 5000,
         "divert_ports": [
             {"listen_port": 5433, "forward_unix_socket": "/run/agentsh/pgwire.sock"},
             {"listen_port": 8000, "forward_unix_socket": "/run/agentsh/mcp.sock"},
-        ]
+        ],
     }
     bridged = kelir._bridge_safe_config("wire", builder._config["wire"])
     assert bridged["divert_ports"] == builder._config["wire"]["divert_ports"]
@@ -154,6 +155,7 @@ def test_wire_config_closure_sets_netstack_and_egress() -> None:
     assert builder._config["wire"] == {
         "userspace_netstack": True,
         "default_egress": "drop",
+        "dial_timeout_ms": 5000,
     }
 
 
@@ -168,6 +170,35 @@ def test_wire_config_divert_port_validates() -> None:
 def test_wire_config_is_host_only() -> None:
     with pytest.raises(EConfig, match=r"host-only verb .wire_config"):
         KelirBuilder.plugin("p").wire_config(lambda _w: None)
+
+
+def test_terminal_config_bridge_accepts_hierarchy_only() -> None:
+    builder = kelir.builder()
+    builder.terminal(
+        cols=120,
+        rows=40,
+        wireframe_grid={"track_screen_matrix": True, "export_on_trap": False},
+        sanitizer={"drop_osc52": True, "strip_title": True},
+        stream_engine="StreamingAutomata",
+    )
+    bridged = kelir._bridge_safe_config("terminal", builder._config["terminal"])
+    assert bridged["wireframe_grid"] == {"track_screen_matrix": True, "export_on_trap": False}
+    assert bridged["sanitizer"] == {"drop_osc52": True, "strip_title": True}
+    with pytest.raises(EConfig, match=r"unknown terminal plane config keys: drop_osc52"):
+        kelir._bridge_safe_config("terminal", {"drop_osc52": True})
+
+
+def test_storage_config_bridge_structures_shared_caches() -> None:
+    builder = kelir.builder()
+    builder.storage(
+        shared_caches=[{"host_path": "/host/cache", "guest_mount": "/guest/cache", "read_only": True}],
+        dax_window="off",
+    )
+    bridged = kelir._bridge_safe_config("storage", builder._config["storage"])
+    assert bridged["shared_caches"] == [
+        {"host_path": "/host/cache", "guest_mount": "/guest/cache", "read_only": True}
+    ]
+    assert bridged["dax_window"] == "off"
 
 
 def test_builder_embed_mode_kwarg() -> None:

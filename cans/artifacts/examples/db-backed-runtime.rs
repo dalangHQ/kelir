@@ -9,7 +9,7 @@ use kelir::Deserialize;
 use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{Errno, KelirPlugin, PluginError},
-    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil, HandlerCtx,
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, FinalizeRequest, HCons, HNil, HandlerCtx, PgSchemaRewrite,
     Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin, NoParams,
     PostExecAction, ReceiptConfig, SqlProxyCtx, SqlProxyHandle, SqlReceiptExt, TransactionConfig, TransactionCtx,
     TransactionHandle, TransactionPlugin, TrapFilter, Unsealed, Verdict, VmConfig,
@@ -42,7 +42,10 @@ fn build_runtime(
     let mut db_config = DbProxyConfig::default();
     db_config.postgres.listen_port = 5432;
     db_config.postgres.upstream = format!("{pg_host}:5432");
-    db_config.postgres.rewrite_rules = vec![("public.".into(), "migrate_schema.".into())];
+    db_config.postgres.schema_rewrites = vec![PgSchemaRewrite {
+        from_schema: "public".into(),
+        to_schema: "migrate_schema".into(),
+    }];
     db_config.sqlite.guest_socket = "/run/kelir/db.sock".into();
     db_config.sqlite.host_path = "/var/lib/app/migrations.sqlite".into();
     db_config.credentials = Some(EphemeralCredentials {
@@ -57,7 +60,7 @@ fn build_runtime(
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,
         witness_cosigning_endpoint: None,
-        store: "sqlite://.kelir/migrate-audit.merkle.db".into(),
+        store_path: ".kelir/migrate-audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
         otel: None,

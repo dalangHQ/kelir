@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -285,6 +286,13 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.core.shutdown().await
     }
 
+    // see: cans/03-sdk-architecture.md#Rust-SDK
+    // see: cans/plugins/profile.md#Bidirectional-extraction
+    pub async fn export_spec(&self, path: impl Into<PathBuf>) -> Result<(), PluginError> {
+        crate::sandbox_runtime::write_profile(self.registration.profile.as_ref(), path.into())
+            .await
+    }
+
     // see: cans/08-lifecycle.md#Hypervisor-primitives
     pub fn terminate(&mut self) -> Result<(), PluginError> {
         self.core.terminate()
@@ -302,6 +310,9 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             storage_cfg: self.registration.storage_cfg.clone(),
             terminal_cfg: self.registration.terminal_cfg.clone(),
             wire_cfg: self.registration.wire_cfg.clone(),
+            host_cfg: self.registration.host_cfg.clone(),
+            checkpoint_cfg: self.registration.checkpoint_cfg.clone(),
+            profile: self.registration.profile.clone(),
             lock_broker_cfg: self.registration.lock_broker_cfg.clone(),
             on_trap_deny: None,
             on_trap_deny_ex: None,

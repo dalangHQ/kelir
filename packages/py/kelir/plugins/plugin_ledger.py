@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 
 from kelir.plugin_model import BasePlugin
 
 __all__ = [
+    "HashingStandard",
     "LedgerConfig",
     "LedgerPlugin",
     "OtelConfig",
@@ -32,12 +34,18 @@ class ReceiptConfig:
     include_phase_timings: bool = False
 
 
+# see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
+class HashingStandard(str, Enum):
+    RFC_6962_DUAL_BLAKE3_SHA256 = "RFC_6962_DUAL_BLAKE3_SHA256"
+
+
 @dataclass
 class LedgerConfig:
-    store: str = ""
+    # see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.store_path
+    store_path: str = ""
     merkle_chain: bool = False
     suppress_local_db: bool = False
-    hashing_standard: str = ""
+    hashing_standard: HashingStandard = HashingStandard.RFC_6962_DUAL_BLAKE3_SHA256
     record_pre_redaction_hash: bool = False
     include_hook_spans_in_root: bool = False
     witness_cosigning_endpoint: str | None = None

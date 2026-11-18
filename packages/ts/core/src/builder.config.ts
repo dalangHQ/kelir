@@ -31,21 +31,38 @@ export interface TerminalStream {
   write(data: string): void;
 }
 
+// see: cans/04-terminal-plane.md#Headless-VT100-wireframe-grid
+export interface TerminalWireframeGridConfig {
+  readonly trackScreenMatrix?: boolean;
+  readonly exportOnTrap?: boolean;
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+export interface TerminalSanitizerConfig {
+  readonly dropOsc52?: boolean;
+  readonly stripTitle?: boolean;
+}
+
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 export interface TerminalConfig {
   readonly cols?: number;
   readonly rows?: number;
-  readonly dropOsc52?: boolean;
-  readonly stripTitle?: boolean;
+  readonly wireframeGrid?: TerminalWireframeGridConfig;
+  readonly sanitizer?: TerminalSanitizerConfig;
   readonly streamEngine?: string;
 }
 
 // see: cans/05-storage-plane.md#Workspace-commit
 export interface StorageConfig {
   readonly idmap?: { readonly guestUid: number; readonly hostUid: number };
-  readonly sharedCaches?: readonly string[];
+  readonly sharedCaches?: readonly {
+    readonly hostPath: string;
+    readonly guestMount: string;
+    readonly readOnly?: boolean;
+  }[];
   readonly lockBroker?: boolean;
   readonly encapsulation?: string;
+  readonly daxWindow?: string;
 }
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
@@ -71,12 +88,7 @@ export interface WireConfig {
     readonly rules?: readonly SinkholeRule[];
   };
   readonly sshAgentBridge?: boolean;
-  readonly vaults?: readonly {
-    readonly name: string;
-    readonly kind: "bearer_token" | "sigv4" | "mtls_bundle";
-    readonly audience: string;
-    readonly placeholder: string;
-  }[];
+  readonly dialTimeoutMs?: number;
   readonly l4Proxies?: readonly L4ProxyConfig[];
   readonly tapFilter?: string;
 }

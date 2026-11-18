@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use kelir_interface::driver_interface::BalloonConvergence;
 use kelir_interface::handles_lifecycle::VmControl;
+use kelir_interface::host::ops::HostPlaneConfig;
 use kelir_interface::host::{
     BalloonRequest, HostOps, PressureEvent, PressureLevel, PressureSubscription, ReclaimRequest,
 };
@@ -14,6 +15,7 @@ use kelir_interface::telemetry::MetricRegistry;
 pub struct HostPlane {
     ops: Arc<dyn HostOps>,
     metrics: Arc<MetricRegistry>,
+    config: HostPlaneConfig,
 }
 
 impl HostPlane {
@@ -21,7 +23,18 @@ impl HostPlane {
         Self {
             ops,
             metrics: Arc::new(MetricRegistry::new()),
+            config: HostPlaneConfig::default(),
         }
+    }
+
+    // see: cans/01-architecture.md#Host-plane-subsystem
+    pub fn with_config(mut self, config: HostPlaneConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn config(&self) -> &HostPlaneConfig {
+        &self.config
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
@@ -78,5 +91,11 @@ impl HostPlane {
 
     pub fn arm_host_reaper(&self, parent_pid: u32) -> Result<(), PluginError> {
         self.ops.arm_host_reaper(parent_pid)
+    }
+
+    // see: cans/01-architecture.md#Host-memory-pressure-watcher
+    // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: epoll the cgroup v2 memory.pressure fd and translate squeeze levels into balloon inflation.; slop: pressure never read, balloon never inflated, frames stay resident
+    pub fn cgroup_pressure_events(&self) -> Result<Vec<PressureEvent>, PluginError> {
+        Ok(Vec::new())
     }
 }

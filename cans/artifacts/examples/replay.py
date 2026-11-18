@@ -27,12 +27,8 @@ def build_runtime() -> KelirBuilder:
             preemption_grace_ms=0,
         )
         .use(ReplayPlugin(ReplayConfig(
-            step_window=1_000_000,
-            kernel_params=[
-                "clocksource=kvm-clock",
-                "tsc=reliable",
-                "nohpet",
-            ],
+            step_window_instructions=1_000_000,
+            pinned_clocksource="kvm-clock",
             deterministic_rng_seed=0x5EED,
             network_isolation=True,
         )))

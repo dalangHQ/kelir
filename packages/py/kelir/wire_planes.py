@@ -3,21 +3,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
 from kelir.sdk_errors import EConfig
 
 __all__ = [
-    "CredentialDescriptor",
-    "CredentialKind",
     "L4Proxy",
-    "Mtls",
+    "MtlsConfig",
+    "PtyConfig",
     "SinkholeConfig",
     "SinkholeRule",
+    "TerminalSanitizerConfig",
+    "TerminalWireframeGridConfig",
     "WireConfig",
 ]
-
-CredentialKind = Literal["bearer_token", "sigv4", "mtls_bundle"]
 
 
 # see: cans/07-wire-plane.md#Sinkhole-rules
@@ -34,31 +33,26 @@ class SinkholeConfig:
 
 
 @dataclass
-class CredentialDescriptor:
-    name: str = ""
-    kind: CredentialKind = "bearer_token"
-    audience: str = ""
-    placeholder: str = ""
-
-
-@dataclass
-class Mtls:
+class MtlsConfig:
     cert_path: Path | str | None = None
     key_path: Path | str | None = None
 
 
+# see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
 @dataclass
 class L4Proxy:
     listen_port: int = 0
     destination: str = ""
-    inject_mtls: Mtls | None = None
+    forward_unix_socket: Path | str | None = None
+    inject_mtls: MtlsConfig | None = None
 
 
-# see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+# see: cans/07-wire-plane.md#Wire-plane
 @dataclass
 class WireConfig:
     userspace_netstack: bool | None = None
     default_egress: str | None = None
+    dial_timeout_ms: int = 5000
     divert_ports: list[tuple[int, str]] = field(default_factory=list)
 
     def divert_port_to_unix(self, port: int, socket_path: str) -> None:
@@ -69,7 +63,7 @@ class WireConfig:
         self.divert_ports.append((port, socket_path))
 
     def to_wire_dict(self) -> dict[str, Any]:
-        merged: dict[str, Any] = {}
+        merged: dict[str, Any] = {"dial_timeout_ms": self.dial_timeout_ms}
         if self.userspace_netstack is not None:
             merged["userspace_netstack"] = self.userspace_netstack
         if self.default_egress is not None:
@@ -80,6 +74,36 @@ class WireConfig:
                 for port, socket_path in self.divert_ports
             ]
         return merged
+
+
+# see: cans/04-terminal-plane.md#Headless-VT100-wireframe-grid
+@dataclass
+class TerminalWireframeGridConfig:
+    track_screen_matrix: bool = False
+    export_on_trap: bool = False
+
+
+# see: cans/04-terminal-plane.md#Terminal-pipeline
+@dataclass
+class TerminalSanitizerConfig:
+    drop_osc52: bool = False
+    strip_title: bool = False
+
+
+# see: cans/04-terminal-plane.md#Terminal-pipeline
+# see: cans/artifacts/examples/fixtures/kelir.yaml#terminal
+@dataclass
+class PtyConfig:
+    cols: int = 0
+    rows: int = 0
+    wireframe_grid: TerminalWireframeGridConfig = field(
+        default_factory=TerminalWireframeGridConfig
+    )
+    # see: cans/artifacts/examples/fixtures/kelir.yaml#terminal.stream_engine
+    stream_engine: str = ""
+    sanitizer: TerminalSanitizerConfig = field(
+        default_factory=TerminalSanitizerConfig
+    )
 
 
 # see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
@@ -102,6 +126,7 @@ def apply_wire_config(wire: dict[str, Any], fn: Callable[[WireConfig], Any]) -> 
     config = WireConfig(
         userspace_netstack=wire.get("userspace_netstack"),
         default_egress=wire.get("default_egress"),
+        dial_timeout_ms=wire.get("dial_timeout_ms", 5000),
         divert_ports=[
             pair for pair in (_divert_pair(entry) for entry in wire.get("divert_ports", []))
             if pair is not None

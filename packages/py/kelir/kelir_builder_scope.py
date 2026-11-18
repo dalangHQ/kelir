@@ -16,6 +16,47 @@ _FS_CONFIG_KEYS: frozenset[str] = frozenset(
     {"lock_broker", "carryover_bytes", "scan_engine", "snoops"}
 )
 
+# see: cans/02-plugin-model.md#Nested-scopes
+_SCOPE_VERBS: dict[str, tuple[str, ...]] = {
+    "trap": ("on_trap", "on_process_exit", "on_trap_deny", "on_signal", "on_fork"),
+    "fs": (
+        "on_fs_lookup",
+        "on_fs_read",
+        "on_fs_write",
+        "on_fs_lock",
+        "on_fs_unlink",
+        "on_fs_rename",
+        "on_fs_setattr",
+        "on_fs_symlink",
+        "on_fs_mkdir",
+        "on_fs_readdir",
+        "on_fs_readlink",
+    ),
+    "net": ("on_net_outbound", "on_net_inbound", "on_socket_connect", "on_dns_query", "on_socket_bind"),
+    "console": ("on_console_input", "on_console_output"),
+    "exec": ("on_exec_stdout", "on_exec_stderr", "on_exec_stdin"),
+    "host": (
+        "on_host_lsm_exec",
+        "on_host_pressure",
+        "on_host_keyring_access",
+        "on_host_preempt",
+        "on_host_containment_breach",
+    ),
+    "lifecycle": (
+        "on_vm_init",
+        "on_vm_ready",
+        "on_vm_shutdown",
+        "on_pre_commit",
+        "on_post_commit",
+    ),
+    "telemetry": ("on_memory_pressure", "on_heartbeat", "on_watchdog"),
+    "actions": ("register_custom_action",),
+    "streams": ("register_stream_kind",),
+    "vsock": ("vsock_service",),
+    "params": ("params",),
+    "deny": ("on_trap_deny",),
+}
+
 
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 class _Scope:

@@ -32,4 +32,6 @@ pub const WIRE_PLANE_BRIDGE_CID: u32 = 2;
 pub struct VaultConfig {
     pub metadata_vsock_port: u32,
     pub token_ttl_seconds: u32,
+    // see: cans/plugins/vault.md#Credential-descriptors-(vault)
+    pub credentials: Vec<kelir_interface::credential_vault::CredentialDescriptor>,
 }

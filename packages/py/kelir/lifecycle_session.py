@@ -45,6 +45,7 @@ class IngressStream:
 class Session:
     def __init__(self) -> None:
         self._native: Any = None
+        self._profile: Any | None = None
         self.driver_name: str = ""
         self.boot_ms: int = 0
         self._operator_lease_token: str | None = None
@@ -60,10 +61,11 @@ class Session:
 
     # see: cans/03-sdk-architecture.md#Python-SDK
     @classmethod
-    def from_native(cls, handle: Any) -> Session:
+    def from_native(cls, handle: Any, profile: Any | None = None) -> Session:
         # L3-GAP: [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
         session = cls()
         session._native = handle
+        session._profile = profile
         session.driver_name = str(handle.driver_name)
         session.boot_ms = int(handle.boot_ms)
         session.vm = VmHandle(session, handle.vm)
@@ -76,7 +78,21 @@ class Session:
 
     async def fork(self) -> Session:
         native = kelir._require_native(self._native, "session fork")
-        return Session.from_native(native.fork())
+        return Session.from_native(native.fork(), self._profile)
+
+    # see: cans/03-sdk-architecture.md#Python-SDK
+    # see: cans/plugins/profile.md#Bidirectional-extraction
+    async def export_spec(self, path: str) -> None:
+        if self._profile is None:
+            raise EConfig(
+                "Session.export_spec: session carries no ingested profile"
+            )
+        from kelir.lifecycle_sandbox import _profile_text
+
+        # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
+        Path(path).write_text(
+            _profile_text(self._profile, path), encoding="utf-8"
+        )
 
     async def elevate_lease(self, token: str) -> None:
         if not isinstance(token, str) or not token:

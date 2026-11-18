@@ -3,6 +3,7 @@
 // see: cans/09-snapshots.md#Groups-and-lineage
 use std::sync::Arc;
 
+use kelir_interface::checkpoint::ops::CheckpointPlaneConfig;
 use kelir_interface::checkpoint::{CheckpointOps, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
@@ -11,6 +12,7 @@ use kelir_interface::telemetry::MetricRegistry;
 pub struct CheckpointPlane {
     ops: Arc<dyn CheckpointOps>,
     metrics: Arc<MetricRegistry>,
+    config: CheckpointPlaneConfig,
 }
 
 impl CheckpointPlane {
@@ -18,7 +20,18 @@ impl CheckpointPlane {
         Self {
             ops,
             metrics: Arc::new(MetricRegistry::new()),
+            config: CheckpointPlaneConfig::default(),
         }
+    }
+
+    // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
+    pub fn with_config(mut self, config: CheckpointPlaneConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub fn config(&self) -> &CheckpointPlaneConfig {
+        &self.config
     }
 
     pub fn with_metrics(mut self, metrics: Arc<MetricRegistry>) -> Self {
@@ -80,5 +93,11 @@ impl CheckpointPlane {
     // see: cans/09-snapshots.md#Groups-and-lineage
     pub fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError> {
         self.ops.compact(lineage)
+    }
+
+    // see: cans/08-lifecycle.md#Delta-chain-compaction
+    // TODO (L3) [lc_20_portable_snapshot_archive_export]: flatten stacked WorkingDeltas in a single-pass block copy on export per CompactionConfig.; slop: deltas stacked verbatim, export unverified against trailer digest
+    pub fn compact_delta_blocks(&self, _lineage: PidLineage) -> Result<u64, PluginError> {
+        Ok(0)
     }
 }

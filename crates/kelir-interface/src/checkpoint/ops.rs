@@ -1,6 +1,8 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use crate::checkpoint::graph::PidLineage;
 use crate::driver_interface::SnapshotDescriptor;
 use crate::plugin_model::PluginError;
@@ -20,4 +22,37 @@ pub trait CheckpointOps: Send + Sync {
     fn monotonic_watermark_ns(&self) -> u64;
     fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError>;
     fn fresh(&self) -> Arc<dyn CheckpointOps>;
+}
+
+// see: cans/09-snapshots.md#Groups-and-lineage
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StepDagConfig {
+    pub enabled: bool,
+    pub require_signed_attribution: bool,
+    pub require_separation_of_duties: bool,
+    pub storage: String,
+}
+
+// see: cans/08-lifecycle.md#Delta-chain-compaction
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CompactionConfig {
+    pub unbounded_depth: bool,
+    pub lazy_cow_sharing: bool,
+    pub compaction_on_export: bool,
+}
+
+// see: cans/08-lifecycle.md#Zero-harness-boundary-detection
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BoundaryConfig {
+    pub sentinel_path: String,
+    pub detect_pty_quiescence: bool,
+    pub pre_checkpoint_dentry_trim: bool,
+}
+
+// see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CheckpointPlaneConfig {
+    pub step_dag: StepDagConfig,
+    pub compaction: CompactionConfig,
+    pub snapshot_boundaries: BoundaryConfig,
 }

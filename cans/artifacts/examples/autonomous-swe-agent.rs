@@ -369,7 +369,7 @@ async fn build_runtime(
             NetworkFaultRule {
                 target: "api.stripe.com".into(),
                 direction: FaultDirection::Outbound,
-                base_ms: 150,
+                latency_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
@@ -378,7 +378,7 @@ async fn build_runtime(
             NetworkFaultRule {
                 target: "api.stripe.com".into(),
                 direction: FaultDirection::Inbound,
-                base_ms: 150,
+                latency_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
@@ -387,17 +387,17 @@ async fn build_runtime(
             NetworkFaultRule {
                 target: "api.stripe.com".into(),
                 direction: FaultDirection::Both,
-                base_ms: 150,
+                latency_ms: 150,
                 jitter_ms: 30,
                 drop_rate: 0.02,
                 inject_rst: false,
                 bandwidth_kbps: None,
             },
         ],
-        fs: vec![StorageFaultRule {
-            target_path: "/workspace/build/cache/*".into(),
-            simulate_error: Errno::Enospc,
-            error_probability: 0.05,
+        storage: vec![StorageFaultRule {
+            target_glob: "/workspace/build/cache/*".into(),
+            simulate_errno: Errno::Enospc,
+            probability: 0.05,
         }],
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
@@ -406,7 +406,7 @@ async fn build_runtime(
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,
         witness_cosigning_endpoint: None,
-        store: ".kelir/audit.merkle.db".into(),
+        store_path: ".kelir/audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
         otel: Some(OtelConfig {

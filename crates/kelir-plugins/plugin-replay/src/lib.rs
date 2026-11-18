@@ -10,8 +10,8 @@ pub use replay_state::{ReplayCtx, ReplayPlugin};
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.replay
 #[derive(Debug, Clone)]
 pub struct ReplayConfig {
-    pub step_window: u64,
-    pub kernel_params: Vec<String>,
+    pub step_window_instructions: u64,
+    pub pinned_clocksource: String,
     pub deterministic_rng_seed: u64,
     pub network_isolation: bool,
 }

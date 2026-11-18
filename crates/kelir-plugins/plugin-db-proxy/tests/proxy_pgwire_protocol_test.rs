@@ -6,7 +6,7 @@ use kelir_interface::protocol_wire::FilterAction;
 use plugin_db_proxy::pgwire_db_proxy::{PgFrameDescriptor, PgFrameKind};
 use plugin_db_proxy::reassembler_wire::FlowKey;
 use plugin_db_proxy::reassembler_wire::parse_tcp_segment;
-use plugin_db_proxy::{DbProxyConfig, DbProxyPlugin, PgWireRewrite};
+use plugin_db_proxy::{DbProxyConfig, DbProxyPlugin, PgSchemaRewrite, PgWireRewrite};
 
 fn pgwire_query_frame(sql: &str) -> Vec<u8> {
     let mut frame = Vec::new();
@@ -105,10 +105,10 @@ fn tenant_rewrite_config() -> DbProxyConfig {
         postgres: PgWireRewrite {
             listen_port: 5432,
             upstream: "10.0.0.2:5432".to_string(),
-            rewrite_rules: vec![(
-                "FROM users".to_string(),
-                "FROM tenant_123_users".to_string(),
-            )],
+            schema_rewrites: vec![PgSchemaRewrite {
+                from_schema: "public".to_string(),
+                to_schema: "tenant_123".to_string(),
+            }],
             max_rewrites_per_conn: 3,
         },
         ..DbProxyConfig::default()

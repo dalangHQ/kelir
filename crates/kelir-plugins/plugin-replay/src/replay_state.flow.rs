@@ -15,12 +15,8 @@ use crate::ReplayConfig;
 impl Default for ReplayConfig {
     fn default() -> Self {
         Self {
-            step_window: 1_000_000,
-            kernel_params: vec![
-                "clocksource=kvm-clock".into(),
-                "tsc=reliable".into(),
-                "nohpet".into(),
-            ],
+            step_window_instructions: 1_000_000,
+            pinned_clocksource: "kvm-clock".into(),
             deterministic_rng_seed: 0x5EED,
             network_isolation: true,
         }
@@ -29,7 +25,7 @@ impl Default for ReplayConfig {
 
 // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
 struct ReplayState {
-    step_window: u64,
+    step_window_instructions: u64,
     retired_total: AtomicU64,
     window_retired: AtomicU64,
     pmu_sampling: AtomicBool,
@@ -42,9 +38,9 @@ struct ReplayState {
 }
 
 impl ReplayState {
-    fn new(step_window: u64) -> Self {
+    fn new(step_window_instructions: u64) -> Self {
         Self {
-            step_window,
+            step_window_instructions,
             retired_total: AtomicU64::new(0),
             window_retired: AtomicU64::new(0),
             pmu_sampling: AtomicBool::new(true),
@@ -121,14 +117,14 @@ impl ReplayState {
 
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     fn accrue_step_windows(&self) -> Result<usize, PluginError> {
-        if self.step_window == 0 {
+        if self.step_window_instructions == 0 {
             return Err(PluginError::Halt(
-                "replay step_window must be a positive retired-instruction interval".into(),
+                "replay step_window_instructions must be a positive retired-instruction interval".into(),
             ));
         }
         let mut pending = Self::lock_slot(&self.pending_windows)?;
         let mut accrued = 0;
-        while self.window_retired.load(Ordering::Acquire) >= self.step_window {
+        while self.window_retired.load(Ordering::Acquire) >= self.step_window_instructions {
             let retired_in_window = self.window_retired.swap(0, Ordering::AcqRel);
             pending.push(retired_in_window);
             accrued += 1;
@@ -242,7 +238,7 @@ pub struct ReplayPlugin {
 impl ReplayPlugin {
     pub fn new(config: ReplayConfig) -> Self {
         Self {
-            state: Arc::new(ReplayState::new(config.step_window)),
+            state: Arc::new(ReplayState::new(config.step_window_instructions)),
             config,
         }
     }
@@ -286,10 +282,10 @@ impl LifecycleParticipant for ReplayPlugin {
     // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
     async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
         // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
-        assert_lockdown_params(&self.config.kernel_params)?;
-        if self.config.step_window == 0 {
+        assert_pinned_clocksource(&self.config.pinned_clocksource)?;
+        if self.config.step_window_instructions == 0 {
             return Err(PluginError::Halt(
-                "replay step_window must be a positive retired-instruction interval".into(),
+                "replay step_window_instructions must be a positive retired-instruction interval".into(),
             ));
         }
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)
@@ -305,10 +301,11 @@ impl LifecycleParticipant for ReplayPlugin {
             ));
         }
         // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
-        if ctx.config.pinned_clocksource.as_deref() != Some("kvm-clock") {
-            return Err(PluginError::Halt(
-                "replay mode requires pinned_clocksource kvm-clock".into(),
-            ));
+        let pinned_clocksource = self.config.pinned_clocksource.as_str();
+        if ctx.config.pinned_clocksource.as_deref() != Some(pinned_clocksource) {
+            return Err(PluginError::Halt(format!(
+                "replay mode requires the session pinned_clocksource {pinned_clocksource}"
+            )));
         }
         // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
         if ctx.config.preemption_grace_ms != 0 {
@@ -342,7 +339,7 @@ impl LifecycleParticipant for ReplayPlugin {
             }
             self.state.mark_pmu_degraded();
         }
-        // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: capture the deterministic RNG seed in the snapshot manifest at replay start; slop: seed never captured, unseeded randomness, replays diverge run to run
+        // TODO (L3) [lc_23_replay_deterministic_seed_reproduces_step_windows]: capture the deterministic RNG seed in the snapshot manifest at replay start; slop: seed never captured, unseeded randomness, replays diverge run to run
         Ok(())
     }
 
@@ -383,18 +380,11 @@ impl LifecycleParticipant for ReplayPlugin {
 }
 
 // see: cans/plugins/replay.md#Kernel-clocksource-lockdown
-fn assert_lockdown_params(params: &[String]) -> Result<(), PluginError> {
-    if !params.iter().any(|param| param.starts_with("clocksource=")) {
+fn assert_pinned_clocksource(pinned_clocksource: &str) -> Result<(), PluginError> {
+    if pinned_clocksource.is_empty() {
         return Err(PluginError::Halt(
-            "replay kernel lockdown missing clocksource= boot parameter".into(),
+            "replay pinned_clocksource must name the guest clocksource".into(),
         ));
-    }
-    for required in ["tsc=reliable", "nohpet"] {
-        if !params.iter().any(|param| param == required) {
-            return Err(PluginError::Halt(format!(
-                "replay kernel lockdown missing {required} boot parameter"
-            )));
-        }
     }
     Ok(())
 }

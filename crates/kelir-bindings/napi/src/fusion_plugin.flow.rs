@@ -20,41 +20,77 @@ pub use kelir_interface::fusion_plugin::{
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub struct NapiFusedCallback {
-    call: ThreadsafeFunction<(String, u32)>,
+    chain: Vec<(u32, ThreadsafeFunction<(String, u32)>)>,
 }
 
 impl NapiFusedCallback {
-    pub fn new(function: JsFunction) -> Result<Self> {
-        let call = function.create_threadsafe_function(
-            0,
-            |context: ThreadSafeCallContext<(String, u32)>| {
-                Ok(vec![context.value.0, context.value.1.to_string()])
-            },
-        )?;
-        Ok(Self { call })
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    pub fn new(chain: Vec<(u32, JsFunction)>) -> Result<Self> {
+        let mut fused = Vec::with_capacity(chain.len());
+        for (ordinal, function) in chain {
+            let call = function.create_threadsafe_function(
+                0,
+                |context: ThreadSafeCallContext<(String, u32)>| {
+                    Ok(vec![context.value.0, context.value.1.to_string()])
+                },
+            )?;
+            fused.push((ordinal, call));
+        }
+        Ok(Self { chain: fused })
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile the fused chain into the single flat closure so the traversal enqueues exactly once per ring event and marshal the ring event payload into that single crossing; slop: chain still enqueues per ordinal, ring event payload stays unmarshaled
+    fn marshal_chain_event(
+        &self,
+        _ring: TrampolineRing,
+    ) -> std::result::Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: copy back the mutable Uint8Array Buffer TS write hooks mutate during the traversal and rendezvous the enqueued run's Verdict into the fold; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+    fn copyback_chain_buffers(
+        &self,
+        _ring: TrampolineRing,
+        _ordinal: u32,
+    ) -> std::result::Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
     }
 }
 
 impl FusedTrampolineCallback for NapiFusedCallback {
-    fn run(&self, ring: TrampolineRing, ordinal: u32) -> std::result::Result<Verdict, PluginError> {
-        let status = self.call.call(
-            Ok((ring.as_tag().to_string(), ordinal)),
-            ThreadsafeFunctionCallMode::NonBlocking,
-        );
-        if status != Status::Ok {
-            return Err(PluginError::Halt(format!(
-                "fused trampoline threadsafe call to ring {} ordinal {ordinal} failed: {status:?}",
-                ring.as_tag()
-            )));
+    // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+    fn run(
+        &self,
+        ring: TrampolineRing,
+        _ordinal: u32,
+    ) -> std::result::Result<Verdict, PluginError> {
+        self.marshal_chain_event(ring)?;
+        let mut verdict = Verdict::Pass;
+        for (hook_ordinal, call) in &self.chain {
+            let status = call.call(
+                Ok((ring.as_tag().to_string(), *hook_ordinal)),
+                ThreadsafeFunctionCallMode::NonBlocking,
+            );
+            if status != Status::Ok {
+                return Err(PluginError::Halt(format!(
+                    "fused trampoline single crossing to ring {} failed at ordinal {hook_ordinal}: {status:?}",
+                    ring.as_tag()
+                )));
+            }
+            verdict = self.copyback_chain_buffers(ring, *hook_ordinal)?;
+            if !matches!(verdict, Verdict::Pass) {
+                break;
+            }
         }
-        // see: cans/02-plugin-model.md#Read/console-pin-(SSOT-A1)
-        // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; TS write hooks receive a mutable Uint8Array Buffer copied back on return; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
-        Ok(Verdict::Pass)
+        Ok(verdict)
     }
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub fn attach_runs(descriptor: &mut FusedTrampolineDescriptor, runs: Vec<Object>) -> Result<()> {
+    let mut grouped: Vec<(TrampolineRing, Vec<(u32, JsFunction)>)> = Vec::new();
     for run_entry in runs {
         let ring_tag: String = run_entry
             .get_named_property::<String>("ring")
@@ -74,22 +110,39 @@ pub fn attach_runs(descriptor: &mut FusedTrampolineDescriptor, runs: Vec<Object>
                 "fused trampoline run on ring {ring_tag} ordinal {ordinal} declares no `run` function"
             ))
         })?;
-        let callback = Arc::new(NapiFusedCallback::new(function)?);
-        let Some(chain) = descriptor
-            .rings
-            .iter_mut()
-            .find(|chain| chain.ring == ring_kind)
-        else {
+        match grouped.iter().position(|(ring, _)| *ring == ring_kind) {
+            Some(index) => {
+                if grouped[index].1.iter().any(|(known, _)| *known == ordinal) {
+                    return Err(Error::from_reason(format!(
+                        "fused trampoline declares duplicate run ordinal {ordinal} on ring {ring_tag}"
+                    )));
+                }
+                grouped[index].1.push((ordinal, function));
+            }
+            None => grouped.push((ring_kind, vec![(ordinal, function)])),
+        }
+    }
+    for (ring_kind, mut fused) in grouped {
+        let Some(chain) = descriptor.rings.iter_mut().find(|chain| chain.ring == ring_kind) else {
             return Err(Error::from_reason(format!(
-                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
+                "fused trampoline run on ring {} has no matching descriptor ring",
+                ring_kind.as_tag()
             )));
         };
-        let Some(hook) = chain.hooks.iter_mut().find(|hook| hook.ordinal == ordinal) else {
-            return Err(Error::from_reason(format!(
-                "fused trampoline run on ring {ring_tag} ordinal {ordinal} has no matching descriptor hook"
-            )));
-        };
-        hook.run = Some(callback);
+        fused.sort_by_key(|(ordinal, _)| *ordinal);
+        for (ordinal, _) in &fused {
+            if !chain.hooks.iter().any(|hook| hook.ordinal == *ordinal) {
+                return Err(Error::from_reason(format!(
+                    "fused trampoline run on ring {} ordinal {ordinal} has no matching descriptor hook",
+                    ring_kind.as_tag()
+                )));
+            }
+        }
+        let head = fused[0].0;
+        let dispatcher = Arc::new(NapiFusedCallback::new(fused)?);
+        if let Some(hook) = chain.hooks.iter_mut().find(|hook| hook.ordinal == head) {
+            hook.run = Some(dispatcher);
+        }
     }
     Ok(())
 }

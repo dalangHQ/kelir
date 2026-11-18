@@ -1,7 +1,9 @@
 // see: cans/artifacts/code/vm-config-defaults.rs
 use std::path::PathBuf;
 
+use kelir_interface::checkpoint::ops::CheckpointPlaneConfig;
 use kelir_interface::driver_interface::DriverPolicy;
+use kelir_interface::host::ops::HostPlaneConfig;
 
 use crate::builder_sdk::{Host, KelirBuilder, Unsealed};
 use crate::hlist_sdk::HList;
@@ -90,6 +92,18 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         if let Some(config) = self.config.as_mut() {
             config.network_off = network_off;
         }
+        self
+    }
+
+    // see: cans/01-architecture.md#Host-plane-subsystem
+    pub fn host_plane(mut self, config: HostPlaneConfig) -> Self {
+        self.registration.host_cfg = Some(config);
+        self
+    }
+
+    // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
+    pub fn checkpoint(mut self, config: CheckpointPlaneConfig) -> Self {
+        self.registration.checkpoint_cfg = Some(config);
         self
     }
 }

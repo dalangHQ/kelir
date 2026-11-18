@@ -55,14 +55,14 @@ const runtime = kelir({
 })
   // 1. Plugins mount first; TPlugins accumulates ledger, chaos, policy
   .use(ledger({
-    store: "sqlite://.kelir/audit.merkle.db",
+    storePath: ".kelir/audit.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
     receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
   }))
   .use(chaos({
-    network: [{ target: "api.stripe.com", baseMs: 150, jitterMs: 30, dropRate: 0.02 }],
-    fs: [{ targetPath: "/workspace/build/cache/*", simulateError: "enospc", errorProbability: 0.05 }],
+    network: [{ target: "api.stripe.com", latencyMs: 150, jitterMs: 30, dropRate: 0.02 }],
+    storage: [{ targetGlob: "/workspace/build/cache/*", simulateErrno: "enospc", probability: 0.05 }],
   }))
   .use(repoPolicyPlugin({ maxDiffBytes: 64 * 1024, protectedBranches: ["main", "master", "release/*"] }))
   .use(tokenShield({ maxBytesTotal: 128 * 1024, maxLinesTotal: 500, clampStrategy: "head-and-tail", notice: "⚠️ [SHIELD]" }))
@@ -75,7 +75,7 @@ const runtime = kelir({
     credentials: [{
       name: "STRIPE_SECRET",
       placeholder: "vault://stripe_key",
-      type: "bearer_token",
+      kind: "bearer_token",
       audience: "api.stripe.com"
     }]
   }))

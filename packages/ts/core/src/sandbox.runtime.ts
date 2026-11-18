@@ -6,33 +6,14 @@ import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
 import type { SnapshotDescriptor, SpawnResult } from "./types.core.js";
 import {
-  parseProfile,
+  configFromProfile,
   profileFormatForPath,
+  readProfile,
   serializeProfile,
   type ProfileSpec,
-  type ProfileFormat,
 } from "./profile.schema.js";
 
-import { readFile, writeFile } from "node:fs/promises";
-
-function configFromProfile(profile: ProfileSpec): KelirConfig {
-  const { session } = profile;
-  if (session === undefined) {
-    return {};
-  }
-  return {
-    vcpus: session.compute?.vcpus,
-    memoryMb: session.compute?.memory_mb,
-    pageSizeKb: session.compute?.page_size_kb,
-    tscLocked: session.clock?.tsc_locked,
-    pinnedClocksource: session.clock?.pinned_clocksource,
-    deterministicClock: session.clock?.deterministic_clock,
-    preemptionGraceMs: session.clock?.preemption_grace_ms,
-    enableWatchdog: session.watchdog?.enabled,
-    kernel: session.artifacts?.kernel_path,
-    rootfsErofs: session.artifacts?.rootfs_erofs_path,
-  };
-}
+import { writeFile } from "node:fs/promises";
 
 export interface SandboxOptions {
   readonly config?: KelirConfig;
@@ -60,18 +41,7 @@ export class Sandbox {
   }
 
   static async fromConfig(path: string): Promise<Sandbox> {
-    if (
-      !path.endsWith(".toml") &&
-      !path.endsWith(".yaml") &&
-      !path.endsWith(".yml")
-    ) {
-      throw new EConfig(
-        `Sandbox.fromConfig: unsupported profile extension for \`${path}\` (expected .toml, .yaml, or .yml)`,
-      );
-    }
-    const text = await readFile(path, "utf8");
-    const format: ProfileFormat = profileFormatForPath(path);
-    return Sandbox.fromProfile(parseProfile(text, format), path);
+    return Sandbox.fromProfile(await readProfile(path), path);
   }
 
   static async create(opts: SandboxOptions = {}): Promise<Sandbox> {
@@ -163,6 +133,7 @@ export class Sandbox {
 
   async exportSpec(path: string): Promise<void> {
     // L3-GAP: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
+    // TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
     await writeFile(path, serializeProfile(this.profile, profileFormatForPath(path)));
   }
 

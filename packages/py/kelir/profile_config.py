@@ -3,9 +3,9 @@
 # see: cans/artifacts/examples/fixtures/kelir.yaml#session
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 def _profile_int_guard(value: Any) -> Any:
@@ -32,6 +32,27 @@ class BalloonProfile(BaseModel):
     initial_mb: ProfileInt | None = None
     pressure_reclaim: ProfileBool | None = None
     reclaim_strategy: str | None = None
+
+    # see: cans/plugins/profile.md#Session-balloon-(profile)
+    def to_vm_balloon_config(self) -> VmBalloonConfig:
+        return VmBalloonConfig(
+            enabled=self.enabled if self.enabled is not None else False,
+            initial_mb=self.initial_mb if self.initial_mb is not None else 0,
+            pressure_reclaim=self.pressure_reclaim
+            if self.pressure_reclaim is not None
+            else False,
+            reclaim_strategy=self.reclaim_strategy
+            if self.reclaim_strategy is not None
+            else "",
+        )
+
+
+# see: cans/artifacts/examples/fixtures/kelir.yaml#session.balloon
+class VmBalloonConfig(BaseModel):
+    enabled: bool = False
+    initial_mb: int = 0
+    pressure_reclaim: bool = False
+    reclaim_strategy: str = ""
 
 
 class ClockProfile(BaseModel):
@@ -111,6 +132,23 @@ class SessionProfile(BaseModel):
     shim: ShimProfile | None = None
     driver: DriverProfile | None = None
     storage: StorageProfile | None = None
+
+    # see: cans/plugins/profile.md#Monotonic-limits
+    @model_validator(mode="after")
+    def _balloon_within_memory_ceiling(self) -> Self:
+        if (
+            self.compute is not None
+            and self.balloon is not None
+            and self.compute.memory_mb is not None
+            and self.balloon.initial_mb is not None
+            and self.balloon.initial_mb > self.compute.memory_mb
+        ):
+            raise ValueError(
+                "session.balloon.initial_mb "
+                f"{self.balloon.initial_mb} exceeds session.compute.memory_mb "
+                f"{self.compute.memory_mb}"
+            )
+        return self
 
 
 # L3-GAP: [bindings_py]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config

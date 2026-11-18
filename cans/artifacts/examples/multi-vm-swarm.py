@@ -72,7 +72,7 @@ def build_runtime() -> KelirBuilder:
         )))
         # see: cans/plugins/ledger.md#Plugin-ledger
         .use(LedgerPlugin(LedgerConfig(
-            store=".kelir/swarm-audit.merkle.db",
+            store_path=".kelir/swarm-audit.merkle.db",
             merkle_chain=True,
             suppress_local_db=False,
             otel=None,

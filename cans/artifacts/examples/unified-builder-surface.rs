@@ -218,9 +218,15 @@ pub fn build_host() -> SurfaceHostBuilder {
     .terminal(PtyConfig {
         cols: 120,
         rows: 40,
-        drop_osc52: true,
-        strip_title: true,
+        wireframe_grid: TerminalWireframeGridConfig {
+            track_screen_matrix: false,
+            export_on_trap: true,
+        },
         stream_engine: "StatelessRegex".into(),
+        sanitizer: TerminalSanitizerConfig {
+            drop_osc52: true,
+            strip_title: true,
+        },
     })
     .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
@@ -228,6 +234,7 @@ pub fn build_host() -> SurfaceHostBuilder {
             host_uid: 0,
         },
         shared_caches: Vec::new(),
+        dax_window: None,
         encapsulation: WorkspaceEncapsulation::Passthrough,
         // lock_broker rides .fs(|f| f.config(…)) below; the StoragePlaneConfig
         // literal keeps its live field set for the host face.
@@ -241,7 +248,6 @@ pub fn build_host() -> SurfaceHostBuilder {
             }],
         },
         ssh_agent_bridge: false,
-        vaults: Vec::new(),
         l4_proxies: Vec::new(),
         tap_filter: TapFilter::AllowUdpProxied,
         userspace_netstack: true,
@@ -342,7 +348,7 @@ pub fn host_only_verbs_rejected_on_plugin(
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
     // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, stream_engine: "StatelessRegex".into() });
     // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, encapsulation: WorkspaceEncapsulation::Passthrough });
-    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { rules: vec![SinkholeRule { host: "*".into(), allow: false }] }, ssh_agent_bridge: false, vaults: Vec::new(), l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
+    // plugin.wire(WireConfig { sinkhole: SinkholeConfig { rules: vec![SinkholeRule { host: "*".into(), allow: false }] }, ssh_agent_bridge: false, l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
     // plugin.fs(|f| f.config(Some(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true }), None, None, Vec::new()));
     // plugin.detached(true);
     // plugin.seal();

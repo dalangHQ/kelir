@@ -34,7 +34,7 @@ const runtime = kelir({
   }))
   // see: cans/plugins/ledger.md#Plugin-ledger
   .use(ledger({
-    store: ".kelir/swarm-audit.merkle.db",
+    storePath: ".kelir/swarm-audit.merkle.db",
     merkleChain: true,
     suppressLocalDb: false,
     receipts: { includeSyscallCount: false },

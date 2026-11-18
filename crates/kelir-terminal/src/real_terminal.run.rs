@@ -10,9 +10,17 @@ use kelir_interface::terminal::{LogSegment, LogStream, TerminalOps, TerminalWiri
 
 use crate::vt100::Vt100StateMachine;
 
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct TerminalSanitizerConfig {
+    pub(crate) drop_osc52: bool,
+    pub(crate) strip_title: bool,
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TerminalConfig {
-    pub(crate) filters: (bool, bool),
+    pub(crate) sanitizer: TerminalSanitizerConfig,
 }
 
 pub(crate) struct RealTerminalOps {
@@ -152,14 +160,16 @@ impl TerminalOps for RealTerminalOps {
     }
 
     fn output_filters(&self) -> (bool, bool) {
-        self.config().filters
+        let config = self.config();
+        (config.sanitizer.drop_osc52, config.sanitizer.strip_title)
     }
 
+    // see: cans/04-terminal-plane.md#Terminal-pipeline
+    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: real-time VT100 escape sequence parsing and ANSI shadow stripping during feed; sanitizer flags are stored but not applied in place.; slop: OSC 52 payload bytes stay in buffer, sanitizing claimed from flags alone
     fn apply_wiring(&self, wiring: &TerminalWiring) -> Result<(), PluginError> {
         let mut config = self.lock_config()?;
-        *config = TerminalConfig {
-            filters: (wiring.drop_osc52, wiring.strip_title),
-        };
+        config.sanitizer.drop_osc52 = wiring.drop_osc52;
+        config.sanitizer.strip_title = wiring.strip_title;
         Ok(())
     }
 }

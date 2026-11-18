@@ -27,6 +27,12 @@ import type {
 import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
 import { loadNativeAddon } from "./fusion.plugin.js";
+import {
+  profileFormatForPath,
+  serializeProfile,
+  type ProfileSpec,
+} from "./profile.schema.js";
+import { writeFile } from "node:fs/promises";
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
 export async function relaySocketPath(sessionId: string): Promise<string> {
@@ -230,12 +236,14 @@ export class Session {
   readonly vsock: VsockHandle;
   readonly step: StepHandle;
   private readonly native: NativeSessionHandle;
+  private readonly profileSpec: ProfileSpec | undefined;
   private suspendedReasonValue: SuspendReason | undefined;
   private leaseTokenValue: string | undefined;
 
-  constructor(native: NativeSessionHandle) {
+  constructor(native: NativeSessionHandle, profile?: ProfileSpec) {
     // L3-GAP: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
     this.native = native;
+    this.profileSpec = profile;
     this.driverName = native.driverName;
     this.bootMs = native.bootMs;
     this.terminal = native.terminal ?? fallbackTerminal();
@@ -359,7 +367,22 @@ export class Session {
 
   // see: cans/08-lifecycle.md#CoW-fork
   async fork(): Promise<Session> {
-    return new Session(await this.native.fork());
+    return new Session(await this.native.fork(), this.profileSpec);
+  }
+
+  // see: cans/03-sdk-architecture.md#TypeScript-SDK
+  // see: cans/plugins/profile.md#Bidirectional-extraction
+  async exportSpec(path: string): Promise<void> {
+    if (this.profileSpec === undefined) {
+      throw new EConfig(
+        "Session.exportSpec: session carries no ingested profile",
+      );
+    }
+    // TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
+    await writeFile(
+      path,
+      serializeProfile(this.profileSpec, profileFormatForPath(path)),
+    );
   }
 
   // see: cans/08-lifecycle.md#Clock-skew

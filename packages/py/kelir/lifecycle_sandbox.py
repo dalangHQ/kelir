@@ -51,6 +51,30 @@ def _builder_kwargs(model: ProfileConfig) -> dict[str, Any]:
     return {key: value for key, value in kwargs.items() if value is not None}
 
 
+# see: cans/plugins/profile.md#Declarative-profile-execution
+def _parse_profile(origin: str, path: str) -> dict[str, Any]:
+    text = Path(path).read_text(encoding="utf-8")
+    loaded: dict[str, Any]
+    if path.endswith(".toml"):
+        loaded = tomllib.loads(text)
+    elif path.endswith((".yaml", ".yml")):
+        yaml = importlib.import_module("yaml")
+        loaded = yaml.safe_load(text)
+    else:
+        raise EConfig(
+            f"{origin}: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
+        )
+    return loaded
+
+
+# see: cans/plugins/profile.md#Session-compute-schema-(profile)
+def _profile_model(origin: str, profile: dict[str, Any]) -> ProfileConfig:
+    try:
+        return ProfileConfig.model_validate(profile)
+    except ValidationError as exc:
+        raise EConfig(f"{origin}: invalid profile schema: {exc}") from exc
+
+
 def _profile_text(model: ProfileConfig, path: str) -> str:
     data = model.model_dump(exclude_none=True)
     if path.endswith((".yaml", ".yml")):
@@ -73,28 +97,13 @@ class Sandbox:
 
     @classmethod
     async def from_config(cls, path: str) -> Sandbox:
-        text = Path(path).read_text(encoding="utf-8")
-        if path.endswith(".toml"):
-            loaded: Any = tomllib.loads(text)
-        elif path.endswith((".yaml", ".yml")):
-            yaml = importlib.import_module("yaml")
-            loaded = yaml.safe_load(text)
-        else:
-            raise EConfig(
-                f"Sandbox.from_config: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
-            )
-        return cls.from_profile(loaded, path)
+        return cls.from_profile(_parse_profile("Sandbox.from_config", path), path)
 
     @classmethod
     def from_profile(cls, profile: dict[str, Any], source_path: str) -> Sandbox:
         from kelir import KelirBuilder
 
-        try:
-            model = ProfileConfig.model_validate(profile)
-        except ValidationError as exc:
-            raise EConfig(
-                f"Sandbox.from_profile: invalid profile schema: {exc}"
-            ) from exc
+        model = _profile_model("Sandbox.from_profile", profile)
         return cls(KelirBuilder(**_builder_kwargs(model)), model, source_path)
 
     @classmethod
@@ -189,6 +198,7 @@ class Sandbox:
 
     async def export_spec(self, path: str) -> None:
         # L3-GAP: [bindings_py]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
+        # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
         Path(path).write_text(_profile_text(self._profile, path), encoding="utf-8")
 
     async def stop(self) -> None:

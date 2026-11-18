@@ -44,9 +44,9 @@ from kelir.plugins.plugin_terminal_guard import (
 )
 from kelir.plugins.plugin_token_shield import TokenShieldConfig, token_shield
 from kelir.plugins.vault import CredentialDescriptor, VaultConfig, VaultPlugin
-from kelir.storage_planes import IdmapConfig
+from kelir.storage_planes import IdmapConfig, SharedCacheConfig
 from kelir.wire_planes import (
-    L4Proxy, Mtls, SharedCacheConfig, SinkholeConfig, SinkholeRule
+    L4Proxy, MtlsConfig, SinkholeConfig, SinkholeRule
 )
 from kelir.plugins.chaos import (
     ChaosConfig,
@@ -409,7 +409,7 @@ async def build_runtime(
                 L4Proxy(
                     listen_port=5432,
                     destination="pg.internal.net:5432",
-                    inject_mtls=Mtls(cert_path=pg_cert, key_path=pg_key),
+                    inject_mtls=MtlsConfig(cert_path=pg_cert, key_path=pg_key),
                 ),
             ],
             tap_filter="AllowUdpProxied",
@@ -420,37 +420,37 @@ async def build_runtime(
             network=[
                 NetworkFaultRule(
                     target="api.stripe.com",
-                    base_ms=150,
+                    latency_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
                 ),
                 NetworkFaultRule(
                     target="api.stripe.com",
-                    base_ms=150,
+                    latency_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
                     direction="inbound",
                 ),
                 NetworkFaultRule(
                     target="api.stripe.com",
-                    base_ms=150,
+                    latency_ms=150,
                     jitter_ms=30,
                     drop_rate=0.02,
                     direction="both",
                 ),
             ],
-            fs=[
+            storage=[
                 StorageFaultRule(
-                    target_path="/workspace/build/cache/*",
-                    simulate_error="ENOSPC",
-                    error_probability=0.05,
+                    target_glob="/workspace/build/cache/*",
+                    simulate_errno="enospc",
+                    probability=0.05,
                 ),
             ],
         )))
 
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
-            store="sqlite://.kelir/audit.merkle.db",
+            store_path=".kelir/audit.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
                 endpoint="http://localhost:4318/v1/traces",

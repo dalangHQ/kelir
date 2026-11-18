@@ -20,7 +20,7 @@ __all__ = [
 class NetworkFaultRule:
     target: str = ""
     direction: Literal["outbound", "inbound", "both"] = "outbound"
-    base_ms: int = 0
+    latency_ms: int = 0
     jitter_ms: int = 0
     drop_rate: float = 0.0
     inject_rst: bool = False
@@ -29,15 +29,15 @@ class NetworkFaultRule:
 
 @dataclass
 class StorageFaultRule:
-    target_path: str = ""
-    simulate_error: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress", "path-traversal", "etimeout", "eafnosupport"] = "eperm"
-    error_probability: float = 0.0
+    target_glob: str = ""
+    simulate_errno: Literal["eperm", "eacces", "enoent", "einval", "enospc", "erofs", "econnrefused", "enxio", "ewouldblock", "efault", "ebusy", "exdev", "epipe", "enodata", "eproto", "epolicy", "etoolquota", "ewxviolation", "econfig", "esecurityviolation", "eunknownkind", "eclockregress", "path-traversal", "etimeout", "eafnosupport"] = "eperm"
+    probability: float = 0.0
 
 
 @dataclass
 class ChaosConfig:
     network: list[NetworkFaultRule] = field(default_factory=list)
-    fs: list[StorageFaultRule] = field(default_factory=list)
+    storage: list[StorageFaultRule] = field(default_factory=list)
 
 
 class ChaosPlugin(BasePlugin[None, None]):

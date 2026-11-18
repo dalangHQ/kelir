@@ -35,7 +35,7 @@ fn pe_16_chaos_rst_injection_drops_matching_frame() -> Result<(), String> {
     let rule = NetworkFaultRule {
         target: "10.0.0.2".into(),
         direction: FaultDirection::Outbound,
-        base_ms: 0,
+        latency_ms: 0,
         jitter_ms: 0,
         drop_rate: 0.0,
         inject_rst: true,
@@ -43,7 +43,7 @@ fn pe_16_chaos_rst_injection_drops_matching_frame() -> Result<(), String> {
     };
     let plugin = ChaosPlugin::new(ChaosConfig {
         network: vec![rule],
-        fs: Vec::new(),
+        storage: Vec::new(),
     });
     let mut matching = tcp_frame([10, 0, 0, 2], 443);
     match plugin.on_net_outbound(&mut matching) {

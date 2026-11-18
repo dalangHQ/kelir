@@ -57,7 +57,7 @@ const runtime = kelir({
 
   // see: cans/plugins/ledger.md#Merkle-WAL
   .use(ledger({
-    store: "sqlite://.kelir/webhook.merkle.db",
+    storePath: ".kelir/webhook.merkle.db",
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
   }))

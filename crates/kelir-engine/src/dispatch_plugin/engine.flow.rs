@@ -115,12 +115,12 @@ impl PipelineBinder for PipelineEngine {
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
     ) {
-        // L3-GAP: [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
+        // TODO (L3) [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
     // see: cans/02-plugin-model.md#Segregated-ring-traits
-    // L3-GAP: [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
+    // TODO (L3) [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
     fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.lifecycle_interceptors.push(stage);
@@ -242,7 +242,7 @@ impl PipelineEngine {
             self.ffi_window_ops.store(1, Ordering::Release);
             return Ok(());
         }
-        // L3-GAP: [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
+        // TODO (L3) [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
         let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
         if ops >= u64::from(self.ffi_rate_per_sec) {
             return Err(PluginError::Halt(format!(
@@ -314,7 +314,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // L3-GAP: [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
+    // TODO (L3) [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
     fn fused_ring(&self, ring: TrampolineRing) -> bool {
         self.trampoline.as_ref().is_some_and(|descriptor| {
             descriptor
@@ -325,7 +325,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // L3-GAP: [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: hook chain split across crossings, single-crossing unproven
+    // TODO (L3) [plugin_engine]: marshal the ring event payload through the fused dispatcher's single traversal and rendezvous its folded foreign verdict into the engine fold; slop: fused traversal verdict stays Pass, foreign verdict never gates dispatch
     pub(super) fn fused_crossing(
         &self,
         ring: TrampolineRing,
@@ -815,7 +815,7 @@ impl PipelineEngine {
             _ => ctx,
         };
         self.metrics.record_exec();
-        // L3-GAP: [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
+        // TODO (L3) [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
@@ -930,7 +930,7 @@ impl PipelineEngine {
         Ok(FilterAction::Forward)
     }
 
-    // L3-GAP: [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
+    // TODO (L3) [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,

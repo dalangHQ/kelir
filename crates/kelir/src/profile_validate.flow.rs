@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 
 use kelir_catalog::{CatalogBackend, CatalogConfig};
-use kelir_interface::driver_interface::{DriverPolicy, VmConfig};
+use kelir_interface::driver_interface::{DriverPolicy, VmBalloonConfig, VmConfig};
 use kelir_interface::plugin_model::PluginError;
 
 use crate::profile_schema::EffectiveConfig;
@@ -147,6 +147,22 @@ impl SandboxProfile {
         if let Some(grace) = clock.and_then(|c| c.preemption_grace_ms) {
             config.preemption_grace_ms = grace;
         }
+        if let Some(balloon) = session.and_then(|s| s.balloon.as_ref()) {
+            let mut vm_balloon = VmBalloonConfig::default();
+            if let Some(enabled) = balloon.enabled {
+                vm_balloon.enabled = enabled;
+            }
+            if let Some(initial_mb) = balloon.initial_mb {
+                vm_balloon.initial_mb = initial_mb;
+            }
+            if let Some(pressure_reclaim) = balloon.pressure_reclaim {
+                vm_balloon.pressure_reclaim = pressure_reclaim;
+            }
+            if let Some(reclaim_strategy) = balloon.reclaim_strategy.clone() {
+                vm_balloon.reclaim_strategy = reclaim_strategy;
+            }
+            config.balloon = Some(vm_balloon);
+        }
         config
     }
 
@@ -224,13 +240,15 @@ impl SandboxProfile {
         if let Some(ledger) = self.plugins.as_ref().and_then(|p| p.ledger.as_ref()) {
             if let Some(wal) = ledger.merkle_wal.as_ref() {
                 if let Some(store) = wal.store_path.clone() {
-                    config.store = store;
+                    config.store_path = PathBuf::from(store);
                 }
                 if let Some(enabled) = wal.enabled {
                     config.merkle_chain = enabled;
                 }
                 if let Some(standard) = wal.hashing_standard {
-                    config.hashing_standard = standard.as_str().to_string();
+                    config.hashing_standard =
+                        plugin_ledger::HashingStandard::from_name(standard.as_str())
+                            .unwrap_or_default();
                 }
                 if let Some(record) = wal.record_pre_redaction_hash {
                     config.record_pre_redaction_hash = record;
@@ -320,6 +338,15 @@ impl SandboxProfile {
         {
             return Err(halt(format!(
                 "session.compute.max_vcpus {max} is below vcpus {vcpus}"
+            )));
+        }
+        if let Some(compute) = self.session.as_ref().and_then(|s| s.compute.as_ref())
+            && let Some(balloon) = self.session.as_ref().and_then(|s| s.balloon.as_ref())
+            && let (Some(memory_mb), Some(initial_mb)) = (compute.memory_mb, balloon.initial_mb)
+            && initial_mb > memory_mb
+        {
+            return Err(halt(format!(
+                "session.balloon.initial_mb {initial_mb} exceeds session.compute.memory_mb {memory_mb}"
             )));
         }
         if let Some(ffi) = self.driver.as_ref().and_then(|d| d.ffi_boundary.as_ref()) {
@@ -497,6 +524,28 @@ impl SandboxProfile {
             "session.compute.memory_mb",
             base_compute.and_then(|c| c.memory_mb.map(u64::from)),
             compute.and_then(|c| c.memory_mb.map(u64::from)),
+        )?;
+        check_ceiling(
+            "session.balloon.initial_mb",
+            base.session
+                .as_ref()
+                .and_then(|s| s.balloon.as_ref())
+                .and_then(|b| b.initial_mb.map(u64::from)),
+            self.session
+                .as_ref()
+                .and_then(|s| s.balloon.as_ref())
+                .and_then(|b| b.initial_mb.map(u64::from)),
+        )?;
+        check_guard_kept(
+            "session.balloon.pressure_reclaim",
+            base.session
+                .as_ref()
+                .and_then(|s| s.balloon.as_ref())
+                .and_then(|b| b.pressure_reclaim),
+            self.session
+                .as_ref()
+                .and_then(|s| s.balloon.as_ref())
+                .and_then(|b| b.pressure_reclaim),
         )?;
         check_ceiling(
             "session.shim.max_exec_slots",

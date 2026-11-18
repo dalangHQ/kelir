@@ -1,7 +1,7 @@
 # see: cans/plugins/replay.md#Plugin-replay
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from kelir.plugin_model import BasePlugin
 
@@ -15,8 +15,8 @@ __all__ = [
 
 @dataclass
 class ReplayConfig:
-    step_window: int = 1_000_000
-    kernel_params: list[str] = field(default_factory=lambda: ["clocksource=kvm-clock", "tsc=reliable", "nohpet"])
+    step_window_instructions: int = 1_000_000
+    pinned_clocksource: str = "kvm-clock"
     deterministic_rng_seed: int = 0x5EED
     network_isolation: bool = True
 

@@ -6,12 +6,8 @@ use plugin_replay::{ReplayConfig, ReplayPlugin};
 
 fn replay_config() -> ReplayConfig {
     ReplayConfig {
-        step_window: 1_000_000,
-        kernel_params: vec![
-            "clocksource=kvm-clock".to_string(),
-            "tsc=reliable".to_string(),
-            "nohpet".to_string(),
-        ],
+        step_window_instructions: 1_000_000,
+        pinned_clocksource: "kvm-clock".to_string(),
         deterministic_rng_seed: 0x5EED,
         network_isolation: true,
     }

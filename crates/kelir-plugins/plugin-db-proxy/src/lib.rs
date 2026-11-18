@@ -1,7 +1,7 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #![forbid(unsafe_code)]
 
-// L3-GAP: [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
+// TODO (L3) [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
 #[path = "pgwire_db_proxy.flow.rs"]
 pub mod pgwire_db_proxy;
 #[path = "reassembler_wire.run.rs"]
@@ -32,12 +32,29 @@ use crate::reassembler_wire::{
 use crate::service_db_proxy::{SqlDialect, SqlProxy};
 use crate::sqlite_db_proxy::SqliteBridge;
 
+// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+#[derive(Clone, Debug)]
+pub struct PgSchemaRewrite {
+    pub from_schema: String,
+    pub to_schema: String,
+}
+
+impl Default for PgSchemaRewrite {
+    fn default() -> Self {
+        Self {
+            from_schema: String::new(),
+            to_schema: String::new(),
+        }
+    }
+}
+
 // see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite
 #[derive(Clone, Debug)]
 pub struct PgWireRewrite {
     pub listen_port: u16,
     pub upstream: String,
-    pub rewrite_rules: Vec<(String, String)>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+    pub schema_rewrites: Vec<PgSchemaRewrite>,
     pub max_rewrites_per_conn: u32,
 }
 
@@ -46,7 +63,7 @@ impl Default for PgWireRewrite {
         Self {
             listen_port: 5432,
             upstream: String::new(),
-            rewrite_rules: Vec::new(),
+            schema_rewrites: Vec::new(),
             max_rewrites_per_conn: 3,
         }
     }
@@ -84,7 +101,7 @@ impl Default for EphemeralCredentials {
     }
 }
 
-// L3-GAP: [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
+// TODO (L3) [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
 
 // see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
 #[derive(Clone, Debug, Default)]
@@ -112,8 +129,8 @@ impl DbProxyPlugin {
     }
 
     pub fn with_config(mut self, config: DbProxyConfig) -> Self {
-        if let Some((_, target)) = config.postgres.rewrite_rules.first() {
-            self.proxy.set_rewrite_target(target);
+        if let Some(rule) = config.postgres.schema_rewrites.first() {
+            self.proxy.set_rewrite_target(&rule.to_schema);
         }
         self.config = config;
         self
@@ -129,7 +146,7 @@ impl DbProxyPlugin {
         descriptor: PgFrameDescriptor,
     ) -> Result<FilterAction, PluginError> {
         let _ = descriptor;
-        // L3-GAP: [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against rewrite_rules, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
+        // TODO (L3) [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against schema_rewrites, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
         Ok(FilterAction::Forward)
     }
 
@@ -165,7 +182,7 @@ impl DbProxyPlugin {
             flows.remove(&key);
             return Ok(FilterAction::Forward);
         }
-        // L3-GAP: [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
+        // TODO (L3) [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
         let state = flows.entry(key).or_default();
         match state.reassembly.push_segment(&segment)? {
             SegmentOutcome::Dropped => Ok(FilterAction::Drop {
@@ -186,7 +203,7 @@ impl DbProxyPlugin {
                     }
                     Ok(action)
                 }
-                // L3-GAP: [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
+                // TODO (L3) [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
                 NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
             },
         }

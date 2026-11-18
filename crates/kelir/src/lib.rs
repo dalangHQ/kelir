@@ -93,8 +93,8 @@ pub use plugin_chaos::{
 pub use plugin_container::{ContainerConfig, ContainerCtx, ContainerHandle, ContainerPlugin};
 #[cfg(feature = "plugin-db-proxy")]
 pub use plugin_db_proxy::{
-    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, NetL7SqlExt, SqlProxyCtx, SqlProxyHandle,
-    SqlReceiptExt,
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, NetL7SqlExt, PgSchemaRewrite,
+    PgWireRewrite, SqlProxyCtx, SqlProxyHandle, SqlReceiptExt,
 };
 // see: cans/plugins/egress-proxy.md#Plugin-egress-proxy
 #[cfg(feature = "plugin-egress-proxy")]

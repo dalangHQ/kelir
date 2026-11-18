@@ -47,13 +47,13 @@ export function chaosConfig(): ChaosConfig {
       {
         target: "example.invalid",
         direction: "outbound",
-        baseMs: 0,
+        latencyMs: 0,
         jitterMs: 0,
         dropRate: 0,
         injectRst: true,
       },
     ],
-    fs: [{ targetPath: "/workspace/scratch", simulateError: "enospc", errorProbability: 1 }],
+    storage: [{ targetGlob: "/workspace/scratch", simulateErrno: "enospc", probability: 1 }],
   };
 }
 

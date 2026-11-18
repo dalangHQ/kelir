@@ -91,15 +91,51 @@ impl PyKelirBuilder {
                         .extract::<u16>()
                         .map_err(|_| PyValueError::new_err("terminal rows is not a u16"))?
                 }
-                "drop_osc52" => {
-                    wiring.drop_osc52 = value
-                        .extract::<bool>()
-                        .map_err(|_| PyValueError::new_err("terminal drop_osc52 is not a bool"))?
+                // TODO (L3) [bindings_py]: forward wireframe_grid flags into TerminalWiring once it carries them; slop: grid tracking flags dropped at the wiring boundary.
+                "wireframe_grid" => {
+                    let grid = value
+                        .downcast::<PyDict>()
+                        .map_err(|_| PyValueError::new_err("terminal wireframe_grid is not a dict"))?;
+                    for (grid_key, grid_value) in grid.iter() {
+                        match grid_key.to_string().as_str() {
+                            "track_screen_matrix" | "export_on_trap" => {
+                                let _ = grid_value.extract::<bool>().map_err(|_| {
+                                    PyValueError::new_err(
+                                        "terminal wireframe_grid flags are not bools",
+                                    )
+                                })?;
+                            }
+                            other => {
+                                return Err(PyValueError::new_err(format!(
+                                    "set_terminal_config: unknown wireframe_grid key `{other}`"
+                                )));
+                            }
+                        }
+                    }
                 }
-                "strip_title" => {
-                    wiring.strip_title = value
-                        .extract::<bool>()
-                        .map_err(|_| PyValueError::new_err("terminal strip_title is not a bool"))?
+                "sanitizer" => {
+                    let sanitizer = value
+                        .downcast::<PyDict>()
+                        .map_err(|_| PyValueError::new_err("terminal sanitizer is not a dict"))?;
+                    for (sanitizer_key, sanitizer_value) in sanitizer.iter() {
+                        match sanitizer_key.to_string().as_str() {
+                            "drop_osc52" => {
+                                wiring.drop_osc52 = sanitizer_value.extract::<bool>().map_err(
+                                    |_| PyValueError::new_err("terminal sanitizer drop_osc52 is not a bool"),
+                                )?;
+                            }
+                            "strip_title" => {
+                                wiring.strip_title = sanitizer_value.extract::<bool>().map_err(
+                                    |_| PyValueError::new_err("terminal sanitizer strip_title is not a bool"),
+                                )?;
+                            }
+                            other => {
+                                return Err(PyValueError::new_err(format!(
+                                    "set_terminal_config: unknown sanitizer key `{other}`"
+                                )));
+                            }
+                        }
+                    }
                 }
                 "stream_engine" => {
                     let _ = value.extract::<String>().map_err(|_| {
@@ -189,22 +225,10 @@ impl PyKelirBuilder {
                         .map_err(|_| PyValueError::new_err("wire tap_filter is not a str"))?
                         == "AllowUdpProxied"
                 }
-                "vaults" => {
-                    let vaults = value
-                        .downcast::<PyList>()
-                        .map_err(|_| PyValueError::new_err("wire vaults is not a list of dicts"))?;
-                    for vault in vaults.iter() {
-                        let vault = vault.downcast::<PyDict>().map_err(|_| {
-                            PyValueError::new_err("wire vaults entries must be dicts")
-                        })?;
-                        if let Some(placeholder) = vault.get_item("placeholder")? {
-                            wiring.vault_placeholders.push(
-                                placeholder.extract::<String>().map_err(|_| {
-                                    PyValueError::new_err("vault placeholder is not a str")
-                                })?,
-                            );
-                        }
-                    }
+                "dial_timeout_ms" => {
+                    wiring.dial_timeout_ms = value
+                        .extract::<u64>()
+                        .map_err(|_| PyValueError::new_err("wire dial_timeout_ms is not a u64"))?;
                 }
                 "l4_proxies" => {
                     let proxies = value.downcast::<PyList>().map_err(|_| {
@@ -226,11 +250,56 @@ impl PyKelirBuilder {
                             .get_item("destination")
                             .ok()
                             .flatten()
-                            .and_then(|dest| dest.extract::<String>().ok())
+                            .and_then(|dest| dest.extract::<String>().ok());
+                        let forward_unix_socket = proxy
+                            .get_item("forward_unix_socket")
+                            .ok()
+                            .flatten()
+                            .and_then(|socket| socket.extract::<String>().ok());
+                        match forward_unix_socket {
+                            Some(socket) => {
+                                wiring
+                                    .l4_unix_diversions
+                                    .push((listen_port, socket.into()));
+                            }
+                            None => {
+                                let destination = destination.ok_or_else(|| {
+                                    PyValueError::new_err("l4_proxy destination is not a str")
+                                })?;
+                                wiring.l4_proxies.push((listen_port, destination));
+                            }
+                        }
+                    }
+                }
+                "divert_ports" => {
+                    let entries = value.downcast::<PyList>().map_err(|_| {
+                        PyValueError::new_err("wire divert_ports is not a list of dicts")
+                    })?;
+                    for entry in entries.iter() {
+                        let entry = entry.downcast::<PyDict>().map_err(|_| {
+                            PyValueError::new_err("wire divert_ports entries must be dicts")
+                        })?;
+                        let listen_port = entry
+                            .get_item("listen_port")
+                            .ok()
+                            .flatten()
+                            .and_then(|port| port.extract::<u16>().ok())
                             .ok_or_else(|| {
-                                PyValueError::new_err("l4_proxy destination is not a str")
+                                PyValueError::new_err("divert_port listen_port is not a u16")
                             })?;
-                        wiring.l4_proxies.push((listen_port, destination));
+                        let socket = entry
+                            .get_item("forward_unix_socket")
+                            .ok()
+                            .flatten()
+                            .and_then(|socket| socket.extract::<String>().ok())
+                            .ok_or_else(|| {
+                                PyValueError::new_err(
+                                    "divert_port forward_unix_socket is not a str",
+                                )
+                            })?;
+                        wiring
+                            .l4_unix_diversions
+                            .push((listen_port, socket.into()));
                     }
                 }
                 other => {
@@ -336,7 +405,9 @@ impl PyKelirBuilder {
             terminal: self.terminal_wiring.clone(),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
             checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics.clone())),
+            checkpoint_config: None,
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
+            host_config: None,
             net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
             dns_ops: Some(dns_ops),
             udp_nat_ops: Some(kelir_wire::udp_nat_ops()),

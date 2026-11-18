@@ -40,17 +40,17 @@ def chaos_config() -> ChaosConfig:
             NetworkFaultRule(
                 target="example.invalid",
                 direction="outbound",
-                base_ms=0,
+                latency_ms=0,
                 jitter_ms=0,
                 drop_rate=0.0,
                 inject_rst=True,
             )
         ],
-        fs=[
+        storage=[
             StorageFaultRule(
-                target_path="/workspace/scratch",
-                simulate_error="enospc",
-                error_probability=1.0,
+                target_glob="/workspace/scratch",
+                simulate_errno="enospc",
+                probability=1.0,
             )
         ],
     )

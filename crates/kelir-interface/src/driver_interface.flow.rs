@@ -332,6 +332,8 @@ pub struct VmConfig {
     // L3-GAP: [lc_12_host_reaper_pdeathsig_enforcement]: consumed by the kelir-engine host-crash reaper SIGTERM window (on_host_preempt hook).; slop: waitpid-only check, abrupt parent kill -9 untested
     pub preemption_grace_ms: u64,
     pub network_off: bool,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.balloon
+    pub balloon: Option<VmBalloonConfig>,
 }
 
 impl VmConfig {
@@ -367,8 +369,23 @@ impl Default for VmConfig {
             ns_per_instruction: None,
             preemption_grace_ms: 0,
             network_off: true,
+            balloon: None,
         }
     }
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session.balloon
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct VmBalloonConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub initial_mb: u32,
+    #[serde(default)]
+    pub pressure_reclaim: bool,
+    // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: madvise(MADV_DONTNEED) and hypervisor frame reclamation stay unimplemented behind the reclaim strategy string.; slop: reclaim accepted from size field alone, frames stay resident
+    #[serde(default)]
+    pub reclaim_strategy: String,
 }
 
 #[derive(Debug, Clone)]

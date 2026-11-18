@@ -9,6 +9,7 @@ __all__ = [
     "DbProxyConfig",
     "DbProxyPlugin",
     "EphemeralCredentials",
+    "PgSchemaRewrite",
     "PgWireRewrite",
     "SqliteOverVsock",
     "db_proxy",
@@ -16,11 +17,18 @@ __all__ = [
 ]
 
 
+# see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+@dataclass
+class PgSchemaRewrite:
+    from_schema: str = ""
+    to_schema: str = ""
+
+
 @dataclass
 class PgWireRewrite:
     listen_port: int = 5432
     upstream: str = ""
-    rewrite_rules: list[tuple[str, str]] = field(default_factory=list)
+    schema_rewrites: list[PgSchemaRewrite] = field(default_factory=list)
     max_rewrites_per_conn: int = 3
 
 

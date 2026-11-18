@@ -20,7 +20,9 @@ pub struct PlaneWiring {
     pub terminal: Option<kelir_interface::terminal::TerminalWiring>,
     pub terminal_ops: Option<Arc<dyn kelir_interface::terminal::TerminalOps>>,
     pub checkpoint_ops: Option<Arc<dyn kelir_interface::checkpoint::CheckpointOps>>,
+    pub checkpoint_config: Option<kelir_interface::checkpoint::ops::CheckpointPlaneConfig>,
     pub host_ops: Option<Arc<dyn kelir_interface::host::HostOps>>,
+    pub host_config: Option<kelir_interface::host::ops::HostPlaneConfig>,
     pub net_ops: Option<Arc<dyn kelir_interface::wire::net::NetOps>>,
     pub dns_ops: Option<Arc<dyn kelir_interface::wire::dns::DnsOps>>,
     pub udp_nat_ops: Option<Arc<dyn kelir_interface::wire::udp_nat::UdpNatOps>>,
@@ -338,8 +340,12 @@ impl Session {
             .with_metrics(metrics.clone()),
         );
         let session_checkpoint_plane = Arc::new(
-            crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
-                .with_metrics(metrics.clone()),
+            match plane_wiring.checkpoint_config.clone() {
+                Some(config) => crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
+                    .with_config(config),
+                None => crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops)),
+            }
+            .with_metrics(metrics.clone()),
         );
         let engine = engine
             .with_metrics(metrics.clone())
@@ -400,8 +406,13 @@ impl Session {
             storage: storage.with_metrics(metrics.clone()),
             wire: wire.with_metrics(metrics.clone()),
             checkpoint: session_checkpoint_plane,
-            host: crate::planes::host::HostPlane::new(Arc::clone(&host_ops))
-                .with_metrics(metrics.clone()),
+            host: match plane_wiring.host_config.clone() {
+                Some(config) => {
+                    crate::planes::host::HostPlane::new(Arc::clone(&host_ops)).with_config(config)
+                }
+                None => crate::planes::host::HostPlane::new(Arc::clone(&host_ops)),
+            }
+            .with_metrics(metrics.clone()),
             terminal_ops,
             checkpoint_ops,
             host_ops,
@@ -560,6 +571,8 @@ impl Session {
         let terminal_ops = Arc::clone(&self.terminal_ops);
         let checkpoint_ops = self.checkpoint_ops.fresh();
         let host_ops = self.host_ops.fresh();
+        let checkpoint_config = self.checkpoint.config().clone();
+        let host_config = self.host.config().clone();
         let storage_wiring = self.storage.wiring().clone();
         let storage_io = self.storage.storage_io();
         let storage_reconciler = self.storage.reconciler();
@@ -604,6 +617,7 @@ impl Session {
             }
             let checkpoint = Arc::new(
                 crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
+                    .with_config(checkpoint_config)
                     .with_metrics(Arc::clone(&metrics)),
             );
             let mut engine = crate::dispatch_plugin::PipelineEngine::new()
@@ -624,6 +638,7 @@ impl Session {
                 .with_metrics(Arc::clone(&metrics)),
                 checkpoint,
                 host: crate::planes::host::HostPlane::new(Arc::clone(&host_ops))
+                    .with_config(host_config)
                     .with_metrics(Arc::clone(&metrics)),
                 terminal_ops,
                 checkpoint_ops,

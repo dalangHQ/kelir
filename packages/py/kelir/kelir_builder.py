@@ -21,7 +21,8 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.sdk_errors import EConfig
-from kelir.kelir_builder_scope import Handler, _Scope, _wrap_trap_deny
+from kelir.kelir_builder_scope import Handler, _SCOPE_VERBS, _Scope, _wrap_trap_deny
+from kelir.profile_config import ProfileConfig
 
 if TYPE_CHECKING:
     from kelir.plugin_model import BasePlugin
@@ -35,38 +36,6 @@ class VsockServiceEntry:
     service: str
     schema: dict[str, Any]
     handler: Callable[[bytes], Awaitable[bytes]] | None = None
-
-
-
-
-# see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-_SCOPE_VERBS: dict[str, tuple[str, ...]] = {
-    "trap": ("on_trap", "on_process_exit", "on_trap_deny", "on_signal", "on_fork"),
-    "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock", "on_fs_unlink", "on_fs_rename", "on_fs_setattr", "on_fs_symlink", "on_fs_mkdir", "on_fs_readdir", "on_fs_readlink"),
-    "net": ("on_net_outbound", "on_net_inbound", "on_socket_connect", "on_dns_query", "on_socket_bind"),
-    "console": ("on_console_input", "on_console_output"),
-    "exec": ("on_exec_stdout", "on_exec_stderr", "on_exec_stdin"),
-    "host": (
-        "on_host_lsm_exec",
-        "on_host_pressure",
-        "on_host_keyring_access",
-        "on_host_preempt",
-        "on_host_containment_breach",
-    ),
-    "lifecycle": (
-        "on_vm_init",
-        "on_vm_ready",
-        "on_vm_shutdown",
-        "on_pre_commit",
-        "on_post_commit",
-    ),
-    "telemetry": ("on_memory_pressure", "on_heartbeat", "on_watchdog"),
-    "actions": ("register_custom_action",),
-    "streams": ("register_stream_kind",),
-    "vsock": ("vsock_service",),
-    "params": ("params",),
-    "deny": ("on_trap_deny",),
-}
 
 
 # see: cans/artifacts/code/plugin-trait.rs#MountScope
@@ -126,8 +95,6 @@ def _vsock_service(spec: Any) -> str | None:
     if not isinstance(raw, str) or not raw:
         return None
     return raw
-
-
 
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -198,6 +165,7 @@ class KelirBuilder:
         self._next_ordinal: int = 0
         self._session: Session | None = None
         self._params_model: type | None = None
+        self._profile: ProfileConfig | None = None
         self._config: dict[str, Any] = {
             "vcpus": vcpus,
             "memory_mb": memory_mb,
@@ -240,6 +208,29 @@ class KelirBuilder:
     @property
     def requires(self) -> tuple[str, ...]:
         return tuple(self._requires)
+
+    # see: cans/plugins/profile.md#Declarative-profile-execution
+    # see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
+    @classmethod
+    def from_config(cls, path: str) -> KelirBuilder:
+        from kelir.lifecycle_sandbox import _builder_kwargs, _parse_profile, _profile_model
+
+        model = _profile_model(
+            "KelirBuilder.from_config", _parse_profile("KelirBuilder.from_config", path)
+        )
+        builder = cls(**_builder_kwargs(model))
+        if model.storage is not None:
+            builder.storage(**model.storage)
+        if model.wire is not None:
+            builder.wire(**model.wire)
+        if model.terminal is not None:
+            builder.terminal(**model.terminal)
+        if model.host is not None:
+            builder.host(model.host)
+        if model.checkpoint is not None:
+            builder.checkpoint(model.checkpoint)
+        builder._profile = model
+        return builder
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
     def detached(self, detached: bool) -> Self:
@@ -584,8 +575,25 @@ class KelirBuilder:
     def exec(self, fn: Callable[[_Scope], Any]) -> Self:
         return self._scope_entry("exec", fn)
 
-    def host(self, fn: Callable[[_Scope], Any]) -> Self:
-        return self._scope_entry("host", fn)
+    # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+    def host(self, config_or_fn: dict[str, Any] | Callable[[_Scope], Any]) -> Self:
+        if callable(config_or_fn):
+            return self._scope_entry("host", config_or_fn)
+        if self._mode == "plugin":
+            self._raise_host_only("host")
+        if not isinstance(config_or_fn, dict):
+            raise EConfig(".host() expects a host plane config mapping or a host scope closure")
+        self._config["host"] = config_or_fn
+        return self
+
+    # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+    def checkpoint(self, config: dict[str, Any]) -> Self:
+        if self._mode == "plugin":
+            self._raise_host_only("checkpoint")
+        if not isinstance(config, dict):
+            raise EConfig(".checkpoint() expects a checkpoint plane config mapping")
+        self._config["checkpoint"] = config
+        return self
 
     def lifecycle(self, fn: Callable[[_Scope], Any]) -> Self:
         return self._scope_entry("lifecycle", fn)
@@ -902,7 +910,7 @@ class KelirBuilder:
             native.use_plugin(registration.name, registration.enabled)
         native.fuse_hooks(descriptor, fused.runs())
         native_handle = native.boot()
-        session = Session.from_native(native_handle)
+        session = Session.from_native(native_handle, self._profile)
         # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
         get_plugin_context = getattr(native_handle, "get_plugin_context", None)
         if get_plugin_context is None:

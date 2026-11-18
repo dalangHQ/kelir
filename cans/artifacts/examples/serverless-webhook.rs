@@ -98,7 +98,6 @@ fn webhook_builder() -> KelirBuilder<
                 }],
             },
             ssh_agent_bridge: false,
-            vaults: Vec::new(),
             l4_proxies: Vec::new(),
             tap_filter: TapFilter::AllowUdpProxied,
             userspace_netstack: true,
@@ -126,7 +125,7 @@ fn webhook_builder() -> KelirBuilder<
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,
         witness_cosigning_endpoint: None,
-        store: "sqlite://.kelir/webhook.merkle.db".into(),
+        store_path: ".kelir/webhook.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,
         otel: Some(OtelConfig {

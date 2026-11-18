@@ -1,10 +1,13 @@
 // see: cans/03-sdk-architecture.md#Rust-SDK
 use std::future::Future;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use kelir_interface::checkpoint::ops::CheckpointPlaneConfig;
+use kelir_interface::host::ops::HostPlaneConfig;
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -23,6 +26,10 @@ use crate::planes::storage_plane::{LockBrokerConfig, LockScope, StoragePlaneConf
 use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
+use crate::sandbox_runtime::{
+    checkpoint_plane_config, host_plane_config, parse_profile, pty_config,
+    storage_plane_config, wire_plane_config, SandboxProfile,
+};
 use crate::session_lifecycle::Session;
 use crate::trap_filter::TrapFilter;
 
@@ -290,6 +297,9 @@ pub(crate) struct Registration {
     pub(crate) storage_cfg: Option<StoragePlaneConfig>,
     pub(crate) terminal_cfg: Option<PtyConfig>,
     pub(crate) wire_cfg: Option<WireConfig>,
+    pub(crate) host_cfg: Option<HostPlaneConfig>,
+    pub(crate) checkpoint_cfg: Option<CheckpointPlaneConfig>,
+    pub(crate) profile: Option<SandboxProfile>,
     pub(crate) lock_broker_cfg: Option<LockBrokerConfig>,
     pub(crate) on_trap_deny: Option<BoxedTrapDenyCallback>,
     pub(crate) on_trap_deny_ex: Option<BoxedTrapDenyExCallback>,
@@ -352,6 +362,33 @@ impl KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
     // see: cans/artifacts/code/vm-config-defaults.rs
     pub fn new_default() -> Self {
         Self::new(VmConfig::default())
+    }
+
+    // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
+    // see: cans/plugins/profile.md#Declarative-profile-execution
+    pub fn from_config(path: impl Into<PathBuf>) -> Result<Self, PluginError> {
+        let path = path.into();
+        let text = std::fs::read_to_string(&path).map_err(PluginError::Io)?;
+        let profile = parse_profile(&path, &text)?;
+        profile.validate()?;
+        let mut builder = KelirBuilder::new(profile.to_vm_config());
+        if let Some(storage) = storage_plane_config(&profile) {
+            builder.registration.storage_cfg = Some(storage);
+        }
+        if let Some(wire) = wire_plane_config(&profile) {
+            builder.registration.wire_cfg = Some(wire);
+        }
+        if let Some(terminal) = pty_config(&profile) {
+            builder.registration.terminal_cfg = Some(terminal);
+        }
+        if let Some(host) = host_plane_config(&profile) {
+            builder.registration.host_cfg = Some(host);
+        }
+        if let Some(checkpoint) = checkpoint_plane_config(&profile) {
+            builder.registration.checkpoint_cfg = Some(checkpoint);
+        }
+        builder.registration.profile = Some(profile);
+        Ok(builder)
     }
 }
 
@@ -691,12 +728,14 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let checkpoint_ops = kelir_checkpoint::checkpoint_ops(metrics.clone());
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
+            host_config: registration.host_cfg.clone(),
+            checkpoint_config: registration.checkpoint_cfg.clone(),
             terminal: registration.terminal_cfg.as_ref().map(|cfg| {
                 kelir_interface::terminal::TerminalWiring {
                     cols: cfg.cols,
                     rows: cfg.rows,
-                    drop_osc52: cfg.drop_osc52,
-                    strip_title: cfg.strip_title,
+                    drop_osc52: cfg.sanitizer.drop_osc52,
+                    strip_title: cfg.sanitizer.strip_title,
                 }
             }),
             wire: registration.wire_cfg.as_ref().map(|cfg| {
@@ -713,11 +752,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                             .collect(),
                     },
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
-                    vault_placeholders: cfg
-                        .vaults
-                        .iter()
-                        .map(|vault| vault.placeholder.clone())
-                        .collect(),
+                    dial_timeout_ms: cfg.dial_timeout_ms,
                     // L3-GAP: [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
                     l4_proxies: cfg
                         .l4_proxies
@@ -814,7 +849,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
             shared_caches: cfg
                 .shared_caches
                 .iter()
-                .map(std::path::PathBuf::from)
+                .map(|cache| cache.host_path.clone())
                 .collect(),
             lock_broker,
             idmap: Some(kelir_engine::planes::storage::IdmapConfig {

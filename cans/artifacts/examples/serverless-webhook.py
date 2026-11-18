@@ -128,7 +128,7 @@ def build_runtime() -> KelirBuilder:
 
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
-            store="sqlite://.kelir/webhook.merkle.db",
+            store_path=".kelir/webhook.merkle.db",
             merkle_chain=True,
             otel=OtelConfig(
                 service_name="kelir-webhook",

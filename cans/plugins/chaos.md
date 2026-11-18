@@ -18,14 +18,14 @@
     - Network chaos
       - target: domain or host pattern
       - direction: "outbound" | "inbound" | "both"
-      - latency: { baseMs, jitterMs }
-      - dropRate: synthetic packet loss probability
-      - injectRst: synthetic TCP RST flags
-      - bandwidthKbps: link speed clamp
+      - latency_ms / jitter_ms: per-target delay window (ms)
+      - drop_rate: synthetic packet loss probability
+      - inject_rst: synthetic TCP RST flags
+      - bandwidth_kbps: link speed clamp
     - Storage chaos
-      - targetPath: glob over guest filesystem
-      - simulateError: errno such as ENOSPC
-      - errorProbability: fraction of write() calls failed
+      - target_glob: glob over guest filesystem
+      - simulate_errno: errno such as ENOSPC
+      - probability: fraction of write() calls failed
     - Typical uses
       - Verify agent code handles flaky APIs, dialup speeds, RST resets
       - Verify graceful degradation on disk-full conditions

@@ -94,7 +94,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
 
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
-            store="sqlite://.kelir/migrate-audit.merkle.db",
+            store_path=".kelir/migrate-audit.merkle.db",
             merkle_chain=True,
             otel=None,
             receipts=ReceiptConfig(

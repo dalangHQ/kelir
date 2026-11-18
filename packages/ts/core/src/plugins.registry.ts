@@ -25,7 +25,7 @@ export function anomaly<P = unknown>(config: AnomalyConfig): KelirBuilder<"anoma
 export interface NetworkFaultRule {
   readonly target?: string;
   readonly direction?: "outbound" | "inbound" | "both";
-  readonly baseMs?: number;
+  readonly latencyMs?: number;
   readonly jitterMs?: number;
   readonly dropRate?: number;
   readonly injectRst?: boolean;
@@ -34,15 +34,15 @@ export interface NetworkFaultRule {
 
 
 export interface StorageFaultRule {
-  readonly targetPath?: string;
-  readonly simulateError?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress" | "path-traversal" | "etimeout" | "eafnosupport";
-  readonly errorProbability?: number;
+  readonly targetGlob?: string;
+  readonly simulateErrno?: "eperm" | "eacces" | "enoent" | "einval" | "enospc" | "erofs" | "econnrefused" | "enxio" | "ewouldblock" | "efault" | "ebusy" | "exdev" | "epipe" | "enodata" | "eproto" | "epolicy" | "etoolquota" | "ewxviolation" | "econfig" | "esecurityviolation" | "eunknownkind" | "eclockregress" | "path-traversal" | "etimeout" | "eafnosupport";
+  readonly probability?: number;
 }
 
 
 export interface ChaosConfig extends PluginEnablement {
   readonly network?: readonly NetworkFaultRule[];
-  readonly fs?: readonly StorageFaultRule[];
+  readonly storage?: readonly StorageFaultRule[];
 }
 
 
@@ -67,10 +67,17 @@ export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"c
 }
 
 
+// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
+export interface PgSchemaRewrite {
+  readonly fromSchema?: string;
+  readonly toSchema?: string;
+}
+
+
 export interface PgWireRewrite {
   readonly listenPort?: number;
   readonly upstream?: string;
-  readonly rewriteRules?: readonly ([string, string])[];
+  readonly schemaRewrites?: readonly PgSchemaRewrite[];
   readonly maxRewritesPerConn?: number;
 }
 
@@ -155,10 +162,10 @@ export interface ReceiptConfig {
 
 
 export interface LedgerConfig extends PluginEnablement {
-  readonly store?: string;
+  readonly storePath?: string;
   readonly merkleChain?: boolean;
   readonly suppressLocalDb?: boolean;
-  readonly hashingStandard?: string;
+  readonly hashingStandard?: "RFC_6962_DUAL_BLAKE3_SHA256";
   readonly recordPreRedactionHash?: boolean;
   readonly includeHookSpansInRoot?: boolean;
   readonly witnessCosigningEndpoint?: string;
@@ -251,8 +258,8 @@ export function redaction<P = unknown>(config: RedactionConfig): KelirBuilder<"r
 
 
 export interface ReplayConfig extends PluginEnablement {
-  readonly stepWindow?: number;
-  readonly kernelParams?: readonly string[];
+  readonly stepWindowInstructions?: number;
+  readonly pinnedClocksource?: string;
   readonly deterministicRngSeed?: number;
   readonly networkIsolation?: boolean;
 }
@@ -400,9 +407,17 @@ export function transaction<P = unknown>(config: TransactionConfig): KelirBuilde
 }
 
 
+export interface VaultCredential {
+  readonly name: string;
+  readonly kind: "bearer_token" | "sig_v4" | "mtls_bundle";
+  readonly audience: string;
+  readonly placeholder: string;
+}
+
 export interface VaultConfig extends PluginEnablement {
   readonly metadataVsockPort?: number;
   readonly tokenTtlSeconds?: number;
+  readonly credentials?: readonly VaultCredential[];
 }
 
 

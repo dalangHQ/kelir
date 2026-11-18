@@ -22,9 +22,17 @@ use crate::storage_bridge::storage_config;
 pub struct NativeTerminalConfig {
     pub cols: Option<u16>,
     pub rows: Option<u16>,
-    pub drop_osc52: Option<bool>,
-    pub strip_title: Option<bool>,
+    pub wireframe_grid: Option<NativeTerminalWireframeGrid>,
+    pub sanitizer: Option<NativeTerminalSanitizer>,
     pub stream_engine: Option<String>,
+}
+
+// see: cans/05-storage-plane.md#Storage-architecture
+#[napi(object)]
+pub struct NativeSharedCache {
+    pub host_path: String,
+    pub guest_mount: String,
+    pub read_only: Option<bool>,
 }
 
 // see: cans/03-sdk-architecture.md#Session-control-surface
@@ -32,18 +40,23 @@ pub struct NativeTerminalConfig {
 pub struct NativeStorageConfig {
     pub idmap_guest_uid: Option<f64>,
     pub idmap_host_uid: Option<f64>,
-    pub shared_caches: Option<Vec<String>>,
+    pub shared_caches: Option<Vec<NativeSharedCache>>,
     pub lock_broker: Option<bool>,
     pub encapsulation: Option<String>,
 }
 
-// see: cans/07-wire-plane.md#DNS-policy-filter
+// see: cans/04-terminal-plane.md#Headless-VT100-wireframe-grid
 #[napi(object)]
-pub struct NativeVaultDescriptor {
-    pub name: String,
-    pub kind: String,
-    pub audience: String,
-    pub placeholder: String,
+pub struct NativeTerminalWireframeGrid {
+    pub track_screen_matrix: Option<bool>,
+    pub export_on_trap: Option<bool>,
+}
+
+// see: cans/04-terminal-plane.md#Terminal-pipeline
+#[napi(object)]
+pub struct NativeTerminalSanitizer {
+    pub drop_osc52: Option<bool>,
+    pub strip_title: Option<bool>,
 }
 
 // see: cans/07-wire-plane.md#Port-forwarding
@@ -51,6 +64,7 @@ pub struct NativeVaultDescriptor {
 pub struct NativeL4Proxy {
     pub listen_port: u16,
     pub destination: String,
+    pub forward_unix_socket: Option<String>,
     pub inject_mtls_cert_path: Option<String>,
     pub inject_mtls_key_path: Option<String>,
 }
@@ -73,7 +87,7 @@ pub struct NativeSinkholeConfig {
 pub struct NativeWireConfig {
     pub sinkhole: Option<NativeSinkholeConfig>,
     pub ssh_agent_bridge: Option<bool>,
-    pub vaults: Option<Vec<NativeVaultDescriptor>>,
+    pub dial_timeout_ms: Option<u32>,
     pub l4_proxies: Option<Vec<NativeL4Proxy>>,
     pub tap_filter: Option<String>,
 }
@@ -271,14 +285,23 @@ impl Default for NativeKelirBuilder {
 impl NativeKelirBuilder {
     // L3-GAP: [bindings_ts]: snoop callbacks and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops snoop, mtls
     fn plane_wiring(&self) -> Result<kelir_engine::session_lifecycle::PlaneWiring> {
+        // TODO (L3) [bindings_ts]: forward wireframe_grid flags and stream_engine into TerminalWiring once it carries them; slop: grid tracking and engine selection never reach the terminal plane.
         let terminal =
             self.terminal_cfg
                 .as_ref()
                 .map(|cfg| kelir_interface::terminal::TerminalWiring {
                     cols: cfg.cols.unwrap_or(80),
                     rows: cfg.rows.unwrap_or(24),
-                    drop_osc52: cfg.drop_osc52.unwrap_or(false),
-                    strip_title: cfg.strip_title.unwrap_or(false),
+                    drop_osc52: cfg
+                        .sanitizer
+                        .as_ref()
+                        .and_then(|sanitizer| sanitizer.drop_osc52)
+                        .unwrap_or(false),
+                    strip_title: cfg
+                        .sanitizer
+                        .as_ref()
+                        .and_then(|sanitizer| sanitizer.strip_title)
+                        .unwrap_or(false),
                 });
         let wire = self.wire_cfg.as_ref().map(|cfg| {
             // see: cans/07-wire-plane.md#Sinkhole-rules
@@ -301,22 +324,14 @@ impl NativeKelirBuilder {
             kelir_interface::wire::net::WireWiring {
                 sinkhole,
                 ssh_agent_bridge: cfg.ssh_agent_bridge.unwrap_or(false),
-                vault_placeholders: cfg
-                    .vaults
-                    .as_ref()
-                    .map(|vaults| {
-                        vaults
-                            .iter()
-                            .map(|vault| vault.placeholder.clone())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                dial_timeout_ms: u64::from(cfg.dial_timeout_ms.unwrap_or(5000)),
                 l4_proxies: cfg
                     .l4_proxies
                     .as_ref()
                     .map(|proxies| {
                         proxies
                             .iter()
+                            .filter(|proxy| proxy.forward_unix_socket.is_none())
                             .map(|proxy| (proxy.listen_port, proxy.destination.clone()))
                             .collect()
                     })
@@ -324,7 +339,21 @@ impl NativeKelirBuilder {
                 allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
                 userspace_netstack: false,
                 default_egress: String::new(),
-                l4_unix_diversions: Vec::new(),
+                l4_unix_diversions: cfg
+                    .l4_proxies
+                    .as_ref()
+                    .map(|proxies| {
+                        proxies
+                            .iter()
+                            .filter_map(|proxy| {
+                                proxy
+                                    .forward_unix_socket
+                                    .as_ref()
+                                    .map(|socket| (proxy.listen_port, socket.as_str().into()))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             }
         });
         let storage = match &self.storage_cfg {
@@ -340,7 +369,9 @@ impl NativeKelirBuilder {
             terminal,
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
             checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics.clone())),
+            checkpoint_config: None,
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
+            host_config: None,
             net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
             dns_ops: Some(dns_ops),
             udp_nat_ops: Some(kelir_wire::udp_nat_ops()),

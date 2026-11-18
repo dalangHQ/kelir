@@ -119,18 +119,18 @@ impl SqlProxyService for SqlProxy {
     }
 
     async fn issue_commit(&self) -> Result<(), PluginError> {
-        // L3-GAP: [relational_transaction]: issue SQL COMMIT across every active proxy connection per cans/plugins/transaction.md; slop: COMMIT returns Ok(()) touching no connection, 2PC commits on one leg
+        // TODO (L3) [relational_transaction]: issue SQL COMMIT across every active proxy connection per cans/plugins/transaction.md; slop: COMMIT returns Ok(()) touching no connection, 2PC commits on one leg
         Ok(())
     }
 
     async fn issue_rollback(&self) -> Result<(), PluginError> {
-        // L3-GAP: [relational_transaction]: issue SQL ROLLBACK across every active proxy connection per cans/plugins/transaction.md; slop: ROLLBACK returns Ok(()) touching no connection, locks held after abort
+        // TODO (L3) [relational_transaction]: issue SQL ROLLBACK across every active proxy connection per cans/plugins/transaction.md; slop: ROLLBACK returns Ok(()) touching no connection, locks held after abort
         Ok(())
     }
 
     async fn inject_savepoint(&self, marker: &str) -> Result<(), PluginError> {
         let _ = marker;
-        // L3-GAP: [relational_transaction]: inject a transparent SQL SAVEPOINT marker into active pgwire connections per cans/plugins/transaction.md; slop: SAVEPOINT never injected, ROLLBACK TO has no marker to restore
+        // TODO (L3) [relational_transaction]: inject a transparent SQL SAVEPOINT marker into active pgwire connections per cans/plugins/transaction.md; slop: SAVEPOINT never injected, ROLLBACK TO has no marker to restore
         Ok(())
     }
 }

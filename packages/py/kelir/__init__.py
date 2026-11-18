@@ -134,16 +134,17 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
     # L3-GAP: [bindings_py]: token shields and prompts cross once the FFI callback bridge lands.; slop: token shield/prompt dropped silently when bridge absent
     known = {
         "terminal": {
-            "cols", "rows", "drop_osc52", "strip_title",
+            "cols", "rows", "wireframe_grid", "sanitizer",
             "stream_engine",
         },
         "storage": {
             "idmap", "shared_caches", "lock_broker", "encapsulation",
+            "dax_window",
         },
         "wire": {
-            "sinkhole", "ssh_agent_bridge", "vaults", "l4_proxies",
+            "sinkhole", "ssh_agent_bridge", "l4_proxies",
             "tap_filter", "userspace_netstack", "default_egress",
-            "divert_ports",
+            "divert_ports", "dial_timeout_ms",
         },
     }[kind]
     unknown = set(kwargs) - known
@@ -167,21 +168,41 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
                     for rule in value.rules
                 ],
             }
-        elif key == "vaults" and value is not None:
-            bridged["vaults"] = [
-                {
-                    "name": vault.name,
-                    "kind": str(vault.kind),
-                    "audience": vault.audience,
-                    "placeholder": vault.placeholder,
+        elif key == "wireframe_grid" and value is not None:
+            bridged["wireframe_grid"] = (
+                value
+                if isinstance(value, dict)
+                else {
+                    "track_screen_matrix": value.track_screen_matrix,
+                    "export_on_trap": value.export_on_trap,
                 }
-                for vault in value
+            )
+        elif key == "sanitizer" and value is not None:
+            bridged["sanitizer"] = (
+                value
+                if isinstance(value, dict)
+                else {
+                    "drop_osc52": value.drop_osc52,
+                    "strip_title": value.strip_title,
+                }
+            )
+        elif key == "shared_caches" and value is not None:
+            bridged["shared_caches"] = [
+                entry
+                if isinstance(entry, dict)
+                else {
+                    "host_path": entry.host_path,
+                    "guest_mount": entry.guest_mount,
+                    "read_only": entry.read_only,
+                }
+                for entry in value
             ]
         elif key == "l4_proxies" and value is not None:
             bridged["l4_proxies"] = [
                 {
                     "listen_port": proxy.listen_port,
                     "destination": proxy.destination,
+                    "forward_unix_socket": proxy.forward_unix_socket,
                 }
                 for proxy in value
             ]

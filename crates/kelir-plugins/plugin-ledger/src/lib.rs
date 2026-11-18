@@ -1,9 +1,9 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 #![forbid(unsafe_code)]
 
-// L3-GAP: [telemetry_audit]: tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt; slop: ledger tests missing, WAL/OTel paths untested, encoder-only passes vacuously
+// TODO (L3) [telemetry_audit]: tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt; slop: ledger tests missing, WAL/OTel paths untested, encoder-only passes vacuously
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
@@ -81,10 +81,11 @@ pub struct ReceiptConfig {
 // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LedgerConfig {
-    pub store: String,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.store_path
+    pub store_path: PathBuf,
     pub merkle_chain: bool,
     pub suppress_local_db: bool,
-    pub hashing_standard: String,
+    pub hashing_standard: HashingStandard,
     pub record_pre_redaction_hash: bool,
     pub include_hook_spans_in_root: bool,
     pub witness_cosigning_endpoint: Option<String>,
@@ -93,12 +94,12 @@ pub struct LedgerConfig {
 }
 
 impl LedgerConfig {
-    pub fn new(store: impl Into<String>, merkle_chain: bool) -> Self {
+    pub fn new(store_path: impl Into<PathBuf>, merkle_chain: bool) -> Self {
         Self {
-            store: store.into(),
+            store_path: store_path.into(),
             merkle_chain,
             suppress_local_db: false,
-            hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".to_string(),
+            hashing_standard: HashingStandard::Rfc6962DualBlake3Sha256,
             record_pre_redaction_hash: false,
             include_hook_spans_in_root: false,
             witness_cosigning_endpoint: None,
@@ -149,9 +150,18 @@ impl HashingStandard {
     }
 }
 
+// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
+impl From<&str> for HashingStandard {
+    fn from(name: &str) -> Self {
+        Self::from_name(name).unwrap_or_default()
+    }
+}
+
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MerkleWalConfig {
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.store_path
+    pub store_path: PathBuf,
     pub hashing_standard: HashingStandard,
     pub sign_leaves: bool,
     pub fsync_on_reap: bool,
@@ -163,6 +173,7 @@ pub struct MerkleWalConfig {
 impl Default for MerkleWalConfig {
     fn default() -> Self {
         Self {
+            store_path: PathBuf::from(".kelir/audit.merkle.db"),
             hashing_standard: HashingStandard::Rfc6962DualBlake3Sha256,
             sign_leaves: true,
             fsync_on_reap: true,
@@ -208,7 +219,7 @@ impl LedgerCtx {
     }
 
     pub async fn flush(&self) -> Result<(), PluginError> {
-        // L3-GAP: [ta_04_otlp_grpc_metric_export_streaming]: ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload; slop: encoder-only kept, metrics written to local disk, no gRPC frames sent
+        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload; slop: encoder-only kept, metrics written to local disk, no gRPC frames sent
         let Some(metrics) = &self.metrics else {
             return Err(PluginError::Halt(
                 "ledger flush needs a bound MetricRegistry".into(),
@@ -239,7 +250,7 @@ impl LedgerCtx {
     }
 
     pub async fn blake3_of_producing_process(&self, _path: &Path) -> Result<String, PluginError> {
-        // L3-GAP: [telemetry_audit]: resolve the producing-process digest from the live per-process receipt; slop: digest from path string, receipt never consulted, wrong binary attributed
+        // TODO (L3) [telemetry_audit]: resolve the producing-process digest from the live per-process receipt; slop: digest from path string, receipt never consulted, wrong binary attributed
         Err(PluginError::Halt(
             "ledger blake3_of_producing_process needs the live receipt".into(),
         ))
@@ -291,7 +302,7 @@ impl LedgerCtx {
     }
 
     pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
-        // L3-GAP: [ar_09_causal_delta_aggregation_merkle]: assemble the delta from the fork StorageDelta plus the parent ExecutionReceipt via compute_ledger::compute_causal_delta.; slop: delta fabricated, merkle aggregation skipped
+        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: assemble the delta from the fork StorageDelta plus the parent ExecutionReceipt via compute_ledger::compute_causal_delta.; slop: delta fabricated, merkle aggregation skipped
         Err(PluginError::Halt(
             "ledger get_causal_delta_from_parent needs the fork storage delta".into(),
         ))
@@ -358,14 +369,14 @@ impl LedgerPlugin {
             return Arc::new(NoopLedgerSink);
         }
         if self.config.merkle_chain {
-            Arc::new(LocalMerkleDbSink::new(self.config.store.clone()))
+            Arc::new(LocalMerkleDbSink::new(self.config.store_path.clone()))
         } else {
             Arc::new(OtlpLedgerSink::new(self.otel.clone()))
         }
     }
 
     pub fn export_metrics(&self) -> Result<Vec<u8>, OtlpError> {
-        // L3-GAP: [ta_04_otlp_grpc_metric_export_streaming]: ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload; slop: snapshot encoder-only, OTLP never sent, collector receives nothing
+        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload; slop: snapshot encoder-only, OTLP never sent, collector receives nothing
         let Some(snapshot) = self.snapshot_metrics() else {
             return Err(OtlpError::NotImplemented(
                 "ledger export_metrics needs a bound MetricRegistry".to_string(),

@@ -77,6 +77,23 @@ export type {
   LockBrokerConfig,
   CreatePluginOptions,
 };
+import {
+  checkpointConfigFromProfile,
+  configFromProfile,
+  hostConfigFromProfile,
+  readProfile,
+  storageConfigFromProfile,
+  terminalConfigFromProfile,
+  wireConfigFromProfile,
+  type CheckpointPlaneConfig,
+  type HostPlaneConfig,
+  type ProfileSpec,
+} from "./profile.schema.js";
+export type {
+  CheckpointPlaneConfig,
+  HostPlaneConfig,
+  ProfileSpec,
+} from "./profile.schema.js";
 
 import type {
   MountRecord,
@@ -113,6 +130,9 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private terminalCfg: TerminalConfig | undefined;
   private storageCfg: StorageConfig | undefined;
   private wireCfg: WireConfig | undefined;
+  private hostCfg: HostPlaneConfig | undefined;
+  private checkpointCfg: CheckpointPlaneConfig | undefined;
+  private profileSpec: ProfileSpec | undefined;
   private paramsSchema: Schema<unknown> | undefined;
 
   constructor(config?: KelirConfig);
@@ -132,6 +152,25 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       this.registry = new HookRegistry<Ctx>();
     }
     this.detachedFlag = this.kelirConfig.detached ?? false;
+  }
+
+  // see: cans/plugins/profile.md#Declarative-profile-execution
+  // see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
+  static async fromConfig(path: string): Promise<KelirBuilder> {
+    const profile = await readProfile(path);
+    const builder = new KelirBuilder(configFromProfile(profile));
+    builder.profileSpec = profile;
+    const terminal = terminalConfigFromProfile(profile);
+    const storage = storageConfigFromProfile(profile);
+    const wire = wireConfigFromProfile(profile);
+    const host = hostConfigFromProfile(profile);
+    const checkpoint = checkpointConfigFromProfile(profile);
+    if (terminal !== undefined) builder.terminal(terminal);
+    if (storage !== undefined) builder.storage(storage);
+    if (wire !== undefined) builder.wire(wire);
+    if (host !== undefined) builder.host(host);
+    if (checkpoint !== undefined) builder.checkpoint(checkpoint);
+    return builder;
   }
 
   get requiredDeps(): readonly string[] {
@@ -552,9 +591,26 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  host(fn: (scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void): this {
+  host(config: HostPlaneConfig): this;
+  host(fn: (scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void): this;
+  host(
+    configOrFn: HostPlaneConfig | ((scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void),
+  ): this {
     this.checkVerb(".host");
-    this.registry.host(fn, () => this);
+    if (typeof configOrFn === "function") {
+      this.registry.host(configOrFn, () => this);
+      return this;
+    }
+    if (this.mode === "plugin") this.rejectHostOnly(".host");
+    this.hostCfg = configOrFn;
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
+  checkpoint(config: CheckpointPlaneConfig): this {
+    this.checkVerb(".checkpoint");
+    if (this.mode === "plugin") this.rejectHostOnly(".checkpoint");
+    this.checkpointCfg = config;
     return this;
   }
 
@@ -869,6 +925,8 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     copy.terminalCfg = this.terminalCfg;
     copy.storageCfg = this.storageCfg;
     copy.wireCfg = this.wireCfg;
+    copy.hostCfg = this.hostCfg;
+    copy.checkpointCfg = this.checkpointCfg;
     copy.lockBrokerCfg = this.lockBrokerCfg;
     copy.paramsSchema = this.paramsSchema;
     copy.forkFn = this.forkFn;
@@ -965,20 +1023,20 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       nativeBuilder.setTerminalConfig({
         cols: this.terminalCfg.cols,
         rows: this.terminalCfg.rows,
-        dropOsc52: this.terminalCfg.dropOsc52,
-        stripTitle: this.terminalCfg.stripTitle,
-        streamEngine: this.terminalCfg.streamEngine,
+        wireframeGrid: this.terminalCfg.wireframeGrid,
+        sanitizer: this.terminalCfg.sanitizer,
       });
     }
     if (this.storageCfg !== undefined || this.lockBrokerCfg !== undefined) {
       nativeBuilder.setStorageConfig({
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
-        sharedCaches: this.storageCfg?.sharedCaches as string[] | undefined,
+        sharedCaches: this.storageCfg?.sharedCaches,
         lockBroker: this.storageCfg?.lockBroker ?? this.lockBrokerCfg !== undefined,
         lockBrokerGlobs: this.lockBrokerCfg?.globs as string[] | undefined,
         lockBrokerNonBlocking: this.lockBrokerCfg?.nonBlocking,
         encapsulation: this.storageCfg?.encapsulation,
+        daxWindow: this.storageCfg?.daxWindow,
       });
     }
     if (this.wireCfg) {
@@ -991,7 +1049,6 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         sinkhole:
           explicitRules !== undefined ? { rules: explicitRules } : undefined,
         sshAgentBridge: this.wireCfg.sshAgentBridge,
-        vaults: this.wireCfg.vaults,
         // TODO (L3) [wire_plane]: forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then; slop: unix-socket diversions stay TypeScript-side; the NAPI wire config never sees them.
         l4Proxies: this.wireCfg.l4Proxies
           ?.filter(
@@ -1007,6 +1064,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         tapFilter: this.wireCfg.tapFilter,
       });
     }
+    // TODO (L3) [bindings_ts]: forward host/checkpoint plane configs once the NAPI builder accepts them.; slop: host and checkpoint descriptors stay TypeScript-side
     // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
     if (this.paramsSchema) {
       // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
@@ -1022,7 +1080,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     }
     // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
     const nativeSession = await nativeBuilder.boot();
-    const session = new Session(nativeSession);
+    const session = new Session(nativeSession, this.profileSpec);
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     const pluginContexts = nativeSession.pluginContexts;
     if (pluginContexts === undefined && this.pluginRegistrations.length > 0) {
