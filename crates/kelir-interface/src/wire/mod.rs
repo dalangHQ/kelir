@@ -17,7 +17,7 @@ pub mod udp_nat;
 pub use connection_parking::{ConnectionParking, ConnectionParkingConfig, ParkedConnection};
 pub use outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxError, OutboxFrame};
 
-pub use dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};
+pub use dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, DnsVerdict, RESOLV_CONF_PATH};
 pub use l4::{L4DivertOps, L4Stream};
 pub use net::{
     FrameClass, FrameDirection, LinkLocalRoute, NetOps, WireWiring, classify_frame,

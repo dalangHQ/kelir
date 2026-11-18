@@ -9,6 +9,9 @@ pub mod isolation_envelope;
 pub mod reconciler;
 
 pub use fuse::{FuseDirEntry, FuseOpcode, FuseOps, FuseReply, FuseRequest, FuseResponse};
+
+// see: cans/artifacts/code/plugin-trait.rs#FsInterposer
+pub type DirEntry = FuseDirEntry;
 pub use io::{HostFileLock, RootHandle, StorageIo};
 pub use isolation_envelope::{
     ContainedOpenOps, IsolationEnvelope, IsolationError, OrgScope, StoragePartition,

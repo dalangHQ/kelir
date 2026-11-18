@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BasePlugin",
+    "DirEntry",
+    "DnsVerdict",
     "FsInodeAttr",
     "HandlerContext",
     "LifecycleCtx",
@@ -81,6 +83,19 @@ class FsInodeAttr:
     gid: int = 0
     size: int = 0
     content: bytes = b""
+
+
+# see: cans/07-wire-plane.md#DNS-policy-filter
+class DnsVerdict(Enum):
+    Forward = "forward"
+    Sinkhole = "sinkhole"
+
+
+# see: cans/05-storage-plane.md#FUSE-opcode-table
+@dataclass
+class DirEntry:
+    guest_inode: int = 0
+    name: str = ""
 
 
 class VetoEvent(Enum):
@@ -234,9 +249,53 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         # L3-GAP: [storage_plane]: dispatch fs rename to the plugin; slop: fs rename never dispatched, escape unintercepted
         return Verdict.pass_()
 
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict:
+        # TODO (L3): dispatch fs setattr to the plugin.
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_symlink(self, target: Path, link: Path) -> Verdict:
+        # TODO (L3): dispatch fs symlink to the plugin.
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_mkdir(self, path: Path, mode: int) -> Verdict:
+        # TODO (L3): dispatch fs mkdir to the plugin.
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_readdir(self, path: Path, entries: list[DirEntry]) -> FilterAction:
+        # TODO (L3): dispatch fs readdir to the plugin.
+        return FilterAction.forward()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_fs_readlink(self, path: Path) -> Verdict:
+        # TODO (L3): dispatch fs readlink to the plugin.
+        return Verdict.pass_()
+
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
         # L3-GAP: [wire_plane]: dispatch outbound frame to the plugin; slop: outbound frame never dispatched, egress unfiltered
         return FilterAction.forward()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_socket_connect(
+        self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
+    ) -> Verdict:
+        # TODO (L3): dispatch socket connect to the plugin.
+        return Verdict.pass_()
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_dns_query(self, pid: int, domain: str, qtype: int) -> DnsVerdict:
+        # TODO (L3): dispatch dns query to the plugin.
+        return DnsVerdict.Forward
+
+    # see: cans/02-plugin-model.md#Segregated-ring-traits
+    def on_socket_bind(
+        self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
+    ) -> Verdict:
+        # TODO (L3): dispatch socket bind to the plugin.
+        return Verdict.pass_()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
         # L3-GAP: [terminal_plane]: dispatch console input to the plugin; slop: console input never dispatched, shield never sees keystrokes
@@ -256,6 +315,11 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         # L3-GAP: [tp_09_exec_stream_sublane_stdio_fidelity]: dispatch EXEC stream stderr to the plugin; slop: EXEC stderr never dispatched, stdio fidelity unobserved
         return chunk
 
+    # see: cans/02-plugin-model.md#KelirPlugin-trait
+    async def on_exec_stdin(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
+        # TODO (L3): dispatch EXEC stream stdin to the plugin.
+        return chunk
+
     async def on_heartbeat(self, event: Any) -> None:
         # L3-GAP: [telemetry_audit]: dispatch heartbeat telemetry to the plugin; slop: heartbeat telemetry never dispatched, export gap hidden
         pass
@@ -263,6 +327,14 @@ class BasePlugin(Generic[CtxT, ParamsT]):
     async def on_process_exit(self, event: Any) -> None:
         # L3-GAP: [attestation_receipts]: dispatch process-exit event to the plugin; slop: process-exit never dispatched, receipt never emitted
         pass
+
+    async def on_signal(self, sender: int, target: int, sig: int) -> Verdict:
+        # TODO (L3): dispatch signal to the plugin.
+        return Verdict.pass_()
+
+    async def on_fork(self, parent: int, child: int) -> Verdict:
+        # TODO (L3): dispatch fork to the plugin.
+        return Verdict.pass_()
 
     async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
         # L3-GAP: [lifecycle_checkpoint]: dispatch vm-init lifecycle event to the plugin; slop: vm-init never dispatched, init hooks never run
@@ -279,3 +351,7 @@ class BasePlugin(Generic[CtxT, ParamsT]):
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
         # L3-GAP: [lc_18_watchdog_heartbeat_timeout_reboot]: dispatch watchdog event to the plugin; slop: watchdog event never dispatched, reboot never fires
         return WatchdogVerdict.ExecuteDefault
+
+    def on_host_containment_breach(self, pid: int, path: Path, kind: str) -> None:
+        # TODO (L3): dispatch host containment breach to the plugin.
+        pass

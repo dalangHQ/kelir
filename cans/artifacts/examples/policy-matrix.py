@@ -66,7 +66,7 @@ PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
 
 
 async def row_allow(c: HandlerContext) -> Verdict:
-    return Verdict.Pass
+    return Verdict.pass_()
 
 
 async def row_deny(c: HandlerContext) -> Verdict:

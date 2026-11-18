@@ -41,7 +41,19 @@ def test_ring_event_wire_values() -> None:
     assert RingEvent.HOST_KEYRING_ACCESS.value == "host-keyring-access"
     assert RingEvent.HOST_PREEMPT.value == "host-preempt"
     assert RingEvent.MEMORY_PRESSURE.value == "memory-pressure"
-    assert len(RingEvent) == 25
+    assert RingEvent.FS_SETATTR.value == "fs-setattr"
+    assert RingEvent.FS_SYMLINK.value == "fs-symlink"
+    assert RingEvent.FS_MKDIR.value == "fs-mkdir"
+    assert RingEvent.FS_READDIR.value == "fs-readdir"
+    assert RingEvent.FS_READLINK.value == "fs-readlink"
+    assert RingEvent.SOCKET_CONNECT.value == "socket-connect"
+    assert RingEvent.DNS_QUERY.value == "dns-query"
+    assert RingEvent.SOCKET_BIND.value == "socket-bind"
+    assert RingEvent.EXEC_STDIN.value == "exec-stdin"
+    assert RingEvent.HOST_CONTAINMENT_BREACH.value == "host-containment-breach"
+    assert RingEvent.SIGNAL.value == "signal"
+    assert RingEvent.FORK.value == "fork"
+    assert len(RingEvent) == 37
 
 
 def test_hook_stage_values() -> None:

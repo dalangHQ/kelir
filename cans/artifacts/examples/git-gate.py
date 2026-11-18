@@ -22,16 +22,16 @@ class GitGatePlugin(BasePlugin):
     async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
         binary = event.binary_path.rsplit("/", 1)[-1]
         if binary != "git":
-            return Verdict.Pass
+            return Verdict.pass_()
         if len(event.argv) < 2:
-            return Verdict.Pass
+            return Verdict.pass_()
         if event.argv[1] == "push":
             if "--force" in event.argv:
                 return Verdict.patch(
                     argv=[a for a in event.argv if a != "--force"],
                     env={"KELIR_DISARMED": "1"},
                 )
-            return Verdict.Pass
+            return Verdict.pass_()
         if event.argv[1] == "commit":
             if "-m" in event.argv:
                 idx = event.argv.index("-m")
@@ -42,8 +42,8 @@ class GitGatePlugin(BasePlugin):
                 return Verdict.abort(
                     reason="EPOLICY: commit references protected branch",
                 )
-            return Verdict.Pass
-        return Verdict.Pass
+            return Verdict.pass_()
+        return Verdict.pass_()
 
 
 def build_runtime() -> KelirBuilder:

@@ -44,6 +44,12 @@ export interface FsInodeAttr {
   readonly content: string;
 }
 
+// see: cans/artifacts/code/plugin-trait.rs#FsInterposer
+export interface DirEntry {
+  readonly guestInode: number;
+  readonly name: string;
+}
+
 export interface ExecveMutation {
   readonly binary?: string;
   readonly argv?: string[];

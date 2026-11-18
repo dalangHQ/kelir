@@ -75,11 +75,11 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.netInbound += 1;
     return FilterAction.Forward;
   })
-  .onFsSetattr((path, mode, size) => Verdict.Pass)
-  .onFsSymlink((target, link) => Verdict.Pass)
-  .onFsMkdir((path, mode) => Verdict.Pass)
-  .onFsReaddir((path, entries) => FilterAction.Forward)
-  .onFsReadlink((path) => Verdict.Pass)
+  .onFsSetattr((_path, _mode, _size) => Verdict.Pass)
+  .onFsSymlink((_target, _link) => Verdict.Pass)
+  .onFsMkdir((_path, _mode) => Verdict.Pass)
+  .onFsReaddir((_path, _entries) => FilterAction.Forward)
+  .onFsReadlink((_path) => Verdict.Pass)
   // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
   // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
   .onFsLookup((path) => {
@@ -155,7 +155,7 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
   })
-  .onExecStdin((pid, execId, chunk) => chunk)
+  .onExecStdin((_pid, _execId, chunk) => chunk)
   .onHostLsmExec((_path, _pid) => {
     return Verdict.Pass;
   })
@@ -168,7 +168,7 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   .onHostPreempt((_ctx) => {
     hookState.hostPreempts += 1;
   })
-  .onHostContainmentBreach((pid, path, kind) => {})
+  .onHostContainmentBreach((_pid, _path, _kind) => {})
   .onVmInit((_ctx) => {
     hookState.vmInits += 1;
   })
@@ -210,8 +210,8 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.exits += 1;
     if (event.exitCode !== 0) hookState.failures += 1;
   })
-  .onSignal((sender, target, sig) => Verdict.Pass)
-  .onFork((parent, child) => Verdict.Pass);
+  .onSignal((_sender, _target, _sig) => Verdict.Pass)
+  .onFork((_parent, _child) => Verdict.Pass);
 
 const runtime = kelir({
   vcpus: 2, memoryMb: 2048, driver: "auto",

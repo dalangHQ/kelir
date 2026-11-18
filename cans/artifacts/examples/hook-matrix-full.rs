@@ -13,9 +13,10 @@ use kelir_interface::plugin_model::HandlerCtx;
 use kelir::{
     driver_interface::{DriverPolicy, WxPolicy},
     plugin_model::{
-        AnyPlugin, ConsoleInterposer, FilterAction, FsInterposer, HostInterposer, KelirPlugin,
-        LifecycleCtx, LifecycleParticipant, NetInterposer, NoDeps, PluginDeps, PluginError,
-        SystemTelemetryParticipant, TrapInterposer, Verdict, WatchdogEvent, WatchdogVerdict,
+        AnyPlugin, ConsoleInterposer, DirEntry, DnsVerdict, FilterAction, FsInterposer,
+        HostInterposer, KelirPlugin, LifecycleCtx, LifecycleParticipant, NetInterposer, NoDeps,
+        PluginDeps, PluginError, SystemTelemetryParticipant, TrapInterposer, Verdict,
+        WatchdogEvent, WatchdogVerdict,
     },
     protocol_wire::{Errno, Heartbeat, PatchPayload, ProcessExit, SuspendUntil, TrapEvent},
     KelirBuilder, SnapshotDescriptor, TrapFilter, VmConfig,
@@ -271,9 +272,6 @@ impl LifecycleParticipant for HookMatrixFullPlugin {
             .host_preempts += 1;
         Ok(())
     }
-fn on_host_containment_breach(&self, _pid: u32, _path: &Path, _kind: &str) -> Result<(), PluginError> {
-    Ok(())
-}
 }
 
 impl NetInterposer for HookMatrixFullPlugin {
@@ -301,21 +299,6 @@ fn on_dns_query(&self, _pid: u32, _domain: &str, _qtype: u16) -> Result<DnsVerdi
     Ok(DnsVerdict::Forward)
 }
 fn on_socket_bind(&self, _pid: u32, _proto: u8, _ip: [u8; 4], _port: u16) -> Result<Verdict, PluginError> {
-    Ok(Verdict::Pass)
-}
-fn on_fs_setattr(&self, _path: &Path, _mode: u32, _size: u64) -> Result<Verdict, PluginError> {
-    Ok(Verdict::Pass)
-}
-fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> {
-    Ok(Verdict::Pass)
-}
-fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> {
-    Ok(Verdict::Pass)
-}
-fn on_fs_readdir(&self, _path: &Path, _entries: &mut Vec<DirEntry>) -> Result<FilterAction, PluginError> {
-    Ok(FilterAction::Forward)
-}
-fn on_fs_readlink(&self, _path: &Path) -> Result<Verdict, PluginError> {
     Ok(Verdict::Pass)
 }
 }
@@ -436,6 +419,26 @@ impl FsInterposer for HookMatrixFullPlugin {
         }
         Ok(Verdict::Pass)
     }
+
+    fn on_fs_setattr(&self, _path: &Path, _mode: u32, _size: u64) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_readdir(
+        &self,
+        _path: &Path,
+        _entries: &mut Vec<DirEntry>,
+    ) -> Result<FilterAction, PluginError> {
+        Ok(FilterAction::Forward)
+    }
+    fn on_fs_readlink(&self, _path: &Path) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
 }
 
 impl HostInterposer for HookMatrixFullPlugin {
@@ -447,6 +450,14 @@ impl HostInterposer for HookMatrixFullPlugin {
     }
     fn on_host_keyring_access(&self, _key: &str) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
+    }
+    fn on_host_containment_breach(
+        &self,
+        _pid: u32,
+        _path: &Path,
+        _kind: &str,
+    ) -> Result<(), PluginError> {
+        Ok(())
     }
 }
 

@@ -12,27 +12,41 @@ use kelir_interface::plugin_model::{
     LifecycleParticipant, NetInterposer, PluginError, SystemTelemetryParticipant, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::storage::DirEntry;
+use kelir_interface::wire::DnsVerdict;
 use plugin_step_eval::{PostExecAction, PostExecGate};
 
 use crate::trap_filter::filter_matches;
 
 pub(crate) struct OnTrap;
 pub(crate) struct OnProcessExit;
+pub(crate) struct OnSignal;
+pub(crate) struct OnFork;
 pub(crate) struct OnFsLookup;
 pub(crate) struct OnFsRead;
 pub(crate) struct OnFsWrite;
 pub(crate) struct OnFsLock;
 pub(crate) struct OnFsUnlink;
 pub(crate) struct OnFsRename;
+pub(crate) struct OnFsSetattr;
+pub(crate) struct OnFsSymlink;
+pub(crate) struct OnFsMkdir;
+pub(crate) struct OnFsReaddir;
+pub(crate) struct OnFsReadlink;
 pub(crate) struct OnNetOutbound;
 pub(crate) struct OnNetInbound;
+pub(crate) struct OnSocketConnect;
+pub(crate) struct OnDnsQuery;
+pub(crate) struct OnSocketBind;
 pub(crate) struct OnConsoleInput;
 pub(crate) struct OnConsoleOutput;
 pub(crate) struct OnExecStdout;
 pub(crate) struct OnExecStderr;
+pub(crate) struct OnExecStdin;
 pub(crate) struct OnHostLsmExec;
 pub(crate) struct OnHostPressure;
 pub(crate) struct OnHostKeyringAccess;
+pub(crate) struct OnHostContainmentBreach;
 pub(crate) struct OnVmInit;
 pub(crate) struct OnVmReady;
 pub(crate) struct OnVmShutdown;
@@ -153,6 +167,26 @@ where
     }
 }
 
+#[async_trait]
+impl<F> TrapInterposer for TrapClosureAdapter<F, OnSignal>
+where
+    F: Fn(u32, u32, i32) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    async fn on_signal(&self, sender: u32, target: u32, sig: i32) -> Result<Verdict, PluginError> {
+        (self.handler)(sender, target, sig)
+    }
+}
+
+#[async_trait]
+impl<F> TrapInterposer for TrapClosureAdapter<F, OnFork>
+where
+    F: Fn(u32, u32) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    async fn on_fork(&self, parent: u32, child: u32) -> Result<Verdict, PluginError> {
+        (self.handler)(parent, child)
+    }
+}
+
 impl<F> FsInterposer for FsClosureAdapter<F, OnFsLookup>
 where
     F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync,
@@ -224,6 +258,57 @@ where
     }
 }
 
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsSetattr>
+where
+    F: Fn(&Path, u32, u32, u32, u64, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_setattr(&self, path: &Path, mode: u32, size: u64) -> Result<Verdict, PluginError> {
+        // TODO (L3): thread the live uid, gid and HandlerCtx from the FUSE setattr dispatch; the trait carries path, mode and size only.
+        let ctx = HandlerCtx::new([0; 16], 0, (), Vec::new());
+        (self.handler)(path, mode, 0, 0, size, &ctx)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsSymlink>
+where
+    F: Fn(&Path, &Path) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_symlink(&self, target: &Path, link: &Path) -> Result<Verdict, PluginError> {
+        (self.handler)(target, link)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsMkdir>
+where
+    F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_mkdir(&self, path: &Path, mode: u32) -> Result<Verdict, PluginError> {
+        (self.handler)(path, mode)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsReaddir>
+where
+    F: Fn(&Path, &mut Vec<DirEntry>) -> Result<FilterAction, PluginError> + Send + Sync,
+{
+    fn on_fs_readdir(
+        &self,
+        path: &Path,
+        entries: &mut Vec<DirEntry>,
+    ) -> Result<FilterAction, PluginError> {
+        (self.handler)(path, entries)
+    }
+}
+
+impl<F> FsInterposer for FsClosureAdapter<F, OnFsReadlink>
+where
+    F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_fs_readlink(&self, path: &Path) -> Result<Verdict, PluginError> {
+        (self.handler)(path)
+    }
+}
+
 impl<F> NetInterposer for NetClosureAdapter<F, OnNetOutbound>
 where
     F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync,
@@ -239,6 +324,45 @@ where
 {
     fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         (self.handler)(frame)
+    }
+}
+
+impl<F> NetInterposer for NetClosureAdapter<F, OnSocketConnect>
+where
+    F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_socket_connect(
+        &self,
+        pid: u32,
+        proto: u8,
+        ip: [u8; 4],
+        port: u16,
+    ) -> Result<Verdict, PluginError> {
+        (self.handler)(pid, proto, ip, port)
+    }
+}
+
+impl<F> NetInterposer for NetClosureAdapter<F, OnDnsQuery>
+where
+    F: Fn(u32, &str, u16) -> Result<DnsVerdict, PluginError> + Send + Sync,
+{
+    fn on_dns_query(&self, pid: u32, domain: &str, qtype: u16) -> Result<DnsVerdict, PluginError> {
+        (self.handler)(pid, domain, qtype)
+    }
+}
+
+impl<F> NetInterposer for NetClosureAdapter<F, OnSocketBind>
+where
+    F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync,
+{
+    fn on_socket_bind(
+        &self,
+        pid: u32,
+        proto: u8,
+        ip: [u8; 4],
+        port: u16,
+    ) -> Result<Verdict, PluginError> {
+        (self.handler)(pid, proto, ip, port)
     }
 }
 
@@ -292,6 +416,21 @@ where
     }
 }
 
+#[async_trait]
+impl<F> ConsoleInterposer for ConsoleClosureAdapter<F, OnExecStdin>
+where
+    F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync,
+{
+    async fn on_exec_stdin(
+        &self,
+        pid: u32,
+        exec_id: u64,
+        chunk: &[u8],
+    ) -> Result<Vec<u8>, PluginError> {
+        (self.handler)(pid, exec_id, chunk)
+    }
+}
+
 impl<F> HostInterposer for HostClosureAdapter<F, OnHostLsmExec>
 where
     F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync,
@@ -316,6 +455,20 @@ where
 {
     fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         (self.handler)(key)
+    }
+}
+
+impl<F> HostInterposer for HostClosureAdapter<F, OnHostContainmentBreach>
+where
+    F: Fn(u32, &Path, &str) -> Result<(), PluginError> + Send + Sync,
+{
+    fn on_host_containment_breach(
+        &self,
+        pid: u32,
+        path: &Path,
+        kind: &str,
+    ) -> Result<(), PluginError> {
+        (self.handler)(pid, path, kind)
     }
 }
 

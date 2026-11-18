@@ -16,7 +16,9 @@ use kelir_interface::plugin_model::{
     PluginClone, PluginDeps, PluginError,
 };
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::storage::DirEntry;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+use kelir_interface::wire::DnsVerdict;
 use plugin_step_eval::PostExecAction;
 
 use crate::builder_scopes::{
@@ -29,12 +31,13 @@ use crate::trap_filter::{TrapFilter, filter_matches};
 
 use crate::builder_adapters::{
     AsyncTrapClosureAdapter, ConsoleClosureAdapter, FsClosureAdapter, HostClosureAdapter,
-    LifecycleClosureAdapter, NetClosureAdapter, OnConsoleInput, OnConsoleOutput, OnExecStderr,
-    OnExecStdout, OnFsLock, OnFsLookup, OnFsRead, OnFsRename, OnFsUnlink, OnFsWrite, OnHeartbeat,
-    OnHostKeyringAccess, OnHostLsmExec, OnHostPreempt, OnHostPressure, OnMemoryPressure,
-    OnNetInbound, OnNetOutbound, OnPostCommit, OnPreCommit, OnProcessExit, OnTrap, OnVmInit,
-    OnVmReady, OnVmShutdown, OnWatchdog, PostExecGateAdapter, TelemetryClosureAdapter,
-    TrapClosureAdapter,
+    LifecycleClosureAdapter, NetClosureAdapter, OnConsoleInput, OnConsoleOutput, OnDnsQuery,
+    OnExecStderr, OnExecStdin, OnExecStdout, OnFork, OnFsLock, OnFsLookup, OnFsMkdir, OnFsRead,
+    OnFsReaddir, OnFsReadlink, OnFsRename, OnFsSetattr, OnFsSymlink, OnFsUnlink, OnFsWrite,
+    OnHeartbeat, OnHostContainmentBreach, OnHostKeyringAccess, OnHostLsmExec, OnHostPreempt,
+    OnHostPressure, OnMemoryPressure, OnNetInbound, OnNetOutbound, OnPostCommit, OnPreCommit,
+    OnProcessExit, OnSignal, OnSocketBind, OnSocketConnect, OnTrap, OnVmInit, OnVmReady,
+    OnVmShutdown, OnWatchdog, PostExecGateAdapter, TelemetryClosureAdapter, TrapClosureAdapter,
 };
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -230,6 +233,32 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub(crate) fn on_signal<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u32, i32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnSignal> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fork<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .trap
+            .push(Arc::new(TrapClosureAdapter::<_, OnFork> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
     pub(crate) fn on_fs_lookup<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
@@ -311,6 +340,77 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub(crate) fn on_fs_setattr<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, u32, u32, u32, u64, &HandlerCtx) -> Result<Verdict, PluginError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsSetattr> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_symlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsSymlink> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_mkdir<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsMkdir> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_readdir<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &mut Vec<DirEntry>) -> Result<FilterAction, PluginError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsReaddir> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_fs_readlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .fs
+            .push(Arc::new(FsClosureAdapter::<_, OnFsReadlink> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
     pub(crate) fn on_net_outbound<F>(mut self, f: F) -> Self
     where
         F: Fn(&mut [u8]) -> Result<FilterAction, PluginError> + Send + Sync + 'static,
@@ -331,6 +431,45 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.registry
             .net
             .push(Arc::new(NetClosureAdapter::<_, OnNetInbound> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_socket_connect<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .net
+            .push(Arc::new(NetClosureAdapter::<_, OnSocketConnect> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_dns_query<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, &str, u16) -> Result<DnsVerdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .net
+            .push(Arc::new(NetClosureAdapter::<_, OnDnsQuery> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_socket_bind<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .net
+            .push(Arc::new(NetClosureAdapter::<_, OnSocketBind> {
                 handler: f,
                 verb: PhantomData,
             }));
@@ -389,6 +528,19 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
+    pub(crate) fn on_exec_stdin<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .console
+            .push(Arc::new(ConsoleClosureAdapter::<_, OnExecStdin> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
     pub(crate) fn on_host_lsm_exec<F>(mut self, f: F) -> Self
     where
         F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
@@ -422,6 +574,19 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.registry
             .host
             .push(Arc::new(HostClosureAdapter::<_, OnHostKeyringAccess> {
+                handler: f,
+                verb: PhantomData,
+            }));
+        self
+    }
+
+    pub(crate) fn on_host_containment_breach<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, &Path, &str) -> Result<(), PluginError> + Send + Sync + 'static,
+    {
+        self.registry
+            .host
+            .push(Arc::new(HostClosureAdapter::<_, OnHostContainmentBreach> {
                 handler: f,
                 verb: PhantomData,
             }));

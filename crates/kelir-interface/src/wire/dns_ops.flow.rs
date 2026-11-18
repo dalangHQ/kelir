@@ -1,5 +1,7 @@
 // see: cans/07-wire-plane.md#Wire-architecture
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+use serde::{Deserialize, Serialize};
+
 use crate::plugin_model::PluginError;
 use crate::wire::net::WireWiring;
 
@@ -17,6 +19,13 @@ pub enum DnsRcode {
     NoError,
     NxDomain,
     ServFail,
+}
+
+// see: cans/artifacts/code/messages.rs#DnsVerdict
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DnsVerdict {
+    Forward,
+    Sinkhole { rcode: u8 },
 }
 
 #[derive(Debug, Clone)]

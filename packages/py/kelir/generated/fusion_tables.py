@@ -26,6 +26,20 @@ class RingEvent(str, Enum):
     CUSTOM_ACTION = "custom-action"
     VSOCK_SERVICE = "vsock-service"
     FS_LOCK = "fs-lock"
+    FS_UNLINK = "fs-unlink"
+    FS_RENAME = "fs-rename"
+    FS_SETATTR = "fs-setattr"
+    FS_SYMLINK = "fs-symlink"
+    FS_MKDIR = "fs-mkdir"
+    FS_READDIR = "fs-readdir"
+    FS_READLINK = "fs-readlink"
+    SOCKET_CONNECT = "socket-connect"
+    DNS_QUERY = "dns-query"
+    SOCKET_BIND = "socket-bind"
+    EXEC_STDIN = "exec-stdin"
+    HOST_CONTAINMENT_BREACH = "host-containment-breach"
+    SIGNAL = "signal"
+    FORK = "fork"
     HOST_LSM_EXEC = "host-lsm-exec"
     HOST_PRESSURE = "host-pressure"
     HOST_KEYRING_ACCESS = "host-keyring-access"
@@ -74,6 +88,20 @@ HOOK_RINGS: dict[str, tuple[RingEvent, LifecycleTag | None]] = {
     "on_vm_shutdown": (RingEvent.LIFECYCLE, "vm-shutdown"),
     "on_watchdog": (RingEvent.WATCHDOG, None),
     "on_fs_lock": (RingEvent.FS_LOCK, None),
+    "on_fs_unlink": (RingEvent.FS_UNLINK, None),
+    "on_fs_rename": (RingEvent.FS_RENAME, None),
+    "on_fs_setattr": (RingEvent.FS_SETATTR, None),
+    "on_fs_symlink": (RingEvent.FS_SYMLINK, None),
+    "on_fs_mkdir": (RingEvent.FS_MKDIR, None),
+    "on_fs_readdir": (RingEvent.FS_READDIR, None),
+    "on_fs_readlink": (RingEvent.FS_READLINK, None),
+    "on_socket_connect": (RingEvent.SOCKET_CONNECT, None),
+    "on_dns_query": (RingEvent.DNS_QUERY, None),
+    "on_socket_bind": (RingEvent.SOCKET_BIND, None),
+    "on_exec_stdin": (RingEvent.EXEC_STDIN, None),
+    "on_host_containment_breach": (RingEvent.HOST_CONTAINMENT_BREACH, None),
+    "on_signal": (RingEvent.SIGNAL, None),
+    "on_fork": (RingEvent.FORK, None),
     "on_net_inbound": (RingEvent.NET_INBOUND, None),
     "on_host_lsm_exec": (RingEvent.HOST_LSM_EXEC, None),
     "on_host_pressure": (RingEvent.HOST_PRESSURE, None),

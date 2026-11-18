@@ -11,3 +11,5 @@ pub use kelir_interface::plugin_model::{
     VirtioDevice, VirtioRing,
 };
 pub use kelir_interface::protocol_wire::{Errno, FilterAction, ProcessExit, TrapEvent, Verdict};
+pub use kelir_interface::storage::DirEntry;
+pub use kelir_interface::wire::DnsVerdict;

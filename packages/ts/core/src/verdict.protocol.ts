@@ -84,6 +84,21 @@ export const FilterAction: {
   },
 };
 
+// see: cans/artifacts/code/messages.rs#DnsVerdict
+export type DnsVerdict =
+  | { readonly kind: "forward" }
+  | { readonly kind: "sinkhole"; readonly rcode: number };
+
+export const DnsVerdict: {
+  readonly Forward: DnsVerdict;
+  Sinkhole(rcode: number): DnsVerdict;
+} = {
+  Forward: { kind: "forward" },
+  Sinkhole(rcode: number): DnsVerdict {
+    return { kind: "sinkhole", rcode };
+  },
+};
+
 // see: cans/11-protocol.md#Wire-messages
 export type SuspendUntil =
   | { readonly kind: "deadline"; readonly deadlineMs: number }

@@ -23,7 +23,7 @@ import asyncio
 import platform
 
 import kelir
-from kelir import FilterAction, KelirBuilder, TrapFilter, Verdict
+from kelir import DnsVerdict, FilterAction, KelirBuilder, TrapFilter, Verdict
 from kelir.plugin_model import WatchdogVerdict
 from kelir.sdk_errors import EConfig
 
@@ -60,8 +60,8 @@ def build_surface_plugin() -> KelirBuilder:
             lambda scope: scope.on_trap(lambda event, ctx: Verdict.pass_()).on_process_exit(
                 lambda event: None
             )
-            .on_signal(lambda s: Verdict.Pass)
-            .on_fork(lambda f: Verdict.Pass)
+            .on_signal(lambda _sender, _target, _sig: Verdict.pass_())
+            .on_fork(lambda _parent, _child: Verdict.pass_())
         )
         .fs(
             lambda scope: scope.on_fs_lookup(lambda path: Verdict.pass_())
@@ -70,18 +70,18 @@ def build_surface_plugin() -> KelirBuilder:
             .on_fs_lock(lambda path, cmd, typ, pid: Verdict.pass_())
             .on_fs_unlink(lambda _p, _c: Verdict.pass_())
             .on_fs_rename(lambda _src, _dst, _c: Verdict.pass_())
-            .on_fs_setattr(lambda a: Verdict.Pass)
-            .on_fs_symlink(lambda s: Verdict.Pass)
-            .on_fs_mkdir(lambda m: Verdict.Pass)
-            .on_fs_readdir(lambda r: FilterAction.Forward)
-            .on_fs_readlink(lambda l: Verdict.Pass)
+            .on_fs_setattr(lambda _path, _mode, _size: Verdict.pass_())
+            .on_fs_symlink(lambda _target, _link: Verdict.pass_())
+            .on_fs_mkdir(lambda _path, _mode: Verdict.pass_())
+            .on_fs_readdir(lambda _path, _entries: FilterAction.forward())
+            .on_fs_readlink(lambda _path: Verdict.pass_())
         )
         .net(
             lambda scope: scope.on_net_outbound(lambda frame: FilterAction.forward())
             .on_net_inbound(lambda frame: FilterAction.forward())
-            .on_socket_connect(lambda c: Verdict.Pass)
-            .on_dns_query(lambda q: DnsVerdict.Forward)
-            .on_socket_bind(lambda b: Verdict.Pass)
+            .on_socket_connect(lambda _pid, _proto, _ip, _port: Verdict.pass_())
+            .on_dns_query(lambda _pid, _domain, _qtype: DnsVerdict.Forward)
+            .on_socket_bind(lambda _pid, _proto, _ip, _port: Verdict.pass_())
         )
         .console(
             lambda scope: scope.on_console_input(lambda port, data: data)
@@ -90,14 +90,14 @@ def build_surface_plugin() -> KelirBuilder:
         .exec(
             lambda scope: scope.on_exec_stdout(lambda pid, exec_id, chunk: chunk)
             .on_exec_stderr(lambda pid, exec_id, chunk: chunk)
-            .on_exec_stdin(lambda chunk: chunk)
+            .on_exec_stdin(lambda _pid, _exec_id, chunk: chunk)
         )
         .host(
             lambda scope: scope.on_host_lsm_exec(lambda path, pid: Verdict.pass_())
             .on_host_pressure(lambda level: Verdict.pass_())
             .on_host_keyring_access(lambda key: Verdict.pass_())
             .on_host_preempt(lambda ctx: None)
-            .on_host_containment_breach(lambda b: None)
+            .on_host_containment_breach(lambda _pid, _path, _kind: None)
         )
         .lifecycle(
             lambda scope: scope.on_vm_init(lambda ctx: None)

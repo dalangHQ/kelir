@@ -18,9 +18,11 @@ import type { KelirBuilder } from "./builder.lifecycle.js";
 import { unknownSchema, validateSchema } from "./schema.config.js";
 import type {
   FilterAction,
+  DnsVerdict,
   Verdict,
 } from "./verdict.protocol.js";
 import type {
+  DirEntry,
   HeartbeatEvent,
   ProcessExitEvent,
   TrapDenyEvent,
@@ -66,6 +68,19 @@ export interface TrapScope<Ctx, Owner = unknown> {
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
   ): TrapScope<Ctx, Owner>;
+  onSignal(
+    handler: (
+      sender: number,
+      target: number,
+      sig: number,
+    ) => Promise<Verdict> | Verdict,
+  ): TrapScope<Ctx, Owner>;
+  onFork(
+    handler: (
+      parent: number,
+      child: number,
+    ) => Promise<Verdict> | Verdict,
+  ): TrapScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -108,6 +123,21 @@ export interface FsScope<Ctx, Owner = unknown> {
   onFsRename(
     handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict,
   ): FsScope<Ctx, Owner>;
+  onFsSetattr(
+    handler: (path: string, mode: number, size: number) => Verdict,
+  ): FsScope<Ctx, Owner>;
+  onFsSymlink(
+    handler: (target: string, link: string) => Verdict,
+  ): FsScope<Ctx, Owner>;
+  onFsMkdir(
+    handler: (path: string, mode: number) => Verdict,
+  ): FsScope<Ctx, Owner>;
+  onFsReaddir(
+    handler: (path: string, entries: DirEntry[]) => FilterAction,
+  ): FsScope<Ctx, Owner>;
+  onFsReadlink(
+    handler: (path: string) => Verdict,
+  ): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
   config(cfg: FsScopeConfig): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
@@ -127,6 +157,25 @@ export interface FsScope<Ctx, Owner = unknown> {
 export interface NetScope<Ctx, Owner = unknown> {
   onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx, Owner>;
   onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Ctx, Owner>;
+  onSocketConnect(
+    handler: (
+      pid: number,
+      proto: number,
+      ip: readonly [number, number, number, number],
+      port: number,
+    ) => Verdict,
+  ): NetScope<Ctx, Owner>;
+  onDnsQuery(
+    handler: (pid: number, domain: string, qtype: number) => DnsVerdict,
+  ): NetScope<Ctx, Owner>;
+  onSocketBind(
+    handler: (
+      pid: number,
+      proto: number,
+      ip: readonly [number, number, number, number],
+      port: number,
+    ) => Verdict,
+  ): NetScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -163,6 +212,13 @@ export interface ExecScope<Ctx, Owner = unknown> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): ExecScope<Ctx, Owner>;
+  onExecStdin(
+    handler: (
+      pid: number,
+      execId: number,
+      chunk: Uint8Array,
+    ) => Promise<Uint8Array> | Uint8Array,
+  ): ExecScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -173,6 +229,13 @@ export interface HostScope<Ctx, Owner = unknown> {
   onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Ctx, Owner>;
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
+  ): HostScope<Ctx, Owner>;
+  onHostContainmentBreach(
+    handler: (
+      pid: number,
+      path: string,
+      kind: string,
+    ) => Promise<void> | void,
   ): HostScope<Ctx, Owner>;
   end(): Owner;
 }
@@ -272,6 +335,18 @@ const KNOWN_RINGS: ReadonlySet<string> = new Set<string>([
   "fs-lock",
   "fs-unlink",
   "fs-rename",
+  "fs-setattr",
+  "fs-symlink",
+  "fs-mkdir",
+  "fs-readdir",
+  "fs-readlink",
+  "signal",
+  "fork",
+  "socket-connect",
+  "dns-query",
+  "socket-bind",
+  "exec-stdin",
+  "host-containment-breach",
   "host-lsm-exec",
   "host-pressure",
   "host-keyring-access",
@@ -432,6 +507,14 @@ export class HookRegistry<Ctx = unknown> {
         registry.onProcessExit(handler);
         return scope;
       },
+      onSignal(handler) {
+        registry.onSignal(handler);
+        return scope;
+      },
+      onFork(handler) {
+        registry.onFork(handler);
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -470,6 +553,26 @@ export class HookRegistry<Ctx = unknown> {
       },
       onFsRename(handler) {
         registry.onFsRename(handler);
+        return scope;
+      },
+      onFsSetattr(handler) {
+        registry.onFsSetattr(handler);
+        return scope;
+      },
+      onFsSymlink(handler) {
+        registry.onFsSymlink(handler);
+        return scope;
+      },
+      onFsMkdir(handler) {
+        registry.onFsMkdir(handler);
+        return scope;
+      },
+      onFsReaddir(handler) {
+        registry.onFsReaddir(handler);
+        return scope;
+      },
+      onFsReadlink(handler) {
+        registry.onFsReadlink(handler);
         return scope;
       },
       config(cfg) {
@@ -524,6 +627,18 @@ export class HookRegistry<Ctx = unknown> {
         registry.onNetInbound(handler);
         return scope;
       },
+      onSocketConnect(handler) {
+        registry.onSocketConnect(handler);
+        return scope;
+      },
+      onDnsQuery(handler) {
+        registry.onDnsQuery(handler);
+        return scope;
+      },
+      onSocketBind(handler) {
+        registry.onSocketBind(handler);
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -570,6 +685,10 @@ export class HookRegistry<Ctx = unknown> {
         registry.onExecStderr(handler);
         return scope;
       },
+      onExecStdin(handler) {
+        registry.onExecStdin(handler);
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -599,6 +718,10 @@ export class HookRegistry<Ctx = unknown> {
       },
       onHostPreempt(handler) {
         registry.onHostPreempt(handler);
+        return scope;
+      },
+      onHostContainmentBreach(handler) {
+        registry.onHostContainmentBreach(handler);
         return scope;
       },
       end() {
@@ -690,6 +813,74 @@ export class HookRegistry<Ctx = unknown> {
       ring: RingEvent.NetInbound,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as Uint8Array),
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onSocketConnect(
+    handler: (
+      pid: number,
+      proto: number,
+      ip: readonly [number, number, number, number],
+      port: number,
+    ) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the socket-connect ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "socket-connect" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(
+          args[0] as number,
+          args[1] as number,
+          args[2] as readonly [number, number, number, number],
+          args[3] as number,
+        );
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onDnsQuery(
+    handler: (pid: number, domain: string, qtype: number) => DnsVerdict,
+  ): this {
+    // TODO (L3): live dispatch of the dns-query ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "dns-query" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as number, args[1] as string, args[2] as number);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onSocketBind(
+    handler: (
+      pid: number,
+      proto: number,
+      ip: readonly [number, number, number, number],
+      port: number,
+    ) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the socket-bind ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "socket-bind" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(
+          args[0] as number,
+          args[1] as number,
+          args[2] as readonly [number, number, number, number],
+          args[3] as number,
+        );
+      },
     });
     return this;
   }
@@ -801,6 +992,83 @@ export class HookRegistry<Ctx = unknown> {
     return this;
   }
 
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsSetattr(
+    handler: (path: string, mode: number, size: number) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the fs-setattr ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fs-setattr" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as string, args[1] as number, args[2] as number);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsSymlink(
+    handler: (target: string, link: string) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the fs-symlink ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fs-symlink" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as string, args[1] as string);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsMkdir(
+    handler: (path: string, mode: number) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the fs-mkdir ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fs-mkdir" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as string, args[1] as number);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsReaddir(
+    handler: (path: string, entries: DirEntry[]) => FilterAction,
+  ): this {
+    // TODO (L3): live dispatch of the fs-readdir ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fs-readdir" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as string, args[1] as DirEntry[]);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFsReadlink(
+    handler: (path: string) => Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the fs-readlink ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fs-readlink" as RingEvent,
+      stage: "single",
+      run: (event) => handler(unpack(event)[0] as string),
+    });
+    return this;
+  }
+
   onConsoleInput(
     handler: (
       port: number,
@@ -881,6 +1149,30 @@ export class HookRegistry<Ctx = unknown> {
     return this;
   }
 
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onExecStdin(
+    handler: (
+      pid: number,
+      execId: number,
+      chunk: Uint8Array,
+    ) => Promise<Uint8Array> | Uint8Array,
+  ): this {
+    // TODO (L3): live dispatch of the exec-stdin ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "exec-stdin" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(
+          args[0] as number,
+          args[1] as number,
+          args[2] as Uint8Array,
+        );
+      },
+    });
+    return this;
+  }
+
   onHeartbeat(
     handler: (event: HeartbeatEvent) => Promise<void> | void,
   ): this {
@@ -899,6 +1191,45 @@ export class HookRegistry<Ctx = unknown> {
       ring: RingEvent.ProcessExit,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as ProcessExitEvent),
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onSignal(
+    handler: (
+      sender: number,
+      target: number,
+      sig: number,
+    ) => Promise<Verdict> | Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the signal ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "signal" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as number, args[1] as number, args[2] as number);
+      },
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onFork(
+    handler: (
+      parent: number,
+      child: number,
+    ) => Promise<Verdict> | Verdict,
+  ): this {
+    // TODO (L3): live dispatch of the fork ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "fork" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as number, args[1] as number);
+      },
     });
     return this;
   }
@@ -1051,6 +1382,26 @@ export class HookRegistry<Ctx = unknown> {
       ring: "host-preempt" as RingEvent,
       stage: "single",
       run: (event) => handler(unpack(event)[0] as LifecycleContext),
+    });
+    return this;
+  }
+
+  // see: cans/02-plugin-model.md#Segregated-ring-traits
+  onHostContainmentBreach(
+    handler: (
+      pid: number,
+      path: string,
+      kind: string,
+    ) => Promise<void> | void,
+  ): this {
+    // TODO (L3): live dispatch of the host-containment-breach ring; the descriptor records the handler until the native bridge carries it.
+    this.addHook({
+      ring: "host-containment-breach" as RingEvent,
+      stage: "single",
+      run: (event) => {
+        const args = unpack(event);
+        return handler(args[0] as number, args[1] as string, args[2] as string);
+      },
     });
     return this;
   }

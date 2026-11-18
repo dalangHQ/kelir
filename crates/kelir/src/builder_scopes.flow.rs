@@ -11,7 +11,9 @@ use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, PluginError, Veto, VetoEvent,
 };
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::storage::DirEntry;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
+use kelir_interface::wire::DnsVerdict;
 
 use crate::builder_sdk::{Host, KelirBuilder, Plugin, Unsealed};
 use crate::hlist_sdk::HList;
@@ -38,6 +40,20 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         F: Fn(&ProcessExit, &HandlerCtx) -> Result<(), PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_process_exit(f);
+        self
+    }
+    pub fn on_signal<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u32, i32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_signal(f);
+        self
+    }
+    pub fn on_fork<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fork(f);
         self
     }
 
@@ -128,6 +144,47 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         F: Fn(&Path, &Path, &HandlerCtx) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_fs_rename(f);
+        self
+    }
+    pub fn on_fs_setattr<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, u32, u32, u32, u64, &HandlerCtx) -> Result<Verdict, PluginError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.builder = self.builder.on_fs_setattr(f);
+        self
+    }
+    pub fn on_fs_symlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_symlink(f);
+        self
+    }
+    pub fn on_fs_mkdir<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, u32) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_mkdir(f);
+        self
+    }
+    pub fn on_fs_readdir<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path, &mut Vec<DirEntry>) -> Result<FilterAction, PluginError>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.builder = self.builder.on_fs_readdir(f);
+        self
+    }
+    pub fn on_fs_readlink<F>(mut self, f: F) -> Self
+    where
+        F: Fn(&Path) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_fs_readlink(f);
         self
     }
 
@@ -261,6 +318,27 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.builder = self.builder.on_net_inbound(f);
         self
     }
+    pub fn on_socket_connect<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_socket_connect(f);
+        self
+    }
+    pub fn on_dns_query<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, &str, u16) -> Result<DnsVerdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_dns_query(f);
+        self
+    }
+    pub fn on_socket_bind<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u8, [u8; 4], u16) -> Result<Verdict, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_socket_bind(f);
+        self
+    }
 
     pub fn requires<P>(mut self) -> Self
     where
@@ -355,6 +433,13 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self.builder = self.builder.on_exec_stderr(f);
         self
     }
+    pub fn on_exec_stdin<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, u64, &[u8]) -> Result<Vec<u8>, PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_exec_stdin(f);
+        self
+    }
 
     pub fn requires<P>(mut self) -> Self
     where
@@ -408,6 +493,13 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         F: Fn(&str) -> Result<Verdict, PluginError> + Send + Sync + 'static,
     {
         self.builder = self.builder.on_host_keyring_access(f);
+        self
+    }
+    pub fn on_host_containment_breach<F>(mut self, f: F) -> Self
+    where
+        F: Fn(u32, &Path, &str) -> Result<(), PluginError> + Send + Sync + 'static,
+    {
+        self.builder = self.builder.on_host_containment_breach(f);
         self
     }
 

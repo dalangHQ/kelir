@@ -36,7 +36,7 @@ use kelir::{
         wire_plane::{SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     },
     plugin_model::{
-        AnyPlugin, FilterAction, MountScope, PluginError, Verdict, WatchdogVerdict,
+        AnyPlugin, DnsVerdict, FilterAction, MountScope, PluginError, Verdict, WatchdogVerdict,
     },
 };
 

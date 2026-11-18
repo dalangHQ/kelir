@@ -41,16 +41,17 @@ class VsockServiceEntry:
 
 # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
 _SCOPE_VERBS: dict[str, tuple[str, ...]] = {
-    "trap": ("on_trap", "on_process_exit", "on_trap_deny"),
-    "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock", "on_fs_unlink", "on_fs_rename"),
-    "net": ("on_net_outbound", "on_net_inbound"),
+    "trap": ("on_trap", "on_process_exit", "on_trap_deny", "on_signal", "on_fork"),
+    "fs": ("on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock", "on_fs_unlink", "on_fs_rename", "on_fs_setattr", "on_fs_symlink", "on_fs_mkdir", "on_fs_readdir", "on_fs_readlink"),
+    "net": ("on_net_outbound", "on_net_inbound", "on_socket_connect", "on_dns_query", "on_socket_bind"),
     "console": ("on_console_input", "on_console_output"),
-    "exec": ("on_exec_stdout", "on_exec_stderr"),
+    "exec": ("on_exec_stdout", "on_exec_stderr", "on_exec_stdin"),
     "host": (
         "on_host_lsm_exec",
         "on_host_pressure",
         "on_host_keyring_access",
         "on_host_preempt",
+        "on_host_containment_breach",
     ),
     "lifecycle": (
         "on_vm_init",
@@ -219,6 +220,7 @@ class KelirBuilder:
         self._name: str | None = None
         self._requires: list[str] = []
         self._scope: Any = None
+        self._fs_scope: dict[str, Any] = {}
         self._context_fn: Handler | None = None
         self._fork_fn: Callable[[KelirBuilder], KelirBuilder] | None = None
         self._handlers: list[tuple[str, Handler, int]] = []
@@ -435,6 +437,12 @@ class KelirBuilder:
     def on_process_exit(self, handler: Handler) -> Self:
         return self._on("on_process_exit", handler)
 
+    def on_signal(self, handler: Handler) -> Self:
+        return self._on("on_signal", handler)
+
+    def on_fork(self, handler: Handler) -> Self:
+        return self._on("on_fork", handler)
+
     def on_fs_lookup(self, handler: Handler) -> Self:
         return self._on("on_fs_lookup", handler)
 
@@ -453,11 +461,35 @@ class KelirBuilder:
     def on_fs_rename(self, handler: Handler) -> Self:
         return self._on("on_fs_rename", handler)
 
+    def on_fs_setattr(self, handler: Handler) -> Self:
+        return self._on("on_fs_setattr", handler)
+
+    def on_fs_symlink(self, handler: Handler) -> Self:
+        return self._on("on_fs_symlink", handler)
+
+    def on_fs_mkdir(self, handler: Handler) -> Self:
+        return self._on("on_fs_mkdir", handler)
+
+    def on_fs_readdir(self, handler: Handler) -> Self:
+        return self._on("on_fs_readdir", handler)
+
+    def on_fs_readlink(self, handler: Handler) -> Self:
+        return self._on("on_fs_readlink", handler)
+
     def on_net_outbound(self, handler: Handler) -> Self:
         return self._on("on_net_outbound", handler)
 
     def on_net_inbound(self, handler: Handler) -> Self:
         return self._on("on_net_inbound", handler)
+
+    def on_socket_connect(self, handler: Handler) -> Self:
+        return self._on("on_socket_connect", handler)
+
+    def on_dns_query(self, handler: Handler) -> Self:
+        return self._on("on_dns_query", handler)
+
+    def on_socket_bind(self, handler: Handler) -> Self:
+        return self._on("on_socket_bind", handler)
 
     def on_console_input(self, handler: Handler) -> Self:
         return self._on("on_console_input", handler)
@@ -471,6 +503,9 @@ class KelirBuilder:
     def on_exec_stderr(self, handler: Handler) -> Self:
         return self._on("on_exec_stderr", handler)
 
+    def on_exec_stdin(self, handler: Handler) -> Self:
+        return self._on("on_exec_stdin", handler)
+
     def on_host_lsm_exec(self, handler: Handler) -> Self:
         return self._on("on_host_lsm_exec", handler)
 
@@ -479,6 +514,9 @@ class KelirBuilder:
 
     def on_host_keyring_access(self, handler: Handler) -> Self:
         return self._on("on_host_keyring_access", handler)
+
+    def on_host_containment_breach(self, handler: Handler) -> Self:
+        return self._on("on_host_containment_breach", handler)
 
     def on_vm_init(self, handler: Handler) -> Self:
         return self._on("on_vm_init", handler)

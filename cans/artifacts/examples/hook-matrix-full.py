@@ -90,7 +90,7 @@ class HookMatrixFullPlugin(BasePlugin):
         self._state.traps += 1
         if getattr(event, "tree_depth", 0) > 16:
             return Verdict.abort(reason="fork bomb mitigation: max depth exceeded")
-        return Verdict.Pass
+        return Verdict.pass_()
 
     # see: cans/07-wire-plane.md#Wire-plane
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
@@ -102,11 +102,11 @@ class HookMatrixFullPlugin(BasePlugin):
         self._state.net_inbound += 1
         return FilterAction.forward()
 
-    def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict: return Verdict.Pass
-    def on_fs_symlink(self, target: Path, link: Path) -> Verdict: return Verdict.Pass
-    def on_fs_mkdir(self, path: Path, mode: int) -> Verdict: return Verdict.Pass
-    def on_fs_readdir(self, path: Path, entries: list) -> FilterAction: return FilterAction.Forward
-    def on_fs_readlink(self, path: Path) -> Verdict: return Verdict.Pass
+    def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict: return Verdict.pass_()
+    def on_fs_symlink(self, target: Path, link: Path) -> Verdict: return Verdict.pass_()
+    def on_fs_mkdir(self, path: Path, mode: int) -> Verdict: return Verdict.pass_()
+    def on_fs_readdir(self, path: Path, entries: list) -> FilterAction: return FilterAction.forward()
+    def on_fs_readlink(self, path: Path) -> Verdict: return Verdict.pass_()
 
     # see: cans/05-storage-plane.md#Storage-plane
     # see: cans/02-plugin-model.md#Unified-verdict
@@ -118,7 +118,7 @@ class HookMatrixFullPlugin(BasePlugin):
                 "lookup escapes the /workspace root",
             )
         if str(path) != IDENTITY_PATH:
-            return Verdict.Pass
+            return Verdict.pass_()
         return Verdict.patch(FsInodeAttr(
             mode=0o400,
             uid=0,
@@ -145,7 +145,7 @@ class HookMatrixFullPlugin(BasePlugin):
         self, path: Path, flock_cmd: int, flock_type: int, pid: int,
     ) -> Verdict:
         self._state.fs_locks += 1
-        return Verdict.Pass
+        return Verdict.pass_()
 
     def on_fs_unlink(self, path: Path, ctx: Any) -> Verdict:
         self._state.fs_unlinks += 1
@@ -166,13 +166,13 @@ class HookMatrixFullPlugin(BasePlugin):
         return Verdict.pass_()
 
     def on_host_lsm_exec(self, path: Path, pid: int) -> Verdict:
-        return Verdict.Pass
+        return Verdict.pass_()
 
     def on_host_pressure(self, level: int) -> Verdict:
-        return Verdict.Pass
+        return Verdict.pass_()
 
     def on_host_keyring_access(self, key: str) -> Verdict:
-        return Verdict.Pass
+        return Verdict.pass_()
 
     async def on_host_preempt(self, ctx: LifecycleCtx | None) -> None:
         self._state.host_preempts += 1
@@ -242,8 +242,8 @@ class HookMatrixFullPlugin(BasePlugin):
         if event.exit_code != 0:
             self._state.failures += 1
 
-    async def on_signal(self, sender: int, target: int, sig: int) -> Verdict: return Verdict.Pass
-    async def on_fork(self, parent: int, child: int) -> Verdict: return Verdict.Pass
+    async def on_signal(self, sender: int, target: int, sig: int) -> Verdict: return Verdict.pass_()
+    async def on_fork(self, parent: int, child: int) -> Verdict: return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#TrapFilter-predicates
     # The predicate chain: cwd/env/uid/argv_regex constraints live in the

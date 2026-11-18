@@ -889,6 +889,7 @@ from kelir.kelir_builder import (
     builder as builder,
     kelir as kelir,
 )
+from kelir.plugin_model import DirEntry as DirEntry, DnsVerdict as DnsVerdict
 
 
 __all__ = [
@@ -904,6 +905,8 @@ __all__ = [
     "DbCap",
     "DbProxyHandle",
     "Deadline",
+    "DirEntry",
+    "DnsVerdict",
     "Errno",
     "ExecStream",
     "ExecveMutation",

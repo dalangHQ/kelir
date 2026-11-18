@@ -691,6 +691,17 @@ pub trait TrapInterposer: Send + Sync {
         let _ = (event, ctx);
         Ok(())
     }
+    async fn on_signal(
+        &self,
+        _sender: u32,
+        _target: u32,
+        _sig: i32,
+    ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    async fn on_fork(&self, _parent: u32, _child: u32) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
 }
 
 #[async_trait]
@@ -720,6 +731,14 @@ pub trait ConsoleInterposer: Send + Sync {
     ) -> Result<Vec<u8>, PluginError> {
         let _ = (pid, exec_id);
         Ok(chunk.to_vec())
+    }
+    async fn on_exec_stdin(
+        &self,
+        _pid: u32,
+        _exec_id: u64,
+        _chunk: &[u8],
+    ) -> Result<Vec<u8>, PluginError> {
+        Ok(_chunk.to_vec())
     }
 }
 
@@ -787,6 +806,25 @@ pub trait FsInterposer: Send + Sync {
         let _ = (src, dst, ctx);
         Ok(Verdict::Pass)
     }
+    fn on_fs_setattr(&self, _path: &Path, _mode: u32, _size: u64) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_fs_readdir(
+        &self,
+        _path: &Path,
+        _entries: &mut Vec<crate::storage::DirEntry>,
+    ) -> Result<FilterAction, PluginError> {
+        Ok(FilterAction::Forward)
+    }
+    fn on_fs_readlink(&self, _path: &Path) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#NetInterposer
@@ -799,6 +837,32 @@ pub trait NetInterposer: Send + Sync {
     fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         let _ = frame;
         Ok(FilterAction::Forward)
+    }
+    fn on_socket_connect(
+        &self,
+        _pid: u32,
+        _proto: u8,
+        _ip: [u8; 4],
+        _port: u16,
+    ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
+    }
+    fn on_dns_query(
+        &self,
+        _pid: u32,
+        _domain: &str,
+        _qtype: u16,
+    ) -> Result<crate::wire::DnsVerdict, PluginError> {
+        Ok(crate::wire::DnsVerdict::Forward)
+    }
+    fn on_socket_bind(
+        &self,
+        _pid: u32,
+        _proto: u8,
+        _ip: [u8; 4],
+        _port: u16,
+    ) -> Result<Verdict, PluginError> {
+        Ok(Verdict::Pass)
     }
 }
 
@@ -816,6 +880,14 @@ pub trait HostInterposer: Send + Sync {
     fn on_host_keyring_access(&self, key: &str) -> Result<Verdict, PluginError> {
         let _ = key;
         Ok(Verdict::Pass)
+    }
+    fn on_host_containment_breach(
+        &self,
+        _pid: u32,
+        _path: &Path,
+        _kind: &str,
+    ) -> Result<(), PluginError> {
+        Ok(())
     }
 }
 

@@ -19,6 +19,7 @@
 
 import {
   createPlugin,
+  DnsVerdict,
   EConfig,
   FilterAction,
   kelir,
@@ -85,7 +86,7 @@ export function buildSurfacePlugin(): KelirBuilder<
       e
         .onExecStdout((_pid, _execId, chunk) => chunk)
         .onExecStderr((_pid, _execId, chunk) => chunk)
-        .onExecStdin((_chunk) => _chunk),
+        .onExecStdin((_pid, _execId, chunk) => chunk),
     )
     .host((h) =>
       h

@@ -27,10 +27,12 @@ import type {
 } from "./hook.registry.js";
 import type {
   LifecycleEvent,
+  DnsVerdict,
   Verdict,
   FilterAction,
 } from "./verdict.protocol.js";
 import type {
+  DirEntry,
   TrapDenyEvent,
   TrapInfo,
   WatchdogEvent,
@@ -606,6 +608,18 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.checkVerb(".onNetInbound"); this.registry.onNetInbound(handler); return this;
   }
 
+  onSocketConnect(handler: (pid: number, proto: number, ip: readonly [number, number, number, number], port: number) => Verdict): this {
+    this.checkVerb(".onSocketConnect"); this.registry.onSocketConnect(handler); return this;
+  }
+
+  onDnsQuery(handler: (pid: number, domain: string, qtype: number) => DnsVerdict): this {
+    this.checkVerb(".onDnsQuery"); this.registry.onDnsQuery(handler); return this;
+  }
+
+  onSocketBind(handler: (pid: number, proto: number, ip: readonly [number, number, number, number], port: number) => Verdict): this {
+    this.checkVerb(".onSocketBind"); this.registry.onSocketBind(handler); return this;
+  }
+
   onFsLookup(handler: (path: string) => Verdict): this {
     this.checkVerb(".onFsLookup"); this.registry.onFsLookup(handler); return this;
   }
@@ -630,6 +644,26 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.checkVerb(".onFsRename"); this.registry.onFsRename(handler); return this;
   }
 
+  onFsSetattr(handler: (path: string, mode: number, size: number) => Verdict): this {
+    this.checkVerb(".onFsSetattr"); this.registry.onFsSetattr(handler); return this;
+  }
+
+  onFsSymlink(handler: (target: string, link: string) => Verdict): this {
+    this.checkVerb(".onFsSymlink"); this.registry.onFsSymlink(handler); return this;
+  }
+
+  onFsMkdir(handler: (path: string, mode: number) => Verdict): this {
+    this.checkVerb(".onFsMkdir"); this.registry.onFsMkdir(handler); return this;
+  }
+
+  onFsReaddir(handler: (path: string, entries: DirEntry[]) => FilterAction): this {
+    this.checkVerb(".onFsReaddir"); this.registry.onFsReaddir(handler); return this;
+  }
+
+  onFsReadlink(handler: (path: string) => Verdict): this {
+    this.checkVerb(".onFsReadlink"); this.registry.onFsReadlink(handler); return this;
+  }
+
   onConsoleInput(handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
     this.checkVerb(".onConsoleInput"); this.registry.onConsoleInput(handler); return this;
   }
@@ -646,12 +680,24 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     this.checkVerb(".onExecStderr"); this.registry.onExecStderr(handler); return this;
   }
 
+  onExecStdin(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
+    this.checkVerb(".onExecStdin"); this.registry.onExecStdin(handler); return this;
+  }
+
   onHeartbeat(handler: (event: HeartbeatEvent) => Promise<void> | void): this {
     this.checkVerb(".onHeartbeat"); this.registry.onHeartbeat(handler); return this;
   }
 
   onProcessExit(handler: (event: ProcessExitEvent) => Promise<void> | void): this {
     this.checkVerb(".onProcessExit"); this.registry.onProcessExit(handler); return this;
+  }
+
+  onSignal(handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict): this {
+    this.checkVerb(".onSignal"); this.registry.onSignal(handler); return this;
+  }
+
+  onFork(handler: (parent: number, child: number) => Promise<Verdict> | Verdict): this {
+    this.checkVerb(".onFork"); this.registry.onFork(handler); return this;
   }
 
   onTrap(handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict> | Verdict): this {
@@ -696,6 +742,10 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
 
   onHostPreempt(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
     this.checkVerb(".onHostPreempt"); this.registry.onHostPreempt(handler); return this;
+  }
+
+  onHostContainmentBreach(handler: (pid: number, path: string, kind: string) => Promise<void> | void): this {
+    this.checkVerb(".onHostContainmentBreach"); this.registry.onHostContainmentBreach(handler); return this;
   }
 
   onMemoryPressure(handler: (availableMb: number, totalMb: number) => Promise<void> | void): this {
