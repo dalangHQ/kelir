@@ -490,20 +490,35 @@ impl PipelineEngine {
 
     fn ring_regs_mut(&mut self, ring: TrampolineRing) -> &mut Vec<RingRegistration> {
         match ring {
-            TrampolineRing::Trap => &mut self.trap_regs,
+            TrampolineRing::Trap | TrampolineRing::Signal | TrampolineRing::Fork => {
+                &mut self.trap_regs
+            }
             TrampolineRing::FsLookup
             | TrampolineRing::FsRead
             | TrampolineRing::FsWrite
-            | TrampolineRing::FsLock => &mut self.fs_regs,
-            TrampolineRing::NetOutbound | TrampolineRing::NetInbound => &mut self.net_regs,
+            | TrampolineRing::FsLock
+            | TrampolineRing::FsUnlink
+            | TrampolineRing::FsRename
+            | TrampolineRing::FsSetattr
+            | TrampolineRing::FsSymlink
+            | TrampolineRing::FsMkdir
+            | TrampolineRing::FsReaddir
+            | TrampolineRing::FsReadlink => &mut self.fs_regs,
+            TrampolineRing::NetOutbound
+            | TrampolineRing::NetInbound
+            | TrampolineRing::SocketConnect
+            | TrampolineRing::DnsQuery
+            | TrampolineRing::SocketBind => &mut self.net_regs,
             TrampolineRing::ConsoleInput
             | TrampolineRing::ConsoleOutput
             | TrampolineRing::ExecStdout
-            | TrampolineRing::ExecStderr => &mut self.console_regs,
+            | TrampolineRing::ExecStderr
+            | TrampolineRing::ExecStdin => &mut self.console_regs,
             TrampolineRing::HostLsmExec
             | TrampolineRing::HostPressure
             | TrampolineRing::HostKeyringAccess
-            | TrampolineRing::HostPreempt => &mut self.host_regs,
+            | TrampolineRing::HostPreempt
+            | TrampolineRing::HostContainmentBreach => &mut self.host_regs,
             TrampolineRing::Lifecycle => &mut self.lifecycle_regs,
             TrampolineRing::Heartbeat
             | TrampolineRing::MemoryPressure
@@ -514,20 +529,33 @@ impl PipelineEngine {
 
     fn ring_regs(&self, ring: TrampolineRing) -> &[RingRegistration] {
         match ring {
-            TrampolineRing::Trap => &self.trap_regs,
+            TrampolineRing::Trap | TrampolineRing::Signal | TrampolineRing::Fork => &self.trap_regs,
             TrampolineRing::FsLookup
             | TrampolineRing::FsRead
             | TrampolineRing::FsWrite
-            | TrampolineRing::FsLock => &self.fs_regs,
-            TrampolineRing::NetOutbound | TrampolineRing::NetInbound => &self.net_regs,
+            | TrampolineRing::FsLock
+            | TrampolineRing::FsUnlink
+            | TrampolineRing::FsRename
+            | TrampolineRing::FsSetattr
+            | TrampolineRing::FsSymlink
+            | TrampolineRing::FsMkdir
+            | TrampolineRing::FsReaddir
+            | TrampolineRing::FsReadlink => &self.fs_regs,
+            TrampolineRing::NetOutbound
+            | TrampolineRing::NetInbound
+            | TrampolineRing::SocketConnect
+            | TrampolineRing::DnsQuery
+            | TrampolineRing::SocketBind => &self.net_regs,
             TrampolineRing::ConsoleInput
             | TrampolineRing::ConsoleOutput
             | TrampolineRing::ExecStdout
-            | TrampolineRing::ExecStderr => &self.console_regs,
+            | TrampolineRing::ExecStderr
+            | TrampolineRing::ExecStdin => &self.console_regs,
             TrampolineRing::HostLsmExec
             | TrampolineRing::HostPressure
             | TrampolineRing::HostKeyringAccess
-            | TrampolineRing::HostPreempt => &self.host_regs,
+            | TrampolineRing::HostPreempt
+            | TrampolineRing::HostContainmentBreach => &self.host_regs,
             TrampolineRing::Lifecycle => &self.lifecycle_regs,
             TrampolineRing::Heartbeat
             | TrampolineRing::MemoryPressure
