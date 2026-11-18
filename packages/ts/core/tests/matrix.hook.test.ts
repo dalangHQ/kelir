@@ -135,7 +135,7 @@ const hookMatrixPlugin = createPlugin<"hook-matrix", Record<string, never>>("hoo
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
   })
-  .onFsWrite((_path, buffer, _pid, _ctx) => {
+  .onFsWrite((_path, _buffer, _pid, _ctx) => {
     return FilterAction.Forward;
   })
 

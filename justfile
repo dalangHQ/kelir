@@ -205,6 +205,7 @@ lint:
         -D clippy::unimplemented \
         -D clippy::todo \
         -D clippy::unreachable
+    uv run --with ruff --no-project ruff check --select F packages/py
 
 typecheck: build-ts
     pnpm -r exec tsc --noEmit

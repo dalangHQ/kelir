@@ -1,6 +1,5 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { Session } from "./session.lifecycle.js";
 import type {
   CausalDelta,
   CustomActionPayload,

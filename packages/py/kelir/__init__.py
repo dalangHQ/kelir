@@ -7,13 +7,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 CtxT = TypeVar("CtxT")
 ParamsT = TypeVar("ParamsT")
-
-if TYPE_CHECKING:
-    from kelir.plugin_model import BasePlugin
 
 from kelir.generated.wire_protocol import Channel, ExecStream, MsgType, StreamKind
 from kelir.generated.attest_telemetry import (
@@ -27,15 +24,7 @@ from kelir.generated.attest_telemetry import (
 )
 from kelir.sdk_errors import EConfig as EConfig
 from kelir.lifecycle_sandbox import Sandbox as Sandbox
-from kelir.plugin_fusion import (
-    FusedTrampoline,
-    HookDescriptor,
-    HookStage,
-    LifecycleTag,
-    PluginRegistration,
-    RingEvent,
-    TrapFilterSnapshot,
-)
+from kelir.plugin_fusion import TrapFilterSnapshot
 
 
 # see: cans/03-sdk-architecture.md#Python-SDK

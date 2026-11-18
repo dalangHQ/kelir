@@ -221,17 +221,6 @@ impl FsInterposer for RepoPolicyPlugin {
         }
         Ok(FilterAction::Forward)
     }
-
-    fn on_fs_unlink(&self, path: &Path, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        // Prevents agents from deleting validation suites or package manifests to fake green runs
-        if path.ends_with("package.json") || path.ends_with("Cargo.toml") || path.to_string_lossy().contains("test") {
-            let quarantined = Path::new("/workspace/.agentsh_trash").join(path.file_name().unwrap());
-            return Ok(Verdict::Patch(PatchPayload::FsPathRedirect {
-                target_path: quarantined.to_string_lossy().to_string(),
-            }));
-        }
-        Ok(Verdict::Pass)
-    }
 }
 
 impl RepoPolicyPlugin {

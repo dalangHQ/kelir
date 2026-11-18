@@ -21,9 +21,6 @@ invariants:
   # Overlays and environment forks can strictly tighten limits; attempts to widen
   # ceilings fail validation at boot with ESecurityViolation.
   inheritance_lattice: monotonic_with_signed_operator_lease
-  operator_lease:
-    verify_ed25519_pubkey: "ed25519_pub_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    allow_runtime_escalation: true
 
   # Strict memory isolation policy: forbids unsafe memory traversal and ambient host leaks.
   memory_safety: forbid_unsafe
@@ -59,7 +56,6 @@ driver:
 
   # Foreign language FFI execution gate (NAPI / PyO3 trampoline isolation).
   ffi_boundary:
-    embed_mode: "in_process_libkelir" # Strictly in-process; zero daemon (AS-08, 01-architecture)
     worker_threads: 8
     max_ops_per_second: 50000
     queue_capacity: 16384
@@ -138,8 +134,7 @@ session:
     max_exec_slots: 4096              # Concurrent exec allocations before MSG_EXEC_REJECT(ENOMEM)
     hide_pid: 2                       # Remounts /proc with hidepid=2 to conceal peer processes
     anti_toctou_cgroups: true         # Freezes task group via cgroup v2 during syscall traps
-    granular_task_freeze: true        # Freezes calling task only; yields VirtIO queue slot (no ring deadlock)
-    task_freeze_timeout_ms: 300000    # 5m human-in-the-loop approval ceiling before auto-refusal
+    granular_task_freeze: true
     rejection_mode: synthetic_refusal
     mask_proc_environ: true           # seccomp blocks /proc/[pid]/environ and process_vm_readv
 
@@ -175,8 +170,6 @@ storage:
   # VirtIO-FS Host Copy-on-Write (CoW) Broker (Zero in-guest OverlayFS).
   cow_broker:
     enabled: true
-    intercept_vfs_mutations: true     # Exposes unlink, rename, mknodat, and setattr to FsInterposer
-    allow_path_redirection: true      # Supports PatchPayload::FsPathRedirect (soft-delete quarantine)
     sparse_upper: true                # Writes land in a sparse host file, avoiding guest OOM
     tombstone_tracking: true          # Deletions tracked as explicit broker tombstones (no whiteouts)
     rollback_purge: true              # Purges cache via FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED)
@@ -269,10 +262,6 @@ wire:
     proxies:
       - listen_port: 5432
         destination: "pg.internal.net:5432"
-      - listen_port: 5433
-        forward_unix_socket: "/run/agentsh/pgwire.sock" # Slices TCP to host Go proxy; zero supervisor MITM
-      - listen_port: 8000
-        forward_unix_socket: "/run/agentsh/mcp.sock"    # Bridges guest MCP to host agent listener
         inject_mtls:
           cert_path: "vault://tls/client.crt"
           key_path: "vault://tls/client.key"

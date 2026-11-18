@@ -10,7 +10,6 @@ import { HookRegistry } from "./hook.registry.js";
 import type {
   KelirPlugin,
   MountScope,
-  PluginContext,
   VsockServiceEntry,
   ActionsScope,
   StreamsScope,
@@ -27,7 +26,6 @@ import type {
   TelemetryScope,
 } from "./hook.registry.js";
 import type {
-  PostExecAction,
   LifecycleEvent,
   Verdict,
   FilterAction,
@@ -77,7 +75,6 @@ import type {
   PluginContextOf,
   PluginRegistration,
   TrapHandler,
-  TrapHandlerResult,
   TrapHandlers,
   ValidateDeps,
 } from "./builder.types.js";

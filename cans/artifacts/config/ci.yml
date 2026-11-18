@@ -226,6 +226,7 @@ jobs:
           pnpm --filter @kelir/core run typecheck
           uv venv && uv pip install -e "packages/py[dev]"
           uv run --no-project mypy packages/py
+          uv run --with ruff --no-project ruff check --select F packages/py
 
       # Test-plan gates: manifest validation + AST anti-slop.
       - name: Manifest validation (check-manifest)

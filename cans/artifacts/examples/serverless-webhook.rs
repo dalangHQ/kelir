@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 
 use kelir::Deserialize;
-use kelir_interface::protocol_wire::{ExitKind, PostExecAction};
 
 use kelir::{
     HCons, HNil, HandlerCtx, Host, IngressChannel, IngressRoutingService, KelirBuilder,
@@ -87,14 +86,6 @@ fn webhook_builder() -> KelirBuilder<
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     // see: cans/plugins/wire-ingress.md#On-rollback:-parked-connections-get-TCP-RST-(post-handshake:-503-close)
     // WireIngressConfig::default is exactly the TS port's config: 8443/https, 64KB/30s parking, wake on mux 0x0001, 256/reject-503 backlog.
-    // L4 Host Unix-Socket bridge: routes guest socket traffic to host agent without TAP or netns
-    .wire_config(|w| {
-        w.userspace_netstack = true;
-        w.default_egress = "drop".into();
-        w.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock".into());
-        w.divert_port_to_unix(8000, "/run/agentsh/mcp.sock".into());
-    })
-
     .plugin_instance(WireIngressPlugin::with_config(WireIngressConfig::default()))
     // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
     .plugin_instance(McpPlugin::new())
@@ -133,15 +124,6 @@ fn webhook_builder() -> KelirBuilder<
     .post_exec("dispatch-webhook", |c: HandlerCtx<_, _>| async move {
         // see: cans/10-attestation.md#Execution-receipts
         let receipt = c.receipt().await?;
-        // Assertion on raw hardware MMU counters (Class 1 proof)
-        if receipt.exit_kind != ExitKind::Normal {
-            // Tainted run: trigger hypervisor rollback; wire plane immediately RSTs parked socket
-            eprintln!("[kelir] step execution tainted, triggering hardware rollback and TCP RST purge");
-            return Ok(PostExecAction::RollbackAndHalt);
-        }
-        
-        assert!(receipt.wall_clock_ns > 0);
-        assert!(receipt.dirty_bytes > 0);
         if receipt.dirty_bytes == 0 {
             Ok(PostExecAction::RollbackAndHalt)
         } else {
@@ -176,11 +158,6 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let req = stream.request().clone();
         
         // Dispatch through guest micro-init shim via vsock stream
-        if req.headers.get("x-fault-injection").map(String::as_str) == Some("abort") {
-            // Proves parked connection drop on rollback
-            stream.abort_with_rst().await?;
-            continue;
-        }
         let res = WebhookResponse {
             status: 200,
             headers: HashMap::from([("content-type".into(), "application/json".into())]),

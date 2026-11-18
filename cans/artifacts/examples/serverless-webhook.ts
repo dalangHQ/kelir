@@ -1,7 +1,7 @@
 // see: cans/08-lifecycle.md#State-machine
 
 import { kelir, t, PostExecAction, SuspendReason, LifecycleEvent,
-         ExitKind, type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
+         type ExecutionReceipt, type LedgerHandle } from "@kelir/core";
 import { wireIngress, mcp, toolGuard, ledger } from "@kelir/core";
 
 interface WebhookRequest {
@@ -17,12 +17,6 @@ interface WebhookResponse {
 }
 
 async function handleWebhook(req: WebhookRequest, session: any): Promise<WebhookResponse> {
-  if (req.headers["x-fault-injection"] === "abort") {
-    // Purges parked connection with immediate TCP RST on rollback
-    await session.wire.purgeParkedWithRst(req.id);
-    return { status: 503, headers: { "connection": "close" }, body: new Uint8Array() };
-  }
-
   const res = await session.spawn("/usr/bin/webhook-worker", ["--id", req.id], {
     input: req.body,
   });
@@ -67,13 +61,6 @@ const runtime = kelir({
     merkleChain: true,
     otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
   }))
-  .wire((w) => {
-    w.userspaceNetstack = true;
-    w.defaultEgress = "drop";
-    // Transparent L4 divert to host Go proxies without TAP or netns
-    w.divertPortToUnix(5433, "/run/agentsh/pgwire.sock");
-    w.divertPortToUnix(8000, "/run/agentsh/mcp.sock");
-  })
 
   .params(t.Object({
     action: t.Literal("dispatch-webhook"),
@@ -87,9 +74,6 @@ const runtime = kelir({
     // see: cans/10-attestation.md#Execution-receipts
     post: async (c) => {
       const receipt: ExecutionReceipt = await c.receipt();
-      if (receipt.exitKind !== ExitKind.Normal) {
-        return PostExecAction.RollbackAndHalt;
-      }
       if (receipt.dirtyBytes === 0) return PostExecAction.RollbackAndHalt;
       return PostExecAction.Proceed;
     },

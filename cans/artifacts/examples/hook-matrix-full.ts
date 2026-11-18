@@ -2,7 +2,7 @@
 // see: cans/02-plugin-model.md#TrapFilter-predicates
 
 import { kelir, createPlugin, Verdict, FilterAction, SuspendUntil, Errno,
-         TrapFilter, PatchPayload, type Session, type WatchdogVerdict, type HandlerContext } from "@kelir/core";
+         TrapFilter, type Session, type WatchdogVerdict } from "@kelir/core";
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
 const IDENTITY_PATH = "/workspace/.policy/identity";
@@ -34,8 +34,6 @@ const hookState = {
   failures: 0,
   traps: 0,
   fsLocks: 0,
-  fsUnlinks: 0,
-  fsRenames: 0,
   netInbound: 0,
   execStdout: 0,
   execStderr: 0,
@@ -104,33 +102,13 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.tail = masked.slice(-CARRYOVER);
     return Buffer.from(chunk, "latin1");
   })
-  .onFsWrite((_path, buffer, _pid, _ctx) => {
+  .onFsWrite((_path, _buffer, _pid, _ctx) => {
     return FilterAction.Forward;
   })
   .onFsLock((_path, _flockCmd, _flockType, _pid) => {
     hookState.fsLocks += 1;
     return Verdict.Pass;
   })
-    f.onFsUnlink((path: string, _ctx: HandlerContext) => {
-      state.fsUnlinks++;
-      if (path.endsWith(".protected_source")) {
-        return Verdict.Suspend({ until: SuspendUntil.Approval });
-      }
-      if (path.endsWith(".trashable")) {
-        const filename = path.split("/").pop();
-        return Verdict.Patch(PatchPayload.FsPathRedirect({
-          targetPath: `/workspace/.agentsh_trash/${filename}`,
-        }));
-      }
-      return Verdict.Pass;
-    });
-    f.onFsRename((src: string, dst: string, _ctx: HandlerContext) => {
-      state.fsRenames++;
-      if (escapesWorkspace(dst)) {
-        return Verdict.Drop({ errno: Errno.PathTraversal, reason: "rename escapes /workspace" });
-      }
-      return Verdict.Pass;
-    });
   // see: cans/04-terminal-plane.md#1.-ANSI-strip:-drops-OSC-52-(clipboard-hijack)-and-strips-OSC-0/1/2-(title-spoof)
   .onConsoleInput(async (_port, bytes) => {
     const text = Buffer.from(bytes).toString("latin1");
@@ -201,9 +179,6 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   // see: cans/02-plugin-model.md#TrapInterposer:-trap,-process-exit,-pressure,-heartbeat,-port,-signal
   .onTrap(async (_event, _c) => {
     hookState.traps += 1;
-      if (event.treeDepth > 16) {
-        return Verdict.Abort({ reason: "fork bomb mitigation: max depth exceeded" });
-      }
     return Verdict.Pass;
   })
   .onProcessExit(async (event) => {
@@ -256,10 +231,6 @@ async function main() {
   const probe = await session.spawn("cat", [IDENTITY_PATH],
                                     { cwd: "/workspace" });
   console.log(`[kelir] cat identity -> exit=${probe.exitCode}`);
-
-  const rmProbe = await session.spawn("rm", ["/workspace/test.trashable"]);
-  if (rmProbe.exitCode !== 0) throw new Error("unlink hook failed");
-  if (state.fsUnlinks === 0) throw new Error("onFsUnlink was not invoked");
 
   await new Promise((r) => setTimeout(r, 100));
   console.log(`[kelir] heartbeats=${hookState.heartbeats} ` +

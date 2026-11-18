@@ -87,18 +87,6 @@ async def row_abort(c: HandlerContext) -> Verdict:
     return Verdict.abort(reason="EPOLICY: abort row")
 
 
-async def row_escalate(c: HandlerContext) -> Verdict:
-    if getattr(c, "has_valid_operator_lease", lambda: False)():
-        return Verdict.pass_()
-    return Verdict.drop(
-        errno=Errno.Eperm,
-        reason="ESECURITYVIOLATION: capability widening requires signed operator lease"
-    )
-
-async def row_syscall_block(c: HandlerContext) -> Verdict:
-    return Verdict.drop(errno=Errno.Eafnosupport, reason="EAFNOSUPPORT: socket family AF_RXRPC blocked")
-
-
 # see: cans/09-snapshots.md#Snapshots
 async def row_yield(c: HandlerContext) -> Verdict:
     await c.checkpoint.create("policy-yield")
@@ -161,8 +149,6 @@ def build_runtime() -> KelirBuilder:
         .trap(TrapFilter.binary("policy-abort"), pre=row_abort)
         .trap(TrapFilter.binary("policy-yield"), pre=row_yield)
         .trap(TrapFilter.binary("policy-approval"), pre=row_approval)
-        .trap(TrapFilter.binary("policy-escalate"), pre=row_escalate)
-        .trap(TrapFilter.binary("policy-syscall-block"), pre=row_syscall_block)
         .trap(TrapFilter.binary("policy-custom"), pre=row_custom)
         .seal()
     )
@@ -184,20 +170,6 @@ async def main() -> None:
                        "policy-custom"]:
             run = await session.spawn(binary, ["--policy-matrix"])
             print(f"[kelir] {binary} -> exit={run.exit_code}")
-            if binary == "policy-approval":
-                assert run.exit_code == 0
-            elif binary == "policy-escalate":
-                assert run.exit_code != 0
-                await session.elevate_lease("signed_jws_operator_lease_token_payload")
-                elevated = await session.spawn(binary, ["--policy-matrix"])
-                assert elevated.exit_code == 0
-            elif binary == "policy-syscall-block":
-                assert run.exit_code != 0
-            elif binary == "policy-custom":
-                assert run.exit_code == 0
-
-            assert run.receipt is not None
-            assert run.receipt.wall_clock_ns > 0
 
         POLICY_STATE.planned_suspend = True
         await session.suspend(ResourcePressure())

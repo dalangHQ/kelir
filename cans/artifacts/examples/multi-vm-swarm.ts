@@ -8,7 +8,6 @@ import { kelir, LifecycleEvent, VetoEvent,
 import { mesh, supplyChain, ledger } from "@kelir/core";
 
 const SWARM_REGION = "swarm-coordination";
-const SWARM_BYTES = 32;
 
 let cacheReady = false;
 
@@ -46,7 +45,7 @@ const runtime = kelir({
 
 async function runShard(child: Session, shardId: number, total: number) {
   await child.checkpoint.create(`swarm-shard-${shardId}/${total}`);
-  const _shm = await child.shm(SWARM_REGION);
+  await child.shm(SWARM_REGION);
   const run = await child.spawn("cargo", ["test", "--", `--shard=${shardId}`]);
   if (run.exitCode === 0) {
     const meshHandle = child.cap("mesh") as MeshHandle;
