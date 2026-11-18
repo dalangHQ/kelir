@@ -2,6 +2,7 @@
   - Ingestion matrix
     - Adapter set and ecosystem binding: see: [1]
     - Core ingestion primitive: kelir-pack
+      - Host pre-flight requirement: compiles OCI layers into EROFS pre-boot
       - Offline two-phase in-memory compiler: OCI layer blob → EROFS
       - Streaming HTTPS client pulls OCI manifest and layer tar chunks directly
       - Phase 1: layer tar headers only stream into a radix tree in host RAM

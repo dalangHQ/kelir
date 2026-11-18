@@ -5,7 +5,13 @@
     - Crate topology: `kelir-interface::wire` holds the `NetOps`, `DnsOps`, `UdpNatOps`, `L4DivertOps` traits and wire types; `kelir-wire` holds `RealNetOps`, `RealDnsOps`, `RealUdpNatOps`, `RealL4DivertOps`; `kelir-engine::planes::wire` holds the `WirePlane` facade over `Arc<dyn *Ops>`
     - Trait seam: the L2 facade holds `Arc<dyn NetOps>`, `Arc<dyn DnsOps>`, `Arc<dyn UdpNatOps>`, `Arc<dyn L4DivertOps>` and delegates every call; `kelir-engine` never names a `Real*Ops` type
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
-    - Hook points: on_net_outbound and on_net_inbound
+    - Hook points: on_net_outbound, on_net_inbound, on_socket_connect
+    - Additional net hooks: on_dns_query, on_socket_bind
+    - on_socket_connect resolves guest PID via netlink for PNACL enforcement
+    - on_dns_query mediates domain resolution before packet egress
+    - on_socket_bind blocks unauthorized listening ports before reservation
+    - Abstract socket boundary: wire.block_abstract_unix_sockets denies \0 paths
+    - Abstract sockets lack VFS inodes and IPs; denied at kernel socket alloc
     - Interceptor hooks receive NetContext containing raw Ethernet frames
     - Rollback interaction: see: 08-lifecycle.md#Rollback
   - Userspace network stack

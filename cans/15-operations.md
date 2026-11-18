@@ -227,8 +227,8 @@
         - Asserts every mount merges: host descriptors include plugin hooks
         - Builder cases: 8 scopes x (verbs + config + requires + fork
           + timeout + priority + rules) + 5 chain cases + 5 predicate cases
-          - 82 cases: 24 ring-verb cases (trap 2, fs 4, net 2, console 2,
-            exec 2, host 4, lifecycle 5, telemetry 3) + 48 scope sub-node
+          - 96 cases: 38 ring-verb cases (trap 4, fs 11, net 5, console 2,
+            exec 3, host 5, lifecycle 5, telemetry 3) + 48 scope sub-node
             cases (8 scopes x config/requires/fork/timeout/priority/rules)
             + 5 chain cases (seal, trap filter form, trap scope form,
             fs config, chaos-only) + 5 predicate cases
@@ -434,7 +434,7 @@
       - vectors.json gains a plugin-merge case family
       - Builder cases: 8 scopes x (verbs + config + requires + fork
         + timeout + priority + rules) + 5 chain + 5 predicate cases
-        - 82 cases: 24 ring-verb cases + 48 scope sub-node cases
+        - 96 cases: 38 ring-verb cases + 48 scope sub-node cases
           (8 scopes x config/requires/fork/timeout/priority/rules)
           + 5 chain + 5 predicate; arithmetic mirrors
           #--unified-builder-coverage

@@ -26,6 +26,9 @@
       - Workload stdin/stdout/stderr bound directly to slave PTY fd
     - Window geometry and signals
       - Window resize rides EXEC control sub-lane 0x03
+      - session.terminal.set_winsize pump injects ioctl(slave_fd, TIOCSWINSZ)
+      - kelir-shim forwards SIGWINCH to guest foreground process group
+      - Prevents ANSI cursor desync and TokenShield output corruption
       - SignalForward rides stream kind PTY_CONTROL (mux 0x0001)
       - MsgType 0x02 (SignalForward): pushes signal and exec_id; shim resolves exec_id
       - SignalForward is the interactive PTY forward only, for the foreground exec

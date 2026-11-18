@@ -38,6 +38,8 @@
       - Granular task freeze isolates individual task cgroups during review
       - Unapproved tool invocations return MSG_EXEC_REFUSAL synthetic bodies
       - Rejected actions disarm guest traps without aborting the microVM
+      - Procfs environ defense: session.shim.mask_proc_environ = true in seccomp
+      - Blocks direct memory reads against /proc/[pid]/environ and process_vm_readv
       - Unmatched reaped PIDs discard into a zero-allocation sink
       - Exit frames on EXEC stream kind defer until stdout/stderr EOF flush
       - Multiplexes raw VirtIO ring bytes; carries zero database, proxy, or domain logic
@@ -50,6 +52,7 @@
       - 0x01: stdout (guest-to-exec)
       - 0x02: stderr (guest-to-exec)
       - 0x03: exec control (exit code, EOF, rlimit descriptors)
+      - on_exec_stdin filters, transforms, or scrubs stdin chunks in-memory
     - Out-of-band signal isolation: SIGINT and SIGTERM bypass EXEC
     - Programmatic high-priority process signals route exclusively over Channel 0x0000
     - Sole exception: the interactive PTY forward, MsgType 0x02 on PTY_CONTROL
@@ -126,6 +129,12 @@
       - Synchronous write/packet filters evaluate native Rust rules; foreign callbacks yield
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
+    - Signal and fork interception
+      - on_signal intercepts guest kill calls; blocks unauthorized SIGKILL
+      - on_fork intercepts process tree mutations and stops fork bombs in-RAM
+    - Host containment verification
+      - on_host_containment_breach emits immediate security alerts on openat2 trap
+    - Complete ring surface: 38 verbs across 8 scopes sealed at Day-1
     - Gate 3 trusted-prefix skip
       - Binary rooted in EROFS trusted prefix bypasses foreign FFI
       - /usr/bin, /bin, /usr/lib are trusted prefixes

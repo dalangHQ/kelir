@@ -154,7 +154,7 @@
         - LifecycleParticipant and SystemTelemetryParticipant bind via PipelineBinder
           - bind_lifecycle / bind_telemetry; scoped variants take a MountScope
         - LifecycleParticipant: vm lifecycle, commit, host preempt
-        - TrapInterposer: trap, process exit, pressure, heartbeat, port, signal
+        - TrapInterposer: on_trap, on_process_exit, on_signal, on_fork
         - ConsoleInterposer: console input, console output, window resize, disclosure
           - Expanded: on_exec_stdout(pid, exec_id, chunk), on_exec_stderr(pid, exec_id, chunk)
           - Fires for EXEC stream kind; see: 11-protocol.md#Binary-exec-channel
@@ -168,8 +168,12 @@
         - WireInterposer::on_net_outbound(frame) -> FilterAction
         - Ring hooks are core; verdicts and mutations are plugin-owned
         - FsInterposer: fs lookup, read, write, lock, unlink, rename; sync hot path
+        - FsInterposer extensions: setattr, symlink, mkdir, readdir, readlink
         - NetInterposer: net outbound, net inbound; synchronous hot path
+        - NetInterposer extensions: socket connect, dns query, socket bind
+        - ExecInterposer: on_exec_stdout, on_exec_stderr, on_exec_stdin
         - HostInterposer: host lsm exec, host pressure, host keyring; sync hot path
+        - HostInterposer extensions: on_host_preempt, on_host_containment_breach
       - Identity markers
         - AnyPlugin: identity marker for Clone KelirPlugin (fork/composite)
       - Dispatch cost model
@@ -726,7 +730,7 @@
       - Python host: KelirBuilder(...) with VmConfig kwargs
       - Python plugin: KelirBuilder.plugin(name) classmethod
     - Verbs in both modes
-      - 26 ring verbs and 8 scopes exist in host mode and plugin mode
+      - 38 ring verbs and 8 scopes exist in host mode and plugin mode
       - trap(filter, handler) and trap_scope(closure) exist in both modes
       - The filter argument may be a bare string in all three SDKs
       - Rust: the scope form is trap_scope; the filter form is trap
@@ -759,11 +763,16 @@
       - .fork_with(fn) in Rust and Python; .forkWith(fn) in TypeScript
       - Ring verbs are scope-reached: see: #Nested-scopes
       - Ring verbs
-        - Trap: .on_trap, .on_process_exit
+        - Trap: .on_trap, .on_process_exit, .on_signal, .on_fork
         - Fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock
-        - Net: .on_net_outbound, .on_net_inbound
-        - Console: .on_console_input, .on_console_output, .on_exec_stdout, .on_exec_stderr
+        - Fs mutations: .on_fs_unlink, .on_fs_rename, .on_fs_setattr, .on_fs_symlink
+        - Fs inspection: .on_fs_mkdir, .on_fs_readdir, .on_fs_readlink
+        - Net: .on_net_outbound, .on_net_inbound, .on_socket_connect
+        - Net mediation: .on_dns_query, .on_socket_bind
+        - Console: .on_console_input, .on_console_output
+        - Exec: .on_exec_stdout, .on_exec_stderr, .on_exec_stdin
         - Host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access
+        - Host events: .on_host_preempt, .on_host_containment_breach
         - Lifecycle init: .on_vm_init, .on_vm_ready, .on_vm_shutdown
         - Verdict (SSOT-A1; Action aliases on lifecycle rings): .on_vm_init / .on_vm_ready / .on_vm_shutdown
           - Are live ring verbs in all three SDKs
@@ -780,14 +789,16 @@
       - Scopes are the only way to reach a ring verb
         - A ring verb is reached through its scope closure; there is no unscoped call surface
       - Eight scope entry points, one per ring group
-        - trap: .on_trap, .on_process_exit
+        - trap: .on_trap, .on_process_exit, .on_signal, .on_fork
         - fs: .on_fs_lookup, .on_fs_read, .on_fs_write, .on_fs_lock,
-          - .on_fs_unlink, .on_fs_rename
-        - net: .on_net_outbound, .on_net_inbound
+          - .on_fs_unlink, .on_fs_rename, .on_fs_setattr, .on_fs_symlink,
+          - .on_fs_mkdir, .on_fs_readdir, .on_fs_readlink
+        - net: .on_net_outbound, .on_net_inbound, .on_socket_connect,
+          - .on_dns_query, .on_socket_bind
         - console: .on_console_input, .on_console_output
-        - exec: .on_exec_stdout, .on_exec_stderr
-        - host: .on_host_lsm_exec, .on_host_pressure
-          - .on_host_keyring_access, .on_host_preempt
+        - exec: .on_exec_stdout, .on_exec_stderr, .on_exec_stdin
+        - host: .on_host_lsm_exec, .on_host_pressure, .on_host_keyring_access,
+          - .on_host_preempt, .on_host_containment_breach
         - lifecycle: .on_vm_init, .on_vm_ready, .on_vm_shutdown
           - .on_pre_commit, .on_post_commit
         - telemetry: .on_memory_pressure, .on_heartbeat, .on_watchdog

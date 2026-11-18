@@ -141,6 +141,7 @@ session:
     granular_task_freeze: true        # Freezes calling task only; yields VirtIO queue slot (no ring deadlock)
     task_freeze_timeout_ms: 300000    # 5m human-in-the-loop approval ceiling before auto-refusal
     rejection_mode: synthetic_refusal
+    mask_proc_environ: true           # seccomp blocks /proc/[pid]/environ and process_vm_readv
 
   # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
   driver:
@@ -239,6 +240,7 @@ wire:
   default_egress: drop
   allow_ipv6: false                   # IPv6 dropped unconditionally at L3 ingress ring
   allow_raw_sockets: false            # Raw and ICMP sockets denied at virtio-net layer
+  block_abstract_unix_sockets: true   # Block AF_UNIX with leading null byte paths
 
   # Pre-Policy Link-Local Quarantine.
   quarantine:

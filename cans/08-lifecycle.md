@@ -388,6 +388,10 @@
     - waitpid(-1, WNOHANG) pass integrated into async event loop
     - Foreground shell exit → orphaned daemons adopted and reaped
     - Prevents defunct <zombie> processes exhausting PID table
+    - Guest OOM killer immunity
+      - kelir-shim sets /proc/1/oom_score_adj to -1000 before workload exec
+      - Protects PID 1 supervisor from OOM kill; rogue workloads absorb SIGKILL
+      - Guaranteed survival of the shim loop across memory saturation events
   - Session incarnation
     - incarnation_id column: see: 06-storage-catalog.md#Entity-model
     - Destructive lifecycle verbs accept expected incarnation_id

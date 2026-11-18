@@ -1,6 +1,10 @@
 - CLI
   - Scope boundary
     - Runner commands absent (no kelir run): see: 15-operations.md#Developer-CLI
+  - Host pre-flight commands
+    - doctor probes KVM/HVF entitlement, page size, and /dev/kvm permissions
+    - doctor --enforce writes physical hardware lockfile /etc/kelir/hw.lock
+    - setup attaches eBPF/LSM workspace killswitch and sets device perms
   - Inspection commands
     - logs tails guest output with cursor based replay
       - Cursors resume a tail from an earlier point

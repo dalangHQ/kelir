@@ -426,7 +426,7 @@
   - Unified builder surface
     - One builder per SDK; creation, mount, host-only list, validation
       - Surface home: see: 02-plugin-model.md#Unified-builder
-    - Closed set: 32 verbs and 8 scopes in every SDK, both modes
+      - Closed set: 38 ring verbs and 8 scopes in every SDK, both modes
       - Verb home: see: 02-plugin-model.md#Chainable-verbs
       - Scope home: see: 02-plugin-model.md#Nested-scopes
     - Scopes are the only way to reach a ring verb; the flat chain is a group() fold
@@ -439,7 +439,7 @@
         - Python: Fn(KelirBuilder) -> KelirBuilder
       - vsock_service lives in the .vsock() scope: .vsock(|v| v.service(…))
     - Ring verbs, all three SDKs, both modes
-      - 26 verbs: trap 2, fs 6, net 2, console 2, exec 2, host 4
+      - 38 verbs: trap 4, fs 11, net 5, console 2, exec 3, host 5
         - lifecycle 5, telemetry 3; names as in the verb home
         - Reached through their 8 scopes; no unscoped flat surface
     - Orphan-verb scopes, all three SDKs

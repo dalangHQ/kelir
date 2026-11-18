@@ -95,6 +95,7 @@ anti_toctou_cgroups = true
 granular_task_freeze = true
 task_freeze_timeout_ms = 300000
 rejection_mode = "synthetic_refusal"
+mask_proc_environ = true
 
 # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
 [session.driver]
@@ -419,6 +420,7 @@ userspace_netstack = true
 default_egress = "drop"
 allow_ipv6 = false
 allow_raw_sockets = false
+block_abstract_unix_sockets = true
 
 [wire.quarantine]
 drop_link_local = true

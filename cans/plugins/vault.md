@@ -57,6 +57,8 @@
       - Host keyring memory pinned with mlock(2); excluded from swap
       - Issued token buffers zeroized on drop; TTL expiry revokes host-side
       - No plaintext token lingers in the supervisor after issuance returns
+      - session.shim.mask_proc_environ prevents secret leaks via /proc/$PID/environ
+      - Seccomp blocks process_vm_readv targeting peer guest process address space
     - Revocation
       - Session terminate revokes all outstanding tokens for that session
       - Token validation is host-side; guest cannot forge or replay post-revoke

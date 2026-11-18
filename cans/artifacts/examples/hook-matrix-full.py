@@ -103,6 +103,12 @@ class HookMatrixFullPlugin(BasePlugin):
         self._state.net_inbound += 1
         return FilterAction.forward()
 
+    def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict: return Verdict.Pass
+    def on_fs_symlink(self, target: Path, link: Path) -> Verdict: return Verdict.Pass
+    def on_fs_mkdir(self, path: Path, mode: int) -> Verdict: return Verdict.Pass
+    def on_fs_readdir(self, path: Path, entries: list) -> FilterAction: return FilterAction.Forward
+    def on_fs_readlink(self, path: Path) -> Verdict: return Verdict.Pass
+
     # see: cans/05-storage-plane.md#Storage-plane
     # see: cans/02-plugin-model.md#Unified-verdict
     def on_fs_lookup(self, path: Path) -> Verdict:
@@ -172,6 +178,8 @@ class HookMatrixFullPlugin(BasePlugin):
     async def on_host_preempt(self, ctx: LifecycleCtx | None) -> None:
         self._state.host_preempts += 1
 
+    def on_host_containment_breach(self, pid: int, path: Path, kind: str) -> None: pass
+
     async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
         self._state.vm_inits += 1
 
@@ -213,6 +221,8 @@ class HookMatrixFullPlugin(BasePlugin):
         self._state.exec_stderr += 1
         return mask_tokens(chunk)
 
+    async def on_exec_stdin(self, pid: int, exec_id: int, chunk: bytes) -> bytes: return chunk
+
     async def on_memory_pressure(
         self, available_mb: int, total_mb: int,
     ) -> None:
@@ -232,6 +242,9 @@ class HookMatrixFullPlugin(BasePlugin):
         self._state.exits += 1
         if event.exit_code != 0:
             self._state.failures += 1
+
+    async def on_signal(self, sender: int, target: int, sig: int) -> Verdict: return Verdict.Pass
+    async def on_fork(self, parent: int, child: int) -> Verdict: return Verdict.Pass
 
     # see: cans/02-plugin-model.md#TrapFilter-predicates
     # The predicate chain: cwd/env/uid/argv_regex constraints live in the

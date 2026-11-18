@@ -7,6 +7,17 @@
         - Shim provides VirtIO channel multiplexing, seccomp trap forward, and zombie reaping
         - Workload environment variables, libraries, and syscall paths remain untouched
         - Out-of-band lifecycle: forks and rollbacks execute beneath guest awareness
+        - Shim defense flags close in-guest kernel pseudo-filesystem leaks
+          - session.shim.mask_proc_environ blocks /proc/[pid]/environ via seccomp
+          - wire.block_abstract_unix_sockets denies null-byte AF_UNIX paths
+        - Host pre-flight conditions gate first vCPU cycle:
+          - macOS: Mach-O binary code-signed with com.apple.security.hypervisor
+          - Linux: /dev/kvm access (0660) or explicit Class 2 bwrap fallback
+          - kelir-pack compiles OCI layer tarballs into EROFS in RAM pre-boot
+        - Kernel physics invariants:
+          - kelir-shim writes -1000 to /proc/1/oom_score_adj pre-workload
+          - S_IFSOCK inodes confined strictly to guest ephemeral tmpfs mounts
+          - Stage-2 MMU dirty_bytes asserts hardware writes bypassing VFS mmap
       - In-process microkernel
         - Execution substrate
           - Virtualization runs in host consumer memory via direct C-FFI
@@ -201,6 +212,7 @@
     - EROFS mount: see: 05-storage-plane.md#EROFS-rootfs
     - Shared memory mapping: see: #Shared-memory-channel
     - Portable snapshots: single .kelir-snap binary stream
+    - Canonical bus enumeration: exactly 38 verbs across 8 segregated scopes
   - VirtIO Device Complex
     - VirtIO bus topology: see: artifacts/diagrams/four-ring-bus.txt
     - Core routes paravirtual devices; plugins provide domain interpretation

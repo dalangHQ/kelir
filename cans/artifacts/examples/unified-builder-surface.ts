@@ -6,7 +6,7 @@
 // see: cans/artifacts/examples/unified-builder-surface.py#build_surface_plugin
 
 // The unified builder surface, walked end to end in one file: structural
-// verbs, all 24 ring verbs reached through their 8 scope closures, the
+// verbs, all 38 ring verbs reached through their 8 scope closures, the
 // five orphan-verb scopes (actions, streams, vsock, params, deny), the
 // chain cases (seal, trap filter, trap scope, fs config) and the mount
 // cases (host-only verbs on a host builder, host-only verbs on a plugin
@@ -50,7 +50,9 @@ export function buildSurfacePlugin(): KelirBuilder<
     .trap((scope) =>
       scope
         .onTrap((_event, _c) => Verdict.Pass)
-        .onProcessExit((_event) => {}),
+        .onProcessExit((_event) => {})
+        .onSignal((_s) => Verdict.Pass)
+        .onFork((_f) => Verdict.Pass),
     )
     .fs((f) =>
       f
@@ -59,12 +61,20 @@ export function buildSurfacePlugin(): KelirBuilder<
         .onFsWrite((_path, _buffer, _pid, _ctx) => FilterAction.Forward)
         .onFsLock((_path, _flockCmd, _flockType, _pid) => Verdict.Pass)
         .onFsUnlink((_path, _ctx) => Verdict.Pass)
-        .onFsRename((_src, _dst, _ctx) => Verdict.Pass),
+        .onFsRename((_src, _dst, _ctx) => Verdict.Pass)
+        .onFsSetattr((_a) => Verdict.Pass)
+        .onFsSymlink((_s) => Verdict.Pass)
+        .onFsMkdir((_m) => Verdict.Pass)
+        .onFsReaddir((_r) => FilterAction.Forward)
+        .onFsReadlink((_l) => Verdict.Pass),
     )
     .net((n) =>
       n
         .onNetOutbound((_frame) => FilterAction.Forward)
-        .onNetInbound((_frame) => FilterAction.Forward),
+        .onNetInbound((_frame) => FilterAction.Forward)
+        .onSocketConnect((_c) => Verdict.Pass)
+        .onDnsQuery((_q) => DnsVerdict.Forward)
+        .onSocketBind((_b) => Verdict.Pass),
     )
     .console((c) =>
       c
@@ -74,14 +84,16 @@ export function buildSurfacePlugin(): KelirBuilder<
     .exec((e) =>
       e
         .onExecStdout((_pid, _execId, chunk) => chunk)
-        .onExecStderr((_pid, _execId, chunk) => chunk),
+        .onExecStderr((_pid, _execId, chunk) => chunk)
+        .onExecStdin((_chunk) => _chunk),
     )
     .host((h) =>
       h
         .onHostLsmExec((_path, _pid) => Verdict.Pass)
         .onHostPressure((_level) => Verdict.Pass)
         .onHostKeyringAccess((_key) => Verdict.Pass)
-        .onHostPreempt((_ctx) => {}),
+        .onHostPreempt((_ctx) => {})
+        .onHostContainmentBreach((_b) => {}),
     )
     .lifecycle((l) =>
       l

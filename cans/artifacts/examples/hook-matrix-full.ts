@@ -75,6 +75,11 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     hookState.netInbound += 1;
     return FilterAction.Forward;
   })
+  .onFsSetattr((path, mode, size) => Verdict.Pass)
+  .onFsSymlink((target, link) => Verdict.Pass)
+  .onFsMkdir((path, mode) => Verdict.Pass)
+  .onFsReaddir((path, entries) => FilterAction.Forward)
+  .onFsReadlink((path) => Verdict.Pass)
   // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
   // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
   .onFsLookup((path) => {
@@ -150,6 +155,7 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
     const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
     return Buffer.from(masked, "latin1");
   })
+  .onExecStdin((pid, execId, chunk) => chunk)
   .onHostLsmExec((_path, _pid) => {
     return Verdict.Pass;
   })
@@ -162,6 +168,7 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   .onHostPreempt((_ctx) => {
     hookState.hostPreempts += 1;
   })
+  .onHostContainmentBreach((pid, path, kind) => {})
   .onVmInit((_ctx) => {
     hookState.vmInits += 1;
   })
@@ -202,7 +209,9 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   .onProcessExit(async (event) => {
     hookState.exits += 1;
     if (event.exitCode !== 0) hookState.failures += 1;
-  });
+  })
+  .onSignal((sender, target, sig) => Verdict.Pass)
+  .onFork((parent, child) => Verdict.Pass);
 
 const runtime = kelir({
   vcpus: 2, memoryMb: 2048, driver: "auto",

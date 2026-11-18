@@ -272,6 +272,9 @@ impl LifecycleParticipant for HookMatrixFullPlugin {
             .host_preempts += 1;
         Ok(())
     }
+fn on_host_containment_breach(&self, _pid: u32, _path: &Path, _kind: &str) -> Result<(), PluginError> {
+    Ok(())
+}
 }
 
 impl NetInterposer for HookMatrixFullPlugin {
@@ -292,6 +295,30 @@ impl NetInterposer for HookMatrixFullPlugin {
             .net_inbound += 1;
         Ok(FilterAction::Forward)
     }
+fn on_socket_connect(&self, _pid: u32, _proto: u8, _ip: [u8; 4], _port: u16) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+fn on_dns_query(&self, _pid: u32, _domain: &str, _qtype: u16) -> Result<DnsVerdict, PluginError> {
+    Ok(DnsVerdict::Forward)
+}
+fn on_socket_bind(&self, _pid: u32, _proto: u8, _ip: [u8; 4], _port: u16) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+fn on_fs_setattr(&self, _path: &Path, _mode: u32, _size: u64) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+fn on_fs_readdir(&self, _path: &Path, _entries: &mut Vec<DirEntry>) -> Result<FilterAction, PluginError> {
+    Ok(FilterAction::Forward)
+}
+fn on_fs_readlink(&self, _path: &Path) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
 }
 
 fn escapes_workspace(path: &Path) -> bool {
@@ -495,6 +522,9 @@ impl ConsoleInterposer for HookMatrixFullPlugin {
         mask_tokens(&mut out);
         Ok(out)
     }
+async fn on_exec_stdin(&self, _pid: u32, _id: u64, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
+    Ok(chunk.to_vec())
+}
 }
 
 #[async_trait]
@@ -560,6 +590,12 @@ impl TrapInterposer for HookMatrixFullPlugin {
         }
         Ok(())
     }
+async fn on_signal(&self, _sender: u32, _target: u32, _sig: i32) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
+async fn on_fork(&self, _parent: u32, _child: u32) -> Result<Verdict, PluginError> {
+    Ok(Verdict::Pass)
+}
 }
 
 #[async_trait]

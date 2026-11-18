@@ -47,3 +47,7 @@
       - Ephemeral rows: row unlinked immediately on parent-process death
       - Detached rows: row marked Crashed on (boot_id, start_time_ns, pid) mismatch
     - Correlation ids stitch spans across cli, runtime, agentd
+  - Security events
+    - on_host_containment_breach publishes high-severity OCSF security event
+    - Captures openat2 RESOLVE_BENEATH and symlink traversal violations in RAM
+    - Dispatches immediately to EventBus subscribers without guest logging

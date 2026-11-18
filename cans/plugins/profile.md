@@ -137,6 +137,7 @@
       - see: artifacts/examples/fixtures/kelir.yaml#session.shim.max_exec_slots
       - see: artifacts/examples/fixtures/kelir.yaml#session.shim.hide_pid
       - see: artifacts/examples/fixtures/kelir.yaml#session.shim.anti_toctou_cgroups
+    - see: artifacts/examples/fixtures/kelir.yaml#session.shim.mask_proc_environ
   - Storage schema (profile)
     - Storage semantics: see: 05-storage-plane.md
     - see: artifacts/examples/fixtures/kelir.yaml#storage.workspace_root
@@ -183,6 +184,7 @@
     - see: artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     - see: artifacts/examples/fixtures/kelir.yaml#wire.allow_ipv6
     - see: artifacts/examples/fixtures/kelir.yaml#wire.allow_raw_sockets
+    - see: artifacts/examples/fixtures/kelir.yaml#wire.block_abstract_unix_sockets
     - Wire quarantine
       - see: artifacts/examples/fixtures/kelir.yaml#wire.quarantine.drop_link_local
       - see: artifacts/examples/fixtures/kelir.yaml#wire.quarantine.cloud_metadata_block

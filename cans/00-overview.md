@@ -28,6 +28,10 @@
     - Embeddable in-process microVM hypervisor microkernel
     - Five integrated engine planes: terminal, storage, wire, checkpoint, host
     - Mediates guest interaction through paravirtual VirtIO Device Complex
+    - Interposition substrate: exactly 38 ring verbs across 8 scopes
+    - Hardened shim boundaries: mask_proc_environ and abstract socket deny
+    - Kernel physics invariants: MMU dirty-bytes, tmpfs sockets, OOM immunity
+    - Host pre-flights: hypervisor entitlement, /dev/kvm, kelir-pack EROFS
     - Cold-boot budget: see: 01-architecture.md#Boot-budget
     - Definition details: see: 01-architecture.md#Axiomatic-foundations
   - What it is not

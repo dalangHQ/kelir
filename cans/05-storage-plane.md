@@ -19,10 +19,20 @@
       - Guest sees one POSIX filesystem; zero union-driver behavior in guest
     - Interception pipeline
       - FUSE bridge directly links guest VFS to host broker
-      - Pipeline engine exposes synchronous lookup, read, write, lock, unlink, rename
+      - Pipeline exposes 11 synchronous verbs: lookup, read, write, lock
+      - Additional verbs: unlink, rename, setattr, symlink, mkdir, readdir, readlink
+      - on_fs_setattr traps FUSE_SETATTR for ftruncate, chmod, and chown ops
+      - on_fs_symlink traps traversal attempts at link creation boundary
+      - on_fs_mkdir enforces directory creation boundaries and quota pre-checks
+      - on_fs_readdir scrubs hidden files from guest LLM context windows
+      - on_fs_readlink resolves canonical targets against MountScope root
       - Destructive unlinks can be redirected host-side via PatchPayload::FsPathRedirect
-      - FUSE lookup, read, write, and lock dispatch runs through the pipeline engine across all mounted interceptors with scope filtering and one fused crossing per ring event
+      - FUSE dispatch routes through pipeline engine across mounted interceptors
       - Emits physical StorageDelta events directly to host event bus on commit
+    - Kernel physics invariants (storage)
+      - mmap(MAP_SHARED) writes bypass VFS; flush_fuse_before_commit syncs extents
+      - Hardware Stage-2 MMU dirty_bytes verifies unhooked memory writes
+      - S_IFSOCK binds intercepted: /tmp, /var/run, /run stay on guest tmpfs
     - Host I/O invariants
       - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
       - Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO
@@ -65,10 +75,10 @@
     - Host memory footprint independent of guest write volume
     - Sparse upper file bytes counted toward the session quota
   - FUSE opcode table
-    - Broker data ops: `lookup`, `getattr`, `read`, `write`, `readdir`
-    - Broker mutation ops: `unlink`, `mkdir`, `rename`
+    - Broker data ops: lookup=1, getattr=3, read=15, write=16, readdir=28
+    - Broker mutation ops: unlink=10, mkdir=9, rename=12, setattr=4, symlink=6
+    - Broker link ops: readlink=5
     - Mediation ops: `statfs`, `setlk`, `setlkw`
-    - Opcode numbers mirror the kernel FUSE UAPI
     - lookup=1, getattr=3, read=15, write=16, readdir=28, unlink=10
     - mkdir=9, rename=12, statfs=17, setlk=32, setlkw=33
     - FUSE `WRITE` reply size is the requested chunk size (`fuse_write_out.size`)

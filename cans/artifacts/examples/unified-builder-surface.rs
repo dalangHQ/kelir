@@ -8,7 +8,7 @@
 // see: cans/artifacts/examples/unified-builder-surface.py#build_surface_plugin
 
 // The unified builder surface, walked end to end in one file: structural
-// verbs, all 24 ring verbs reached through their 8 scope closures, the
+// verbs, all 38 ring verbs reached through their 8 scope closures, the
 // five orphan-verb scopes (actions, streams, vsock, params, deny), the
 // chain cases (seal, trap filter, trap_scope, .fs config) and the mount
 // cases (host-only verbs on a host builder, host-only verbs on a plugin
@@ -99,6 +99,8 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
         .trap_scope(|t| {
             t.on_trap(|_, _| Ok(Verdict::Pass))
                 .on_process_exit(|_, _| Ok(()))
+.on_signal(|_, _, _| Ok(Verdict::Pass))
+.on_fork(|_, _| Ok(Verdict::Pass))
                 .end()
         })
         .fs(|f| {
@@ -108,11 +110,19 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
                 .on_fs_lock(|_, _, _, _| Ok(Verdict::Pass))
                 .on_fs_unlink(|_, _| Ok(Verdict::Pass))
                 .on_fs_rename(|_, _, _| Ok(Verdict::Pass))
+.on_fs_setattr(|_, _, _, _, _, _| Ok(Verdict::Pass))
+.on_fs_symlink(|_, _| Ok(Verdict::Pass))
+.on_fs_mkdir(|_, _| Ok(Verdict::Pass))
+.on_fs_readdir(|_, _| Ok(FilterAction::Forward))
+.on_fs_readlink(|_| Ok(Verdict::Pass))
                 .end()
         })
         .net(|n| {
             n.on_net_outbound(|_| Ok(FilterAction::Forward))
                 .on_net_inbound(|_| Ok(FilterAction::Forward))
+.on_socket_connect(|_, _, _, _| Ok(Verdict::Pass))
+.on_dns_query(|_, _, _| Ok(DnsVerdict::Forward))
+.on_socket_bind(|_, _, _, _| Ok(Verdict::Pass))
                 .end()
         })
         .console(|c| {
@@ -123,6 +133,7 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
         .exec(|e| {
             e.on_exec_stdout(|_, _, bytes| Ok(bytes.to_vec()))
                 .on_exec_stderr(|_, _, bytes| Ok(bytes.to_vec()))
+.on_exec_stdin(|_, _, bytes| Ok(bytes.to_vec()))
                 .end()
         })
         .host(|h| {
@@ -130,6 +141,7 @@ pub fn build_surface_plugin() -> SurfaceBuilder {
                 .on_host_pressure(|_| Ok(Verdict::Pass))
                 .on_host_keyring_access(|_| Ok(Verdict::Pass))
                 .on_host_preempt(|_| Box::pin(async move { Ok::<(), PluginError>(()) }))
+.on_host_containment_breach(|_, _, _| Ok(()))
                 .end()
         })
         .lifecycle(|l| {

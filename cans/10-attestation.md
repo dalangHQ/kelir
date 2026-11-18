@@ -70,6 +70,8 @@
             - see: 01-architecture.md#Early-boot-diagnostics
         - Opt-in: syscall_count
         - dirty_bytes is a receipt field: byte count, not page count
+          - Stage-2 MMU tracks physical dirty pages directly in hardware
+          - Captures mmap(MAP_SHARED) writes that bypass VFS and on_fs_write
           - Deterministic because it counts guest writes, not host page churn
         - Byte-not-page reason: see: 01-architecture.md#SnapshotDescriptor.dirty-bytes
       - Receipt accounting
