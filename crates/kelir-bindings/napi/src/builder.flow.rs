@@ -90,6 +90,7 @@ pub struct NativeWireConfig {
     pub dial_timeout_ms: Option<u32>,
     pub l4_proxies: Option<Vec<NativeL4Proxy>>,
     pub tap_filter: Option<String>,
+    pub block_abstract_unix_sockets: Option<bool>,
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -103,6 +104,7 @@ pub struct NativeKelirOptions {
     pub tsc_locked: Option<bool>,
     pub enable_watchdog: Option<bool>,
     pub driver: Option<String>,
+    pub mask_proc_environ: Option<bool>,
 }
 
 #[napi]
@@ -140,6 +142,9 @@ impl NativeKelirBuilder {
         }
         if let Some(enable_watchdog) = options.enable_watchdog {
             config.enable_watchdog = enable_watchdog;
+        }
+        if let Some(mask_proc_environ) = options.mask_proc_environ {
+            config.mask_proc_environ = mask_proc_environ;
         }
         // see: cans/01-architecture.md#Driver-backends
         config.driver_policy.driver = options.driver.clone();
@@ -339,6 +344,7 @@ impl NativeKelirBuilder {
                 allow_udp_proxied: cfg.tap_filter.as_deref() == Some("AllowUdpProxied"),
                 userspace_netstack: false,
                 default_egress: String::new(),
+                block_abstract_unix_sockets: cfg.block_abstract_unix_sockets.unwrap_or(false),
                 l4_unix_diversions: cfg
                     .l4_proxies
                     .as_ref()
@@ -362,7 +368,9 @@ impl NativeKelirBuilder {
         };
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
-        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
+        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(
+            std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+        );
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         Ok(kelir_engine::session_lifecycle::PlaneWiring {
@@ -372,7 +380,10 @@ impl NativeKelirBuilder {
             checkpoint_config: None,
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
             host_config: None,
-            net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
+            net_ops: Some(kelir_wire::net_ops(
+                std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+                Arc::clone(&dns_ops),
+            )),
             dns_ops: Some(dns_ops),
             udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
             l4_ops: Some(kelir_wire::l4_ops()),

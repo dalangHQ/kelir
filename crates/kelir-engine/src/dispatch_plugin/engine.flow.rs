@@ -432,41 +432,6 @@ impl PipelineEngine {
         true
     }
 
-    // see: cans/02-plugin-model.md#Mount-scoping
-    fn net_scope_allows(scope: &MountScope, remote: Option<([u8; 4], u16)>) -> bool {
-        match remote {
-            Some((ip, port)) => scope.allows_net(ip, port),
-            None => scope.net_cidrs.is_none() && scope.net_ports.is_none(),
-        }
-    }
-
-    // see: cans/02-plugin-model.md#Mount-scoping
-    // see: cans/07-wire-plane.md#Userspace-network-stack
-    fn net_remote_endpoint(frame: &[u8], inbound: bool) -> Option<([u8; 4], u16)> {
-        use crate::planes::wire::layout_wire::{
-            ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IP_PROTO_UDP,
-            IPV4_MIN_HEADER_BYTES, Ipv4View, L4_PORT_PAIR_BYTES,
-        };
-        if frame.len() < ETH_HEADER_BYTES || EthView::new_unchecked(frame).etype() != ETHERTYPE_IPV4
-        {
-            return None;
-        }
-        let ip = Ipv4View::new_unchecked(&frame[ETH_HEADER_BYTES..]);
-        let ihl = ip.ihl_bytes_checked()?;
-        if ihl < IPV4_MIN_HEADER_BYTES
-            || frame.len() < ETH_HEADER_BYTES + ihl + L4_PORT_PAIR_BYTES
-            || !matches!(ip.proto(), IP_PROTO_TCP | IP_PROTO_UDP)
-        {
-            return None;
-        }
-        let l4 = &frame[ETH_HEADER_BYTES + ihl..];
-        if inbound {
-            Some((ip.src_checked()?, u16::from_be_bytes([l4[0], l4[1]])))
-        } else {
-            Some((ip.dst_checked()?, u16::from_be_bytes([l4[2], l4[3]])))
-        }
-    }
-
     // see: cans/02-plugin-model.md#Hook-ordering
     pub fn set_ring_priority(&mut self, ring: TrampolineRing, index: usize, priority: i32) {
         let regs = self.ring_regs_mut(ring);
@@ -841,96 +806,7 @@ impl PipelineEngine {
         Ok(())
     }
 
-    // see: cans/02-plugin-model.md#Mount-scoping
-    pub fn dispatch_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::NetOutbound)?;
-        let remote = Self::net_remote_endpoint(frame, false);
-        for (index, interceptor) in self.net_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.net_scopes, index);
-            if !scope.allows_device(VirtioDevice::Net) {
-                continue;
-            }
-            if !Self::net_scope_allows(&scope, remote) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
-            let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
-            let started = Instant::now();
-            let action = {
-                let outcome = quarantine_sync(
-                    || interceptor.on_net_outbound(frame),
-                    || {
-                        Ok(FilterAction::Abort {
-                            reason: "Plugin panicked".into(),
-                        })
-                    },
-                );
-                if fused.is_none() {
-                    self.foreign_submit_complete();
-                }
-                outcome?
-            };
-            let mut action = action;
-            if deadline.is_some_and(|limit| started.elapsed() > limit) {
-                action = FilterAction::Drop {
-                    errno: Errno::Etimeout,
-                    reason: "hook timeout".into(),
-                };
-            }
-            if !matches!(action, FilterAction::Forward) {
-                return Ok(action);
-            }
-        }
-        drop(fused);
-        Ok(FilterAction::Forward)
-    }
-
-    // see: cans/02-plugin-model.md#Mount-scoping
-    pub fn dispatch_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        let fused = self.fused_crossing(TrampolineRing::NetInbound)?;
-        let remote = Self::net_remote_endpoint(frame, true);
-        for (index, interceptor) in self.net_interceptors.iter().enumerate() {
-            let scope = Self::scope_at(&self.net_scopes, index);
-            if !scope.allows_device(VirtioDevice::Net) {
-                continue;
-            }
-            if !Self::net_scope_allows(&scope, remote) {
-                continue;
-            }
-            if fused.is_none() {
-                // see: cans/01-architecture.md#FFI-boundary-economics
-                self.try_foreign_submit()?;
-            }
-            let action = {
-                let outcome = quarantine_sync(
-                    || interceptor.on_net_inbound(frame),
-                    || {
-                        Ok(FilterAction::Abort {
-                            reason: "Plugin panicked".into(),
-                        })
-                    },
-                );
-                if fused.is_none() {
-                    self.foreign_submit_complete();
-                }
-                outcome?
-            };
-            if !matches!(action, FilterAction::Forward) {
-                return Ok(action);
-            }
-        }
-        drop(fused);
-        Ok(FilterAction::Forward)
-    }
-
-    // TODO (L3) [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
+    // L3-GAP: [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
@@ -967,6 +843,95 @@ impl PipelineEngine {
                         })
                     },
                 );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            let mut verdict = verdict;
+            if deadline.is_some_and(|limit| started.elapsed() > limit) {
+                verdict = Verdict::Drop {
+                    errno: Errno::Etimeout,
+                    reason: "hook timeout".into(),
+                };
+            }
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub async fn dispatch_signal(
+        &self,
+        sender: u32,
+        target: u32,
+        sig: i32,
+    ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::Signal)?;
+        if let Some(verdict) = fused
+            .as_ref()
+            .and_then(|crossing| crossing.non_pass_verdict())
+        {
+            return Ok(verdict);
+        }
+        // TODO (L3) [plugin_engine]: signal carries no path or device payload, so trap-scope filtering lands with the shim signal boundary; slop: signal ring skips scope filter entirely
+        for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            // see: cans/02-plugin-model.md#Per-ring-timeouts
+            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the signal past its deadline.
+            let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
+            let started = Instant::now();
+            let verdict = {
+                let outcome = quarantine_unit(interceptor.on_signal(sender, target, sig)).await;
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            let mut verdict = verdict;
+            if deadline.is_some_and(|limit| started.elapsed() > limit) {
+                verdict = Verdict::Drop {
+                    errno: Errno::Etimeout,
+                    reason: "hook timeout".into(),
+                };
+            }
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub async fn dispatch_fork(&self, parent: u32, child: u32) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::Fork)?;
+        if let Some(verdict) = fused
+            .as_ref()
+            .and_then(|crossing| crossing.non_pass_verdict())
+        {
+            return Ok(verdict);
+        }
+        // TODO (L3) [plugin_engine]: fork carries no path or device payload, so trap-scope filtering lands with the shim fork boundary; slop: fork ring skips scope filter entirely
+        for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            // see: cans/02-plugin-model.md#Per-ring-timeouts
+            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the fork past its deadline.
+            let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
+            let started = Instant::now();
+            let verdict = {
+                let outcome = quarantine_unit(interceptor.on_fork(parent, child)).await;
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }

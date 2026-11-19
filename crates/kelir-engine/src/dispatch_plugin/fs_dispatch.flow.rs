@@ -1,5 +1,6 @@
 // see: cans/05-storage-plane.md#Interception-pipeline
 use super::*;
+use kelir_interface::storage::DirEntry;
 
 impl PipelineEngine {
     pub fn dispatch_fs_write(
@@ -137,6 +138,207 @@ impl PipelineEngine {
             let verdict = {
                 let outcome = quarantine_sync(
                     || interceptor.on_fs_lock(path, flock_cmd, flock_type, pid),
+                    || {
+                        Ok(Verdict::Drop {
+                            errno: Errno::Efault,
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_fs_setattr(
+        &self,
+        path: &std::path::Path,
+        mode: u32,
+        size: u64,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsSetattr)?;
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, path, ctx) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let verdict = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_setattr(path, mode, size),
+                    || {
+                        Ok(Verdict::Drop {
+                            errno: Errno::Efault,
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_fs_symlink(
+        &self,
+        target: &std::path::Path,
+        link: &std::path::Path,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsSymlink)?;
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, target, ctx)
+                || !Self::fs_scope_allows(&scope, link, ctx)
+            {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let verdict = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_symlink(target, link),
+                    || {
+                        Ok(Verdict::Drop {
+                            errno: Errno::Efault,
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_fs_mkdir(
+        &self,
+        path: &std::path::Path,
+        mode: u32,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsMkdir)?;
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, path, ctx) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let verdict = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_mkdir(path, mode),
+                    || {
+                        Ok(Verdict::Drop {
+                            errno: Errno::Efault,
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            if !matches!(verdict, Verdict::Pass) {
+                return Ok(verdict);
+            }
+        }
+        drop(fused);
+        Ok(Verdict::Pass)
+    }
+
+    pub fn dispatch_fs_readdir(
+        &self,
+        path: &std::path::Path,
+        entries: &mut Vec<DirEntry>,
+        ctx: &HandlerCtx,
+    ) -> Result<FilterAction, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsReaddir)?;
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, path, ctx) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let action = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_readdir(path, entries),
+                    || {
+                        Ok(FilterAction::Abort {
+                            reason: "Plugin panicked".into(),
+                        })
+                    },
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            if !matches!(action, FilterAction::Forward) {
+                return Ok(action);
+            }
+        }
+        drop(fused);
+        Ok(FilterAction::Forward)
+    }
+
+    pub fn dispatch_fs_readlink(
+        &self,
+        path: &std::path::Path,
+        ctx: &HandlerCtx,
+    ) -> Result<Verdict, PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::FsReadlink)?;
+        for (index, interceptor) in self.fs_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.fs_scopes, index);
+            if !Self::fs_scope_allows(&scope, path, ctx) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let verdict = {
+                let outcome = quarantine_sync(
+                    || interceptor.on_fs_readlink(path),
                     || {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,

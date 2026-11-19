@@ -341,9 +341,13 @@ impl Session {
         );
         let session_checkpoint_plane = Arc::new(
             match plane_wiring.checkpoint_config.clone() {
-                Some(config) => crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
-                    .with_config(config),
-                None => crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops)),
+                Some(config) => {
+                    crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
+                        .with_config(config)
+                }
+                None => {
+                    crate::planes::checkpoint::CheckpointPlane::new(Arc::clone(&checkpoint_ops))
+                }
             }
             .with_metrics(metrics.clone()),
         );

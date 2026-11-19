@@ -1,6 +1,9 @@
 // see: cans/05-storage-plane.md#FUSE-opcode-table
 pub const FUSE_LOOKUP: u32 = 1;
 pub const FUSE_GETATTR: u32 = 3;
+pub const FUSE_SETATTR: u32 = 4;
+pub const FUSE_READLINK: u32 = 5;
+pub const FUSE_SYMLINK: u32 = 6;
 pub const FUSE_MKDIR: u32 = 9;
 pub const FUSE_UNLINK: u32 = 10;
 pub const FUSE_RENAME: u32 = 12;

@@ -33,19 +33,10 @@ use crate::service_db_proxy::{SqlDialect, SqlProxy};
 use crate::sqlite_db_proxy::SqliteBridge;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PgSchemaRewrite {
     pub from_schema: String,
     pub to_schema: String,
-}
-
-impl Default for PgSchemaRewrite {
-    fn default() -> Self {
-        Self {
-            from_schema: String::new(),
-            to_schema: String::new(),
-        }
-    }
 }
 
 // see: cans/artifacts/examples/db-backed-runtime.py#PgWireRewrite

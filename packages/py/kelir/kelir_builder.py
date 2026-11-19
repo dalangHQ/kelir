@@ -158,6 +158,7 @@ class KelirBuilder:
         ns_per_instruction: int | None = None,
         entropy_seed: int | None = None,
         embed_mode: str | None = None,
+        mask_proc_environ: bool | None = None,
     ) -> None:
         self._plugins: list[object] = []
         self._plugin_registrations: list[PluginRegistration] = []
@@ -183,6 +184,7 @@ class KelirBuilder:
             "ns_per_instruction": ns_per_instruction,
             "entropy_seed": entropy_seed,
             "embed_mode": embed_mode,
+            "mask_proc_environ": mask_proc_environ,
         }
         self._mode: Literal["host", "plugin"] = "host"
         self._name: str | None = None
@@ -894,6 +896,7 @@ class KelirBuilder:
             tsc_locked=self._config["tsc_locked"],
             enable_watchdog=self._config["enable_watchdog"],
             driver=self._config["driver"],
+            mask_proc_environ=self._config["mask_proc_environ"],
         )
         # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms/embed_mode once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
         if "terminal" in self._config:
@@ -967,6 +970,7 @@ def builder(
     ns_per_instruction: int | None = None,
     entropy_seed: int | None = None,
     embed_mode: str | None = None,
+    mask_proc_environ: bool | None = None,
 ) -> KelirBuilder:
     return KelirBuilder(
         vcpus=vcpus,
@@ -985,4 +989,5 @@ def builder(
         ns_per_instruction=ns_per_instruction,
         entropy_seed=entropy_seed,
         embed_mode=embed_mode,
+        mask_proc_environ=mask_proc_environ,
     )

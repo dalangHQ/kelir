@@ -233,6 +233,7 @@ export interface NativeWireConfigBinding {
     readonly injectMtlsKeyPath?: string;
   }[];
   readonly tapFilter?: string;
+  readonly blockAbstractUnixSockets?: boolean;
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK

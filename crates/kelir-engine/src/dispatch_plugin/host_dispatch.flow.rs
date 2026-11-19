@@ -64,4 +64,38 @@ impl PipelineEngine {
         drop(fused);
         Ok(Verdict::Pass)
     }
+
+    // see: cans/11-protocol.md#Host-containment-verification
+    pub fn dispatch_host_containment_breach(
+        &self,
+        pid: u32,
+        path: &std::path::Path,
+        kind: &str,
+    ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::HostContainmentBreach)?;
+        for (index, interceptor) in self.host_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.host_scopes, index);
+            if !scope.allows_path(path) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let outcome = {
+                let result = quarantine_sync(
+                    || interceptor.on_host_containment_breach(pid, path, kind),
+                    || Err(PluginError::Halt("Plugin panicked".into())),
+                );
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                result
+            };
+            outcome?;
+        }
+        drop(fused);
+        Ok(())
+    }
 }

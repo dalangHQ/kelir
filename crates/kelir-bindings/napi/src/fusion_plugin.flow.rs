@@ -123,7 +123,11 @@ pub fn attach_runs(descriptor: &mut FusedTrampolineDescriptor, runs: Vec<Object>
         }
     }
     for (ring_kind, mut fused) in grouped {
-        let Some(chain) = descriptor.rings.iter_mut().find(|chain| chain.ring == ring_kind) else {
+        let Some(chain) = descriptor
+            .rings
+            .iter_mut()
+            .find(|chain| chain.ring == ring_kind)
+        else {
             return Err(Error::from_reason(format!(
                 "fused trampoline run on ring {} has no matching descriptor ring",
                 ring_kind.as_tag()

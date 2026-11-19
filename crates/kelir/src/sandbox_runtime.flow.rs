@@ -6,7 +6,7 @@ use kelir_interface::checkpoint::ops::{
 };
 use kelir_interface::driver_interface::VmConfig;
 use kelir_interface::host::ops::{
-    CgroupConfig, CatalogConfig, HostPlaneConfig, HostReaperConfig, TelemetryRingConfig,
+    CatalogConfig, CgroupConfig, HostPlaneConfig, HostReaperConfig, TelemetryRingConfig,
 };
 use kelir_interface::plugin_model::PluginError;
 use serde::{Deserialize, Serialize};
@@ -210,10 +210,10 @@ pub(crate) fn pty_config(profile: &SandboxProfile) -> Option<PtyConfig> {
             track_screen_matrix: bool_of(
                 wireframe_grid.and_then(|node| node.get("track_screen_matrix")),
             ),
-            export_on_trap: bool_of(
-                wireframe_grid.and_then(|node| node.get("export_on_trap")),
-            ),
+            export_on_trap: bool_of(wireframe_grid.and_then(|node| node.get("export_on_trap"))),
         },
+        // see: cans/artifacts/examples/fixtures/kelir.yaml#terminal.stream_engine
+        stream_engine: str_of(pty.and_then(|node| node.get("stream_engine"))),
         sanitizer: TerminalSanitizerConfig {
             drop_osc52: bool_of(sanitizer.and_then(|node| node.get("drop_osc52"))),
             strip_title: bool_of(sanitizer.and_then(|node| node.get("strip_title"))),
@@ -247,18 +247,12 @@ pub(crate) fn host_plane_config(profile: &SandboxProfile) -> Option<HostPlaneCon
     Some(HostPlaneConfig {
         reaper: HostReaperConfig {
             linux_death_signal: str_of(reaper.and_then(|node| node.get("linux_death_signal"))),
-            darwin_kqueue_event: str_of(
-                reaper.and_then(|node| node.get("darwin_kqueue_event")),
-            ),
-            windows_job_object: bool_of(
-                reaper.and_then(|node| node.get("windows_job_object")),
-            ),
+            darwin_kqueue_event: str_of(reaper.and_then(|node| node.get("darwin_kqueue_event"))),
+            windows_job_object: bool_of(reaper.and_then(|node| node.get("windows_job_object"))),
         },
         cgroups: CgroupConfig {
             path: str_of(cgroups.and_then(|node| node.get("path"))),
-            monitor_pressure: bool_of(
-                cgroups.and_then(|node| node.get("monitor_pressure")),
-            ),
+            monitor_pressure: bool_of(cgroups.and_then(|node| node.get("monitor_pressure"))),
             auto_inflate_balloon: bool_of(
                 cgroups.and_then(|node| node.get("auto_inflate_balloon")),
             ),
@@ -328,9 +322,7 @@ pub(crate) fn host_plane_config(profile: &SandboxProfile) -> Option<HostPlaneCon
 }
 
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
-pub(crate) fn checkpoint_plane_config(
-    profile: &SandboxProfile,
-) -> Option<CheckpointPlaneConfig> {
+pub(crate) fn checkpoint_plane_config(profile: &SandboxProfile) -> Option<CheckpointPlaneConfig> {
     let checkpoint = profile.checkpoint.as_ref()?;
     let lineage = checkpoint.extra.get("lineage");
     let boundaries = checkpoint.extra.get("boundaries");
@@ -359,20 +351,14 @@ pub(crate) fn checkpoint_plane_config(
                 .unwrap_or_default(),
         },
         compaction: CompactionConfig {
-            unbounded_depth: bool_of(
-                lineage.and_then(|node| node.get("unbounded_depth")),
-            ),
-            lazy_cow_sharing: bool_of(
-                lineage.and_then(|node| node.get("lazy_cow_sharing")),
-            ),
+            unbounded_depth: bool_of(lineage.and_then(|node| node.get("unbounded_depth"))),
+            lazy_cow_sharing: bool_of(lineage.and_then(|node| node.get("lazy_cow_sharing"))),
             compaction_on_export: bool_of(
                 lineage.and_then(|node| node.get("compaction_on_export")),
             ),
         },
         snapshot_boundaries: BoundaryConfig {
-            sentinel_path: str_of(
-                boundaries.and_then(|node| node.get("sentinel_path")),
-            ),
+            sentinel_path: str_of(boundaries.and_then(|node| node.get("sentinel_path"))),
             detect_pty_quiescence: bool_of(
                 boundaries.and_then(|node| node.get("detect_pty_quiescence")),
             ),

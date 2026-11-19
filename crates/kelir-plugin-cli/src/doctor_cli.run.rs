@@ -26,8 +26,10 @@ pub enum HostProbe {
     PageSize,
     Pidfd,
     Hvf,
+    HvfEntitlement,
     Avf,
     Whp,
+    KelirPack,
 }
 
 impl HostProbe {
@@ -37,8 +39,10 @@ impl HostProbe {
             HostProbe::PageSize => "page-size",
             HostProbe::Pidfd => "pidfd",
             HostProbe::Hvf => "hvf",
+            HostProbe::HvfEntitlement => "hvf-entitlement",
             HostProbe::Avf => "avf",
             HostProbe::Whp => "whp",
+            HostProbe::KelirPack => "kelir-pack",
         }
     }
 }
@@ -118,10 +122,21 @@ impl DoctorReport {
 
 // see: cans/15-operations.md#Developer-CLI
 fn probe_kvm() -> ProbeOutcome {
-    if host_probe::device_present("kvm") {
-        ProbeOutcome::Pass("/dev/kvm is present".to_string())
-    } else {
-        ProbeOutcome::Fail("/dev/kvm is absent".to_string())
+    if !host_probe::device_present("kvm") {
+        return ProbeOutcome::Fail("/dev/kvm is absent".to_string());
+    }
+    // see: cans/15-operations.md#Developer-CLI
+    match std::fs::metadata("/dev/kvm") {
+        Ok(meta) => {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = meta.permissions().mode() & 0o777;
+            if mode == 0o660 {
+                ProbeOutcome::Pass("/dev/kvm is present with mode 0660".to_string())
+            } else {
+                ProbeOutcome::Fail(format!("/dev/kvm has mode {mode:o}, expected 0660"))
+            }
+        }
+        Err(err) => ProbeOutcome::Fail(format!("/dev/kvm stat failed: {err}")),
     }
 }
 
@@ -206,6 +221,37 @@ fn probe_hvf() -> ProbeOutcome {
 }
 
 // see: cans/15-operations.md#Developer-CLI
+fn probe_hvf_entitlement() -> ProbeOutcome {
+    #[cfg(target_os = "macos")]
+    {
+        // TODO (L3) [hypervisor_driver]: read com.apple.security.hypervisor via SecTaskCopyValueForEntitlement; slop: entitlement assumed, AMF denial surfaces at VM run
+        ProbeOutcome::NotImplemented(
+            "com.apple.security.hypervisor entitlement probe needs SecTask (L3)".to_string(),
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        ProbeOutcome::NotApplicable(
+            "com.apple.security.hypervisor is a macOS-only entitlement".to_string(),
+        )
+    }
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn probe_kelir_pack() -> ProbeOutcome {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    for dir in std::env::split_paths(&path) {
+        if dir.join("kelir-pack").is_file() {
+            return ProbeOutcome::Pass(format!(
+                "kelir-pack found at {}",
+                dir.join("kelir-pack").display()
+            ));
+        }
+    }
+    ProbeOutcome::Fail("kelir-pack not found on PATH (RAM EROFS compile needs it)".to_string())
+}
+
+// see: cans/15-operations.md#Developer-CLI
 fn probe_avf() -> ProbeOutcome {
     if host_probe::device_present("avf") {
         ProbeOutcome::Pass("/dev/avf is present".to_string())
@@ -238,6 +284,11 @@ pub fn probe_host() -> DoctorReport {
             probes.push(probe);
         }
     }
+    if cfg!(target_os = "macos") {
+        probes.push((HostProbe::HvfEntitlement, probe_hvf_entitlement()));
+    }
+    // see: cans/15-operations.md#Developer-CLI
+    probes.push((HostProbe::KelirPack, probe_kelir_pack()));
     if cfg!(target_os = "linux") {
         probes.push((HostProbe::PageSize, probe_page_size()));
         probes.push((HostProbe::Pidfd, probe_pidfd()));

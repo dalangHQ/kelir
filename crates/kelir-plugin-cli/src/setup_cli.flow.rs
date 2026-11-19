@@ -68,6 +68,9 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             }
             write_hw_lockfile(&HwLockPath::default_path(), &report)
                 .map_err(|err| SetupError::Io(format!("hw-lock: cannot write hw.lock: {err}")))?;
+            // see: cans/15-operations.md#Developer-CLI
+            kelir_interface::driver_interface::verify_hw_lockfile()
+                .map_err(|err| SetupError::Io(format!("hw-lock: verification failed: {err}")))?;
             // L3-GAP: [hypervisor_driver]: enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.; slop: /dev/kvm left world-accessible, 0660 never enforced
             Ok(())
         }

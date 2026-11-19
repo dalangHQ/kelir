@@ -119,7 +119,8 @@ impl ReplayState {
     fn accrue_step_windows(&self) -> Result<usize, PluginError> {
         if self.step_window_instructions == 0 {
             return Err(PluginError::Halt(
-                "replay step_window_instructions must be a positive retired-instruction interval".into(),
+                "replay step_window_instructions must be a positive retired-instruction interval"
+                    .into(),
             ));
         }
         let mut pending = Self::lock_slot(&self.pending_windows)?;
@@ -285,7 +286,8 @@ impl LifecycleParticipant for ReplayPlugin {
         assert_pinned_clocksource(&self.config.pinned_clocksource)?;
         if self.config.step_window_instructions == 0 {
             return Err(PluginError::Halt(
-                "replay step_window_instructions must be a positive retired-instruction interval".into(),
+                "replay step_window_instructions must be a positive retired-instruction interval"
+                    .into(),
             ));
         }
         // see: cans/plugins/replay.md#Invariants-and-policy-(replay)

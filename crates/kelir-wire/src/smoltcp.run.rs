@@ -2,9 +2,14 @@
 // see: cans/07-wire-plane.md#Userspace-network-stack
 use std::sync::{Arc, Mutex};
 
+use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_interface::errno_types::Errno;
+use kelir_interface::frame_layout_views::{
+    ETH_HEADER_BYTES, ETHERTYPE_IPV4, EthView, IP_PROTO_TCP, IPV4_MIN_HEADER_BYTES, Ipv4View,
+    TcpView,
+};
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::protocol_wire::FilterAction;
+use kelir_interface::protocol_wire::{FilterAction, Verdict};
 use kelir_interface::wire::dns::DnsOps;
 use kelir_interface::wire::net::{
     FrameClass, FrameDirection, LinkLocalRoute, NetOps, WireWiring, classify_frame_directional,
@@ -34,14 +39,16 @@ impl Default for SmoltcpStack {
 }
 
 pub(crate) struct RealNetOps {
+    engine: Arc<PipelineEngine>,
     stack: Mutex<SmoltcpStack>,
     dns_ops: Arc<dyn DnsOps>,
     allow_udp_proxied: Mutex<bool>,
 }
 
 impl RealNetOps {
-    pub(crate) fn new(dns_ops: Arc<dyn DnsOps>) -> Self {
+    pub(crate) fn new(engine: Arc<PipelineEngine>, dns_ops: Arc<dyn DnsOps>) -> Self {
         Self {
+            engine,
             stack: Mutex::new(SmoltcpStack::new()),
             dns_ops,
             allow_udp_proxied: Mutex::new(false),
@@ -67,6 +74,15 @@ impl RealNetOps {
             }),
             FrameClass::TcpDns | FrameClass::UdpDns => Ok(FilterAction::Forward),
             FrameClass::Tcp => {
+                // see: cans/07-wire-plane.md#Hook-points:-on-net-outbound,-on-net-inbound,-on-socket-connect
+                if let Verdict::Drop { errno, reason } = self.engine.dispatch_socket_connect(
+                    0,
+                    IP_PROTO_TCP,
+                    remote_ipv4(frame).unwrap_or([0, 0, 0, 0]),
+                    remote_port(frame).unwrap_or(0),
+                )? {
+                    return Ok(FilterAction::Drop { errno, reason });
+                }
                 // L3-GAP: [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
                 let _ = self.poll_stack()?;
                 Ok(FilterAction::Forward)
@@ -100,6 +116,17 @@ impl RealNetOps {
                 }
             }
             FrameClass::TcpDns | FrameClass::UdpDns => {
+                // see: cans/07-wire-plane.md#on-dns-query-mediates-domain-resolution-before-packet-egress
+                // TODO (L3) [wire_plane]: parse the DNS wire query name/qtype and resolve the guest PID instead of the stub ring call; slop: dns-query ring runs on an empty name, per-PID DNS policy blind
+                if matches!(
+                    self.engine.dispatch_dns_query(0, "", 0)?,
+                    kelir_interface::wire::dns::DnsVerdict::Sinkhole { .. }
+                ) {
+                    return Ok(FilterAction::Drop {
+                        errno: Errno::Eperm,
+                        reason: "DNS query denied by dns-query ring".into(),
+                    });
+                }
                 match dns_payload(frame, FrameDirection::Outbound) {
                     Some(payload) => {
                         // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
@@ -121,8 +148,39 @@ impl RealNetOps {
     }
 }
 
-pub(crate) fn build_net_ops(dns_ops: Arc<dyn DnsOps>) -> Arc<dyn NetOps> {
-    Arc::new(RealNetOps::new(dns_ops))
+pub(crate) fn build_net_ops(
+    engine: Arc<PipelineEngine>,
+    dns_ops: Arc<dyn DnsOps>,
+) -> Arc<dyn NetOps> {
+    Arc::new(RealNetOps::new(engine, dns_ops))
+}
+
+// see: cans/07-wire-plane.md#Userspace-network-stack
+// TODO (L3) [wire_plane]: resolve the connecting guest PID via the socket table instead of pid 0 on the socket-connect ring; slop: socket-connect ring runs with pid 0, PNACL enforcement blind
+fn remote_ipv4(frame: &[u8]) -> Option<[u8; 4]> {
+    if frame.len() < ETH_HEADER_BYTES || EthView::new_unchecked(frame).etype() != ETHERTYPE_IPV4 {
+        return None;
+    }
+    let ip = Ipv4View::new_unchecked(&frame[ETH_HEADER_BYTES..]);
+    let ihl = ip.ihl_bytes_checked()?;
+    if ihl < IPV4_MIN_HEADER_BYTES {
+        return None;
+    }
+    ip.src_checked()
+}
+
+// see: cans/07-wire-plane.md#Userspace-network-stack
+fn remote_port(frame: &[u8]) -> Option<u16> {
+    if frame.len() < ETH_HEADER_BYTES || EthView::new_unchecked(frame).etype() != ETHERTYPE_IPV4 {
+        return None;
+    }
+    let ip = Ipv4View::new_unchecked(&frame[ETH_HEADER_BYTES..]);
+    let ihl = ip.ihl_bytes_checked()?;
+    if ihl < IPV4_MIN_HEADER_BYTES || ip.proto() != IP_PROTO_TCP {
+        return None;
+    }
+    let tcp = TcpView::new_unchecked(&frame[ETH_HEADER_BYTES + ihl..]);
+    Some(tcp.src_port())
 }
 
 impl NetOps for RealNetOps {

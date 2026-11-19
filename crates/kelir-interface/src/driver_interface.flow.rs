@@ -334,6 +334,8 @@ pub struct VmConfig {
     pub network_off: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#session.balloon
     pub balloon: Option<VmBalloonConfig>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.shim.mask_proc_environ
+    pub mask_proc_environ: bool,
 }
 
 impl VmConfig {
@@ -370,6 +372,7 @@ impl Default for VmConfig {
             preemption_grace_ms: 0,
             network_off: true,
             balloon: None,
+            mask_proc_environ: false,
         }
     }
 }

@@ -163,6 +163,12 @@ impl SandboxProfile {
             }
             config.balloon = Some(vm_balloon);
         }
+        if let Some(mask) = session
+            .and_then(|s| s.shim.as_ref())
+            .and_then(|s| s.mask_proc_environ)
+        {
+            config.mask_proc_environ = mask;
+        }
         config
     }
 
@@ -603,9 +609,29 @@ impl SandboxProfile {
                 .and_then(|s| s.granular_task_freeze),
         )?;
         check_guard_kept(
+            "session.shim.mask_proc_environ",
+            base.session
+                .as_ref()
+                .and_then(|s| s.shim.as_ref())
+                .and_then(|s| s.mask_proc_environ),
+            self.session
+                .as_ref()
+                .and_then(|s| s.shim.as_ref())
+                .and_then(|s| s.mask_proc_environ),
+        )?;
+        check_guard_kept(
             "wire.l7_protocol_inspection",
             base.wire.as_ref().and_then(|w| w.l7_protocol_inspection),
             self.wire.as_ref().and_then(|w| w.l7_protocol_inspection),
+        )?;
+        check_guard_kept(
+            "wire.block_abstract_unix_sockets",
+            base.wire
+                .as_ref()
+                .and_then(|w| w.block_abstract_unix_sockets),
+            self.wire
+                .as_ref()
+                .and_then(|w| w.block_abstract_unix_sockets),
         )?;
         let base_outbox = base.wire.as_ref().and_then(|w| w.outbox_deferral.as_ref());
         let outbox = self.wire.as_ref().and_then(|w| w.outbox_deferral.as_ref());

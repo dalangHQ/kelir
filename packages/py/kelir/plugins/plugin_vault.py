@@ -8,7 +8,6 @@ from kelir.plugin_model import BasePlugin
 
 __all__ = [
     "CredentialDescriptor",
-    "CredentialKind",
     "VaultConfig",
     "VaultPlugin",
     "vault",
@@ -16,14 +15,10 @@ __all__ = [
 ]
 
 
-# see: cans/plugins/vault.md#Credential-types
-CredentialKind = Literal["bearer_token", "sig_v4", "mtls_bundle"]
-
-
 @dataclass
 class CredentialDescriptor:
     name: str = ""
-    kind: CredentialKind = "bearer_token"
+    kind: Literal["bearer-token", "sig-v-4", "mtls-bundle"] = "bearer-token"
     audience: str = ""
     placeholder: str = ""
 

@@ -14,7 +14,9 @@ use serde::de::DeserializeOwned;
 use crate::errno_types::Errno;
 use crate::handles_lifecycle::{FsHandle, StepStack, TerminalHandle, VmHandle};
 use crate::plugin_model::PluginError;
-use crate::protocol_wire::{PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict};
+use crate::protocol_wire::{
+    EXEC_STREAM_STDIN, PatchPayload, ProcessLimits, SuspendUntil, TrapEvent, Verdict,
+};
 use crate::telemetry::ExecutionReceipt;
 
 // see: cans/03-sdk-architecture.md#Rust-SDK
@@ -87,6 +89,11 @@ pub struct NetContext {
     pub frame: Vec<u8>,
     pub stream_id: u32,
     pub socket: u32,
+    pub proto: u8,
+    pub ip: [u8; 4],
+    pub port: u16,
+    pub domain: String,
+    pub qtype: u16,
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -95,6 +102,8 @@ pub struct HostContext {
     pub lsm_event: String,
     pub host_pid: u32,
     pub key: String,
+    pub breach_path: PathBuf,
+    pub breach_kind: String,
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -103,6 +112,21 @@ pub struct ConsoleContext {
     pub pty: u32,
     pub cols: u16,
     pub rows: u16,
+}
+
+// see: cans/11-protocol.md#Signal-and-fork-interception
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SignalContext {
+    pub sender: u32,
+    pub target: u32,
+    pub sig: i32,
+}
+
+// see: cans/11-protocol.md#Signal-and-fork-interception
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ForkContext {
+    pub parent: u32,
+    pub child: u32,
 }
 
 // see: cans/02-plugin-model.md#Core-context-keys
@@ -129,6 +153,8 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
     pub host_ctx: Option<HostContext>,
     pub console_ctx: Option<ConsoleContext>,
     pub exec_ctx: Option<ExecContext>,
+    pub signal_ctx: Option<SignalContext>,
+    pub fork_ctx: Option<ForkContext>,
     pub receipt: Option<ExecutionReceipt>,
     pub operator_lease: Option<String>,
     plugins: Plugins,
@@ -152,6 +178,8 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: None,
             console_ctx: None,
             exec_ctx: None,
+            signal_ctx: None,
+            fork_ctx: None,
             receipt: None,
             operator_lease: None,
             plugins,
@@ -205,6 +233,78 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self
     }
 
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub fn with_signal(mut self, ctx: SignalContext) -> Self {
+        self.signal_ctx = Some(ctx);
+        self
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub fn with_fork(mut self, ctx: ForkContext) -> Self {
+        self.fork_ctx = Some(ctx);
+        self
+    }
+
+    // see: cans/07-wire-plane.md#Hook-points:-on-net-outbound,-on-net-inbound,-on-socket-connect
+    pub fn with_socket_connect(mut self, proto: u8, ip: [u8; 4], port: u16) -> Self {
+        self.net_ctx = Some(NetContext {
+            proto,
+            ip,
+            port,
+            ..NetContext::default()
+        });
+        self
+    }
+
+    // see: cans/07-wire-plane.md#Additional-net-hooks:-on-dns-query,-on-socket-bind
+    pub fn with_dns_query(mut self, domain: impl Into<String>, qtype: u16) -> Self {
+        self.net_ctx = Some(NetContext {
+            domain: domain.into(),
+            qtype,
+            ..NetContext::default()
+        });
+        self
+    }
+
+    // see: cans/07-wire-plane.md#Additional-net-hooks:-on-dns-query,-on-socket-bind
+    pub fn with_socket_bind(mut self, proto: u8, ip: [u8; 4], port: u16) -> Self {
+        self.net_ctx = Some(NetContext {
+            proto,
+            ip,
+            port,
+            ..NetContext::default()
+        });
+        self
+    }
+
+    // see: cans/11-protocol.md#Binary-exec-channel
+    pub fn with_exec_stdin(mut self, pid: u32, exec_id: u64, chunk: Vec<u8>) -> Self {
+        self.exec_ctx = Some(ExecContext {
+            pid,
+            exec_id,
+            stream_id: EXEC_STREAM_STDIN,
+            chunk,
+            rlimits: None,
+        });
+        self
+    }
+
+    // see: cans/11-protocol.md#Host-containment-verification
+    pub fn with_host_containment_breach(
+        mut self,
+        pid: u32,
+        path: impl Into<PathBuf>,
+        kind: impl Into<String>,
+    ) -> Self {
+        self.host_ctx = Some(HostContext {
+            host_pid: pid,
+            breach_path: path.into(),
+            breach_kind: kind.into(),
+            ..HostContext::default()
+        });
+        self
+    }
+
     // see: cans/10-attestation.md#Execution-receipts
     pub fn with_receipt(mut self, receipt: ExecutionReceipt) -> Self {
         self.receipt = Some(receipt);
@@ -225,6 +325,8 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: self.host_ctx,
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
+            signal_ctx: self.signal_ctx,
+            fork_ctx: self.fork_ctx,
             receipt: self.receipt,
             operator_lease: self.operator_lease,
             plugins: self.plugins,
@@ -250,6 +352,8 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
             host_ctx: self.host_ctx,
             console_ctx: self.console_ctx,
             exec_ctx: self.exec_ctx,
+            signal_ctx: self.signal_ctx,
+            fork_ctx: self.fork_ctx,
             receipt: self.receipt,
             operator_lease: self.operator_lease,
             plugins: f(self.plugins),
@@ -291,6 +395,12 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         }
         if let Some(exec_ctx) = &self.exec_ctx {
             erased = erased.with_exec_ctx(exec_ctx.clone());
+        }
+        if let Some(signal_ctx) = &self.signal_ctx {
+            erased = erased.with_signal(signal_ctx.clone());
+        }
+        if let Some(fork_ctx) = &self.fork_ctx {
+            erased = erased.with_fork(fork_ctx.clone());
         }
         if let Some(receipt) = &self.receipt {
             erased = erased.with_receipt(receipt.clone());

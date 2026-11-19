@@ -3,19 +3,24 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::{Arc, RwLock};
 
+use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsRcode, DnsResponse, RESOLV_CONF_PATH};
+use kelir_interface::wire::dns::{
+    DnsOps, DnsQuery, DnsRcode, DnsResponse, DnsVerdict, RESOLV_CONF_PATH,
+};
 use kelir_interface::wire::net::{SYNTHETIC_DNS_GATEWAY_IP, WireWiring};
 
 pub(crate) struct RealDnsOps {
+    engine: Arc<PipelineEngine>,
     synthetic_dns_ip: Ipv4Addr,
     resolver_nameservers: Vec<IpAddr>,
     rules: RwLock<Vec<kelir_interface::wire::net::SinkholeRule>>,
 }
 
 impl RealDnsOps {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(engine: Arc<PipelineEngine>) -> Self {
         Self {
+            engine,
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
             resolver_nameservers: host_resolver_nameservers(),
             rules: RwLock::new(Vec::new()),
@@ -23,20 +28,34 @@ impl RealDnsOps {
     }
 }
 
-impl Default for RealDnsOps {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub(crate) fn build_dns_ops() -> Arc<dyn DnsOps> {
-    Arc::new(RealDnsOps::new())
+pub(crate) fn build_dns_ops(engine: Arc<PipelineEngine>) -> Arc<dyn DnsOps> {
+    Arc::new(RealDnsOps::new(engine))
 }
 
 impl DnsOps for RealDnsOps {
     // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
     // see: cans/07-wire-plane.md#DNS-policy-filter
+    // see: cans/07-wire-plane.md#on-dns-query-mediates-domain-resolution-before-packet-egress
     fn resolve_query(&self, query: &mut DnsQuery) -> Result<DnsResponse, PluginError> {
+        // TODO (L3) [wire_plane]: resolve the querying guest PID from the socket table instead of pid 0; slop: dns-query ring runs with pid 0, per-PID DNS policy blind
+        match self
+            .engine
+            .dispatch_dns_query(0, &query.name, query.qtype)?
+        {
+            DnsVerdict::Forward => {}
+            // see: cans/07-wire-plane.md#DNS-policy-filter
+            DnsVerdict::Sinkhole { rcode } => {
+                // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
+                let mut response = DnsResponse {
+                    wire_bytes: Vec::new(),
+                    rcode: DnsRcode::NxDomain,
+                    edns_downgraded: false,
+                };
+                response.downgrade_edns0();
+                let _ = rcode;
+                return Ok(response);
+            }
+        }
         let blocked = {
             let rules = self
                 .rules

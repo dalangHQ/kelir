@@ -53,6 +53,7 @@ class WireConfig:
     userspace_netstack: bool | None = None
     default_egress: str | None = None
     dial_timeout_ms: int = 5000
+    block_abstract_unix_sockets: bool | None = None
     divert_ports: list[tuple[int, str]] = field(default_factory=list)
 
     def divert_port_to_unix(self, port: int, socket_path: str) -> None:
@@ -68,6 +69,8 @@ class WireConfig:
             merged["userspace_netstack"] = self.userspace_netstack
         if self.default_egress is not None:
             merged["default_egress"] = self.default_egress
+        if self.block_abstract_unix_sockets is not None:
+            merged["block_abstract_unix_sockets"] = self.block_abstract_unix_sockets
         if self.divert_ports:
             merged["divert_ports"] = [
                 {"listen_port": port, "forward_unix_socket": socket_path}

@@ -10,6 +10,8 @@ mod fs_dispatch;
 mod host_dispatch;
 #[path = "lifecycle_dispatch.flow.rs"]
 mod lifecycle_dispatch;
+#[path = "net_dispatch.flow.rs"]
+mod net_dispatch;
 mod params_hydration;
 #[path = "params_hydration.flow.rs"]
 mod params_hydration_flow;

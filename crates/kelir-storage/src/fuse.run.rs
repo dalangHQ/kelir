@@ -75,16 +75,25 @@ impl FuseOps for RealFuseOps {
                         gid,
                         size,
                         content,
-                    }) => Ok(FuseResponse {
-                        guest_inode: self.virtual_inode(&request.path)?,
-                        reply: FuseReply::Inode(FsInodeAttr {
-                            mode: mode & !0o6000,
-                            uid,
-                            gid,
-                            size,
-                            content,
-                        }),
-                    }),
+                    }) => {
+                        // see: cans/05-storage-plane.md#S-IFSOCK-binds-intercepted:-/tmp,-/var/run,-/run-stay-on-guest-tmpfs
+                        if (mode & libc::S_IFMT) == libc::S_IFSOCK && !tmpfs_socket_allowed(&request.path)
+                        {
+                            return Err(PluginError::Halt(
+                                "FUSE LOOKUP denied: socket inode outside guest tmpfs mounts (EPERM)".into(),
+                            ));
+                        }
+                        Ok(FuseResponse {
+                            guest_inode: self.virtual_inode(&request.path)?,
+                            reply: FuseReply::Inode(FsInodeAttr {
+                                mode: mode & !0o6000,
+                                uid,
+                                gid,
+                                size,
+                                content,
+                            }),
+                        })
+                    }
                     Verdict::Patch(_) => Err(PluginError::Halt(
                         "FUSE LOOKUP Patch payload is not an FsInode".into(),
                     )),
@@ -117,9 +126,130 @@ impl FuseOps for RealFuseOps {
                     "TODO (L3) [storage_plane]: FUSE GETATTR needs the broker stat across lower, upper, and tombstones; slop: GETATTR without lower/upper/tombstone merge, stat wrong".into(),
                 ))
             }
-            FuseOpcode::Readdir => Err(PluginError::Halt(
-                "TODO (L3) [sp_06_host_cow_broker_dir_merge_cache]: FUSE READDIR needs the host-side dir merge of base, upper, and tombstones; slop: readdir re-merges every call, zero cache hits".into(),
-            )),
+            FuseOpcode::Setattr => {
+                // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: marshal fuse_setattr_in (mode, size) from the virtqueue bytes; slop: FUSE reply never marshalled, virtqueue never consumed
+                // TODO (L3) [storage_plane]: parse the fuse_setattr_in mode/size fields from request.data instead of the head bytes; slop: setattr runs with a stub mode/size, chmod/ftruncate policy blind
+                let mode = request
+                    .data
+                    .first_chunk::<4>()
+                    .map(|bytes| u32::from_le_bytes(*bytes))
+                    .unwrap_or(0);
+                let size = request.size;
+                match self
+                    .engine
+                    .dispatch_fs_setattr(&request.path, mode, size, ctx)?
+                {
+                    Verdict::Pass => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: fill setattr payload from the broker attr commit; slop: FUSE reply never marshalled, virtqueue never consumed
+                        reply: FuseReply::Payload(Vec::new()),
+                    }),
+                    // see: cans/05-storage-plane.md#Write-gating
+                    Verdict::Drop { errno, .. } => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-errno.to_os_errno()),
+                    }),
+                    Verdict::Patch(_) => Err(PluginError::Halt(
+                        "FUSE SETATTR interposer returned Patch, unsupported for setattr".into(),
+                    )),
+                    Verdict::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE SETATTR interposer returned Suspend, unsupported for setattr".into(),
+                    )),
+                    Verdict::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE SETATTR aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE SETATTR interposer returned an unknown verdict".into(),
+                    )),
+                }
+            }
+            FuseOpcode::Readlink => match self.engine.dispatch_fs_readlink(&request.path, ctx)? {
+                Verdict::Pass => Ok(FuseResponse {
+                    guest_inode: request.guest_inode,
+                    // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: fill readlink payload with the broker-resolved target bytes; slop: FUSE reply never marshalled, virtqueue never consumed
+                    reply: FuseReply::Payload(Vec::new()),
+                }),
+                // see: cans/05-storage-plane.md#Write-gating
+                Verdict::Drop { errno, .. } => Ok(FuseResponse {
+                    guest_inode: request.guest_inode,
+                    reply: FuseReply::Errno(-errno.to_os_errno()),
+                }),
+                Verdict::Patch(_) => Err(PluginError::Halt(
+                    "FUSE READLINK interposer returned Patch, unsupported for readlink".into(),
+                )),
+                Verdict::Suspend { .. } => Err(PluginError::Halt(
+                    "FUSE READLINK interposer returned Suspend, unsupported for readlink".into(),
+                )),
+                Verdict::Abort { reason } => Err(PluginError::Halt(format!(
+                    "FUSE READLINK aborted by interposer: {reason}"
+                ))),
+                _ => Err(PluginError::Halt(
+                    "FUSE READLINK interposer returned an unknown verdict".into(),
+                )),
+            },
+            FuseOpcode::Symlink => {
+                // TODO (L3) [storage_plane]: marshal fuse_symlink_in (target, name) from request.data into target/link paths; slop: symlink target/link split is a stub, traversal policy blind
+                let target = request.path.clone();
+                let link = request.path.clone();
+                match self
+                    .engine
+                    .dispatch_fs_symlink(target.as_path(), link.as_path(), ctx)?
+                {
+                    Verdict::Pass => Ok(FuseResponse {
+                        guest_inode: self.virtual_inode(&request.path)?,
+                        // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: fill symlink payload from the broker link commit; slop: FUSE reply never marshalled, virtqueue never consumed
+                        reply: FuseReply::Payload(Vec::new()),
+                    }),
+                    // see: cans/05-storage-plane.md#Write-gating
+                    Verdict::Drop { errno, .. } => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-errno.to_os_errno()),
+                    }),
+                    Verdict::Patch(_) => Err(PluginError::Halt(
+                        "FUSE SYMLINK interposer returned Patch, unsupported for symlink".into(),
+                    )),
+                    Verdict::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE SYMLINK interposer returned Suspend, unsupported for symlink".into(),
+                    )),
+                    Verdict::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE SYMLINK aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE SYMLINK interposer returned an unknown verdict".into(),
+                    )),
+                }
+            }
+            FuseOpcode::Readdir => {
+                // see: cans/05-storage-plane.md#Interception-pipeline
+                let mut entries: Vec<kelir_interface::storage::DirEntry> = Vec::new();
+                match self
+                    .engine
+                    .dispatch_fs_readdir(&request.path, &mut entries, ctx)?
+                {
+                    // TODO (L3) [sp_06_host_cow_broker_dir_merge_cache]: marshal the merged base/upper/tombstone entries into the FUSE READDIR reply payload; slop: readdir re-merges every call, zero cache hits
+                    FilterAction::Forward => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Entries(Vec::new()),
+                    }),
+                    // see: cans/05-storage-plane.md#Write-gating
+                    FilterAction::Drop { errno, .. } => {
+                        let errno = drop_errno(errno)?;
+                        Ok(FuseResponse {
+                            guest_inode: request.guest_inode,
+                            reply: FuseReply::Errno(-errno),
+                        })
+                    }
+                    FilterAction::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE READDIR interposer returned Suspend, unsupported for readdir".into(),
+                    )),
+                    FilterAction::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE READDIR aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE READDIR interposer returned a filter action outside the known FilterAction variants".into(),
+                    )),
+                }
+            }
             FuseOpcode::Unlink => Err(PluginError::Halt(
                 "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: FUSE UNLINK needs the broker tombstone write; slop: commit Ok, tombstone or file still on host disk".into(),
             )),
@@ -131,9 +261,43 @@ impl FuseOps for RealFuseOps {
                         reply: FuseReply::Errno(-libc::ENOSPC),
                     });
                 }
-                Err(PluginError::Halt(
-                    "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: FUSE MKDIR needs the broker upper-directory create; slop: commit Ok, tombstone or file still on host disk".into(),
-                ))
+                // see: cans/05-storage-plane.md#S-IFSOCK-binds-intercepted:-/tmp,-/var/run,-/run-stay-on-guest-tmpfs
+                if !tmpfs_socket_allowed(&request.path) {
+                    return Err(PluginError::Halt(
+                        "FUSE MKDIR denied: socket inode outside guest tmpfs mounts (EPERM)".into(),
+                    ));
+                }
+                // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: marshal fuse_mkdir_in mode from the virtqueue bytes; slop: FUSE reply never marshalled, virtqueue never consumed
+                // TODO (L3) [storage_plane]: parse the fuse_mkdir_in mode field from request.data instead of the head bytes; slop: mkdir runs with a stub mode, creation policy blind
+                let mode = request
+                    .data
+                    .first_chunk::<4>()
+                    .map(|bytes| u32::from_le_bytes(*bytes))
+                    .unwrap_or(0);
+                match self.engine.dispatch_fs_mkdir(&request.path, mode, ctx)? {
+                    Verdict::Pass => Ok(FuseResponse {
+                        guest_inode: self.virtual_inode(&request.path)?,
+                        // L3-GAP: [sp_09_reconciler_tombstone_unlink_commit]: broker upper-directory create commits at reconcile; slop: commit Ok, tombstone or file still on host disk
+                        reply: FuseReply::Payload(Vec::new()),
+                    }),
+                    // see: cans/05-storage-plane.md#Write-gating
+                    Verdict::Drop { errno, .. } => Ok(FuseResponse {
+                        guest_inode: request.guest_inode,
+                        reply: FuseReply::Errno(-errno.to_os_errno()),
+                    }),
+                    Verdict::Patch(_) => Err(PluginError::Halt(
+                        "FUSE MKDIR interposer returned Patch, unsupported for mkdir".into(),
+                    )),
+                    Verdict::Suspend { .. } => Err(PluginError::Halt(
+                        "FUSE MKDIR interposer returned Suspend, unsupported for mkdir".into(),
+                    )),
+                    Verdict::Abort { reason } => Err(PluginError::Halt(format!(
+                        "FUSE MKDIR aborted by interposer: {reason}"
+                    ))),
+                    _ => Err(PluginError::Halt(
+                        "FUSE MKDIR interposer returned an unknown verdict".into(),
+                    )),
+                }
             }
             FuseOpcode::Rename => Err(PluginError::Halt(
                 "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: FUSE RENAME needs the broker upper-file move; slop: in-place write, no temp+rename, inode unchanged".into(),
@@ -242,4 +406,9 @@ impl FuseOps for RealFuseOps {
 fn drop_errno(errno: Errno) -> Result<i32, PluginError> {
     // see: cans/02-plugin-model.md#Unified-verdict
     Ok(errno.to_os_errno())
+}
+
+// see: cans/05-storage-plane.md#S-IFSOCK-binds-intercepted:-/tmp,-/var/run,-/run-stay-on-guest-tmpfs
+fn tmpfs_socket_allowed(path: &Path) -> bool {
+    path.starts_with("/tmp") || path.starts_with("/var/run") || path.starts_with("/run")
 }

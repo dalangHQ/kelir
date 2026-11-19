@@ -144,7 +144,7 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         "wire": {
             "sinkhole", "ssh_agent_bridge", "l4_proxies",
             "tap_filter", "userspace_netstack", "default_egress",
-            "divert_ports", "dial_timeout_ms",
+            "divert_ports", "dial_timeout_ms", "block_abstract_unix_sockets",
         },
     }[kind]
     unknown = set(kwargs) - known

@@ -91,6 +91,7 @@ export interface WireConfig {
   readonly dialTimeoutMs?: number;
   readonly l4Proxies?: readonly L4ProxyConfig[];
   readonly tapFilter?: string;
+  readonly blockAbstractUnixSockets?: boolean;
 }
 
 // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion

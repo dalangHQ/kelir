@@ -260,11 +260,13 @@ const HOOK_TRACE_RINGS: [&str; 8] = [
 // TODO (L3) [attestation_receipts]: per-ring span collection exists only for Trap dispatch today; the gate asserts the vector suite covers every ring so spans can be produced for each once dispatch lands.; slop: rings without live spans pass the gate on vector coverage alone.
 fn coarse_ring(tag: &str) -> Option<&'static str> {
     match tag {
-        "trap" | "process-exit" => Some("trap"),
+        "trap" | "process-exit" | "signal" | "fork" => Some("trap"),
         "lifecycle" | "host-preempt" => Some("lifecycle"),
         "heartbeat" | "memory-pressure" | "watchdog" => Some("telemetry"),
         _ if tag.starts_with("fs-") => Some("fs"),
-        _ if tag.starts_with("net-") => Some("net"),
+        _ if tag.starts_with("net-") || tag.starts_with("socket-") || tag.starts_with("dns-") => {
+            Some("net")
+        }
         _ if tag.starts_with("console-") => Some("console"),
         _ if tag.starts_with("exec-") => Some("exec"),
         _ if tag.starts_with("host-") => Some("host"),

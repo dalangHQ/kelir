@@ -17,7 +17,6 @@ __all__ = [
 ]
 
 
-# see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
 @dataclass
 class PgSchemaRewrite:
     from_schema: str = ""

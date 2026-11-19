@@ -32,7 +32,7 @@ pub struct PyKelirBuilder {
 #[pymethods]
 impl PyKelirBuilder {
     #[new]
-    #[pyo3(signature = (vcpus=None, memory_mb=None, kernel=None, rootfs_erofs=None, tsc_locked=None, enable_watchdog=None, driver=None))]
+    #[pyo3(signature = (vcpus=None, memory_mb=None, kernel=None, rootfs_erofs=None, tsc_locked=None, enable_watchdog=None, driver=None, mask_proc_environ=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         vcpus: Option<u8>,
@@ -42,6 +42,7 @@ impl PyKelirBuilder {
         tsc_locked: Option<bool>,
         enable_watchdog: Option<bool>,
         driver: Option<String>,
+        mask_proc_environ: Option<bool>,
     ) -> Self {
         let mut config = VmConfig::default();
         if let Some(vcpus) = vcpus {
@@ -61,6 +62,9 @@ impl PyKelirBuilder {
         }
         if let Some(enable_watchdog) = enable_watchdog {
             config.enable_watchdog = enable_watchdog;
+        }
+        if let Some(mask_proc_environ) = mask_proc_environ {
+            config.mask_proc_environ = mask_proc_environ;
         }
         // see: cans/01-architecture.md#Driver-backends
         config.driver_policy.driver = driver.clone();
@@ -93,9 +97,9 @@ impl PyKelirBuilder {
                 }
                 // TODO (L3) [bindings_py]: forward wireframe_grid flags into TerminalWiring once it carries them; slop: grid tracking flags dropped at the wiring boundary.
                 "wireframe_grid" => {
-                    let grid = value
-                        .downcast::<PyDict>()
-                        .map_err(|_| PyValueError::new_err("terminal wireframe_grid is not a dict"))?;
+                    let grid = value.downcast::<PyDict>().map_err(|_| {
+                        PyValueError::new_err("terminal wireframe_grid is not a dict")
+                    })?;
                     for (grid_key, grid_value) in grid.iter() {
                         match grid_key.to_string().as_str() {
                             "track_screen_matrix" | "export_on_trap" => {
@@ -120,14 +124,20 @@ impl PyKelirBuilder {
                     for (sanitizer_key, sanitizer_value) in sanitizer.iter() {
                         match sanitizer_key.to_string().as_str() {
                             "drop_osc52" => {
-                                wiring.drop_osc52 = sanitizer_value.extract::<bool>().map_err(
-                                    |_| PyValueError::new_err("terminal sanitizer drop_osc52 is not a bool"),
-                                )?;
+                                wiring.drop_osc52 =
+                                    sanitizer_value.extract::<bool>().map_err(|_| {
+                                        PyValueError::new_err(
+                                            "terminal sanitizer drop_osc52 is not a bool",
+                                        )
+                                    })?;
                             }
                             "strip_title" => {
-                                wiring.strip_title = sanitizer_value.extract::<bool>().map_err(
-                                    |_| PyValueError::new_err("terminal sanitizer strip_title is not a bool"),
-                                )?;
+                                wiring.strip_title =
+                                    sanitizer_value.extract::<bool>().map_err(|_| {
+                                        PyValueError::new_err(
+                                            "terminal sanitizer strip_title is not a bool",
+                                        )
+                                    })?;
                             }
                             other => {
                                 return Err(PyValueError::new_err(format!(
@@ -219,6 +229,11 @@ impl PyKelirBuilder {
                         .extract::<bool>()
                         .map_err(|_| PyValueError::new_err("wire ssh_agent_bridge is not a bool"))?
                 }
+                "block_abstract_unix_sockets" => {
+                    wiring.block_abstract_unix_sockets = value.extract::<bool>().map_err(|_| {
+                        PyValueError::new_err("wire block_abstract_unix_sockets is not a bool")
+                    })?
+                }
                 "tap_filter" => {
                     wiring.allow_udp_proxied = value
                         .extract::<String>()
@@ -258,9 +273,7 @@ impl PyKelirBuilder {
                             .and_then(|socket| socket.extract::<String>().ok());
                         match forward_unix_socket {
                             Some(socket) => {
-                                wiring
-                                    .l4_unix_diversions
-                                    .push((listen_port, socket.into()));
+                                wiring.l4_unix_diversions.push((listen_port, socket.into()));
                             }
                             None => {
                                 let destination = destination.ok_or_else(|| {
@@ -297,9 +310,7 @@ impl PyKelirBuilder {
                                     "divert_port forward_unix_socket is not a str",
                                 )
                             })?;
-                        wiring
-                            .l4_unix_diversions
-                            .push((listen_port, socket.into()));
+                        wiring.l4_unix_diversions.push((listen_port, socket.into()));
                     }
                 }
                 other => {
@@ -398,7 +409,9 @@ impl PyKelirBuilder {
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
-        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
+        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(
+            std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+        );
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
@@ -408,7 +421,10 @@ impl PyKelirBuilder {
             checkpoint_config: None,
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
             host_config: None,
-            net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
+            net_ops: Some(kelir_wire::net_ops(
+                std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+                Arc::clone(&dns_ops),
+            )),
             dns_ops: Some(dns_ops),
             udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
             l4_ops: Some(kelir_wire::l4_ops()),

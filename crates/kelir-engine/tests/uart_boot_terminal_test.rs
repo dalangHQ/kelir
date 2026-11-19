@@ -7,12 +7,17 @@ use kelir_interface::telemetry::ExitKind;
 
 fn plane_wiring() -> kelir_engine::session_lifecycle::PlaneWiring {
     let metrics = || Arc::new(kelir_interface::telemetry::MetricRegistry::new());
-    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
+    let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(
+        std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+    );
     kelir_engine::session_lifecycle::PlaneWiring {
         terminal_ops: Some(kelir_terminal::terminal_ops(metrics())),
         checkpoint_ops: Some(kelir_checkpoint::checkpoint_ops(metrics())),
         host_ops: Some(kelir_host::host_ops(metrics())),
-        net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
+        net_ops: Some(kelir_wire::net_ops(
+            std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+            Arc::clone(&dns_ops),
+        )),
         dns_ops: Some(dns_ops),
         udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
         l4_ops: Some(kelir_wire::l4_ops()),

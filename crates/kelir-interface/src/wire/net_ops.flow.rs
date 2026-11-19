@@ -88,6 +88,8 @@ pub struct WireWiring {
     pub userspace_netstack: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     pub default_egress: String,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.block_abstract_unix_sockets
+    pub block_abstract_unix_sockets: bool,
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
     // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
@@ -104,6 +106,7 @@ impl Default for WireWiring {
             allow_udp_proxied: false,
             userspace_netstack: false,
             default_egress: String::new(),
+            block_abstract_unix_sockets: false,
             l4_unix_diversions: Vec::new(),
         }
     }

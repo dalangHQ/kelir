@@ -67,7 +67,6 @@ export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"c
 }
 
 
-// see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
 export interface PgSchemaRewrite {
   readonly fromSchema?: string;
   readonly toSchema?: string;
@@ -165,7 +164,7 @@ export interface LedgerConfig extends PluginEnablement {
   readonly storePath?: string;
   readonly merkleChain?: boolean;
   readonly suppressLocalDb?: boolean;
-  readonly hashingStandard?: "RFC_6962_DUAL_BLAKE3_SHA256";
+  readonly hashingStandard?: "rfc-6962-dual-blake-3-sha-256";
   readonly recordPreRedactionHash?: boolean;
   readonly includeHookSpansInRoot?: boolean;
   readonly witnessCosigningEndpoint?: string;
@@ -270,6 +269,14 @@ export function replay<P = unknown>(config: ReplayConfig): KelirBuilder<"replay"
 }
 
 
+export interface StepDagConfig {
+  readonly enabled?: boolean;
+  readonly requireSignedAttribution?: boolean;
+  readonly requireSeparationOfDuties?: boolean;
+  readonly storage?: "content-addressed";
+}
+
+
 export interface StepEvalAssertions {
   readonly assertBinaryBlake3?: boolean;
   readonly maxEgressBytesHermetic?: number;
@@ -282,14 +289,6 @@ export interface StepEvaluationConfig {
   readonly enabled?: boolean;
   readonly defaultAction?: "proceed" | "rollback-and-halt";
   readonly assertions?: StepEvalAssertions;
-}
-
-
-export interface StepDagConfig {
-  readonly enabled?: boolean;
-  readonly requireSignedAttribution?: boolean;
-  readonly requireSeparationOfDuties?: boolean;
-  readonly storage?: "content-addressed";
 }
 
 
@@ -407,17 +406,18 @@ export function transaction<P = unknown>(config: TransactionConfig): KelirBuilde
 }
 
 
-export interface VaultCredential {
-  readonly name: string;
-  readonly kind: "bearer_token" | "sig_v4" | "mtls_bundle";
-  readonly audience: string;
-  readonly placeholder: string;
+export interface CredentialDescriptor {
+  readonly name?: string;
+  readonly kind?: "bearer-token" | "sig-v-4" | "mtls-bundle";
+  readonly audience?: string;
+  readonly placeholder?: string;
 }
+
 
 export interface VaultConfig extends PluginEnablement {
   readonly metadataVsockPort?: number;
   readonly tokenTtlSeconds?: number;
-  readonly credentials?: readonly VaultCredential[];
+  readonly credentials?: readonly CredentialDescriptor[];
 }
 
 

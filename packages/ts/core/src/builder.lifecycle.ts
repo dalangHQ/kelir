@@ -1062,6 +1062,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
             injectMtlsKeyPath: proxy.injectMtls?.keyPath,
           })),
         tapFilter: this.wireCfg.tapFilter,
+        blockAbstractUnixSockets: this.wireCfg.blockAbstractUnixSockets,
       });
     }
     // TODO (L3) [bindings_ts]: forward host/checkpoint plane configs once the NAPI builder accepts them.; slop: host and checkpoint descriptors stay TypeScript-side

@@ -205,7 +205,8 @@ fn parse_crate(crate_dir: &Path, interface_consts: &Model) -> Result<Crate, Stri
         .to_string();
     // see: cans/15-operations.md#Multi-language-parity-gate
     let mut model = Model {
-        structs: Vec::new(),
+        // see: cans/03-sdk-architecture.md#Python-SDK
+        structs: interface_consts.structs.clone(),
         enums: interface_consts.enums.clone(),
         consts: interface_consts.consts.clone(),
         defaults: Vec::new(),
@@ -216,6 +217,7 @@ fn parse_crate(crate_dir: &Path, interface_consts: &Model) -> Result<Crate, Stri
     for file in &files {
         let parsed = parse_model(file)?;
         for mut def in parsed.structs {
+            // see: cans/03-sdk-architecture.md#Python-SDK
             if let Some(slot) = model.structs.iter_mut().find(|s| s.name == def.name) {
                 let kept = slot.order;
                 *slot = def;

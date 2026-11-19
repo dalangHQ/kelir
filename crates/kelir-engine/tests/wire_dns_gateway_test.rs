@@ -5,8 +5,13 @@ use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsRcode};
 use kelir_interface::wire::net::WireWiring;
 
 fn test_wire() -> WirePlane {
-    let dns: Arc<dyn DnsOps> = kelir_wire::dns_ops();
-    let net = kelir_wire::net_ops(Arc::clone(&dns));
+    let dns: Arc<dyn DnsOps> = kelir_wire::dns_ops(std::sync::Arc::new(
+        kelir_engine::dispatch_plugin::PipelineEngine::new(),
+    ));
+    let net = kelir_wire::net_ops(
+        std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
+        Arc::clone(&dns),
+    );
     WirePlane::with_ops(net, dns, kelir_wire::udp_nat_ops(), kelir_wire::l4_ops())
 }
 

@@ -289,8 +289,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
     // see: cans/03-sdk-architecture.md#Rust-SDK
     // see: cans/plugins/profile.md#Bidirectional-extraction
     pub async fn export_spec(&self, path: impl Into<PathBuf>) -> Result<(), PluginError> {
-        crate::sandbox_runtime::write_profile(self.registration.profile.as_ref(), path.into())
-            .await
+        crate::sandbox_runtime::write_profile(self.registration.profile.as_ref(), path.into()).await
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives

@@ -313,8 +313,9 @@ impl Multiplexer {
                     return Ok(());
                 }
                 EXEC_STREAM_CONTROL => {
-                    // L3-GAP: [pm_08_exec_flow_control_input_stall]: apply exec control frames: exit code, EOF, window resize, rlimit descriptors; slop: exit code and window resize dropped, ExecControlPending masks loss
-                    return Err(ShimError::ExecControlPending);
+                    // see: cans/11-protocol.md#Binary-exec-channel
+                    apply_window_geometry(&slot, data)?;
+                    return Ok(());
                 }
                 _ => return Err(ShimError::UnknownExecSubLane { lane }),
             }
@@ -347,6 +348,31 @@ impl Multiplexer {
         let _ = (spec, self.next_exec_id);
         Err(ShimError::SpawnPending)
     }
+}
+
+// see: cans/11-protocol.md#Binary-exec-channel
+fn apply_window_geometry(slot: &ExecSlot, data: &[u8]) -> Result<(), ShimError> {
+    if data.len() < 4 {
+        return Err(ShimError::TruncatedFrame);
+    }
+    let cols = u16::from_le_bytes([data[0], data[1]]);
+    let rows = u16::from_le_bytes([data[2], data[3]]);
+    let winsize = libc::winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: winsize is fully initialized; TIOCSWINSZ only reads it for the slot's slave fd.
+    let rc = unsafe { libc::ioctl(slot.stdin_fd, libc::TIOCSWINSZ, &winsize) };
+    if rc != 0 {
+        return Err(ShimError::Winsize {
+            exec_id: slot.exec_id,
+            errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
+        });
+    }
+    // TODO (L3) [terminal_plane]: route SIGWINCH through the trap boundary once the signal ring dispatch is live on the host side; slop: resize lands on the pty, foreground pgrp reflow waits for the ring
+    Ok(())
 }
 
 impl Default for Multiplexer {

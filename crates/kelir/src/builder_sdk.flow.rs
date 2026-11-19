@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use kelir_interface::checkpoint::ops::CheckpointPlaneConfig;
-use kelir_interface::host::ops::HostPlaneConfig;
 use kelir_interface::driver_interface::{DaxWindowMode, FastBootMode, VmConfig};
+use kelir_interface::host::ops::HostPlaneConfig;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
@@ -27,8 +27,8 @@ use crate::planes::terminal_plane::PtyConfig;
 use crate::planes::wire_plane::{TapFilter, WireConfig};
 use crate::plugin_model::KelirPlugin;
 use crate::sandbox_runtime::{
-    checkpoint_plane_config, host_plane_config, parse_profile, pty_config,
-    storage_plane_config, wire_plane_config, SandboxProfile,
+    SandboxProfile, checkpoint_plane_config, host_plane_config, parse_profile, pty_config,
+    storage_plane_config, wire_plane_config,
 };
 use crate::session_lifecycle::Session;
 use crate::trap_filter::TrapFilter;
@@ -723,7 +723,10 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         let metrics = std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let engine = engine.with_metrics(metrics.clone());
         // see: cans/01-architecture.md#Host-runtime
-        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops();
+        // L3-GAP: [composition_root]: share the session Arc<PipelineEngine> with the wire ops once Session holds the Arc; slop: dns-query/socket-connect rings run on a bare engine, no plugin bindings
+        let wire_engine = std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new());
+        let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
+            kelir_wire::dns_ops(std::sync::Arc::clone(&wire_engine));
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let checkpoint_ops = kelir_checkpoint::checkpoint_ops(metrics.clone());
@@ -763,6 +766,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     allow_udp_proxied: matches!(cfg.tap_filter, TapFilter::AllowUdpProxied),
                     userspace_netstack: cfg.userspace_netstack,
                     default_egress: cfg.default_egress.clone(),
+                    block_abstract_unix_sockets: false,
                     l4_unix_diversions: cfg
                         .l4_proxies
                         .iter()
@@ -778,7 +782,10 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
             checkpoint_ops: Some(Arc::clone(&checkpoint_ops)),
             host_ops: Some(kelir_host::host_ops(metrics.clone())),
-            net_ops: Some(kelir_wire::net_ops(Arc::clone(&dns_ops))),
+            net_ops: Some(kelir_wire::net_ops(
+                std::sync::Arc::clone(&wire_engine),
+                Arc::clone(&dns_ops),
+            )),
             dns_ops: Some(dns_ops),
             udp_nat_ops: Some(kelir_wire::udp_nat_ops()),
             l4_ops: Some(kelir_wire::l4_ops()),

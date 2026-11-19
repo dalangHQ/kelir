@@ -389,7 +389,9 @@ pub struct WireProfile {
     pub l7_protocol_inspection: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outbox_deferral: Option<OutboxDeferralProfile>,
-    #[serde(default, flatten)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_abstract_unix_sockets: Option<bool>,
+    #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -431,6 +433,15 @@ pub struct L4DiversionMtlsProfile {
 pub enum StepDagStorage {
     #[serde(rename = "content_addressed")]
     ContentAddressed,
+}
+
+impl StepDagStorage {
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#checkpoint.step_dag.storage
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ContentAddressed => "content_addressed",
+        }
+    }
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#checkpoint.step_dag

@@ -91,7 +91,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
                     let entry = entry.downcast::<PyDict>().map_err(|_| {
                         PyValueError::new_err("storage shared_caches entries must be dicts")
                     })?;
-                    shared_caches.push(shared_cache_of(&entry)?);
+                    shared_caches.push(shared_cache_of(entry)?);
                 }
             }
             "idmap" => {
@@ -134,5 +134,8 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
             non_blocking: false,
         });
     }
-    Ok(PyStorageProjection { config, shared_caches })
+    Ok(PyStorageProjection {
+        config,
+        shared_caches,
+    })
 }

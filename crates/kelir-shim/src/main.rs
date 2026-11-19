@@ -25,12 +25,16 @@ const POLL_INTERVAL_MS: libc::c_int = 100;
 
 // L3-GAP: [ar_01_execution_receipt_blake3_binding]: surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape); slop: exit reason dropped, receipt carries no exit_kind binding
 fn main() -> Result<(), trap_protocol::ShimError> {
+    // see: cans/08-lifecycle.md#Zombie-reaping
+    // see: cans/01-architecture.md#Axiomatic-foundations
+    let _ = std::fs::write("/proc/1/oom_score_adj", "-1000");
+    let defense = trap_protocol::DefenseFlags::default();
     let mut mux = multiplexer_protocol::Multiplexer::new();
     // L3-GAP: [vr_12_transport_af_vsock_fallback_parity]: The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands; slop: vsock carrier kept, framing bytes diverge from SPSC ring
     let control_fd = connect_channel(trap_protocol::TRAP_CHANNEL)?;
     let data_fd = connect_channel(STREAM_CHANNEL)?;
     // L3-GAP: [pm_12_version_negotiation_handshake_reject]: exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic; slop: frames flow before handshake, version mismatch never rejected
-    let unotify = trap_protocol::init_seccomp_unotify()?;
+    let unotify = trap_protocol::init_seccomp_unotify(&defense)?;
     // L3-GAP: [vr_09_virtio_console_port0_pty_dedication]: forward the PTY master to the terminal plane console; the slave stays bound for main's lifetime; slop: exec bytes leak onto Port 0 console, EXEC stream stays empty
     #[allow(unused_variables)]
     let (pty_master, pty_slave) = pty_terminal::open_pty_slave()?;
@@ -48,7 +52,7 @@ fn main() -> Result<(), trap_protocol::ShimError> {
             // L3-GAP: [lc_17_zombie_reaper_pid1_adoption]: update the reaped ExecSlot exit status; unmatched pids discard into the zero-allocation sink; slop: reaped pid never updates slot, exit status stays stale
         }
         let (control_ready, data_ready) = wait_channels(unotify.fd(), control_fd, data_fd)?;
-        match unotify.dispatch_pending(trap_seq) {
+        match unotify.dispatch_pending(trap_seq, &defense) {
             Ok(Some(inspection)) => {
                 trap_seq += 1;
                 match introspect_trap::encode_trap_frame(&inspection.event) {

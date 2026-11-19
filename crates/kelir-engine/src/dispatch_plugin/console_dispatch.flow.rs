@@ -131,4 +131,37 @@ impl PipelineEngine {
         }
         Ok(())
     }
+
+    pub async fn dispatch_exec_stdin(
+        &self,
+        pid: u32,
+        exec_id: u64,
+        chunk: &mut Vec<u8>,
+    ) -> Result<(), PluginError> {
+        // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        let fused = self.fused_crossing(TrampolineRing::ExecStdin)?;
+        let mut current = chunk.clone();
+        for (index, interceptor) in self.console_interceptors.iter().enumerate() {
+            let scope = Self::scope_at(&self.console_scopes, index);
+            if !scope.allows_device(VirtioDevice::Console) {
+                continue;
+            }
+            if fused.is_none() {
+                // see: cans/01-architecture.md#FFI-boundary-economics
+                self.try_foreign_submit()?;
+            }
+            let next = {
+                let outcome =
+                    quarantine_unit(interceptor.on_exec_stdin(pid, exec_id, &current)).await;
+                if fused.is_none() {
+                    self.foreign_submit_complete();
+                }
+                outcome?
+            };
+            current = next;
+        }
+        drop(fused);
+        *chunk = current;
+        Ok(())
+    }
 }

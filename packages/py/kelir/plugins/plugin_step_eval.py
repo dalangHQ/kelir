@@ -18,6 +18,14 @@ __all__ = [
 
 
 @dataclass
+class StepDagConfig:
+    enabled: bool = True
+    require_signed_attribution: bool = True
+    require_separation_of_duties: bool = True
+    storage: Literal["content-addressed"] = "content-addressed"
+
+
+@dataclass
 class StepEvalAssertions:
     assert_binary_blake3: bool = True
     max_egress_bytes_hermetic: int = 0
@@ -30,14 +38,6 @@ class StepEvaluationConfig:
     enabled: bool = True
     default_action: Literal["proceed", "rollback-and-halt"] = "proceed"
     assertions: StepEvalAssertions = field(default_factory=lambda: StepEvalAssertions())
-
-
-@dataclass
-class StepDagConfig:
-    enabled: bool = True
-    require_signed_attribution: bool = True
-    require_separation_of_duties: bool = True
-    storage: Literal["content-addressed"] = "content-addressed"
 
 
 @dataclass

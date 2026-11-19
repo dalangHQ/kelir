@@ -1,6 +1,8 @@
 // see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
+use kelir_interface::credential_vault::CredentialDescriptor;
+
 #[path = "boot_diversion.flow.rs"]
 pub mod boot_diversion;
 #[path = "metadata.run.rs"]
@@ -33,5 +35,5 @@ pub struct VaultConfig {
     pub metadata_vsock_port: u32,
     pub token_ttl_seconds: u32,
     // see: cans/plugins/vault.md#Credential-descriptors-(vault)
-    pub credentials: Vec<kelir_interface::credential_vault::CredentialDescriptor>,
+    pub credentials: Vec<CredentialDescriptor>,
 }

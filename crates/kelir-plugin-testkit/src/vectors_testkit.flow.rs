@@ -8,14 +8,14 @@ use std::fmt;
 use std::time::Duration;
 
 use kelir_interface::codec_protocol::{CodecError, FLAG_DATA};
-use kelir_interface::driver_interface::{WatchdogAction, WatchdogEvent, WatchdogVerdict};
+use kelir_interface::driver_interface::{WatchdogEvent, WatchdogVerdict};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::fusion_plugin::TrampolineRing;
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::{Veto, VetoEvent};
 use kelir_interface::protocol_wire::{
-    Channel, ExecveMutation, FilterAction, GuestToHost, Heartbeat, MemoryPressureWarning, MsgType,
-    PatchPayload, ProcessExit, SuspendUntil, TrapEvent, Verdict,
+    Channel, FilterAction, GuestToHost, Heartbeat, MemoryPressureWarning, MsgType, ProcessExit,
+    SuspendUntil, TrapEvent, Verdict,
 };
 
 use crate::handlers_testkit::LifecycleCtxFixture;
@@ -230,120 +230,14 @@ impl VectorSuite {
 
     // see: cans/02-plugin-model.md#Plugin-testkit
     pub fn fixtures() -> Result<VectorSuite, VectorError> {
-        Ok(VectorSuite {
-            vectors: {
-                let mut vectors = vec![
-                    trap_case(
-                        "trap-git-commit-pass",
-                        trap_event(
-                            1,
-                            1234,
-                            100,
-                            "/usr/bin/git",
-                            vec!["git".to_string(), "commit".to_string()],
-                            HashMap::from([
-                                ("KELIR_PARAMS".to_string(), "{}".to_string()),
-                                ("PATH".to_string(), "/usr/bin:/bin".to_string()),
-                            ]),
-                        ),
-                        Verdict::Pass,
-                    )?,
-                    trap_case(
-                        "trap-git-push-deny-epolicy",
-                        trap_event(
-                            2,
-                            1234,
-                            100,
-                            "/usr/bin/git",
-                            vec!["git".to_string(), "push".to_string(), "--force".to_string()],
-                            HashMap::new(),
-                        ),
-                        Verdict::Drop {
-                            errno: Errno::Eperm,
-                            reason: "EPOLICY: force push denied".to_string(),
-                        },
-                    )?,
-                    exec_rewrite_case()?,
-                    trap_case(
-                        "trap-mutating-tool-suspend-approval",
-                        trap_event(
-                            4,
-                            2401,
-                            100,
-                            "/workspace/scripts/deploy.py",
-                            vec!["deploy.py".to_string(), "--migrate".to_string()],
-                            HashMap::new(),
-                        ),
-                        Verdict::Suspend {
-                            until: SuspendUntil::Approval,
-                        },
-                    )?,
-                    trap_case(
-                        "trap-clock-skew-deadline-suspend",
-                        trap_event(
-                            5,
-                            2402,
-                            1234,
-                            "/usr/bin/date",
-                            vec!["date".to_string()],
-                            HashMap::new(),
-                        ),
-                        Verdict::Suspend {
-                            until: SuspendUntil::Deadline(60_000),
-                        },
-                    )?,
-                    trap_case(
-                        "trap-unverified-caller-abort-ewxviolation",
-                        trap_event(
-                            6,
-                            2403,
-                            100,
-                            "/workspace/scratch/loader",
-                            vec!["loader".to_string()],
-                            HashMap::new(),
-                        ),
-                        Verdict::Abort {
-                            reason: "EWXVIOLATION: unverified caller binary".to_string(),
-                        },
-                    )?,
-                    heartbeat_case()?,
-                    watchdog_case(
-                        "watchdog-reboot-suppress",
-                        WatchdogEvent {
-                            timeout_ms: 5_000,
-                            action: WatchdogAction::Reboot,
-                            fired_at_ns: 60_000_000_000,
-                            last_heartbeat_ms: 55_000,
-                            last_active_pid: None,
-                        },
-                        WatchdogVerdict::Suppress,
-                    )?,
-                    watchdog_case(
-                        "watchdog-terminate-mitigate",
-                        WatchdogEvent {
-                            timeout_ms: 5_000,
-                            action: WatchdogAction::Terminate {
-                                emit_diagnostic: true,
-                            },
-                            fired_at_ns: 60_000_000_000,
-                            last_heartbeat_ms: 55_000,
-                            last_active_pid: Some(1234),
-                        },
-                        WatchdogVerdict::Mitigate,
-                    )?,
-                    veto_case("veto-fork", VetoEvent::Fork, false)?,
-                    veto_case("veto-suspend", VetoEvent::Suspend, false)?,
-                    veto_case("veto-clock-skew", VetoEvent::ClockSkew, false)?,
-                    plugin_builder_trap_case()?,
-                    plugin_builder_fs_write_trap_case()?,
-                ];
-                vectors.extend(plugin_builder_verb_cases()?);
-                vectors.extend(plugin_builder_nested_cases()?);
-                vectors.extend(plugin_builder_merge_cases()?);
-                vectors.extend(plugin_builder_chain_cases()?);
-                vectors
-            },
-        })
+        // see: cans/15-operations.md#--unified-builder-coverage
+        let mut vectors = Vec::new();
+        vectors.extend(plugin_builder_verb_cases()?);
+        vectors.extend(plugin_builder_nested_cases()?);
+        vectors.extend(plugin_builder_merge_cases()?);
+        vectors.extend(plugin_builder_chain_cases()?);
+        vectors.extend(plugin_builder_predicate_cases()?);
+        Ok(VectorSuite { vectors })
     }
 }
 
@@ -406,79 +300,6 @@ fn trap_case(
         veto: None,
         plugin_builder: None,
     })
-}
-
-// see: cans/02-plugin-model.md#Unified-builder
-// see: cans/15-operations.md#Unified-builder-parity-vectors
-// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
-fn plugin_builder_trap_case() -> Result<VectorCase, VectorError> {
-    let allow = policy_matrix_trap_event(7, "policy-allow");
-    let deny = policy_matrix_trap_event(8, "policy-deny");
-    let abort = policy_matrix_trap_event(9, "policy-abort");
-    let mut events = Vec::with_capacity(3);
-    for event in [&allow, &deny, &abort] {
-        events.push(
-            serde_json::to_value(GuestToHost::TrapEvent(Box::new(event.clone())))
-                .map_err(|e| VectorError::Encode(e.to_string()))?,
-        );
-    }
-    let mut case = trap_case("plugin-builder-trap-only", allow, Verdict::Pass)?;
-    case.plugin_builder = Some(UnifiedBuilderCase {
-        name: "plugin-builder-trap-only".to_string(),
-        requires: Vec::new(),
-        rings: vec![
-            (TrampolineRing::Trap, 0),
-            (TrampolineRing::Trap, 1),
-            (TrampolineRing::Trap, 2),
-        ],
-        host_rings: Vec::new(),
-        scope: None,
-        events,
-        expected_outcomes: vec![
-            UnifiedBuilderOutcome::Verdict(Verdict::Pass),
-            UnifiedBuilderOutcome::Verdict(Verdict::Drop {
-                errno: Errno::Epolicy,
-                reason: "EPOLICY: policy-matrix denies this binary.".to_string(),
-            }),
-            UnifiedBuilderOutcome::Verdict(Verdict::Abort {
-                reason: "EPOLICY: abort row".to_string(),
-            }),
-        ],
-        filter: None,
-    });
-    Ok(case)
-}
-
-// see: cans/02-plugin-model.md#Unified-builder
-// see: cans/15-operations.md#Unified-builder-parity-vectors
-// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
-fn plugin_builder_fs_write_trap_case() -> Result<VectorCase, VectorError> {
-    let event = policy_matrix_trap_event(10, "policy-yield");
-    let event_json = serde_json::to_value(GuestToHost::TrapEvent(Box::new(event.clone())))
-        .map_err(|e| VectorError::Encode(e.to_string()))?;
-    let mut case = trap_case(
-        "plugin-builder-fs-write-trap",
-        event,
-        Verdict::Suspend {
-            until: SuspendUntil::Approval,
-        },
-    )?;
-    case.plugin_builder = Some(UnifiedBuilderCase {
-        name: "plugin-builder-fs-write-trap".to_string(),
-        requires: vec!["ledger".to_string()],
-        rings: vec![(TrampolineRing::FsWrite, 0), (TrampolineRing::Trap, 1)],
-        host_rings: Vec::new(),
-        scope: None,
-        events: vec![event_json],
-        expected_outcomes: vec![
-            UnifiedBuilderOutcome::Filter(FilterAction::Forward),
-            UnifiedBuilderOutcome::Verdict(Verdict::Suspend {
-                until: SuspendUntil::Approval,
-            }),
-        ],
-        filter: None,
-    });
-    Ok(case)
 }
 
 // see: cans/02-plugin-model.md#TrapFilter-predicates
@@ -569,68 +390,138 @@ pub(crate) fn plugin_builder_verb_event(
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
-    let verbs: &[(&str, TrampolineRing, Option<UnifiedBuilderOutcome>)] = &[
-        ("process-exit", TrampolineRing::ProcessExit, None),
+    type VerbOutcome = UnifiedBuilderOutcome;
+    let verbs: &[(&str, TrampolineRing, Vec<VerbOutcome>)] = &[
+        (
+            "trap",
+            TrampolineRing::Trap,
+            vec![
+                VerbOutcome::Verdict(Verdict::Pass),
+                VerbOutcome::Verdict(Verdict::Drop {
+                    errno: Errno::Epolicy,
+                    reason: "EPOLICY: policy-matrix denies this binary.".to_string(),
+                }),
+                VerbOutcome::Verdict(Verdict::Abort {
+                    reason: "EPOLICY: abort row".to_string(),
+                }),
+            ],
+        ),
+        ("process-exit", TrampolineRing::ProcessExit, Vec::new()),
         (
             "fs-lookup",
             TrampolineRing::FsLookup,
-            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
         ),
-        ("fs-read", TrampolineRing::FsRead, None),
+        ("fs-read", TrampolineRing::FsRead, Vec::new()),
+        (
+            "fs-write",
+            TrampolineRing::FsWrite,
+            vec![
+                VerbOutcome::Filter(FilterAction::Forward),
+                VerbOutcome::Verdict(Verdict::Suspend {
+                    until: SuspendUntil::Approval,
+                }),
+            ],
+        ),
         (
             "fs-lock",
             TrampolineRing::FsLock,
-            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
         ),
+        ("fs-unlink", TrampolineRing::FsUnlink, Vec::new()),
+        ("fs-rename", TrampolineRing::FsRename, Vec::new()),
+        ("fs-setattr", TrampolineRing::FsSetattr, Vec::new()),
+        ("fs-symlink", TrampolineRing::FsSymlink, Vec::new()),
+        ("fs-mkdir", TrampolineRing::FsMkdir, Vec::new()),
+        ("fs-readdir", TrampolineRing::FsReaddir, Vec::new()),
+        ("fs-readlink", TrampolineRing::FsReadlink, Vec::new()),
         (
             "net-outbound",
             TrampolineRing::NetOutbound,
-            Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
+            vec![VerbOutcome::Filter(FilterAction::Forward)],
         ),
         (
             "net-inbound",
             TrampolineRing::NetInbound,
-            Some(UnifiedBuilderOutcome::Filter(FilterAction::Forward)),
+            vec![VerbOutcome::Filter(FilterAction::Forward)],
         ),
-        ("console-input", TrampolineRing::ConsoleInput, None),
-        ("console-output", TrampolineRing::ConsoleOutput, None),
-        ("exec-stdout", TrampolineRing::ExecStdout, None),
-        ("exec-stderr", TrampolineRing::ExecStderr, None),
+        (
+            "socket-connect",
+            TrampolineRing::SocketConnect,
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
+        ),
+        (
+            "dns-query",
+            TrampolineRing::DnsQuery,
+            vec![VerbOutcome::Filter(FilterAction::Forward)],
+        ),
+        (
+            "socket-bind",
+            TrampolineRing::SocketBind,
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
+        ),
+        ("console-input", TrampolineRing::ConsoleInput, Vec::new()),
+        ("console-output", TrampolineRing::ConsoleOutput, Vec::new()),
+        ("exec-stdout", TrampolineRing::ExecStdout, Vec::new()),
+        ("exec-stderr", TrampolineRing::ExecStderr, Vec::new()),
+        ("exec-stdin", TrampolineRing::ExecStdin, Vec::new()),
         (
             "host-lsm-exec",
             TrampolineRing::HostLsmExec,
-            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
         ),
         (
             "host-pressure",
             TrampolineRing::HostPressure,
-            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
         ),
         (
             "host-keyring-access",
             TrampolineRing::HostKeyringAccess,
-            Some(UnifiedBuilderOutcome::Verdict(Verdict::Pass)),
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
         ),
-        ("vm-init", TrampolineRing::Lifecycle, None),
-        ("vm-ready", TrampolineRing::Lifecycle, None),
-        ("vm-shutdown", TrampolineRing::Lifecycle, None),
-        ("pre-commit", TrampolineRing::Lifecycle, None),
-        ("post-commit", TrampolineRing::Lifecycle, None),
-        ("host-preempt", TrampolineRing::HostPreempt, None),
-        ("memory-pressure", TrampolineRing::MemoryPressure, None),
-        ("heartbeat", TrampolineRing::Heartbeat, None),
-        ("watchdog", TrampolineRing::Watchdog, None),
+        (
+            "host-containment-breach",
+            TrampolineRing::HostContainmentBreach,
+            Vec::new(),
+        ),
+        ("host-preempt", TrampolineRing::HostPreempt, Vec::new()),
+        (
+            "signal",
+            TrampolineRing::Signal,
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
+        ),
+        (
+            "fork",
+            TrampolineRing::Fork,
+            vec![VerbOutcome::Verdict(Verdict::Pass)],
+        ),
+        ("heartbeat", TrampolineRing::Heartbeat, Vec::new()),
+        ("watchdog", TrampolineRing::Watchdog, Vec::new()),
+        ("vm-init", TrampolineRing::Lifecycle, Vec::new()),
+        ("vm-ready", TrampolineRing::Lifecycle, Vec::new()),
+        ("vm-shutdown", TrampolineRing::Lifecycle, Vec::new()),
+        ("pre-commit", TrampolineRing::Lifecycle, Vec::new()),
+        ("post-commit", TrampolineRing::Lifecycle, Vec::new()),
+        (
+            "memory-pressure",
+            TrampolineRing::MemoryPressure,
+            Vec::new(),
+        ),
     ];
-    let mut cases = Vec::with_capacity(verbs.len() + 6);
-    let mut seq = 11;
-    for (verb, ring, outcome) in verbs {
-        let outcomes = match outcome {
-            Some(outcome) => vec![outcome.clone()],
-            None => Vec::new(),
+    let mut cases = Vec::with_capacity(verbs.len());
+    for (seq, (verb, ring, outcomes)) in (11u64..).zip(verbs.iter()) {
+        let events = if *verb == "trap" {
+            vec![
+                plugin_builder_trap_json(seq, "policy-allow")?,
+                plugin_builder_trap_json(seq, "policy-deny")?,
+                plugin_builder_trap_json(seq, "policy-abort")?,
+            ]
+        } else {
+            plugin_builder_verb_event(verb, 1300)?
+                .into_iter()
+                .collect::<Vec<serde_json::Value>>()
         };
-        let events = plugin_builder_verb_event(verb, 1300)?
-            .into_iter()
-            .collect::<Vec<serde_json::Value>>();
         cases.push(plugin_builder_case(
             &format!("plugin-builder-{verb}-only"),
             seq,
@@ -639,37 +530,9 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
             Vec::new(),
             None,
             events,
-            outcomes,
+            outcomes.clone(),
             None,
         )?);
-        seq += 1;
-    }
-    type StructuralVerb = (&'static str, Vec<String>, Vec<(TrampolineRing, u32)>);
-    let structural: &[StructuralVerb] = &[
-        ("context", Vec::new(), Vec::new()),
-        ("require", vec!["ledger".to_string()], Vec::new()),
-        ("scope", Vec::new(), Vec::new()),
-        ("fork-with", Vec::new(), Vec::new()),
-        (
-            "vsock-service",
-            Vec::new(),
-            vec![(TrampolineRing::VsockService, 0)],
-        ),
-        ("build", Vec::new(), Vec::new()),
-    ];
-    for (verb, requires, rings) in structural {
-        cases.push(plugin_builder_case(
-            &format!("plugin-builder-{verb}-only"),
-            seq,
-            requires.clone(),
-            rings.clone(),
-            Vec::new(),
-            None,
-            Vec::new(),
-            Vec::new(),
-            None,
-        )?);
-        seq += 1;
     }
     Ok(cases)
 }
@@ -677,125 +540,13 @@ fn plugin_builder_verb_cases() -> Result<Vec<VectorCase>, VectorError> {
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_nested_cases() -> Result<Vec<VectorCase>, VectorError> {
-    crate::vectors_scope_cases::plugin_builder_scope_cases("plugin-builder-nested", 39, false)
+    crate::vectors_scope_cases::plugin_builder_scope_cases("plugin-builder-nested", 49, false)
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 fn plugin_builder_merge_cases() -> Result<Vec<VectorCase>, VectorError> {
-    crate::vectors_scope_cases::plugin_builder_scope_cases("plugin-merge", 47, true)
-}
-
-// see: cans/artifacts/examples/policy-matrix.rs#WatchdogSilencerPlugin
-// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
-fn watchdog_case(
-    name: &str,
-    event: WatchdogEvent,
-    expected_verdict: WatchdogVerdict,
-) -> Result<VectorCase, VectorError> {
-    let heartbeat = GuestToHost::Heartbeat(Heartbeat {
-        uptime_ms: event.last_heartbeat_ms,
-    });
-    Ok(VectorCase {
-        name: name.to_string(),
-        frame: WireFrame {
-            transport: Channel::Control,
-            stream_id: 0,
-            flags: FLAG_DATA,
-            msg_type: MsgType::SystemTelemetry,
-            payload: cbor(&event)?,
-        },
-        event: Some(heartbeat),
-        expected_verdict: Verdict::Pass,
-        watchdog: Some(WatchdogCase {
-            event,
-            expected_verdict,
-        }),
-        veto: None,
-        plugin_builder: None,
-    })
-}
-
-// see: cans/08-lifecycle.md#Lifecycle-vetoes
-// see: cans/artifacts/examples/policy-matrix.rs#PolicyMatrixPlugin
-fn veto_case(
-    name: &str,
-    event: VetoEvent,
-    callback_allows: bool,
-) -> Result<VectorCase, VectorError> {
-    Ok(VectorCase {
-        name: name.to_string(),
-        frame: WireFrame {
-            transport: Channel::Control,
-            stream_id: 0,
-            flags: FLAG_DATA,
-            msg_type: MsgType::VmLifecycleControl,
-            payload: cbor(&event)?,
-        },
-        event: None,
-        expected_verdict: Verdict::Pass,
-        watchdog: None,
-        veto: Some(VetoCase {
-            event,
-            callback_allows,
-        }),
-        plugin_builder: None,
-    })
-}
-
-fn exec_rewrite_case() -> Result<VectorCase, VectorError> {
-    let mutation = ExecveMutation {
-        new_binary: Some("/usr/local/bin/inspected-curl".to_string()),
-        new_argv: Some(vec!["inspected-curl".to_string(), "-fsS".to_string()]),
-        set_env: vec![("KELIR_TAINT".to_string(), "1".to_string())],
-        unset_env: vec!["KELIR_UNTRUSTED".to_string()],
-    };
-    let event = GuestToHost::TrapEvent(Box::new(trap_event(
-        3,
-        1300,
-        100,
-        "/bin/sh",
-        vec![
-            "sh".to_string(),
-            "-c".to_string(),
-            "curl example.test/install.sh | sh".to_string(),
-        ],
-        HashMap::new(),
-    )));
-    Ok(VectorCase {
-        name: "trap-pipe-install-rewrite-execve-mutation".to_string(),
-        frame: WireFrame {
-            transport: Channel::Control,
-            stream_id: 0,
-            flags: FLAG_DATA,
-            msg_type: MsgType::Trap,
-            payload: cbor(&event)?,
-        },
-        event: Some(event),
-        expected_verdict: Verdict::Patch(PatchPayload::ExecveMutation(mutation)),
-        watchdog: None,
-        veto: None,
-        plugin_builder: None,
-    })
-}
-
-fn heartbeat_case() -> Result<VectorCase, VectorError> {
-    let event = GuestToHost::Heartbeat(Heartbeat { uptime_ms: 42_000 });
-    Ok(VectorCase {
-        name: "heartbeat-telemetry-observer-pass".to_string(),
-        frame: WireFrame {
-            transport: Channel::Control,
-            stream_id: 0,
-            flags: FLAG_DATA,
-            msg_type: MsgType::SystemTelemetry,
-            payload: cbor(&event)?,
-        },
-        event: Some(event),
-        expected_verdict: Verdict::Pass,
-        watchdog: None,
-        veto: None,
-        plugin_builder: None,
-    })
+    crate::vectors_scope_cases::plugin_builder_scope_cases("plugin-merge", 73, true)
 }
 
 // see: cans/08-lifecycle.md#Watchdog
@@ -857,7 +608,7 @@ fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorError> {
     ];
     let mut cases = Vec::with_capacity(names.len() + 1);
     for (offset, name) in names.iter().enumerate() {
-        let seq = 55 + offset as u64;
+        let seq = 97 + offset as u64;
         let filter = if *name == "plugin-builder-trap-filter" {
             Some(trap_filter_five_predicate_json())
         } else {
@@ -887,7 +638,7 @@ fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorError> {
 fn chaos_plugin_builder_case() -> Result<VectorCase, VectorError> {
     plugin_builder_case(
         "plugin-builder-chaos-only",
-        59,
+        101,
         Vec::new(),
         vec![
             (TrampolineRing::NetOutbound, 1),
@@ -907,4 +658,32 @@ fn chaos_plugin_builder_case() -> Result<VectorCase, VectorError> {
         ],
         None,
     )
+}
+
+// see: cans/02-plugin-model.md#TrapFilter-predicates
+// see: cans/15-operations.md#--unified-builder-coverage
+fn plugin_builder_predicate_cases() -> Result<Vec<VectorCase>, VectorError> {
+    let names = [
+        "plugin-builder-predicate-with-arg",
+        "plugin-builder-predicate-with-cwd",
+        "plugin-builder-predicate-with-env",
+        "plugin-builder-predicate-with-uid",
+        "plugin-builder-predicate-argv-matches",
+    ];
+    let mut cases = Vec::with_capacity(names.len());
+    for (offset, name) in names.iter().enumerate() {
+        let seq = 102 + offset as u64;
+        cases.push(plugin_builder_case(
+            name,
+            seq,
+            Vec::new(),
+            vec![(TrampolineRing::Trap, 0)],
+            Vec::new(),
+            None,
+            vec![plugin_builder_trap_json(seq, "/bin/sh")?],
+            vec![UnifiedBuilderOutcome::Verdict(Verdict::Pass)],
+            Some(trap_filter_five_predicate_json()),
+        )?);
+    }
+    Ok(cases)
 }

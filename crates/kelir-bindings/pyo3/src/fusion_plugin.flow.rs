@@ -72,11 +72,14 @@ impl FusedTrampolineCallback for PyFusedCallback {
 }
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+type PyRuns = Vec<(TrampolineRing, Vec<(u32, Py<PyAny>)>)>;
+
+// see: cans/02-plugin-model.md#Foreign-plugin-proxy
 pub fn attach_runs(
     descriptor: &mut FusedTrampolineDescriptor,
     runs: &Bound<'_, PyList>,
 ) -> PyResult<()> {
-    let mut grouped: Vec<(TrampolineRing, Vec<(u32, Py<PyAny>)>)> = Vec::new();
+    let mut grouped: PyRuns = Vec::new();
     for run_value in runs.iter() {
         let run_entry = run_value.downcast::<PyDict>()?;
         let ring_tag = required_str(run_entry, "ring", "run entry")?;
@@ -114,7 +117,11 @@ pub fn attach_runs(
         }
     }
     for (ring_kind, mut fused) in grouped {
-        let Some(chain) = descriptor.rings.iter_mut().find(|chain| chain.ring == ring_kind) else {
+        let Some(chain) = descriptor
+            .rings
+            .iter_mut()
+            .find(|chain| chain.ring == ring_kind)
+        else {
             return Err(PyValueError::new_err(format!(
                 "fused trampoline run on ring {} has no matching descriptor ring",
                 ring_kind.as_tag()
