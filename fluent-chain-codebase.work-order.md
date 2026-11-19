@@ -35,6 +35,11 @@
 6. **Comment Law**:
    * Exact one-liners only: `see:`, `TODO:`, `SAFETY:`.
    * No `///`, `//!`, Python docstrings, multi-line prose, banners, or trailing comments.
+7. **Call-Site Generics Ban**:
+   * `<>` is mandatory in type definitions (typestate generics enforce the machine) and **banned at the call-site**: if an end-user, example, or test ever has to type `<...>` / `::<...>` / `[...]` on a fluent chain, the SDK is broken.
+   * Inference does 100% of the work: `KelirBuilder::new(...).plugin(...).seal().boot()`, `createPlugin("name", ...)`, `.params(|p| p.model(schema).end())`.
+   * A verb whose type parameter cannot infer from its arguments is a design flaw, not a caller obligation: redesign it to take a value the parameter infers from (Py precedent: `p.model(Model)`), or delete the verb.
+   * Tests are end-user code: negative tests reach the illegal state via the chain (`KelirBuilder::new(...)`, `KelirBuilder::named("p")`), never via `KelirBuilder::<...>`.
 
 ---
 
@@ -89,7 +94,7 @@
      * `.actions(|a| a.register(...).end())`
      * `.streams(|s| s.register(...).end())`
      * `.vsock(|v| v.service(...).end())`
-     * `.params(|p| p.model::<T>().end())`
+     * `.params(|p| p.model(schema).end())`
      * `.deny(|d| d.on_trap_deny(...).end())`
 3. **`lock_broker` Relocation**:
    * Delete `lock_broker` from `.storage(...)` and `StoragePlaneConfig`.
@@ -99,6 +104,11 @@
      * Calling `.boot()` on `Unsealed`.
      * Calling host verbs on `KelirBuilder<Plugin, ...>`.
      * Calling scope-specific verbs (e.g. `on_trap`) inside `FsScope`.
+5. **Call-Site Generics (Law 7)**:
+   * `ParamsScope::model<M>` and `ParamsScope::requires<P>` take no value today, so their type parameters cannot infer and the caller is forced into `model::<T>()` / `requires::<P>()`. `model` is worse: it ignores `M` entirely (`builder_scopes.flow.rs:856`, returns `Self` unchanged) and has zero callers; `requires` only records `type_name::<P>()` (`builder_plugin.flow.rs:107`).
+   * Redesign both to take a value the parameter infers from (Py precedent: `p.model(Model)`), or delete the verb. No `::<...>` at any call-site, no exception.
+   * Negative tests reach the illegal state via the chain (`KelirBuilder::new(...)`, `KelirBuilder::named("p")`); the three existing `compile_fail` files were already de-turbofished on `primitives-addition` before this run, do not reintroduce `KelirBuilder::<...>`.
+   * The `cans` anchor pinning `.params(|p| p.model::<T>())` moves with this redesign: spec text, artifacts, and code move together, the anchor is updated to the inference form, not kept as an excuse for the turbofish.
 
 **Agent Verification**:
 ```sh
@@ -142,6 +152,9 @@ cargo test -p kelir --test compile_fail
    * Standardize `onTrapDeny` signature: `(event: TrapDenyEvent, verdict: Verdict, session: Session & Ctx) => Promise<void> | void`.
 5. **Negative Test Suite**:
    * Add compile-fail cases in `packages/ts/core/tests/compile-fail/builder.negative.ts` verified by `tsc -p tsconfig.compile-fail.json`.
+6. **Call-Site Generics (Law 7)**:
+   * `createPlugin<Name, Ctx, ...>(name, options?: CreatePluginOptions<Opts> | Ctx)` cannot infer `Ctx`: the `{ opts }` argument matches `CreatePluginOptions`, never `Ctx`, and bare `createPlugin("x")` offers no inference source at all. That is why tests and canonical examples are forced into `createPlugin<"x", Record<string, never>>("x")`.
+   * Redesign so every parameter infers from an argument (e.g. a `ctx` field inside options) or drop the parameter. Then strip every explicit `<...>` from `packages/ts/core/tests/` and the canonical examples, including full 6-param `KelirBuilder<...>` return-type annotations — infer them or delete them, keep only load-bearing annotations.
 
 **Agent Verification**:
 ```sh
@@ -213,6 +226,8 @@ pytest packages/py/tests/test_compile_fail.py
 3. **Parity Harness Update**:
    * Update `crates/kelir-plugin-cli/src/parity_cli.run.rs` to validate single-expression fluent chains across the 96 parity vectors.
    * Ensure the parity suite verifies that `group()` folds yield identical descriptors to nested scopes.
+4. **Call-Site Generics Gate (Law 7)**:
+   * Add a grep gate that fails on `KelirBuilder::<`, `createPlugin<`, `.model::<`, `.requires::<`, and `KelirBuilder<` used as a call (definition sites excluded) in `crates/*/tests/`, `packages/*/tests/`, `cans/artifacts/examples/`, and generated factories. Wire it into CI alongside the parity suite.
 
 **Agent Verification**:
 ```sh
@@ -258,6 +273,8 @@ cargo run -p kelir-plugin-cli -- parity run --vectors vectors.json
    * **`unified-builder-surface`**:
      * Align TS `hostOnlyVerbsRejectedOnPlugin` to assert all 9 rejected verbs.
      * Delete redundant `.storage(lock_broker=True)` calls.
+4. **Call-Site Generics (Law 7)**:
+   * No `<>` in any canonical example: strip every `createPlugin<"name", Ctx>` call and every full 6-param `KelirBuilder<...>` return-type annotation (e.g. `autonomous-swe-agent.ts`, `fluent-builder-chaos.ts`, `unified-builder-surface.ts`). Do this after Agent 2 lands `createPlugin` inference; a stripped example that no longer compiles is Agent 2's signature to fix, not a reason to restore the `<>`.
 
 **Agent Verification**:
 ```sh

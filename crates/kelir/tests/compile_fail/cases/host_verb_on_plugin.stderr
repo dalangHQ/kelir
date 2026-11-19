@@ -1,15 +1,7 @@
-warning: unused imports: `Host` and `VmConfig`
- --> tests/compile_fail/cases/host_verb_on_plugin.rs:3:48
-  |
-3 |     planes::storage_plane::StoragePlaneConfig, Host, KelirBuilder, Plugin, Unsealed, VmConfig,
-  |                                                ^^^^                                  ^^^^^^^^
-  |
-  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-
 error[E0599]: no method named `storage` found for struct `KelirBuilder<Plugin>` in the current scope
- --> tests/compile_fail/cases/host_verb_on_plugin.rs:8:12
+ --> tests/compile_fail/cases/host_verb_on_plugin.rs:6:12
   |
-8 |     plugin.storage(StoragePlaneConfig::default());
+6 |     plugin.storage(StoragePlaneConfig::default());
   |            ^^^^^^^ method not found in `KelirBuilder<Plugin>`
   |
   = note: the method was found for `KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>`
