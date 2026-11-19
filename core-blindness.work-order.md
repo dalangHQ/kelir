@@ -16,6 +16,7 @@ The facade `crates/kelir` **is core**: it compiles, links, and type-checks with 
 3. Shared protocol types that core and plugins both speak (verdicts, post-exec actions) live in `kelir-interface`; specific plugins re-export them. Zero type duplication (`cans/01-architecture.md:157`).
 4. The facade never names a plugin in errors, YAML sub-schemas, or builder sugar; sugar lives in `kelir-bundle`.
 5. `kelir-plugin-cli check --layers` gains a facade rule and a manifest rule; regression fails CI (new case `pe_21`).
+6. `just check-core-blindness` (G1–G4, see "Hard CI gating") runs in the `lint-and-types` CI job, is `needs:`-ed by every test job, and has no override path.
 
 ## Agents
 
@@ -67,6 +68,7 @@ The facade `crates/kelir` **is core**: it compiles, links, and type-checks with 
 2. Close pe_01 (red, `case-to-test-map.yaml:903-910`): per-tier plugin-to-plugin source scan — for each plugin dir under `crates/kelir-plugins`, forbid `use` of any higher-tier plugin crate name from the tier roster (closes the TODO L3 at `layers_cli.run.rs` check body).
 3. Close pe_02 (red, `:911-917`): cycle detection in `resolve_plugin_registrations` → `EConfig` abort at boot. pe_03 (`AmbiguousMutation` scope conflict) same family — stretch goal.
 4. New case `cans/artifacts/test-plan/cases/plugin_engine/pe_21_facade_zero_plugin_knowledge.yaml` + map entry + live test in `crates/kelir-plugin-cli/tests/`: mock tree with a plugin dep in the facade manifest and a `plugin_` token in facade src both fail `check --layers`.
+5. CI wiring per "Hard CI gating": `justfile` gains `check-core-blindness` (G1–G4); `ci.yml:212` layering step and `plugin-ci-reusable.yml:643` become `just check-core-blindness`; gate is landed dark in this same merge.
 
 **Gate:** `kelir-plugin-cli` tests green including pe_21; pe_01/pe_02 flip to green in the map.
 
@@ -84,9 +86,41 @@ The facade `crates/kelir` **is core**: it compiles, links, and type-checks with 
 
 - `cargo tree -p kelir` — zero plugin crates; `cargo build -p kelir --no-default-features` succeeds.
 - `grep -rni "plugin_" crates/kelir/src | wc -l` = 0.
+- `just check-core-blindness` green (see Hard CI gating below).
 - `kelir-plugin-cli check --layers` green with the facade rule; pe_01/pe_02 green; pe_21 green.
 - Full workspace `cargo test` green; Law 7 compile_fail tests untouched and green.
 - Scorecard core purity row re-baselined.
+
+## Hard CI gating (Law 8 is enforced, not convention)
+
+`justfile` gains one recipe — the flag string lives in justfile, CI never calls raw commands (same convention as `check-spec`, `justfile:53`):
+
+```just
+# ── Law 8: core blindness gate ──
+# G1 facade manifest: zero plugin-* deps. G2 facade src: zero plugin tokens.
+# G3 facade dep graph: zero plugin crates at any depth. G4 structural lint.
+check-core-blindness:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ! grep -qE '^[[:space:]]*plugin-' crates/kelir/Cargo.toml
+    [ "$(git grep -iE 'plugin_' -- crates/kelir/src | wc -l)" -eq 0 ]
+    [ "$(cargo tree -p kelir -e normal 2>/dev/null | grep -cE 'plugin-')" -eq 0 ]
+    cargo run -p kelir-plugin-cli -- check --layers
+```
+
+Wiring (Agent F's merge, both workflow files):
+
+1. `ci.yml` `lint-and-types` job: the "Validate Crate Layering Hierarchy" step (`ci.yml:212`) becomes `just check-core-blindness` — named `Core blindness gate (Law 8)`. Red on any of G1–G4; the job is already `needs:`-ed by every test job, so this blocks merge, not just reports.
+2. `plugin-ci-reusable.yml` (`:643`, `check --layers` step) swaps to the same recipe — no path back in through the reusable pipeline.
+3. `justfile:150` `check-layers` and `justfile:200` `check-cli` delegate unchanged; the new recipe is additive so local devs hit the same gate CI does.
+
+Three independent tripwires, all red-fail in CI:
+
+- **G2 grep** catches tokens (case-insensitive `git grep -i`), so renames, casing, and alias-hiding (`type X = plugin_y::X`) all fail — the token survives aliasing.
+- **G3 cargo tree** catches the dependency graph at any depth (`-e normal`), closing the optional-dep-behind-a-feature hole: a plugin re-added as `optional = true` shows in `cargo tree` even when the feature is off, so feature-gating cannot smuggle a dep back in.
+- **G4 layers** catches structure (facade source-prefix rule + manifest rule from Agent F) and is the only tripwire that also polices plugin-to-plugin tiers (pe_01 closure).
+
+Sequencing note: the gate is *landed dark* — F wires it in the same merge that flips pe_01/pe_02/pe_21 green, because before B's purge it would fail on the current facade (21 deps, `plugin_` tokens). After that merge, any regression — a plugin dep, a plugin token, a plugin type alias — breaks CI with no override path; the only way to `plugin_` in the facade is to change this file first.
 
 ## Accepted seams — do NOT purge (cans/02-plugin-model.md:161-169)
 
