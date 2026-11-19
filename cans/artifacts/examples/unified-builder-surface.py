@@ -132,8 +132,8 @@ def build_plain_plugin() -> KelirBuilder:
 
 
 # see: cans/02-plugin-model.md#Unified-builder
-# Mount case 1: host-only verbs on a host builder (terminal, storage,
-# wire, detached; the lock-broker config rides .fs(lambda f: f.config(…))).
+# Mount case 1: host-only verbs on a host builder (terminal, wire,
+# detached; the lock-broker config rides .fs(lambda f: f.config(…))).
 # Chain cases: trap filter, trap scope, fs config, then seal() in main.
 # Mount case 3: merge ordering — the ledger provider first (it satisfies
 # the surface plugin's require at seal time), then the surface plugin via
@@ -152,7 +152,6 @@ def build_host() -> KelirBuilder:
             driver="auto",
         )
         .terminal(cols=120, rows=40)
-        .storage(lock_broker=True)
         .wire()
         .detached(False)
         .use(build_ledger_plugin())
@@ -224,7 +223,11 @@ def build_host() -> KelirBuilder:
 # Host-only verbs on a plugin builder raise EConfig synchronously at call site.
 def host_only_verbs_rejected_on_plugin() -> list[str]:
     rejected: list[str] = []
-    plugin = build_surface_plugin()
+    # Bare KelirBuilder is the Unknown-typed receiver: the probes below
+    # call host-only verbs on a plugin-mode builder to demonstrate the
+    # runtime EConfig rejection, which static typing would otherwise
+    # reject at the call site.
+    plugin: KelirBuilder = build_surface_plugin()
     probes = [
         ("terminal", lambda: plugin.terminal(cols=120, rows=40)),
         ("storage", lambda: plugin.storage(lock_broker=True)),
@@ -256,16 +259,10 @@ def host_only_verbs_rejected_on_plugin() -> list[str]:
 
 # see: cans/02-plugin-model.md#Nested-scopes
 # Negative vector: f.on_trap(...) inside .fs(...) is a type error in
-# Python — the FsScopeProtocol has no on_trap member. Uncommenting the
-# body must fail mypy/pyright with "Protocol FsScopeProtocol has no
-# attribute on_trap". vectors.json cannot express an expected-error case
-# (its schema carries event/expected_verdict only), so the negative case
-# is pinned here as a comment-pinned block and in the rs/ts siblings.
-#
-# def negative_fs_on_trap(builder: KelirBuilder) -> KelirBuilder:
-#     return builder.fs(
-#         lambda f: f.on_trap(lambda event, ctx: Verdict.pass_())
-#     )
+# Python — the FsScopeProtocol has no on_trap member. The executable form
+# of this vector lives in packages/py/tests/test_compile_fail.py
+# ("scope_bleed"): pyright rejects the scope bleed there, so the case is
+# pinned in the negative suite, not here.
 
 # see: cans/02-plugin-model.md#Nested-scopes
 # Flat-fold pin: a flat chain exists only as a group() fold over the

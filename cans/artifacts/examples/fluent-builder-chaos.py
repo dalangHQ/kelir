@@ -68,13 +68,15 @@ def build_chaos_host(config: ChaosConfig) -> KelirBuilder:
             tsc_locked=True,
             enable_watchdog=False,
             driver="auto",
-        ).use(chaos(config))
+        )
+        .use(chaos(config))
+        .seal()
     )
 
 
 # see: cans/02-plugin-model.md#Unified-builder
 async def main() -> None:
-    build_chaos_host(chaos_config()).seal()
+    build_chaos_host(chaos_config())
     build_chaos_plugin()
 
 

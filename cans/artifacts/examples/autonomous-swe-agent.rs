@@ -10,19 +10,19 @@ use std::time::Duration;
 
 use kelir::async_trait;
 use kelir::{Deserialize, Serialize};
-use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::plugin_model::HandlerCtx as IfaceHandlerCtx;
-use kelir::{VaultConfig, VaultPlugin};
+use kelir::{CredentialBrokerCtx, VaultPlugin};
 
 use kelir::{
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::{
         storage_plane::{
-            IdmapConfig, StoragePlaneConfig, WorkspaceEncapsulation,
+            IdmapConfig, LockBrokerConfig, LockScope, SharedCacheConfig,
+            StoragePlaneConfig, WorkspaceEncapsulation,
         },
-        terminal_plane::PtyConfig,
-        wire_plane::{L4Proxy, Mtls, SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
+        terminal_plane::{PtyConfig, TerminalSanitizerConfig, TerminalWireframeGridConfig},
+        wire_plane::{L4Proxy, MtlsConfig, SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     },
     plugin_model::{
         AnyPlugin, FilterAction, FsInterposer, KelirPlugin, PluginDeps, PluginError, TrapInterposer,
@@ -30,8 +30,9 @@ use kelir::{
     protocol_wire::{Errno, ExecveMutation, PatchPayload, TrapEvent},
     telemetry_attest::ExecutionReceipt,
     ChaosConfig, ChaosPlugin, FaultDirection, FaultInjectionService, FinalizeRequest,
-    FsReconcileRequest, HCons, HNil, HandlerCtx, Host, KelirBuilder, LedgerConfig, LedgerCtx,
-    LedgerHandle, LedgerPlugin, NetworkFaultRule, NoParams, OtelConfig, PostExecAction,
+    FsReconcileRequest, FsScopeConfig, HCons, HNil, HandlerCtx, Host, KelirBuilder,
+    LedgerConfig, LedgerCtx, LedgerHandle, LedgerPlugin, NetworkFaultRule, NoParams, OtelConfig,
+    PostExecAction,
     ReceiptConfig, SnapshotDescriptor, StorageFaultRule, TrapFilter, Unsealed, Verdict, VmConfig,
 };
 
@@ -259,7 +260,10 @@ async fn build_runtime(
         Unsealed,
         (),
         HNil,
-        HCons<RepoPolicyHandle, HCons<LedgerCtx, HCons<Arc<dyn FaultInjectionService>, HNil>>>,
+        HCons<
+            RepoPolicyHandle,
+            HCons<LedgerCtx, HCons<CredentialBrokerCtx, HCons<Arc<dyn FaultInjectionService>, HNil>>>,
+        >,
         NoParams,
     >,
     Box<dyn std::error::Error + Send + Sync>,
@@ -306,13 +310,21 @@ async fn build_runtime(
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     .terminal(PtyConfig {
         cols: 120,
         rows: 40,
-        drop_osc52: true,
-        strip_title: true,
+        wireframe_grid: TerminalWireframeGridConfig {
+            track_screen_matrix: false,
+            export_on_trap: true,
+        },
         stream_engine: "StatelessRegex".into(),
+        sanitizer: TerminalSanitizerConfig {
+            drop_osc52: true,
+            strip_title: true,
+        },
     })
     .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
@@ -320,12 +332,37 @@ async fn build_runtime(
             host_uid,
         },
         shared_caches: vec![
-            "~/.npm".into(),
-            "~/.cache/pip".into(),
-            "~/.cargo/registry".into(),
+            SharedCacheConfig {
+                host_path: "~/.npm".into(),
+                guest_mount: "~/.npm".into(),
+                read_only: true,
+            },
+            SharedCacheConfig {
+                host_path: "~/.cache/pip".into(),
+                guest_mount: "~/.cache/pip".into(),
+                read_only: true,
+            },
+            SharedCacheConfig {
+                host_path: "~/.cargo/registry".into(),
+                guest_mount: "~/.cargo/registry".into(),
+                read_only: true,
+            },
         ],
-        lock_broker: true,
+        lock_broker: false,
         encapsulation: WorkspaceEncapsulation::Passthrough,
+        dax_window: None,
+    })
+    .fs(|f| {
+        f.config(FsScopeConfig {
+            lock_broker: Some(LockBrokerConfig {
+                scope: LockScope::Globs(vec![
+                    "**/Cargo.lock".into(),
+                    "**/package-lock.json".into(),
+                ]),
+                non_blocking: true,
+            }),
+        })
+        .end()
     })
     .wire(WireConfig {
         sinkhole: SinkholeConfig {
@@ -354,7 +391,7 @@ async fn build_runtime(
             listen_port: 5432,
             destination: "pg.internal.net:5432".into(),
             forward_unix_socket: None,
-            inject_mtls: Some(Mtls {
+            inject_mtls: Some(MtlsConfig {
                 cert_path: pg_cert,
                 key_path: pg_key,
             }),
@@ -363,6 +400,7 @@ async fn build_runtime(
         tap_filter: TapFilter::AllowUdpProxied,
         userspace_netstack: true,
         default_egress: "drop".into(),
+        dial_timeout_ms: 3_000,
     })
     .plugin_instance(ChaosPlugin::new(ChaosConfig {
         network: vec![
@@ -401,6 +439,7 @@ async fn build_runtime(
         }],
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
+    .plugin_instance(VaultPlugin::new())
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
         hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
         record_pre_redaction_hash: false,
@@ -422,14 +461,6 @@ async fn build_runtime(
             include_wall_clock_ns: true,
             include_phase_timings: false,
         },
-    }))
-    .plugin_instance(VaultPlugin::new(VaultConfig {
-        credentials: vec![CredentialDescriptor {
-            name: "STRIPE_SECRET".into(),
-            kind: CredentialKind::BearerToken,
-            audience: "api.stripe.com".into(),
-            placeholder: "vault://stripe_key".into(),
-        }],
     }))
     .plugin_instance(policy_plugin)
     .trap_async("*", {

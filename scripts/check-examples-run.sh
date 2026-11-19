@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
-# check-examples-run: WS-F1 example-as-test wiring. Runs the nine patched
+# check-examples-run: WS-F1 example-as-test wiring. Runs the six
 # see: cans/15-operations.md#Examples-run
 # examples as tests in all three languages and reports one outcome per
 # example per language:
 #   PASS        exit 0 (in-file asserts held)
 #   RUNNING     still alive at the timeout with no error output (serve-forever
-#               examples: serverless-webhook serves until ingress closes);
-#               reported distinctly, never counted as PASS
+#               examples); reported distinctly, never counted as PASS
 #   SKIP        hardware tier absent (git-gate, hook-matrix-full need /dev/kvm)
 #   COMPILE-GAP Rust example does not compile: a WS-A..E surface is missing
 #   FAIL        any other nonzero exit
 #   BLOCKED     the language toolchain is not installed (pnpm/uv missing)
 # The gate exits 1 unless every example is PASS, RUNNING, or SKIP. A RUNNING
-# entry is an unasserted live process, not a verified serve: driving a probe
-# webhook through the ingress socket is future work, not wired here.
+# entry is an unasserted live process, not a verified serve.
 # Name mapping: the work-order spells the cargo-example form with underscores
 # (serverless_webhook); files use hyphens (serverless-webhook.rs). Rust runs
 # through the same throwaway-crate mechanism as scripts/check-examples.sh
@@ -22,12 +20,15 @@
 # are scripts with __main__ guards, so the Py leg executes each file
 # directly (pytest over the directory would collect zero tests). TypeScript
 # likewise: npm test runs the package test suite, not examples, so the TS leg
-# compiles the nine examples and runs node over the emitted output.
+# compiles the six examples and runs node over the emitted output.
+# The three quarantined examples (serverless-webhook, db-backed-runtime,
+# multi-vm-swarm) live in cans/artifacts/examples/deferred/ and are not
+# run here; see: cans/15-operations.md#Examples-compile.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
-EXAMPLES="serverless-webhook container db-backed-runtime multi-vm-swarm autonomous-swe-agent policy-matrix git-gate hook-matrix-full replay"
+EXAMPLES="container autonomous-swe-agent policy-matrix git-gate hook-matrix-full replay"
 HW_EXAMPLES="git-gate hook-matrix-full"
 TIMEOUT_SECS="${KELIR_EXAMPLE_TIMEOUT_SECS:-60}"
 
@@ -151,7 +152,7 @@ py_run() {
     done
 }
 
-# --- TypeScript: compile the nine examples, run node over the output ------
+# --- TypeScript: compile the six examples, run node over the output ------
 ts_run() {
     if ! command -v pnpm >/dev/null 2>&1; then
         for name in $EXAMPLES; do report "$name" typescript BLOCKED "pnpm not on PATH (run: pnpm install first)"; done
@@ -219,7 +220,7 @@ rs_run
 py_run
 ts_run
 
-echo "examples-run: PASS=$pass RUNNING=$running SKIP=$skipped COMPILE-GAP=$gap FAIL=$failed BLOCKED=$blocked (27 runs)"
+echo "examples-run: PASS=$pass RUNNING=$running SKIP=$skipped COMPILE-GAP=$gap FAIL=$failed BLOCKED=$blocked (18 runs)"
 if [ "$gap" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$blocked" -ne 0 ]; then
     echo "FAIL: examples-run has $gap compile gaps, $failed failures, $blocked blocked; see above"
     exit 1

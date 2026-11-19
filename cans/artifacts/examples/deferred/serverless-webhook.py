@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, AsyncIterator, Literal, cast
 
 import kelir
 from kelir import (
@@ -19,11 +19,11 @@ from kelir import (
     Field,
     HandlerContext,
     KelirBuilder,
-    LifecycleEvent,
     PostExecAction,
     Verdict,
 )
-from kelir.plugins.plugin_wire_ingress import (
+from kelir.plugin_model import LifecycleCtx
+from kelir.plugins.wire_ingress import (
     BacklogConfig,
     ListenConfig,
     ParkingConfig,
@@ -31,11 +31,11 @@ from kelir.plugins.plugin_wire_ingress import (
     WireIngressConfig,
     WireIngressPlugin,
 )
-from kelir.plugins.plugin_mcp import McpConfig, McpPlugin
-from kelir.plugins.plugin_tool_guard import (
+from kelir.plugins.mcp import McpConfig, McpPlugin
+from kelir.plugins.tool_guard import (
     ToolGuardConfig, ToolGuardPlugin,
 )
-from kelir.plugins.plugin_ledger import (
+from kelir.plugins.ledger import (
     LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig,
 )
 from kelir.wire_planes import WireConfig
@@ -89,11 +89,21 @@ def build_runtime() -> KelirBuilder:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
-    def _wire(w: WireConfig) -> None:
-        w.userspace_netstack = True
-        w.default_egress = "drop"
-        w.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
-        w.divert_port_to_unix(8000, "/run/agentsh/mcp.sock")
+    def _build_wire() -> WireConfig:
+        wire = WireConfig()
+        wire.userspace_netstack = True
+        wire.default_egress = "drop"
+        wire.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
+        wire.divert_port_to_unix(8000, "/run/agentsh/mcp.sock")
+        return wire
+
+    async def _vm_ready(ctx: LifecycleCtx) -> None:
+        await ctx.vm.adjust_balloon(384)
+
+    async def _vm_shutdown(ctx: LifecycleCtx) -> None:
+        ledger = ctx.cap("ledger")
+        if ledger is not None:
+            await ledger.flush()
 
     return (
         kelir.builder(
@@ -136,11 +146,13 @@ def build_runtime() -> KelirBuilder:
             ),
             receipts=ReceiptConfig(),
         )))
-        .wire_config(_wire)
-        .params(DispatchWebhook)
+        .wire(_build_wire())
+        .params(lambda p: p.model(DispatchWebhook))
         .trap("dispatch-webhook", pre=pre_dispatch, post=post_dispatch)
-        .on(LifecycleEvent.VmReady, lambda ctx: ctx.vm.adjust_balloon(384))
-        .on(LifecycleEvent.VmShutdown, lambda ctx: ctx.cap("ledger").flush())
+        .lifecycle(
+            lambda l: l.on_vm_ready(_vm_ready)
+            .on_vm_shutdown(_vm_shutdown)
+        )
         .seal()
     )
 
@@ -148,11 +160,18 @@ def build_runtime() -> KelirBuilder:
 async def main() -> None:
     async with build_runtime() as session:
         served = 0
-        async for stream in session.handle_ingress(
-            port=8443,
-            request_type=WebhookRequest,
-            response_type=WebhookResponse,
-        ):
+        # handle_ingress is declared `-> Any` but yields ingress streams
+        # (async-generator function); the cast pins the async-iterator
+        # shape pyright cannot infer from the declared return type.
+        streams = cast(
+            AsyncIterator[Any],
+            session.handle_ingress(
+                port=8443,
+                request_type=WebhookRequest,
+                response_type=WebhookResponse,
+            ),
+        )
+        async for stream in streams:
             response = await handle_webhook(stream.request, session)
             await stream.respond(response)
             served += 1

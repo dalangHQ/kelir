@@ -12,7 +12,8 @@ use kelir::{
     HCons, HNil, HandlerCtx, Host, IngressChannel, IngressRoutingService, KelirBuilder,
     LedgerConfig, LedgerCtx, LedgerPlugin, LifecycleEvent, McpCtx, McpPlugin, NoParams,
     OtelConfig, PostExecAction, ReceiptConfig, ToolGuardConfig, ToolGuardCtx,
-    ToolGuardPlugin, Unsealed, Verdict, VmConfig, WireIngressConfig, WireIngressPlugin,
+    ToolGuardPlugin, TrapFilter, Unsealed, Verdict, VmConfig, WireIngressConfig,
+    WireIngressPlugin,
     driver_interface::{DriverPolicy, WxPolicy},
     interface::driver_interface::{ExternalSuspendKind, SuspendReason},
     planes::wire_plane::{SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
@@ -20,7 +21,7 @@ use kelir::{
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase", crate = "kelir::serde")]
 struct DispatchWebhookParams {
     action: String,
@@ -52,7 +53,7 @@ fn webhook_builder() -> KelirBuilder<
         LedgerCtx,
         HCons<ToolGuardCtx, HCons<McpCtx, HCons<IngressRoutingService, HNil>>>,
     >,
-    NoParams,
+    DispatchWebhookParams,
 > {
     KelirBuilder::new(VmConfig {
         tenant_id: None,
@@ -84,6 +85,8 @@ fn webhook_builder() -> KelirBuilder<
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
     // see: cans/plugins/wire-ingress.md#On-rollback:-parked-connections-get-TCP-RST-(post-handshake:-503-close)
@@ -118,6 +121,7 @@ fn webhook_builder() -> KelirBuilder<
         pin_schemas: true,
         // see: cans/plugins/tool-guard.md#Call-quota
         max_invocations_per_trace: 50,
+        dial_timeout_ms: 3_000,
     }))
     // see: cans/plugins/ledger.md#Merkle-WAL
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
@@ -136,12 +140,13 @@ fn webhook_builder() -> KelirBuilder<
         }),
         receipts: ReceiptConfig::default(),
     }))
-    // The TS original keys this trap on the params action "dispatch-webhook"; Rust trap filters only match binary/pattern, so the string filter stands in for the action.
-    .trap_async("dispatch-webhook", |c: HandlerCtx<_, _>| async move {
+    // The TS original keys this trap on the params action "dispatch-webhook"; the typed filter stands in for the action.
+    .params(|p| p.model::<DispatchWebhookParams>().end())
+    .trap_async(TrapFilter::binary("webhook-worker"), |c: HandlerCtx<_, _>| async move {
         c.vm.adjust_balloon(512).await?;
         Ok(Verdict::Pass)
     })
-    .post_exec("dispatch-webhook", |c: HandlerCtx<_, _>| async move {
+    .post_exec(TrapFilter::binary("webhook-worker"), |c: HandlerCtx<_, _>| async move {
         // see: cans/10-attestation.md#Execution-receipts
         let receipt = c.receipt().await?;
         if receipt.exit_kind != ExitKind::Normal {
@@ -156,15 +161,21 @@ fn webhook_builder() -> KelirBuilder<
             Ok(PostExecAction::Proceed)
         }
     })
-    .on(LifecycleEvent::VmReady, |ctx| {
-        Box::pin(async move {
-            ctx.vm.adjust_balloon(384).await.map(|_| ())
+    .lifecycle(|l| {
+        l.on_vm_ready(|ctx| {
+            Box::pin(async move {
+                ctx.vm.adjust_balloon(384).await.map(|_| ())
+            })
         })
-    })
-    .on(LifecycleEvent::VmShutdown, |ctx| {
-        Box::pin(async move {
-            ctx.cap::<LedgerCtx>().ok_or_else(|| kelir::plugin_model::PluginError::Halt("ledger missing".into()))?.flush().await
+        .on_vm_shutdown(|ctx| {
+            Box::pin(async move {
+                ctx.cap::<LedgerCtx>()
+                    .ok_or_else(|| kelir::plugin_model::PluginError::Halt("ledger missing".into()))?
+                    .flush()
+                    .await
+            })
         })
+        .end()
     })
 }
 

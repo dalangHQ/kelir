@@ -14,11 +14,11 @@ use kelir::JoinSet;
 use kelir::{
     interface::driver_interface::{DriverPolicy, WxPolicy},
     planes::storage_plane::{LockBrokerConfig, LockScope},
-    plugin_model::{Veto, VetoEvent},
-    HCons, HNil, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin, MeshConfig, MeshCtx,
-    MeshPlugin, NoParams, PackageGuardConfig, PeerIdentity, PeerListener, ReceiptConfig, Session,
-    SnapshotDescriptor, SupplyChainConfig, SupplyChainCtx, SupplyChainPlugin,
-    TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
+    plugin_model::{PluginError, Veto, VetoEvent},
+    FsScopeConfig, HCons, HNil, Host, KelirBuilder, LedgerConfig, LedgerCtx, LedgerPlugin,
+    MeshConfig, MeshCtx, MeshPlugin, NoParams, PackageGuardConfig, PeerIdentity, PeerListener,
+    ReceiptConfig, Session, SnapshotDescriptor, SupplyChainConfig, SupplyChainCtx,
+    SupplyChainPlugin, TraceParentPropagation, Unsealed, VmConfig, WxJitConfig,
 };
 
 type SwarmPlugins = HCons<LedgerCtx, HCons<SupplyChainCtx, HCons<MeshCtx, HNil>>>;
@@ -69,10 +69,17 @@ fn swarm_builder() -> KelirBuilder<Host, Unsealed, (), HNil, SwarmPlugins, NoPar
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: Some(0x5EED),
+        balloon: None,
+        mask_proc_environ: true,
     })
-    .lock_broker(LockBrokerConfig {
-        scope: LockScope::Globs(vec!["**/Cargo.lock".into(), "**/package-lock.json".into()]),
-        non_blocking: true,
+    .fs(|f| {
+        f.config(FsScopeConfig {
+            lock_broker: Some(LockBrokerConfig {
+                scope: LockScope::Globs(vec!["**/Cargo.lock".into(), "**/package-lock.json".into()]),
+                non_blocking: true,
+            }),
+        })
+        .end()
     })
     // see: cans/plugins/mesh.md#Plugin-mesh
     .plugin_instance(MeshPlugin::new(MeshConfig {
@@ -122,12 +129,22 @@ async fn boot_swarm(
 ) -> Result<Session<SwarmPlugins, NoParams>, Box<dyn std::error::Error + Send + Sync>> {
     let cache_ready = Arc::new(AtomicBool::new(false));
     let veto_flag = cache_ready.clone();
-    let mut builder = swarm_builder();
-    builder.lifecycle_mut().register_veto(
-        VetoEvent::Fork,
-        Box::new(move || Veto::allowed(veto_flag.load(Ordering::SeqCst))),
-    );
-    let session = builder.seal()?.boot().await?;
+    let session = swarm_builder()
+        .lifecycle(|l| {
+            l.on_vm_init(move |ctx| {
+                Box::pin(async move {
+                    ctx.register_veto(
+                        VetoEvent::Fork,
+                        Box::new(move || Veto::allowed(veto_flag.load(Ordering::SeqCst))),
+                    );
+                    Ok::<(), PluginError>(())
+                })
+            })
+            .end()
+        })
+        .seal()?
+        .boot()
+        .await?;
 
     session.terminal.resize(120, 40)?;
     session.step_evaluator().begin_step(

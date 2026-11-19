@@ -127,6 +127,25 @@ for path in sorted(glob.glob(root + "/cans/artifacts/examples/*.py")):
 raise SystemExit(1 if failed else 0)
 PYEOF
     echo "OK: python examples import"
+    # pyright: static typing over the examples (0 errors). pyright ships as
+    # a dev dependency of packages/py, runnable via the same interpreter.
+    local pyright_bin=""
+    if [ -x "$ROOT/.venv/bin/pyright" ]; then
+        pyright_bin="$ROOT/.venv/bin/pyright"
+    elif PYTHONPATH="$ROOT/packages/py" "$py" -m pyright --version >/dev/null 2>&1; then
+        pyright_bin="$py -m pyright"
+    else
+        echo "FAIL: pyright not installed (run: uv pip install -e \"packages/py[dev]\")"
+        return 1
+    fi
+    local pyright_out=""
+    if pyright_out="$(PYTHONPATH="$ROOT/packages/py" $pyright_bin --pythonpath "$py" "$ROOT"/cans/artifacts/examples/*.py 2>&1)"; then
+        echo "OK: python examples pass pyright"
+    else
+        echo "$pyright_out"
+        echo "FAIL: python examples fail pyright"
+        return 1
+    fi
     return 0
 }
 

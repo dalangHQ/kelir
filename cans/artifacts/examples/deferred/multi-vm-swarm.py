@@ -46,9 +46,13 @@ def build_runtime() -> KelirBuilder:
             rootfs_erofs="./fixtures/rootfs-swarm.erofs",
             tsc_locked=True, enable_watchdog=True,
         )
-        .lock_broker(
-            globs=["**/Cargo.lock", "**/package-lock.json"],
-            non_blocking=True,
+        .fs(
+            lambda f: f.config(
+                lock_broker={
+                    "globs": ["**/Cargo.lock", "**/package-lock.json"],
+                    "non_blocking": True,
+                },
+            )
         )
         # see: cans/plugins/mesh.md#Plugin-mesh
         .use(MeshPlugin(MeshConfig(
@@ -80,7 +84,7 @@ def build_runtime() -> KelirBuilder:
                 include_syscall_count=False,
             ),
         )))
-        .on_vm_init(_init)
+        .lifecycle(lambda l: l.on_vm_init(_init))
         .seal()
     )
 
@@ -124,7 +128,9 @@ async def main() -> None:
         mesh_winner = await mesh.await_winner(timeout_secs=2.0)
         print(f"[kelir] mesh winner shard={mesh_winner}")
         print(f"[kelir] {passed}/8 shards passed; winner shard={mesh_winner}")
-        denials = await session.cap("ledger").count_denials(os.getpid())
+        ledger = session.cap("ledger")
+        assert ledger is not None, "ledger capability not mounted"
+        denials = await ledger.count_denials(os.getpid())
         print(f"[kelir] supply-chain denials={denials}")
 
 

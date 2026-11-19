@@ -16,7 +16,7 @@ use kelir::{
 };
 
 // see: cans/03-sdk-architecture.md#.params(model:-type[P])-pins-Params;-handler-c.params-is-typed
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(crate = "kelir::serde")]
 struct MigrateParams {
     action: String,
@@ -36,7 +36,7 @@ fn build_runtime(
     (),
     HNil,
     HCons<LedgerCtx, HCons<TransactionCtx, HCons<SqlProxyCtx, HNil>>>,
-    NoParams,
+    MigrateParams,
 > {
     // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
     let mut db_config = DbProxyConfig::default();
@@ -111,10 +111,13 @@ fn build_runtime(
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     .plugin_instance(db_plugin)
     // Transaction mounts directly after DbProxy: Satisfies is positional, so SqlProxyCtx must head Plugins at that mount; see cans/03-sdk-architecture.md#Rust-SDK.
     .plugin_instance(tx_plugin)
+    .params(|p| p.model::<MigrateParams>().end())
     .plugin_instance(ledger_plugin)
     // see: cans/plugins/db-proxy.md#Plugin-db-proxy
     .trap_async(TrapFilter::binary("migrate"), |c: HandlerCtx<_, _>| async move {

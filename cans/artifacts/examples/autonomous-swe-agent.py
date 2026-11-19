@@ -35,14 +35,14 @@ from kelir import (
     Verdict,
     WatchdogAction,
 )
-from kelir.plugin_model import BasePlugin, LifecycleCtx, PluginError
-from kelir.plugins.plugin_redaction import (
+from kelir.plugin_model import LifecycleCtx
+from kelir.plugins.redaction import (
     MaskReadConfig, MaskReadRule, RedactionConfig, redaction,
 )
-from kelir.plugins.plugin_terminal_guard import (
+from kelir.plugins.terminal_guard import (
     PromptRuleConfig, TerminalGuardConfig, terminal_guard,
 )
-from kelir.plugins.plugin_token_shield import TokenShieldConfig, token_shield
+from kelir.plugins.token_shield import TokenShieldConfig, token_shield
 from kelir.plugins.vault import CredentialDescriptor, VaultConfig, VaultPlugin
 from kelir.storage_planes import IdmapConfig, SharedCacheConfig
 from kelir.wire_planes import (
@@ -86,67 +86,32 @@ class RepoPolicyState:
     current_branch: str = ""
 
 
-@dataclass(frozen=True)
-class RepoPolicyHandle:
-    _state: RepoPolicyState
-    _protected: tuple[str, ...]
-
-    @property
-    def violations(self) -> int:
-        return self._state.violations
-
-    @property
-    def current_branch(self) -> str:
-        return self._state.current_branch
-
-    def is_protected(self) -> bool:
-        b = self._state.current_branch
-        return any(
-            b == p or (p.endswith("*") and b.startswith(p[:-1]))
-            for p in self._protected
-        )
-
-    def record_violation(self) -> None:
-        self._state.violations += 1
-
-    def set_branch(self, b: str) -> None:
-        self._state.current_branch = b
+@dataclass
+class RepoPolicyOptions:
+    max_diff_bytes: int
+    protected_branches: tuple[str, ...] = ("main", "master", "release/*")
 
 
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
-class RepoPolicyPlugin(BasePlugin):
-    name = "repo-policy"
-    requires: tuple[str, ...] = ("ledger",)
+def repo_policy_plugin(opts: RepoPolicyOptions) -> KelirBuilder:
+    state = RepoPolicyState()
 
-    def __init__(
-        self,
-        *,
-        max_diff_bytes: int,
-        protected_branches: list[str],
-    ) -> None:
-        self._opts: dict[str, Any] = {
-            "max_diff_bytes": max_diff_bytes,
-            "protected_branches": tuple(protected_branches),
-        }
-        self._state = RepoPolicyState()
-
-    def handle(self) -> RepoPolicyHandle:
-        return RepoPolicyHandle(
-            _state=self._state,
-            _protected=self._opts["protected_branches"],
+    def _is_protected(branch: str) -> bool:
+        return any(
+            branch == p or (p.endswith("*") and branch.startswith(p[:-1]))
+            for p in opts.protected_branches
         )
 
-    async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
+    async def _handle_trap(event: TrapEvent) -> Optional[Verdict]:
         is_git = event.binary_path.endswith("/git") or event.binary_path == "git"
         is_push = len(event.argv) > 1 and event.argv[1] == "push"
         if not (is_git and is_push):
             return None
 
-        h = self.handle()
-        if h.is_protected():
-            h.record_violation()
+        if _is_protected(state.current_branch):
+            state.violations += 1
             return Verdict.drop(
-                "EPERM", f"EPOLICY: '{h.current_branch}' is protected."
+                "EPERM", f"EPOLICY: '{state.current_branch}' is protected."
             )
 
         new_branch = f"agent/{uuid.uuid4().hex[:8]}"
@@ -156,15 +121,17 @@ class RepoPolicyPlugin(BasePlugin):
             env={"KELIR_REWRITTEN": "1"},
         )
 
-    def on_fs_write(self, path: Path, data: bytes, pid: int, ctx: HandlerContext) -> FilterAction:
-        if path.suffix == ".diff" and len(data) > self._opts["max_diff_bytes"]:
-            self.handle().record_violation()
+    def _handle_write(
+        path: Path, data: bytes, pid: int, ctx: HandlerContext,
+    ) -> FilterAction:
+        if path.suffix == ".diff" and len(data) > opts.max_diff_bytes:
+            state.violations += 1
             return FilterAction.drop(
                 errno=Errno.ENOSPC, reason="diff exceeds policy ceiling"
             )
         return FilterAction.forward()
 
-    def on_fs_unlink(self, path: Path, ctx: HandlerContext) -> Verdict:
+    def _handle_unlink(path: Path, ctx: HandlerContext) -> Verdict:
         path_str = str(path)
         # Intercept and quarantine destructive deletion of lockfiles or test harnesses
         if path_str.endswith("package.json") or "test" in path_str:
@@ -174,10 +141,12 @@ class RepoPolicyPlugin(BasePlugin):
             ))
         return Verdict.pass_()
 
-    # see: cans/04-terminal-plane.md#Terminal-pipeline
-    async def disclosure_annotation(self) -> bytes:
-        n = self.handle().violations
-        return f"[repo-policy: {n} open violations]\n".encode()
+    return (
+        KelirBuilder.plugin("repo-policy")
+        .require("ledger")
+        .fs(lambda f: f.on_fs_write(_handle_write).on_fs_unlink(_handle_unlink))
+        .trap(lambda t: t.on_trap(_handle_trap))
+    )
 
 
 
@@ -274,12 +243,12 @@ def make_zero_byte_check() -> PostExecHandler:
         if receipt.dirty_bytes == 0:
             raise RuntimeError("Verification anomaly: zero-byte delta commit attempted.")
         # see: cans/10-attestation.md#Typed-extensions
-        vfs_ext = receipt.fs_vfs()
+        vfs_ext = receipt.fs_vfs_ext
         if vfs_ext is None:
             log.info("[kelir] commit fs:vfs extension absent")
         else:
-            log.info("[kelir] commit fs:vfs extension present, payload_len=%s",
-                     len(vfs_ext.payload))
+            log.info("[kelir] commit fs:vfs extension present, served_inodes=%s roots=%s",
+                     vfs_ext.served_inodes, len(vfs_ext.roots))
         return PostExecAction.proceed()
     return zero_byte_check
 
@@ -290,9 +259,11 @@ async def build_runtime(
     pg_cert: Path,
     pg_key: Path,
 ) -> KelirBuilder:
-    policy_plugin = RepoPolicyPlugin(
-        max_diff_bytes=64 * 1024,
-        protected_branches=["main", "master", "release/*"],
+    policy_plugin = repo_policy_plugin(
+        RepoPolicyOptions(
+            max_diff_bytes=64 * 1024,
+            protected_branches=("main", "master", "release/*"),
+        )
     )
     # see: cans/08-lifecycle.md#Watchdog
     async def _init(ctx: LifecycleCtx) -> None:
@@ -309,7 +280,7 @@ async def build_runtime(
                 await ledger.flush()
 
     # see: cans/08-lifecycle.md#Break-glass
-    async def _deny(event: TrapEvent, session: Session) -> None:
+    async def _deny(event: TrapEvent, _verdict: Verdict, session: Session) -> None:
         # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
         ledger = session.cap("ledger")
         if ledger is not None and await ledger.count_denials(event.ppid) > 5:
@@ -344,7 +315,14 @@ async def build_runtime(
                 SharedCacheConfig(host_path="~/.cache/pip", guest_mount="/root/.cache/pip", read_only=True),
                 SharedCacheConfig(host_path="~/.cargo/registry", guest_mount="/usr/local/cargo/registry", read_only=True),
             ],
-            lock_broker=True,
+        )
+        .fs(
+            lambda f: f.config(
+                lock_broker={
+                    "globs": ["**/Cargo.lock", "**/package-lock.json"],
+                    "non_blocking": True,
+                },
+            )
         )
 
         # see: cans/plugins/token-shield.md#Plugin-token-shield
@@ -388,7 +366,7 @@ async def build_runtime(
                 CredentialDescriptor(
                     name="STRIPE_SECRET",
                     placeholder="vault://stripe_key",
-                    kind="bearer_token",
+                    kind="bearer-token",
                     audience="api.stripe.com",
                 ),
             ],
@@ -414,6 +392,7 @@ async def build_runtime(
             ],
             tap_filter="AllowUdpProxied",
         )
+        .params(lambda p: p.model(FixStripeWebhook))
 
         # see: cans/plugins/chaos.md#Plugin-chaos
         .use(ChaosPlugin(ChaosConfig(
@@ -469,11 +448,13 @@ async def build_runtime(
         .trap(TrapFilter.binary("git").with_arg("commit").with_arg("-m"), pre=make_commit_gate())
         .trap(TrapFilter.binary("git").with_arg("commit"), post=make_zero_byte_check())
         # see: cans/08-lifecycle.md#Watchdog
-        .on_vm_init(_init)
-        .on_vm_ready(_ready)
-        .on_vm_shutdown(_shutdown)
+        .lifecycle(
+            lambda l: l.on_vm_init(_init)
+            .on_vm_ready(_ready)
+            .on_vm_shutdown(_shutdown)
+        )
         # see: cans/08-lifecycle.md#Break-glass
-        .on_trap_deny(_deny)
+        .deny(lambda d: d.on_trap_deny(_deny))
         .seal()
     )
 
@@ -492,7 +473,9 @@ async def fork_and_verify(
             ["run", f"verify-hypothesis-{hypothesis_id}"],
             cwd="/workspace/checkout-service",
         )
-        delta = await child.cap("ledger").get_causal_delta_from_parent()
+        ledger = child.cap("ledger")
+        assert ledger is not None, "ledger capability not mounted"
+        delta = await ledger.get_causal_delta_from_parent()
         return hypothesis_id, run, delta
     finally:
         await child.terminate()
@@ -535,17 +518,11 @@ async def main() -> None:
             fork_and_verify(session, hid) for hid in "ABCD"
         ))
         # Deterministic winner evaluation in declared branch order (SSOT-A1)
-        winner = None
-        for candidate_id in ["A", "B", "C", "D"]:
-            match = next((b for b in branches if b.id == candidate_id and b.exit_code == 0), None)
-            if match:
-                winner = match
-                break
-            
+        winner = next((b for target in "ABCD" for b in branches if b[0] == target and b[1].exit_code == 0), None)
         if winner is None:
             await session.vm.rollback(base)
             return
-        winning_id, winning_delta = winner
+        winning_id, test_run, winning_delta = winner
 
         # see: cans/08-lifecycle.md#Suspend-and-resume
         await session.suspend(External("human-authorization-hold"))
@@ -569,6 +546,7 @@ async def main() -> None:
 
         # see: cans/10-attestation.md#Execution-receipts
         ledger = session.cap("ledger")
+        assert ledger is not None, "ledger capability not mounted"
         final = await ledger.finalize(
             include_delta=winning_delta,
             include_merkle_root=True,

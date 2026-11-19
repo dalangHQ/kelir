@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from typing import Any
 
 import pytest
 
@@ -19,15 +20,15 @@ from kelir import (
     Sandbox,
     Session,
     Verdict,
-    VsockServiceEntry,
 )
+from kelir.kelir_builder_scope import _Scope
 from kelir.service_caps import materialize_cap
 from kelir.plugin_model import (
     PluginError,
     plugin_error_to_filter_action,
     plugin_error_to_verdict,
 )
-from kelir.plugins.plugin_ledger import LedgerPlugin
+from kelir.plugins.ledger import LedgerPlugin
 from kelir.sdk_errors import EConfig
 
 
@@ -48,12 +49,14 @@ def test_use_mounts_plugin_instance() -> None:
 
 
 def test_plugin_rejects_non_name_and_instance_plugin() -> None:
+    cls_untyped: Any = KelirBuilder
     with pytest.raises(EConfig, match=r"non-empty plugin name"):
-        KelirBuilder.plugin(LedgerPlugin())
+        cls_untyped.plugin(LedgerPlugin())
+    plugin_fn: Any = KelirBuilder().plugin
     with pytest.raises(EConfig, match=r"mounts a plugin-mode builder, not a name"):
-        KelirBuilder().plugin("ledger")
+        plugin_fn("ledger")
     with pytest.raises(EConfig, match=r"mounts only a plugin-mode KelirBuilder"):
-        KelirBuilder().plugin(LedgerPlugin())
+        plugin_fn(LedgerPlugin())
 
 
 def test_caps_have_typed_service_skeletons() -> None:
@@ -111,20 +114,13 @@ def test_session_and_sandbox_suspend_take_reason() -> None:
 
 def test_vsock_service_takes_exactly_one_handler() -> None:
     builder = KelirBuilder()
-    entry = VsockServiceEntry(port=0x0013, service="echo", schema={})
-    assert builder.vsock_service(entry, _echo) is builder
-    entry_only = VsockServiceEntry(
-        port=0x0014, service="echo", schema={}, handler=_echo
-    )
-    assert builder.vsock_service(entry_only) is builder
-    with pytest.raises(EConfig, match=r"passed twice"):
-        both = VsockServiceEntry(
-            port=0x0015, service="echo", schema={}, handler=_echo
-        )
-        builder.vsock_service(both, _echo)
-    with pytest.raises(EConfig, match=r"declares no handler"):
-        none = VsockServiceEntry(port=0x0016, service="echo", schema={})
-        builder.vsock_service(none)
+    assert builder.vsock(lambda v: v.service(0x0013, "echo", _echo)) is builder
+    assert builder.vsock(lambda v: v.service(0x0014, "echo", _echo)) is builder
+    assert builder.vsock_services[0].handler is _echo
+    assert builder.vsock_services[1].handler is _echo
+    assert [entry.port for entry in builder.vsock_services] == [0x0013, 0x0014]
+    params = list(inspect.signature(_Scope.service).parameters)
+    assert params == ["self", "port", "service", "handler"]
 
 
 def test_materialize_cap_aliases_db_proxy_and_keeps_methods() -> None:

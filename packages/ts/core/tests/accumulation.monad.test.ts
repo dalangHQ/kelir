@@ -1,8 +1,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 import { kelir } from "../dist/index.js";
-import type { ValidateDeps } from "../dist/index.js";
+import type { ValidateDeps, Infer } from "../dist/index.js";
 import { createPlugin } from "../dist/index.js";
-import { t } from "../dist/index.js";
+import { t, type Session } from "../dist/index.js";
 import type { LedgerHandle } from "../dist/index.js";
 import { RingEvent } from "../dist/index.js";
 
@@ -26,14 +26,16 @@ type MissingDepGate = ValidateDeps<unknown, typeof secureWorkspace> extends {
 const missingDepGate: MissingDepGate = true;
 void missingDepGate;
 
+const paramsSchema = t.Object({
+  action: t.Literal("fix-webhook"),
+  issueId: t.String(),
+  tags: t.Array(t.String()),
+});
+
 const runtime = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(secretMask)
   .use(secureWorkspace)
-  .params(t.Object({
-    action: t.Literal("fix-webhook"),
-    issueId: t.String(),
-    tags: t.Array(t.String()),
-  }))
+  .params<Infer<typeof paramsSchema>>((p) => p.model(paramsSchema))
   .trap("git", (c) => {
     const action: string = c.params.action;
     const tags: readonly string[] = c.params.tags;
@@ -57,19 +59,23 @@ const storageFirst = kelir({ vcpus: 4, memoryMb: 4096 })
     return c.pass();
   });
 
-const streamed = kelir({ vcpus: 4, memoryMb: 4096 })
-  .registerStreamKind(7, t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
+const streamed = kelir({ vcpus: 4, memoryMb: 4096 }).streams((s) =>
+  s.register(7, t.Object({ ping: t.String() }), (request) => new Uint8Array(request)),
+);
 
-const vsock = kelir({ vcpus: 4, memoryMb: 4096 })
-  .vsockService(1024, "ping", t.Object({ ping: t.String() }), (request) => ({ pong: request.ping }));
+const vsock = kelir({ vcpus: 4, memoryMb: 4096 }).vsock((v) =>
+  v.service(1024, "ping", (request) => request),
+);
 
 const denied = kelir({ vcpus: 4, memoryMb: 4096 })
   .use(secretMaskDeny)
-  .onTrapDeny((event, session) => {
-    const masked: boolean = session.secretMask.maskActive;
-    void event;
-    void masked;
-  });
+  .deny((d) =>
+    d.onTrapDeny((event, _verdict, session) => {
+      const masked: boolean = (session as Session & { secretMask: { maskActive: boolean } }).secretMask.maskActive;
+      void event;
+      void masked;
+    }),
+  );
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 function accumulationMonadFuses(): void {

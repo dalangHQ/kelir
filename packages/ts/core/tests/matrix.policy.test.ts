@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
-import { kelir, createPlugin, t, LifecycleEvent, SuspendReason, SuspendUntil, VetoEvent,
+import { kelir, createPlugin, t, SuspendReason, SuspendUntil, VetoEvent,
          type Session } from "../dist/index.js";
 
 
@@ -13,57 +13,61 @@ const policyState = {
 };
 
 const policyPlugin = createPlugin<"policy-matrix", Record<string, never>>("policy-matrix")
-  .onTrap(async (event, c) => {
-    const binary = event.binaryPath.split("/").pop();
-    switch (binary) {
-      case "policy-allow":
-        return c.pass();
-      case "policy-deny":
-        return c.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.");
-      case "policy-rewrite":
-        return c.patch({
-          binary: "/bin/policy-allow",
-          argv: ["policy-allow", "--rewritten"],
-          env: { KELIR_POLICY_REWRITE: "1" },
-        });
-      case "policy-abort":
-        return c.abort("EPOLICY: abort row");
-      case "policy-yield":
-        await c.vm.checkpoint("policy-yield");
-        return c.suspend(SuspendUntil.approval);
-      case "policy-approval":
-        return c.suspend(SuspendUntil.deadline(500));
-      case "policy-custom":
-        return c.patch({
-          name: "quarantine",
-          cbor: {
-            pid: c.trap.pid,
-            reason: "policy-matrix quarantine row",
-          },
-        });
-      default:
-        return c.pass();
-    }
-  })
-
-
-  .onWatchdog(async (event) => {
-    if (event.lastActivePid !== undefined && event.lastActivePid !== null) {
-      policyState.mitigations += 1;
-      return "mitigate";
-    }
-    return "execute-default";
-  })
+  .trap((scope) =>
+    scope.onTrap(async (event, c) => {
+      const binary = event.binaryPath.split("/").pop();
+      switch (binary) {
+        case "policy-allow":
+          return c.pass();
+        case "policy-deny":
+          return c.drop("EPOLICY", "EPOLICY: policy-matrix denies this binary.");
+        case "policy-rewrite":
+          return c.patch({
+            binary: "/bin/policy-allow",
+            argv: ["policy-allow", "--rewritten"],
+            env: { KELIR_POLICY_REWRITE: "1" },
+          });
+        case "policy-abort":
+          return c.abort("EPOLICY: abort row");
+        case "policy-yield":
+          await c.vm.checkpoint("policy-yield");
+          return c.suspend(SuspendUntil.approval);
+        case "policy-approval":
+          return c.suspend(SuspendUntil.deadline(500));
+        case "policy-custom":
+          return c.patch({
+            name: "quarantine",
+            cbor: {
+              pid: c.trap.pid,
+              reason: "policy-matrix quarantine row",
+            },
+          });
+        default:
+          return c.pass();
+      }
+    }),
+  )
+  .telemetry((tm) =>
+    tm.onWatchdog(async (event) => {
+      if (event.lastActivePid !== undefined && event.lastActivePid !== null) {
+        policyState.mitigations += 1;
+        return "mitigate";
+      }
+      return "execute-default";
+    }),
+  );
 
 
 const watchdogSilencer = createPlugin<"watchdog-silencer", Record<string, never>>("watchdog-silencer")
-  .onWatchdog(async () => {
-    if (policyState.plannedSuspend) {
-      policyState.suppressions += 1;
-      return "suppress";
-    }
-    return "execute-default";
-  })
+  .telemetry((tm) =>
+    tm.onWatchdog(async () => {
+      if (policyState.plannedSuspend) {
+        policyState.suppressions += 1;
+        return "suppress";
+      }
+      return "execute-default";
+    }),
+  )
 
 
 const runtime = kelir({
@@ -75,23 +79,28 @@ const runtime = kelir({
   .use(policyPlugin)
   .use(watchdogSilencer)
 
+  .actions((a) =>
+    a.register(
+      "quarantine",
+      t.Object({ pid: t.Number(), reason: t.String() }),
+      async (payload) => {
+        policyState.quarantinedPids.push(payload.pid);
+      },
+    ),
+  )
 
-  .registerCustomAction("quarantine",
-    t.Object({ pid: t.Number(), reason: t.String() }),
-    async (payload) => {
-      policyState.quarantinedPids.push(payload.pid);
-    })
+  .streams((s) => s.register(0x0013, t.Object({}), async (request) => request))
 
-
-  .registerStreamKind(0x0013, t.Object({}),
-    async (request) => request)
-
-
-  .on(LifecycleEvent.VmInit, async (lifecycle) => {
-    lifecycle.registerVeto(VetoEvent.Suspend, () => policyState.ready);
-    lifecycle.registerVeto(VetoEvent.ClockSkew, () => policyState.ready);
-  })
-  .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
+  .lifecycle((l) =>
+    l
+      .onVmInit(async (lifecycle) => {
+        lifecycle.registerVeto(VetoEvent.Suspend, () => policyState.ready);
+        lifecycle.registerVeto(VetoEvent.ClockSkew, () => policyState.ready);
+      })
+      .onVmReady(async () => {
+        policyState.ready = true;
+      }),
+  );
 
 
 async function policyMatrixCase_vsockControlEcho(session: Session): Promise<void> {

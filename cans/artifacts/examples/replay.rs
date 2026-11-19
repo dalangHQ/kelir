@@ -45,6 +45,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         preemption_grace_ms: 0,
 
         entropy_seed: Some(0x5EED),
+        balloon: None,
+        mask_proc_environ: true,
     })
     .plugin_instance(ReplayPlugin::new(ReplayConfig {
         step_window_instructions: 1_000_000,

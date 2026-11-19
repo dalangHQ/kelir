@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-verdict
 
-import { kelir, createPlugin, t, LifecycleEvent, SuspendUntil, SuspendReason, VetoEvent, Errno,
+import { kelir, createPlugin, t, SuspendUntil, SuspendReason, VetoEvent, Errno,
          type Session } from "@kelir/core";
 
 const policyState = {
@@ -12,95 +12,105 @@ const policyState = {
 };
 
 const policyPlugin = createPlugin("policy-matrix")
-  .onTrap(async (event, c) => {
-    const binary = event.binaryPath.split("/").pop();
-    switch (binary) {
-      case "policy-allow":
-        return c.pass();
-      case "policy-deny":
-        // errno is the closed Errno enum; stringly errnos are non-conforming.
-        return c.drop(Errno.EPOLICY, "EPOLICY: policy-matrix denies this binary.");
-      // see: cans/02-plugin-model.md#Patch-payload-is-registered-per-ring:-ExecveMutation,-FsInode,
-      case "policy-rewrite":
-        return c.patch({
-          binary: "/bin/policy-allow",
-          argv: ["policy-allow", "--rewritten"],
-          env: { KELIR_POLICY_REWRITE: "1" },
-        });
-      case "policy-abort":
-        return c.abort("EPOLICY: abort row");
-      case "policy-yield":
-        await c.checkpoint.create("policy-yield");
-        return c.suspend(SuspendUntil.approval);
-      case "policy-approval":
-        return c.suspend(SuspendUntil.deadline(500));
-      case "policy-escalate":
-        if (c.hasValidOperatorLease()) {
+  .trap((t) =>
+    t.onTrap(async (event, c) => {
+      const binary = event.binaryPath.split("/").pop();
+      switch (binary) {
+        case "policy-allow":
           return c.pass();
-        }
-        return c.drop(Errno.EPERM, "ESECURITYVIOLATION: capability widening requires signed operator lease");
-      case "policy-syscall-block":
-        return c.drop(Errno.EAFNOSUPPORT, "EAFNOSUPPORT: socket family AF_RXRPC blocked");
-      // see: cans/11-protocol.md#Custom-payload:-c.patch(Custom-{-name,-cbor-})
-      case "policy-custom":
-        return c.patch({
-          name: "quarantine",
-          cbor: {
-            pid: c.trap.pid,
-            reason: "policy-matrix quarantine row",
-          },
-        });
-      default:
-        return c.pass();
-    }
-  })
+        case "policy-deny":
+          // errno is the closed Errno enum; stringly errnos are non-conforming.
+          return c.drop(Errno.EPOLICY, "EPOLICY: policy-matrix denies this binary.");
+        // see: cans/02-plugin-model.md#Patch-payload-is-registered-per-ring:-ExecveMutation,-FsInode,
+        case "policy-rewrite":
+          return c.patch({
+            binary: "/bin/policy-allow",
+            argv: ["policy-allow", "--rewritten"],
+            env: { KELIR_POLICY_REWRITE: "1" },
+          });
+        case "policy-abort":
+          return c.abort("EPOLICY: abort row");
+        case "policy-yield":
+          await c.checkpoint.create("policy-yield");
+          return c.suspend(SuspendUntil.approval);
+        case "policy-approval":
+          return c.suspend(SuspendUntil.deadline(500));
+        case "policy-escalate":
+          if (c.hasValidOperatorLease()) {
+            return c.pass();
+          }
+          return c.drop(Errno.EPERM, "ESECURITYVIOLATION: capability widening requires signed operator lease");
+        case "policy-syscall-block":
+          return c.drop(Errno.EAFNOSUPPORT, "EAFNOSUPPORT: socket family AF_RXRPC blocked");
+        // see: cans/11-protocol.md#Custom-payload:-c.patch(Custom-{-name,-cbor-})
+        case "policy-custom":
+          return c.patch({
+            name: "quarantine",
+            cbor: {
+              pid: c.trap.pid,
+              reason: "policy-matrix quarantine row",
+            },
+          });
+        default:
+          return c.pass();
+      }
+    }),
+  )
   // see: cans/08-lifecycle.md#Watchdog
-  .onWatchdog(async (event) => {
-    if (event.lastActivePid !== undefined && event.lastActivePid !== null) {
-      policyState.mitigations += 1;
-      return "mitigate";
-    }
-    return "execute-default";
-  });
+  .telemetry((tm) =>
+    tm.onWatchdog(async (event) => {
+      if (event.lastActivePid !== undefined && event.lastActivePid !== null) {
+        policyState.mitigations += 1;
+        return "mitigate";
+      }
+      return "execute-default";
+    }),
+  );
 
 const watchdogSilencer = createPlugin("watchdog-silencer")
-  .onWatchdog(async () => {
-    if (policyState.plannedSuspend) {
-      policyState.suppressions += 1;
-      return "suppress";
-    }
-    return "execute-default";
-  });
-
-const runtime = kelir({
-  vcpus: 2, memoryMb: 2048, driver: "auto",
-  kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
-  rootfsErofs: "./fixtures/rootfs-policy.erofs",
-  tscLocked: true, enableWatchdog: true,
-})
-  .use(policyPlugin)
-  .use(watchdogSilencer)
-
-  // see: cans/11-protocol.md#Unknown-name-at-trap-time-fails-with-EUnknownAction
-  .registerCustomAction("quarantine",
-    t.Object({ pid: t.Number(), reason: t.String() }),
-    async (payload) => {
-      policyState.quarantinedPids.push(payload.pid);
-    })
-
-  .vsockService(0x0013, "echo", t.Object({}),
-    async (request) => request)
-
-  // see: cans/08-lifecycle.md#Lifecycle-vetoes
-  .on(LifecycleEvent.VmInit, async (lifecycle) => {
-    lifecycle.registerVeto(VetoEvent.Suspend, () => policyState.ready);
-    lifecycle.registerVeto(VetoEvent.ClockSkew, () => policyState.ready);
-  })
-  .on(LifecycleEvent.VmReady, async () => { policyState.ready = true; });
+  .telemetry((tm) =>
+    tm.onWatchdog(async () => {
+      if (policyState.plannedSuspend) {
+        policyState.suppressions += 1;
+        return "suppress";
+      }
+      return "execute-default";
+    }),
+  );
 
 async function main() {
-  runtime.seal();
-  const session: Session = await runtime.boot();
+  const session: Session = await kelir({
+    vcpus: 2, memoryMb: 2048, driver: "auto",
+    kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
+    rootfsErofs: "./fixtures/rootfs-policy.erofs",
+    tscLocked: true, enableWatchdog: true,
+  })
+    .use(policyPlugin)
+    .use(watchdogSilencer)
+    // see: cans/11-protocol.md#Unknown-name-at-trap-time-fails-with-EUnknownAction
+    .actions((a) =>
+      a.register(
+        "quarantine",
+        t.Object({ pid: t.Number(), reason: t.String() }),
+        async (payload) => {
+          policyState.quarantinedPids.push(payload.pid);
+        },
+      ),
+    )
+    .vsock((v) => v.service(0x0013, "echo", async (request) => request))
+    // see: cans/08-lifecycle.md#Lifecycle-vetoes
+    .lifecycle((l) =>
+      l
+        .onVmInit(async (lifecycle) => {
+          lifecycle.registerVeto(VetoEvent.Suspend, () => policyState.ready);
+          lifecycle.registerVeto(VetoEvent.ClockSkew, () => policyState.ready);
+        })
+        .onVmReady(async () => {
+          policyState.ready = true;
+        }),
+    )
+    .seal()
+    .boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 
   // see: cans/03-sdk-architecture.md#Multiplexed-binary-RPC-for-SDK-consumers:-session.vsock.channel(kind),-binary-framing

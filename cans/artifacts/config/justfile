@@ -101,7 +101,7 @@ check-coverage-gates: check-l7-stream-coverage check-outbox-coverage check-step-
 check-spec-drift:
     ./scripts/check-spec-drift.sh
 
-# --examples-run: run the nine patched examples as tests (Rust via the
+# --examples-run: run the six examples as tests (Rust via the
 # throwaway crate, Python directly, TypeScript via node on compiled output).
 # Hardware tier required for git-gate and hook-matrix-full; emulated Class 2
 # allowed for the rest. See scripts/check-examples-run.sh.
@@ -125,6 +125,22 @@ check-examples-thin:
 # --builder-parity: the unified KelirBuilder chain is identical in Rust/TS/Python.
 check-builder-parity:
     ./scripts/check-builder-parity.sh
+
+# --builder-chain: the unbroken single-expression chain holds in every
+# example under cans/artifacts/examples/: no builder rebinding, no
+# statement-level verb calls, no flat verb outside a scope, no BasePlugin,
+# no kelir.plugins.plugin_ alias. see: cans/15-operations.md#Builder-chain
+check-builder-chain:
+    python3 scripts/check-builder-chain-ast.py cans/artifacts/examples/
+
+# --negative-suites: compile-fail invariants hold in all three SDKs
+# (scope bleeding, post-seal mutation, host verbs on plugin builders).
+# The Python suite lands with the py track; until then this recipe fails
+# on its missing file. see: cans/15-operations.md#Negative-suites
+check-negative-suites:
+    cargo test -p kelir --test compile_fail_suite
+    pnpm --filter @kelir/core run test:compile-fail
+    pytest packages/py/tests/test_compile_fail.py
 
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.
@@ -191,7 +207,7 @@ check-plugin plugin:
 check-plugin-all:
     #!/usr/bin/env bash
     set -euo pipefail
-    for p in chaos container db-proxy ledger mcp mesh profile replay supply-chain tool-guard transaction vault wire-ingress; do
+    for p in anomaly chaos container db-proxy egress-proxy l7-http ledger mcp mesh profile redaction replay step-eval supply-chain taint terminal-guard token-shield tool-guard transaction vault wire-ingress; do
         just check-plugin "$p"
     done
 
@@ -219,7 +235,7 @@ test-core:
 
 # Every optional domain plugin independently. Failure in one does not mask others.
 test-plugins:
-    cargo nextest run -p plugin-chaos -p plugin-container -p plugin-db-proxy -p plugin-ledger -p plugin-mcp -p plugin-mesh -p plugin-profile -p plugin-replay -p plugin-supply-chain -p plugin-tool-guard -p plugin-transaction -p plugin-vault -p plugin-wire-ingress
+    cargo nextest run -p plugin-anomaly -p plugin-chaos -p plugin-container -p plugin-db-proxy -p plugin-egress-proxy -p plugin-l7-http -p plugin-ledger -p plugin-mcp -p plugin-mesh -p plugin-profile -p plugin-redaction -p plugin-replay -p plugin-step-eval -p plugin-supply-chain -p plugin-taint -p plugin-terminal-guard -p plugin-token-shield -p plugin-tool-guard -p plugin-transaction -p plugin-vault -p plugin-wire-ingress
 
 # Single plugin (debugging)
 test-plugin plugin:

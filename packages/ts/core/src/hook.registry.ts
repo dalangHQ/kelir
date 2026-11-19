@@ -14,6 +14,7 @@ import {
 } from "./fusion.plugin.js";
 import type { Schema } from "./schema.config.js";
 import type { LockBrokerConfig } from "./builder.config.js";
+import type { Session } from "./session.lifecycle.js";
 import type { KelirBuilder } from "./builder.lifecycle.js";
 import { unknownSchema, validateSchema } from "./schema.config.js";
 import type {
@@ -143,7 +144,7 @@ export interface FsScope<Ctx, Owner = unknown> {
   // see: cans/02-plugin-model.md#Nested-scopes
   requires<Req extends string>(name?: Req): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
-  forkWith(fn: () => KelirBuilder<any, any, any, any>): FsScope<Ctx, Owner>;
+  forkWith(fn: () => KelirBuilder<any, any, any, any, any, any>): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
   timeout(seconds: number): FsScope<Ctx, Owner>;
   // see: cans/02-plugin-model.md#Nested-scopes
@@ -320,7 +321,7 @@ export interface DenyScope<Ctx = never, Owner = unknown> {
     handler: (
       event: TrapDenyEvent,
       verdict: Verdict,
-      session: unknown,
+      session: Session & Ctx,
     ) => Promise<void> | void,
   ): DenyScope<Ctx, Owner>;
 }
@@ -385,7 +386,7 @@ export class HookRegistry<Ctx = unknown> {
   readonly contextFns: Array<(c: unknown) => unknown> = [];
   readonly vsockEntries: VsockServiceEntry[] = [];
   fsScopeConfig?: FsScopeConfig;
-  fsScopeForkFn?: () => KelirBuilder<any, any, any, any>;
+  fsScopeForkFn?: () => KelirBuilder<any, any, any, any, any, any>;
   fsScopeTimeoutSeconds?: number;
   fsScopePriority?: number;
   fsScopeRules?: ScopeRules;
@@ -925,7 +926,7 @@ export class HookRegistry<Ctx = unknown> {
         const args = unpack(event);
         return handler(
           args[0] as string,
-          args[1] as Uint8Array,
+          args[1] as Buffer,
           args[2] as number,
           args[3] as TrapContext & Ctx,
         );
@@ -1498,7 +1499,7 @@ export class HookRegistry<Ctx = unknown> {
     handler: (
       event: TrapDenyEvent,
       verdict: Verdict,
-      session: unknown,
+      session: Session & Ctx,
     ) => Promise<void> | void,
   ): this {
     this.addHook({
@@ -1511,7 +1512,7 @@ export class HookRegistry<Ctx = unknown> {
           handler(
             args[0] as TrapDenyEvent,
             args[1] as Verdict,
-            args[2] as unknown,
+            args[2] as Session & Ctx,
           ),
         ).catch((error: unknown): never => {
           throw EConfig.fromNative(error);
@@ -1588,7 +1589,7 @@ export class HookRegistry<Ctx = unknown> {
         handler: (
           event: TrapDenyEvent,
           verdict: Verdict,
-          session: unknown,
+          session: Session & Ctx,
         ) => Promise<void> | void,
       ): DenyScope<Ctx, Owner> {
         registry.onTrapDeny(handler);

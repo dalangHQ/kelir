@@ -13,7 +13,7 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, CompositePlugin, ConsoleInterposer, FsInterposer, HostInterposer, LifecycleEvent,
     LifecycleParticipant, MountScope, NetInterposer, PipelineBinder, PluginDeps, StreamFrameSink,
-    SystemTelemetryParticipant, TrapInterposer, Veto, VetoEvent, VetoList,
+    SystemTelemetryParticipant, TrapInterposer, VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
@@ -52,27 +52,6 @@ pub struct Host;
 // see: cans/02-plugin-model.md#Unified-builder
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Plugin;
-
-pub struct LifecycleMut<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList> {
-    builder: &'a mut KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>,
-}
-
-impl<'a, Plugins: HList, Params: 'static, Ctx, Deps: HList>
-    LifecycleMut<'a, Plugins, Params, Ctx, Deps>
-{
-    pub fn register_veto(
-        self,
-        event: VetoEvent,
-        callback: Box<dyn Fn() -> Veto + Send + Sync>,
-    ) -> Self {
-        self.builder.registration.vetoes.push((event, callback));
-        self
-    }
-
-    pub fn end(self) -> &'a mut KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params> {
-        self.builder
-    }
-}
 
 type BoxFutureResult = Pin<Box<dyn Future<Output = Result<(), PluginError>> + Send>>;
 
@@ -547,12 +526,6 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self
     }
 
-    // see: cans/05-storage-plane.md#Workspace-commit
-    pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
-        self.registration.lock_broker_cfg = Some(config);
-        self
-    }
-
     // see: cans/08-lifecycle.md#Detached-lifecycle
     pub fn detached(mut self, detached: bool) -> Self {
         self.registration.detached = detached;
@@ -648,10 +621,6 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
                 }),
             });
         self
-    }
-
-    pub fn lifecycle_mut(&mut self) -> LifecycleMut<'_, Plugins, Params, Ctx, Deps> {
-        LifecycleMut { builder: self }
     }
 }
 

@@ -99,78 +99,73 @@ function backOffIncompleteAnsi(window: Uint8Array, emit: number): number {
 }
 
 const hookMatrixPlugin = createPlugin<"hook-matrix", Record<string, never>>("hook-matrix")
-
-
-  .onNetOutbound((frame) => {
-    const text = Buffer.from(frame).toString("latin1");
-    if (text.includes(DENY_MARKER)) {
-
-      return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
-    }
-    return FilterAction.Forward;
-  })
-
-
-  .onFsLookup((path) => {
-
-
-    if (escapesWorkspace(path)) {
-      throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
-    }
-
-    if (path !== IDENTITY_PATH) return Verdict.Pass;
-    return Verdict.Patch({
-      mode: 0o400, uid: 0, gid: 0,
-      size: IDENTITY_CONTENT.length,
-
-      content: IDENTITY_CONTENT,
-    });
-  })
-
-
-  .onFsRead((_path, buffer) => {
-    const window = hookState.tail + Buffer.from(buffer).toString("latin1");
-    const masked = maskTokens(window);
-    const chunk = masked.slice(masked.length - buffer.length);
-    hookState.tail = masked.slice(-CARRYOVER);
-    return Buffer.from(chunk, "latin1");
-  })
-  .onFsWrite((_path, _buffer, _pid, _ctx) => {
-    return FilterAction.Forward;
-  })
-
-
-  .onConsoleInput(async (_port, bytes) => {
-    const text = Buffer.from(bytes).toString("latin1");
-    const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
-    return Buffer.from(stripped, "latin1");
-  })
-
-
-  .onConsoleOutput(async (_port, chunk) => {
-    const window = Buffer.concat([
-      Buffer.from(hookState.consoleTail, "latin1"),
-      Buffer.from(chunk),
-    ]);
-    const masked = Buffer.from(maskTokens(window.toString("latin1")), "latin1");
-    const emit = safeConsoleEmitLen(masked);
-    hookState.consoleTail = masked.subarray(emit).toString("latin1");
-    return Buffer.from(masked.subarray(0, emit));
-  })
-
-
-  .onHeartbeat(async (event) => {
-    if (hookState.lastUptimeMs === event.uptimeMs && hookState.heartbeats > 0) {
-      hookState.stalls += 1;
-    }
-    hookState.lastUptimeMs = event.uptimeMs;
-    hookState.heartbeats += 1;
-  })
-
-  .onProcessExit(async (event) => {
-    hookState.exits += 1;
-    if (event.exitCode !== 0) hookState.failures += 1;
-  })
+  .net((n) =>
+    n
+      .onNetOutbound((frame) => {
+        const text = Buffer.from(frame).toString("latin1");
+        if (text.includes(DENY_MARKER)) {
+          return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
+        }
+        return FilterAction.Forward;
+      })
+      .onNetInbound((_frame) => FilterAction.Forward),
+  )
+  .fs((scope) =>
+    scope
+      .onFsLookup((path) => {
+        if (escapesWorkspace(path)) {
+          throw new Error("E_PATH_TRAVERSAL: lookup escapes the /workspace root");
+        }
+        if (path !== IDENTITY_PATH) return Verdict.Pass;
+        return Verdict.Patch({
+          mode: 0o400, uid: 0, gid: 0,
+          size: IDENTITY_CONTENT.length,
+          content: IDENTITY_CONTENT,
+        });
+      })
+      .onFsRead((_path, buffer) => {
+        const window = hookState.tail + Buffer.from(buffer).toString("latin1");
+        const masked = maskTokens(window);
+        const chunk = masked.slice(masked.length - buffer.length);
+        hookState.tail = masked.slice(-CARRYOVER);
+        return Buffer.from(chunk, "latin1");
+      })
+      .onFsWrite((_path, _buffer, _pid, _ctx) => FilterAction.Forward),
+  )
+  .console((c) =>
+    c
+      .onConsoleInput(async (_port, bytes) => {
+        const text = Buffer.from(bytes).toString("latin1");
+        const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
+        return Buffer.from(stripped, "latin1");
+      })
+      .onConsoleOutput(async (_port, chunk) => {
+        const window = Buffer.concat([
+          Buffer.from(hookState.consoleTail, "latin1"),
+          Buffer.from(chunk),
+        ]);
+        const masked = Buffer.from(maskTokens(window.toString("latin1")), "latin1");
+        const emit = safeConsoleEmitLen(masked);
+        hookState.consoleTail = masked.subarray(emit).toString("latin1");
+        return Buffer.from(masked.subarray(0, emit));
+      }),
+  )
+  .telemetry((tm) =>
+    tm
+      .onHeartbeat(async (event) => {
+        if (hookState.lastUptimeMs === event.uptimeMs && hookState.heartbeats > 0) {
+          hookState.stalls += 1;
+        }
+        hookState.lastUptimeMs = event.uptimeMs;
+        hookState.heartbeats += 1;
+      }),
+  )
+  .trap((scope) =>
+    scope.onProcessExit(async (event) => {
+      hookState.exits += 1;
+      if (event.exitCode !== 0) hookState.failures += 1;
+    }),
+  );
 
 
 const runtime = kelir({

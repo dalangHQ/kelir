@@ -17,12 +17,13 @@ while IFS= read -r -d '' dir; do
     fail=1
 done < <(find crates packages -type d -name examples -not -path "*/target/*" -print0)
 
-# Every example file named in the coverage sections must exist in EXDIR.
+# Every example file named in the coverage sections must exist in EXDIR,
+# in exactly one home: the top level, or the deferred/ quarantine
+# subdirectory. A file in neither home is missing; a file in both homes
+# breaks the single-canonical-home invariant.
 # Sections mirror scripts/check-plugin-coverage.sh.
-matrix=$(awk '/Coverage matrix \(community plugins/,/Userland SDK policy demonstrations/' "$SPEC")
-demos=$(awk '/Userland SDK policy demonstrations/,/Non-plugin surface examples/' "$SPEC")
-coverage="$matrix
-$demos"
+matrix=$(awk '/Coverage matrix \(plugin -> demonstrating example\)/,/Non-plugin surface examples/' "$SPEC")
+coverage="$matrix"
 
 expand_braces() {
     local tok="$1"
@@ -41,8 +42,11 @@ expand_braces() {
 while read -r tok; do
     [ -n "$tok" ] || continue
     while read -r f; do
-        if [ ! -e "$EXDIR/$f" ]; then
-            echo "FAIL: example file missing: $EXDIR/$f"
+        if [ -e "$EXDIR/$f" ] && [ -e "$EXDIR/deferred/$f" ]; then
+            echo "FAIL: example file has two homes: $EXDIR/$f and $EXDIR/deferred/$f"
+            fail=1
+        elif [ ! -e "$EXDIR/$f" ] && [ ! -e "$EXDIR/deferred/$f" ]; then
+            echo "FAIL: example file missing: $EXDIR/$f (or $EXDIR/deferred/$f)"
             fail=1
         fi
     done < <(expand_braces "$tok")

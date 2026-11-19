@@ -6,28 +6,27 @@
 import { kelir } from "@kelir/core";
 import { replay } from "@kelir/core";
 
-const runtime = kelir({
-  vcpus: 2, memoryMb: 1024, pageSizeKb: 4, driver: "auto",
-  kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
-  rootfsErofs: "./fixtures/rootfs-replay.erofs",
-  tscLocked: true, enableWatchdog: true,
-  deterministicClock: true,
-  pinnedClocksource: "kvm-clock",
-  networkOff: true,
-  nsPerInstruction: 1,
-  entropySeed: 0x5EED,
-  preemptionGraceMs: 0,
-})
-  .use(replay({
-    stepWindowInstructions: 1_000_000,
-    pinnedClocksource: "kvm-clock",
-    deterministicRngSeed: 0x5EED,
-    networkIsolation: true,
-  }));
-
 async function main() {
-  runtime.seal();
-  const session = await runtime.boot();
+  const session = await kelir({
+    vcpus: 2, memoryMb: 1024, pageSizeKb: 4, driver: "auto",
+    kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
+    rootfsErofs: "./fixtures/rootfs-replay.erofs",
+    tscLocked: true, enableWatchdog: true,
+    deterministicClock: true,
+    pinnedClocksource: "kvm-clock",
+    networkOff: true,
+    nsPerInstruction: 1,
+    entropySeed: 0x5EED,
+    preemptionGraceMs: 0,
+  })
+    .use(replay({
+      stepWindowInstructions: 1_000_000,
+      pinnedClocksource: "kvm-clock",
+      deterministicRngSeed: 0x5EED,
+      networkIsolation: true,
+    }))
+    .seal()
+    .boot();
   try {
     const timestamps: string[] = [];
     for (let run = 0; run < 2; run++) {

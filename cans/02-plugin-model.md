@@ -635,6 +635,7 @@
         - vsock_service moves into .vsock(|v| v.service(…))
         - params moves into .params(|p| p.model::<T>())
         - on_trap_deny moves into .deny(|d| d.on_trap_deny(…))
+        - lifecycle_mut deletes; lifecycle hooks register via .lifecycle(|l| ...)
         - The standalone spellings delete; only the scope forms remain: see: #Nested-scopes
       - (b) seal is the one validation gate; the boot entry differs per SDK
         - Rust: boot() on Unsealed does not exist; seal()?.boot() is the only route
@@ -685,16 +686,14 @@
         - Promise<void> / None-returning post-boot operations are not chain verbs
         - They are not touched here
       - (i) lock-broker and CompositeBundle: landed shape at L2
-        - lock_broker / lockBroker is a standalone host-only verb in all three SDKs
-          - Rust: lock_broker(config: LockBrokerConfig) -> Self (live)
-            - LockBrokerConfig: scope LockScope::Globs(Vec<String>), non_blocking: bool
-          - TypeScript: lockBroker(config: LockBrokerConfig): this (live)
-            - LockBrokerConfig: globs: readonly string[], nonBlocking?: boolean
-            - Only the boolean reaches the native addon
-            - globs/nonBlocking forwarding is L3
-          - Python: lock_broker(enabled: bool = True) -> Self (live)
-            - Only the boolean reaches the PyO3 bridge
-          - A plugin-mode builder calling it fails fast at the call site in all three SDKs
+        - lock_broker has no standalone verb in any SDK; lock brokering
+          - rides .fs(|f| f.config(...)) in all three SDKs
+          - Rust: FsScopeConfig { lock_broker: Some(LockBrokerConfig { ... }) }
+          - TypeScript: f.config({ lockBroker: { globs, nonBlocking } })
+          - Python: f.config(lock_broker={...})
+          - Only the boolean reaches the native addon / PyO3 bridge
+          - globs/nonBlocking forwarding is L3
+          - Verb set: see: artifacts/config/builder-verbs.yaml
         - CompositeBundle has no mount verb: mounting it is unsupported, the type stays
           - The Rust type stays for the profile facade's unpack path
           - Live Rust unpack() returns an empty vec
@@ -852,10 +851,10 @@
       - Scope shape: see: artifacts/code/typescript-plugin-builder.ts
       - Scope shape: see: artifacts/code/python-plugin-builder.py
     - Host-only verbs (Mode-gated; a plugin-mode builder must not call them)
-      - Rust: storage, terminal, wire, lock_broker, detached, fast_boot
+      - Rust: storage, terminal, wire, detached, fast_boot
       - Rust: dax_window, seal, plugin, plugin_instance
       - Rust: trap_async and post_exec stay host-only; trap(filter, handler) is both modes
-      - Rust: register_custom_action, register_stream_kind, lifecycle_mut are host-only, reached via .actions/.streams scopes and lifecycle_mut
+      - Rust: register_custom_action, register_stream_kind are host-only, reached via .actions/.streams scopes
       - Rust: on_trap_deny stays host-only, reached via .deny()
       - Rust: params stays host-only, reached via .params()
       - TypeScript: terminal, wire, detached, boot, seal, use

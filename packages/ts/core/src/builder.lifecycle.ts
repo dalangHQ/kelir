@@ -1,11 +1,11 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+// see: cans/02-plugin-model.md#Host-only-verbs
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
-import type { Schema, Infer } from "./schema.config.js";
+import type { Schema } from "./schema.config.js";
 import { validateSchema } from "./schema.config.js";
-import type { TrapContext, LifecycleContext, HandlerContext } from "./context.lifecycle.types.js";
-import type { Buffer } from "node:buffer";
+import type { HandlerContext } from "./context.lifecycle.types.js";
 import { HookRegistry } from "./hook.registry.js";
 import type {
   KelirPlugin,
@@ -25,28 +25,12 @@ import type {
   LifecycleScope,
   TelemetryScope,
 } from "./hook.registry.js";
-import type {
-  LifecycleEvent,
-  DnsVerdict,
-  Verdict,
-  FilterAction,
-} from "./verdict.protocol.js";
-import type {
-  DirEntry,
-  TrapDenyEvent,
-  TrapInfo,
-  WatchdogEvent,
-  WatchdogVerdict,
-  HeartbeatEvent,
-  ProcessExitEvent,
-} from "./types.core.js";
 import { Session } from "./session.lifecycle.js";
 import { EConfig } from "./errors.sdk.js";
 import { TrapFilter } from "./trap.protocol.js";
 import {
   FusedTrampoline,
   RingEvent,
-  lifecycleTagFor,
   loadNativeAddon,
   type FusedTrampolineDescriptor,
   type HookDescriptor,
@@ -113,8 +97,23 @@ export type {
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps extends string = never, Params = unknown> {
-  private readonly mode: "host" | "plugin";
+// see: cans/02-plugin-model.md#Host-only-verbs
+export type BuilderMode = "host" | "plugin";
+export type BuilderSealState = "unsealed" | "sealed";
+type AnyBuilder = KelirBuilder<BuilderMode, BuilderSealState, string, unknown, string, unknown>;
+
+export class KelirBuilder<
+  TMode extends BuilderMode = BuilderMode,
+  TSealed extends BuilderSealState = BuilderSealState,
+  Name extends string = string,
+  Ctx = unknown,
+  Deps extends string = never,
+  Params = unknown,
+> {
+  // see: cans/02-plugin-model.md#Host-only-verbs
+  private readonly __mode: TMode;
+  private readonly __seal: TSealed;
+  private readonly mode: BuilderMode;
   readonly name: string;
   private readonly storedOptions?: Ctx | CreatePluginOptions<unknown>;
   private readonly kelirConfig: KelirConfig;
@@ -125,7 +124,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   private mountedFlag = false;
   private sealedFlag = false;
   private lockBrokerCfg: LockBrokerConfig | undefined;
-  private forkFn?: () => KelirBuilder<Name, Ctx, Deps, Params>;
+  private forkFn?: () => AnyBuilder;
   private detachedFlag: boolean;
   private terminalCfg: TerminalConfig | undefined;
   private storageCfg: StorageConfig | undefined;
@@ -152,13 +151,17 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       this.registry = new HookRegistry<Ctx>();
     }
     this.detachedFlag = this.kelirConfig.detached ?? false;
+    this.__mode = this.mode as TMode;
+    this.__seal = "unsealed" as TSealed;
+    void this.__mode;
+    void this.__seal;
   }
 
   // see: cans/plugins/profile.md#Declarative-profile-execution
   // see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
-  static async fromConfig(path: string): Promise<KelirBuilder> {
+  static async fromConfig(path: string): Promise<KelirBuilder<"host", "unsealed">> {
     const profile = await readProfile(path);
-    const builder = new KelirBuilder(configFromProfile(profile));
+    const builder = new KelirBuilder<"host", "unsealed">(configFromProfile(profile));
     builder.profileSpec = profile;
     const terminal = terminalConfigFromProfile(profile);
     const storage = storageConfigFromProfile(profile);
@@ -206,8 +209,15 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     throw new EConfig(`plugin ${this.name} called host-only verb ${verb}`);
   }
 
+  private rejectPluginOnly(verb: string): never {
+    throw new EConfig(`host ${this.name} called plugin-only verb ${verb}`);
+  }
+
   // see: cans/04-terminal-plane.md#Terminal-pipeline
-  terminal(config: TerminalConfig): this {
+  terminal(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    config: TerminalConfig,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".terminal");
     if (this.mode === "plugin") this.rejectHostOnly(".terminal");
     this.terminalCfg = config;
@@ -215,19 +225,29 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/05-storage-plane.md#Workspace-commit
-  storage<C = Ctx>(config: StorageConfig): KelirBuilder<Name, Ctx & C, Deps, Params> {
+  storage<C = Ctx>(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    config: StorageConfig,
+  ): KelirBuilder<TMode, TSealed, Name, Ctx & C, Deps, Params> {
     this.checkVerb(".storage");
     if (this.mode === "plugin") this.rejectHostOnly(".storage");
     this.storageCfg = config;
-    return this as unknown as KelirBuilder<Name, Ctx & C, Deps, Params>;
+    return this as unknown as KelirBuilder<TMode, TSealed, Name, Ctx & C, Deps, Params>;
   }
 
   // see: cans/07-wire-plane.md#DNS-policy-filter
-  wire(config: WireConfig): this;
-  wire(fn: (scope: WireScope) => WireScope | void): this;
   wire(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    config: WireConfig,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>;
+  wire(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: WireScope) => WireScope | void,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>;
+  wire(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
     configOrFn: WireConfig | ((scope: WireScope) => WireScope | void),
-  ): this {
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".wire");
     if (this.mode === "plugin") this.rejectHostOnly(".wire");
     if (typeof configOrFn === "function") {
@@ -261,47 +281,34 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this;
   }
 
-  // see: cans/05-storage-plane.md#Host-inode-lock-broker
-  lockBroker(config: LockBrokerConfig): this {
-    this.checkVerb(".lockBroker");
-    if (this.mode === "plugin") this.rejectHostOnly(".lockBroker");
-    this.lockBrokerCfg = config;
-    return this;
-  }
-
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  params<S extends Schema<any>>(schema: S): KelirBuilder<Name, Ctx, Deps, Infer<S>>;
-  params(fn: (scope: ParamsScope<Ctx, this>) => ParamsScope<Ctx, this> | void): this;
-  params(
-    schemaOrFn:
-      | Schema<any>
-      | ((
-          scope: ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>>,
-        ) =>
-          | ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>>
-          | void),
-  ): KelirBuilder<Name, Ctx, Deps, unknown> {
+  // see: cans/03-sdk-architecture.md#Params-typed-views
+  params<Params2 = Params>(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    fn: (
+      scope: ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>>,
+    ) => ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params2> {
     this.checkVerb(".params");
     if (this.mode === "plugin") this.rejectHostOnly(".params");
-    if (typeof schemaOrFn === "function") {
-      const builder = this;
-      const scope: ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>> = {
-        model<S extends Schema<any>>(
-          schema: S,
-        ): ParamsScope<Ctx, KelirBuilder<Name, Ctx, Deps, Params>> {
-          builder.paramsSchema = schema;
-          return scope;
-        },
-      };
-      schemaOrFn(scope);
-      return this as unknown as KelirBuilder<Name, Ctx, Deps, unknown>;
-    }
-    this.paramsSchema = schemaOrFn;
-    return this as unknown as KelirBuilder<Name, Ctx, Deps, unknown>;
+    const builder = this;
+    const scope: ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> = {
+      model<S extends Schema<any>>(
+        schema: S,
+      ): ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> {
+        builder.paramsSchema = schema;
+        return scope;
+      },
+    };
+    fn(scope);
+    return this as unknown as KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params2>;
   }
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
-  detached(detached: boolean): this {
+  detached(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    detached: boolean,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".detached");
     if (this.mode === "plugin") this.rejectHostOnly(".detached");
     this.detachedFlag = detached;
@@ -313,9 +320,10 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/artifacts/code/typescript-accumulation.ts#runtime
-  use<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+  use<P extends AnyBuilder | KelirPlugin>(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+  ): KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkVerb(".use");
     if (
       !(plugin instanceof KelirBuilder) &&
@@ -325,6 +333,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     ) {
       throw new EConfig(
         `.use() expects a plugin builder or a KelirPlugin, got ${plugin === null ? "null" : typeof plugin}`,
+      );
+    }
+    if (typeof plugin === "string") {
+      throw new EConfig(
+        `.use() expects a plugin builder or a KelirPlugin, got string`,
       );
     }
     if (plugin instanceof KelirBuilder) {
@@ -347,12 +360,12 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         duplicate,
       });
       if (duplicate) {
-        return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+        return this as unknown as KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params>;
       }
       for (const hook of plugin.registry.hooks) {
         this.registry.adoptHook(hook);
       }
-      this.mounted.push(plugin.registry);
+      this.mounted.push(plugin.registry as HookRegistry<Ctx>);
       for (const registration of plugin.pluginRegistrations) {
         if (
           !this.pluginRegistrations.some(
@@ -364,7 +377,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       }
       this.pluginRegistrations.push({ name: plugin.name, enabled });
       plugin.mountedFlag = true;
-      return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+      return this as unknown as KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params>;
     }
     const asPlugin = plugin as unknown as KelirPlugin;
     const enabled = asPlugin.enabled !== false;
@@ -383,7 +396,7 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       duplicate,
     });
     if (duplicate) {
-      return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+      return this as unknown as KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params>;
     }
     this.pluginRegistrations.push({ name: asPlugin.name, enabled });
     if (typeof trait.registerInterceptors === "function" && enabled) {
@@ -396,22 +409,34 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
         this.registry.vsockEntries.push(service);
       }
     }
-    return this as unknown as KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+    return this as unknown as KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params>;
   }
 
   // see: cans/02-plugin-model.md#Unified-builder
-  plugin<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+  plugin<P extends AnyBuilder | KelirPlugin>(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+  ): KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkVerb(".plugin");
+    if (typeof plugin === "string") {
+      throw new EConfig(
+        `.plugin() expects a plugin builder or a KelirPlugin, got string`,
+      );
+    }
     return this.use(plugin);
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
-  pluginInstance<P extends KelirBuilder<any, any, any, any> | KelirPlugin>(
+  pluginInstance<P extends AnyBuilder | KelirPlugin>(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params> {
+  ): KelirBuilder<"host", "unsealed", Name, Ctx & PluginContextOf<P>, Deps, Params> {
     this.checkVerb(".pluginInstance");
+    if (typeof plugin === "string") {
+      throw new EConfig(
+        `.pluginInstance() expects a plugin builder or a KelirPlugin, got string`,
+      );
+    }
     return this.use(plugin);
   }
 
@@ -437,17 +462,25 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
 
   // see: cans/02-plugin-model.md#Foreign-plugin-proxy
   trap(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
     filter: string | TrapFilter,
     handler: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
-  ): this;
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  trap(fn: (scope: TrapScope<Ctx, this>) => TrapScope<Ctx, this> | void): this;
-  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-  trap(handlers: TrapHandlers<Ctx, Params>): this;
   trap(
-    filterOrFnOrHandlers: string | TrapFilter | TrapHandlers<Ctx, Params> | ((scope: TrapScope<Ctx, this>) => TrapScope<Ctx, this> | void),
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: TrapScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => TrapScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  // see: cans/02-plugin-model.md#Foreign-plugin-proxy
+  trap(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    handlers: TrapHandlers<Ctx, Params>,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  trap(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    filterOrFnOrHandlers: string | TrapFilter | TrapHandlers<Ctx, Params> | ((scope: TrapScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => TrapScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void),
     handler?: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
-  ): this {
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".trap");
     if (typeof filterOrFnOrHandlers === "function") {
       this.registry.trap(filterOrFnOrHandlers, () => this);
@@ -486,81 +519,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this;
   }
 
-  on(
-    event: LifecycleEvent.VmInit,
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): this;
-  on(
-    event: LifecycleEvent.VmReady | LifecycleEvent.VmShutdown,
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): this;
-  on(
-    event: LifecycleEvent,
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): this {
-    this.checkVerb(".on");
-    this.registry.addHook({
-      ring: RingEvent.Lifecycle,
-      stage: "single",
-      lifecycleTag: lifecycleTagFor(event),
-      run: (payload: unknown): unknown =>
-        (handler as (arg: unknown) => Promise<void> | void)(payload),
-    });
-    return this;
-  }
-
-  onTrapDeny(
-    handler: (
-      event: TrapDenyEvent,
-      session: Session & Ctx,
-    ) => Promise<void> | void,
-  ): this {
-    this.checkVerb(".onTrapDeny");
-    this.registry.addHook({
-      ring: RingEvent.Lifecycle,
-      stage: "single",
-      lifecycleTag: "trap-deny",
-      run: (payload: unknown): unknown => {
-        const args = Array.isArray(payload)
-          ? (payload as readonly unknown[])
-          : [payload, undefined];
-        return Promise.resolve(
-          (handler as (a: unknown, b: unknown) => Promise<void> | void)(
-            args[0],
-            args[1],
-          ),
-        ).catch((error: unknown): never => {
-          throw EConfig.fromNative(error);
-        });
-      },
-    });
-    return this;
-  }
-
-  registerCustomAction<P>(
-    name: string,
-    schema: Schema<P>,
-    handler: (payload: P) => Promise<void> | void,
-  ): this {
-    this.checkVerb(".registerCustomAction");
-    this.registry.registerCustomAction(name, schema, handler);
-    return this;
-  }
-
-  // see: cans/11-protocol.md#Control-channel
-  registerStreamKind<Req, Resp = unknown>(
-    kind: number,
-    schema: Schema<Req>,
-    handler: (request: Req) => Promise<Resp> | Resp,
-  ): this {
-    this.checkVerb(".registerStreamKind");
-    this.registry.registerStreamKind(kind, schema, handler);
-    return this;
-  }
-
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  fs(fn: (scope: FsScope<Ctx, this>) => FsScope<Ctx, this> | void): this {
-    this.checkVerb(".fs");
+  fs(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: FsScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => FsScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {    this.checkVerb(".fs");
     this.registry.fs(fn, () => this, this.mode === "plugin");
     const forkFn = this.registry.fsScopeForkFn;
     if (forkFn !== undefined) {
@@ -570,32 +533,50 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  net(fn: (scope: NetScope<Ctx, this>) => NetScope<Ctx, this> | void): this {
+  net(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: NetScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => NetScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".net");
     this.registry.net(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  console(fn: (scope: ConsoleScope<Ctx, this>) => ConsoleScope<Ctx, this> | void): this {
+  console(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: ConsoleScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => ConsoleScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".console");
     this.registry.console(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  exec(fn: (scope: ExecScope<Ctx, this>) => ExecScope<Ctx, this> | void): this {
+  exec(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: ExecScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => ExecScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".exec");
     this.registry.exec(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  host(config: HostPlaneConfig): this;
-  host(fn: (scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void): this;
   host(
-    configOrFn: HostPlaneConfig | ((scope: HostScope<Ctx, this>) => HostScope<Ctx, this> | void),
-  ): this {
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    config: HostPlaneConfig,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  host(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: HostScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => HostScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  host(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    configOrFn:
+      | HostPlaneConfig
+      | ((scope: HostScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => HostScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void),
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".host");
     if (typeof configOrFn === "function") {
       this.registry.host(configOrFn, () => this);
@@ -607,7 +588,10 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  checkpoint(config: CheckpointPlaneConfig): this {
+  checkpoint(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    config: CheckpointPlaneConfig,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".checkpoint");
     if (this.mode === "plugin") this.rejectHostOnly(".checkpoint");
     this.checkpointCfg = config;
@@ -615,219 +599,95 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  lifecycle(fn: (scope: LifecycleScope<Ctx, this>) => LifecycleScope<Ctx, this> | void): this {
+  lifecycle(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: LifecycleScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => LifecycleScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".lifecycle");
     this.registry.lifecycle(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  telemetry(fn: (scope: TelemetryScope<Ctx, this>) => TelemetryScope<Ctx, this> | void): this {
+  telemetry(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: TelemetryScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => TelemetryScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".telemetry");
     this.registry.telemetry(fn, () => this);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  actions(fn: (scope: ActionsScope<Ctx, this>) => ActionsScope<Ctx, this> | void): this {
+  actions(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: ActionsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>>) => ActionsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".actions");
+    if (this.mode === "plugin") this.rejectHostOnly(".actions");
     this.registry.actions(fn);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  streams(fn: (scope: StreamsScope<Ctx, this>) => StreamsScope<Ctx, this> | void): this {
+  streams(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: StreamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>>) => StreamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".streams");
+    if (this.mode === "plugin") this.rejectHostOnly(".streams");
     this.registry.streams(fn);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  vsock(fn: (scope: VsockScope<Ctx, this>) => VsockScope<Ctx, this> | void): this {
+  vsock(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: VsockScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>>) => VsockScope<Ctx, KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".vsock");
     this.registry.vsock(fn);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  deny(fn: (scope: DenyScope<Ctx, this>) => DenyScope<Ctx, this> | void): this {
+  deny(
+    this: KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>,
+    fn: (scope: DenyScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>>) => DenyScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> | void,
+  ): KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".deny");
+    if (this.mode === "plugin") this.rejectHostOnly(".deny");
     this.registry.deny(fn);
     return this;
   }
 
-  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): this {
-    this.checkVerb(".onNetOutbound"); this.registry.onNetOutbound(handler); return this;
-  }
-
-  onNetInbound(handler: (frame: Uint8Array) => FilterAction): this {
-    this.checkVerb(".onNetInbound"); this.registry.onNetInbound(handler); return this;
-  }
-
-  onSocketConnect(handler: (pid: number, proto: number, ip: readonly [number, number, number, number], port: number) => Verdict): this {
-    this.checkVerb(".onSocketConnect"); this.registry.onSocketConnect(handler); return this;
-  }
-
-  onDnsQuery(handler: (pid: number, domain: string, qtype: number) => DnsVerdict): this {
-    this.checkVerb(".onDnsQuery"); this.registry.onDnsQuery(handler); return this;
-  }
-
-  onSocketBind(handler: (pid: number, proto: number, ip: readonly [number, number, number, number], port: number) => Verdict): this {
-    this.checkVerb(".onSocketBind"); this.registry.onSocketBind(handler); return this;
-  }
-
-  onFsLookup(handler: (path: string) => Verdict): this {
-    this.checkVerb(".onFsLookup"); this.registry.onFsLookup(handler); return this;
-  }
-
-  onFsRead(handler: (path: string, buffer: Uint8Array) => Uint8Array): this {
-    this.checkVerb(".onFsRead"); this.registry.onFsRead(handler); return this;
-  }
-
-  onFsWrite(handler: (path: string, buffer: Buffer, pid: number, ctx: TrapContext & Ctx) => FilterAction): this {
-    this.checkVerb(".onFsWrite"); this.registry.onFsWrite(handler); return this;
-  }
-
-  onFsLock(handler: (path: string, flockCmd: number, flockType: number, pid: number) => Verdict): this {
-    this.checkVerb(".onFsLock"); this.registry.onFsLock(handler); return this;
-  }
-
-  onFsUnlink(handler: (path: string, ctx: TrapContext & Ctx) => Verdict): this {
-    this.checkVerb(".onFsUnlink"); this.registry.onFsUnlink(handler); return this;
-  }
-
-  onFsRename(handler: (src: string, dst: string, ctx: TrapContext & Ctx) => Verdict): this {
-    this.checkVerb(".onFsRename"); this.registry.onFsRename(handler); return this;
-  }
-
-  onFsSetattr(handler: (path: string, mode: number, size: number) => Verdict): this {
-    this.checkVerb(".onFsSetattr"); this.registry.onFsSetattr(handler); return this;
-  }
-
-  onFsSymlink(handler: (target: string, link: string) => Verdict): this {
-    this.checkVerb(".onFsSymlink"); this.registry.onFsSymlink(handler); return this;
-  }
-
-  onFsMkdir(handler: (path: string, mode: number) => Verdict): this {
-    this.checkVerb(".onFsMkdir"); this.registry.onFsMkdir(handler); return this;
-  }
-
-  onFsReaddir(handler: (path: string, entries: DirEntry[]) => FilterAction): this {
-    this.checkVerb(".onFsReaddir"); this.registry.onFsReaddir(handler); return this;
-  }
-
-  onFsReadlink(handler: (path: string) => Verdict): this {
-    this.checkVerb(".onFsReadlink"); this.registry.onFsReadlink(handler); return this;
-  }
-
-  onConsoleInput(handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkVerb(".onConsoleInput"); this.registry.onConsoleInput(handler); return this;
-  }
-
-  onConsoleOutput(handler: (port: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkVerb(".onConsoleOutput"); this.registry.onConsoleOutput(handler); return this;
-  }
-
-  onExecStdout(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkVerb(".onExecStdout"); this.registry.onExecStdout(handler); return this;
-  }
-
-  onExecStderr(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkVerb(".onExecStderr"); this.registry.onExecStderr(handler); return this;
-  }
-
-  onExecStdin(handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array): this {
-    this.checkVerb(".onExecStdin"); this.registry.onExecStdin(handler); return this;
-  }
-
-  onHeartbeat(handler: (event: HeartbeatEvent) => Promise<void> | void): this {
-    this.checkVerb(".onHeartbeat"); this.registry.onHeartbeat(handler); return this;
-  }
-
-  onProcessExit(handler: (event: ProcessExitEvent) => Promise<void> | void): this {
-    this.checkVerb(".onProcessExit"); this.registry.onProcessExit(handler); return this;
-  }
-
-  onSignal(handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict): this {
-    this.checkVerb(".onSignal"); this.registry.onSignal(handler); return this;
-  }
-
-  onFork(handler: (parent: number, child: number) => Promise<Verdict> | Verdict): this {
-    this.checkVerb(".onFork"); this.registry.onFork(handler); return this;
-  }
-
-  onTrap(handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict> | Verdict): this {
-    this.checkVerb(".onTrap"); this.registry.onTrap(handler); return this;
-  }
-
-  onWatchdog(handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict): this {
-    this.checkVerb(".onWatchdog"); this.registry.onWatchdog(handler); return this;
-  }
-
-  onHostLsmExec(handler: (path: string, pid: number) => Verdict): this {
-    this.checkVerb(".onHostLsmExec"); this.registry.onHostLsmExec(handler); return this;
-  }
-
-  onHostPressure(handler: (level: number) => Verdict): this {
-    this.checkVerb(".onHostPressure"); this.registry.onHostPressure(handler); return this;
-  }
-
-  onHostKeyringAccess(handler: (key: string) => Verdict): this {
-    this.checkVerb(".onHostKeyringAccess"); this.registry.onHostKeyringAccess(handler); return this;
-  }
-
-  onVmInit(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkVerb(".onVmInit"); this.registry.onVmInit(handler); return this;
-  }
-
-  onVmReady(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkVerb(".onVmReady"); this.registry.onVmReady(handler); return this;
-  }
-
-  onVmShutdown(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkVerb(".onVmShutdown"); this.registry.onVmShutdown(handler); return this;
-  }
-
-  onPreCommit(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkVerb(".onPreCommit"); this.registry.onPreCommit(handler); return this;
-  }
-
-  onPostCommit(handler: (ctx: LifecycleContext, committed: boolean) => Promise<void> | void): this {
-    this.checkVerb(".onPostCommit"); this.registry.onPostCommit(handler); return this;
-  }
-
-  onHostPreempt(handler: (ctx: LifecycleContext) => Promise<void> | void): this {
-    this.checkVerb(".onHostPreempt"); this.registry.onHostPreempt(handler); return this;
-  }
-
-  onHostContainmentBreach(handler: (pid: number, path: string, kind: string) => Promise<void> | void): this {
-    this.checkVerb(".onHostContainmentBreach"); this.registry.onHostContainmentBreach(handler); return this;
-  }
-
-  onMemoryPressure(handler: (availableMb: number, totalMb: number) => Promise<void> | void): this {
-    this.checkVerb(".onMemoryPressure"); this.registry.onMemoryPressure(handler); return this;
-  }
-
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   requires<Req extends string>(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
     name?: Req,
-  ): KelirBuilder<Name, Ctx, Deps | Req, Params>;
-  requires<P extends KelirBuilder<any, any, any, any>>(
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps | Req, Params>;
+  requires<P extends AnyBuilder>(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
     plugin?: P,
   ): KelirBuilder<
+    TMode,
+    "unsealed",
     Name,
     Ctx & PluginContextOf<P>,
-    Deps | (P extends KelirBuilder<infer N, any, any, any> ? N : never),
+    Deps | (P extends KelirBuilder<infer _M, infer _S, infer N, any, any, any> ? N : never),
     Params
   >;
-  requires<Req extends string | KelirBuilder<any, any, any, any>>(
-    name?: string | KelirBuilder<any, any, any, any>,
+  requires<Req extends string | AnyBuilder>(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    name?: string | AnyBuilder,
   ): KelirBuilder<
+    TMode,
+    "unsealed",
     Name,
-    Ctx & (Req extends KelirBuilder<infer N, infer C, any, any>
+    Ctx & (Req extends KelirBuilder<infer _M, infer _S, infer N, infer C, any, any>
       ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
       : unknown),
-    Deps | (Req extends KelirBuilder<infer N, any, any, any> ? N : Req extends string ? Req : never),
+    Deps | (Req extends KelirBuilder<infer _M, infer _S, infer N, any, any, any> ? N : Req extends string ? Req : never),
     Params
   > {
     this.checkVerb(".requires");
@@ -841,42 +701,53 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
       }
     }
     return this as unknown as KelirBuilder<
+      TMode,
+      "unsealed",
       Name,
-      Ctx & (Req extends KelirBuilder<infer N, infer C, any, any>
+      Ctx & (Req extends KelirBuilder<infer _M, infer _S, infer N, infer C, any, any>
         ? (C extends Record<string, unknown> ? (string extends keyof C ? { readonly [K in N]: C } : (N extends keyof C ? C : { readonly [K in N]: C })) : { readonly [K in N]: C })
         : unknown),
-      Deps | (Req extends KelirBuilder<infer N, any, any, any> ? N : Req extends string ? Req : never),
+      Deps | (Req extends KelirBuilder<infer _M, infer _S, infer N, any, any, any> ? N : Req extends string ? Req : never),
       Params
     >;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   derive<NewCtx>(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
     fn: (c: Ctx) => NewCtx,
-  ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx & NewCtx, Deps, Params> {
     this.checkVerb(".derive");
     this.registry.deriveFns.push(fn as (c: unknown) => unknown);
-    return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
+    return this as unknown as KelirBuilder<TMode, "unsealed", Name, Ctx & NewCtx, Deps, Params>;
   }
 
   // see: cans/03-sdk-architecture.md#TypeScript-SDK
   context<NewCtx>(
+    this: KelirBuilder<"plugin", "unsealed", Name, Ctx, Deps, Params>,
     fn: (c: Ctx) => NewCtx,
-  ): KelirBuilder<Name, Ctx & NewCtx, Deps, Params> {
+  ): KelirBuilder<"plugin", "unsealed", Name, Ctx & NewCtx, Deps, Params> {
     this.checkVerb(".context");
+    if (this.mode === "host") this.rejectPluginOnly(".context");
     this.registry.contextFns.push(fn as (c: unknown) => unknown);
-    return this as unknown as KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
+    return this as unknown as KelirBuilder<"plugin", "unsealed", Name, Ctx & NewCtx, Deps, Params>;
   }
 
   // see: cans/artifacts/code/plugin-trait.rs#MountScope
-  scope(scope: MountScope): this {
+  scope(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    scope: MountScope,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".scope");
     this.registry.setScope(scope);
     return this;
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  group(fn: (builder: this) => this | void): this {
+  group(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (builder: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>) => KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".group");
     const result = fn(this);
     if (result !== undefined && result !== this) throw new EConfig("group() must return the builder it receives");
@@ -884,7 +755,11 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-  guard(enabled: boolean, fn: (builder: this) => this | void): this {
+  guard(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    enabled: boolean,
+    fn: (builder: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>) => KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".guard");
     if (!enabled) return this;
     const result = fn(this);
@@ -894,14 +769,16 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
 
   // see: cans/02-plugin-model.md#KelirPlugin-trait
   forkWith(
-    fn: () => KelirBuilder<Name, Ctx, Deps, Params>,
-  ): this {
+    this: KelirBuilder<"plugin", "unsealed", Name, Ctx, Deps, Params>,
+    fn: () => AnyBuilder,
+  ): KelirBuilder<"plugin", "unsealed", Name, Ctx, Deps, Params> {
     this.checkVerb(".forkWith");
+    if (this.mode === "host") this.rejectPluginOnly(".forkWith");
     this.forkFn = fn;
     return this;
   }
 
-  forkState(): KelirBuilder<Name, Ctx, Deps, Params> {
+  forkState(): AnyBuilder {
     if (this.mode === "host") {
       throw new EConfig(
         "host-mode KelirBuilder forks via Session.fork(), not .forkState()",
@@ -913,10 +790,10 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return this.clone();
   }
 
-  private clone(): KelirBuilder<Name, Ctx, Deps, Params> {
+  private clone(): AnyBuilder {
     const copy = this.mode === "plugin"
-      ? new KelirBuilder<Name, Ctx, Deps, Params>(this.name, this.storedOptions)
-      : new KelirBuilder<Name, Ctx, Deps, Params>(this.kelirConfig);
+      ? new KelirBuilder(this.name, this.storedOptions)
+      : new KelirBuilder(this.kelirConfig);
     copy.registry = this.registry.clone();
     copy.mounted = [...this.mounted];
     copy.pluginRegistrations = [...this.pluginRegistrations];
@@ -931,18 +808,6 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     copy.paramsSchema = this.paramsSchema;
     copy.forkFn = this.forkFn;
     return copy;
-  }
-
-  // see: cans/11-protocol.md#Control-channel
-  vsockService<Req, Resp = unknown>(
-    port: number,
-    service: string,
-    schema: Schema<Req>,
-    handler: (request: Req) => Promise<Resp> | Resp,
-  ): this {
-    this.checkVerb(".vsockService");
-    this.registry.vsockService(port, service, schema, handler);
-    return this;
   }
 
   private validate(): void {
@@ -976,13 +841,13 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 
   // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
-  seal(): this {
+  seal(): KelirBuilder<TMode, "sealed", Name, Ctx, Deps, Params> {
     if (!this.sealedFlag) {
       this.validate();
       this.validateMounts();
       this.sealedFlag = true;
     }
-    return this;
+    return this as unknown as KelirBuilder<TMode, "sealed", Name, Ctx, Deps, Params>;
   }
 
   hooksForFusion(): FusedTrampolineDescriptor {
@@ -996,12 +861,14 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
     return FusedTrampoline.fuse(this.registry.hooks);
   }
 
-  async boot(): Promise<Session & Ctx> {
+  // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
+  async boot(this: KelirBuilder<"host", BuilderSealState, string, Ctx, Deps, Params>): Promise<Session & Ctx> {
     if (this.mode === "plugin") {
       throw new EConfig(
         `cannot boot plugin ${this.name}: mount it on a host with .use()`,
       );
     }
+    if (!this.sealedFlag) this.seal();
     const fused = this.fuse();
     const descriptor = fused.describe();
     const addon = await loadNativeAddon();
@@ -1096,13 +963,13 @@ export class KelirBuilder<Name extends string = string, Ctx = unknown, Deps exte
   }
 }
 
-export function kelir(config: KelirConfig = {}): KelirBuilder {
+export function kelir(config: KelirConfig = {}): KelirBuilder<"host", "unsealed"> {
   return new KelirBuilder(config);
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export function createPlugin<Name extends string, Ctx = unknown, Opts = unknown, Deps extends string = never, Params = unknown>(
   name: Name, options?: CreatePluginOptions<Opts> | Ctx,
-): KelirBuilder<Name, Ctx, Deps, Params> {
-  return new KelirBuilder<Name, Ctx, Deps, Params>(name, options);
+): KelirBuilder<"plugin", "unsealed", Name, Ctx, Deps, Params> {
+  return new KelirBuilder<"plugin", "unsealed", Name, Ctx, Deps, Params>(name, options);
 }

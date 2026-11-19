@@ -7,21 +7,20 @@ import { kelir, container, type ContainerHandle } from "@kelir/core";
 
 const OCI_TARBALL = "./fixtures/oci-hello-world.tar";
 
-const runtime = kelir({
-  vcpus: 2, memoryMb: 2048, driver: "auto",
-  kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
-  rootfsErofs: "./fixtures/rootfs-container.erofs",
-  tscLocked: true, enableWatchdog: true,
-})
-  .use(container({
-    runtime: "crun",
-    isolateVarLibContainers: true,
-    pinSubuidRanges: true,
-  }));
-
 async function main() {
-  runtime.seal();
-  const session = await runtime.boot();
+  const session = await kelir({
+    vcpus: 2, memoryMb: 2048, driver: "auto",
+    kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
+    rootfsErofs: "./fixtures/rootfs-container.erofs",
+    tscLocked: true, enableWatchdog: true,
+  })
+    .use(container({
+      runtime: "crun",
+      isolateVarLibContainers: true,
+      pinSubuidRanges: true,
+    }))
+    .seal()
+    .boot();
   try {
     const containerCap = session.cap("container") as ContainerHandle;
     if (!containerCap) throw new Error("container capability handle not found");

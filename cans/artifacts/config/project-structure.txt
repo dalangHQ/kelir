@@ -738,38 +738,20 @@ kelir/
 │   │   │       ├── mcp.py             # Python bindings for MCP stdio JSON-RPC console (granular module)
 │   │   │       ├── mesh.py            # Python bindings for vsock federation transport (granular module)
 │   │   │       ├── profile.py         # Python bindings for declarative profile ingestion (granular module)
+│   │   │       ├── redaction.py       # Python bindings for read masking + write snooping (granular module)
 │   │   │       ├── replay.py          # Python bindings for deterministic clock replay (granular module)
 │   │   │       ├── supply_chain.py    # Python bindings for package lifecycle guard (granular module)
 │   │   │       ├── step_eval.py       # Python bindings for step evaluation + step DAG (granular module)
+│   │   │       ├── taint.py           # Python bindings for byte-range taint tracking (granular module)
 │   │   │       ├── terminal_guard.py  # Python bindings for terminal prompt guard (granular module)
 │   │   │       ├── token_shield.py    # Python bindings for token-shield scrollback clamping (granular module)
 │   │   │       ├── tool_guard.py      # Python bindings for MCP tool-call interposition (granular module)
 │   │   │       ├── transaction.py     # Python bindings for multi-resource 2PC coordination (granular module)
 │   │   │       ├── vault.py           # Python bindings for out-of-band credential broker (granular module)
-│   │   │       ├── wire_ingress.py    # Python bindings for connection parking (granular module)
-│   │   │       ├── plugin_anomaly.py  # Python bindings for surprisal anomaly detection
-│   │   │       ├── plugin_chaos.py    # Python bindings for fault injection
-│   │   │       ├── plugin_container.py # Python bindings for rootless OCI container runner
-│   │   │       ├── plugin_db_proxy.py # Python bindings for pgwire + vsock DB mediation
-│   │   │       ├── plugin_egress_proxy.py # Python bindings for CONNECT/SOCKS5 egress proxy
-│   │   │       ├── plugin_l7_http.py  # Python bindings for L7 HTTP parse + TLS + 403 synthesis
-│   │   │       ├── plugin_ledger.py   # Python bindings for OTLP + opt-in Merkle WAL audit ledger
-│   │   │       ├── plugin_mcp.py      # Python bindings for MCP stdio JSON-RPC console
-│   │   │       ├── plugin_mesh.py     # Python bindings for vsock federation transport
-│   │   │       ├── plugin_profile.py  # Python bindings for declarative profile ingestion
-│   │   │       ├── plugin_redaction.py # Python bindings for read masking + write snooping
-│   │   │       ├── plugin_replay.py   # Python bindings for deterministic clock replay
-│   │   │       ├── plugin_supply_chain.py # Python bindings for package lifecycle guard
-│   │   │       ├── plugin_step_eval.py # Python bindings for step evaluation + step DAG
-│   │   │       ├── plugin_taint.py    # Python bindings for byte-range taint tracking
-│   │   │       ├── plugin_terminal_guard.py # Python bindings for terminal prompt guard
-│   │   │       ├── plugin_token_shield.py # Python bindings for token-shield scrollback clamping
-│   │   │       ├── plugin_tool_guard.py # Python bindings for MCP tool-call interposition
-│   │   │       ├── plugin_transaction.py # Python bindings for multi-resource 2PC coordination
-│   │   │       ├── plugin_vault.py    # Python bindings for out-of-band credential broker
-│   │   │       └── plugin_wire_ingress.py # Python bindings for connection parking
+│   │   │       └── wire_ingress.py    # Python bindings for connection parking (granular module)
 │   │   └── tests/                     # test_<domain>_<entity>.py naming
 │   │       ├── test_attest_receipt.py
+│   │       ├── test_compile_fail.py
 │   │       ├── test_lifecycle_session.py
 │   │       ├── test_mirrored_patch_surface.py
 │   │       ├── test_plugin_fluent_builder.py
@@ -842,6 +824,7 @@ kelir/
 │
 └── scripts/
     ├── builder-parity-verbs.yaml
+    ├── check-builder-chain-ast.py
     ├── check-builder-parity.sh
     ├── check-canon.sh
     ├── check-examples-canonical.sh

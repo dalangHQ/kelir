@@ -371,6 +371,8 @@ fn build_runtime(
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     .plugin_instance(policy)
     .plugin_instance(WatchdogSilencerPlugin::new(Arc::clone(&shared)))

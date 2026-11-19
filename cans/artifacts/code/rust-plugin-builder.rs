@@ -156,7 +156,7 @@ pub struct TelemetryClosureAdapter<F, Verb> {
     }
 // on_vm_init / on_vm_ready / on_vm_shutdown methods remain as the ring
 // verbs that append to it. Registration, TrapFilter, CustomActionEntry,
-// StreamKindServiceEntry, and LifecycleMut are defined in builder_sdk.flow.rs
+// StreamKindServiceEntry, are defined in builder_sdk.flow.rs
 // alongside the builder; the trap-closure adapter (TrapClosureAdapter) and
 // its OnTrap/OnProcessExit verbs live in builder_plugin.flow.rs and register on
 // the HookRegistry vec — one trap path, one engine dispatch point.
@@ -310,7 +310,8 @@ impl KelirBuilder {
         self
     }
 
-    pub fn vsock_service<H>(mut self, spec: VsockServiceSpec, handler: H) -> Self
+    // Scope plumbing: reached only through VsockScope::service.
+    pub(crate) fn vsock_service<H>(mut self, spec: VsockServiceSpec, handler: H) -> Self
     where
         H: VsockServiceHandler + 'static,
     {
@@ -793,11 +794,6 @@ impl KelirBuilder {
         self
     }
 
-    pub fn lock_broker(mut self, config: LockBrokerConfig) -> Self {
-        self.registration.lock_broker_cfg = Some(config);
-        self
-    }
-
     pub fn detached(mut self, detached: bool) -> Self {
         self.registration.detached = detached;
         self
@@ -865,7 +861,8 @@ impl KelirBuilder {
         self
     }
 
-    pub fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
+    // Scope plumbing: reached only through DenyScope::on_trap_deny.
+    pub(crate) fn on_trap_deny<F, Fut, T>(mut self, f: F) -> Self
     where
         F: Fn(&TrapEvent, &kelir_engine::Session) -> Fut + Clone + Send + Sync + 'static,
         Fut: Future<Output = Result<T, PluginError>> + Send + 'static,
@@ -879,7 +876,8 @@ impl KelirBuilder {
         self
     }
 
-    pub fn register_custom_action<F, Fut>(
+    // Scope plumbing: reached only through ActionsScope::register.
+    pub(crate) fn register_custom_action<F, Fut>(
         mut self,
         name: &str,
         schema: serde_json::Value,
@@ -900,7 +898,8 @@ impl KelirBuilder {
         self
     }
 
-    pub fn register_stream_kind<F, Fut>(
+    // Scope plumbing: reached only through StreamsScope::register.
+    pub(crate) fn register_stream_kind<F, Fut>(
         mut self,
         kind: u16,
         schema: serde_json::Value,
@@ -923,12 +922,6 @@ impl KelirBuilder {
                 }),
             });
         self
-    }
-
-    pub fn lifecycle_mut(&mut self) -> LifecycleMut<'_> {
-        LifecycleMut {
-            vetoes: &mut self.registration.vetoes,
-        }
     }
 
     // see: cans/02-plugin-model.md#Unified-builder

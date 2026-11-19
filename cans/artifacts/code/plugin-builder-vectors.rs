@@ -33,7 +33,8 @@ pub enum PluginBuilderOutcome {
 // plugin-builder-seal pins seal() then boot(); plugin-builder-trap-filter
 // pins the host trap(filter, handler) form; plugin-builder-trap-scope
 // pins the trap_scope closure form; plugin-builder-lock-broker pins the
-// lock_broker() verb (Rust) and the storage lock-broker flag (TS/Py).
+// fs-scope lock_broker config (Rust .fs(|f| f.config(..))) and the
+// storage lock-broker flag (TS/Py); the standalone Rust verb is deleted.
 // Each case still pins rings, ordinals, events, and outcomes; the case
 // name pins which chain verb the parity run must exercise.
 pub fn plugin_builder_seal_case() -> PluginBuilderCase {

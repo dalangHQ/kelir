@@ -11,12 +11,10 @@ from pathlib import Path
 from typing import Any, Optional
 
 import kelir
-from kelir import Approval, Deadline, Errno, FilterAction, PatchPayload, TrapFilter, Verdict
+from kelir import Approval, Deadline, Errno, FilterAction, KelirBuilder, PatchPayload, TrapFilter, Verdict
 from kelir.plugin_model import (
-    BasePlugin,
     FsInodeAttr,
     HandlerContext,
-    LifecycleCtx,
     WatchdogEvent,
     WatchdogVerdict,
 )
@@ -76,197 +74,274 @@ class HookState:
     memory_pressures: int = 0
 
 
-class HookMatrixFullPlugin(BasePlugin):
-    name = "hook-matrix-full"
+STATE = HookState()
 
-    def __init__(self) -> None:
-        self._state = HookState()
 
-    @property
-    def state(self) -> HookState:
-        return self._state
+async def _on_trap(event: Any) -> Optional[Verdict]:
+    STATE.traps += 1
+    if getattr(event, "tree_depth", 0) > 16:
+        return Verdict.abort(reason="fork bomb mitigation: max depth exceeded")
+    return Verdict.pass_()
 
-    async def on_trap(self, event: Any) -> Optional[Verdict]:
-        self._state.traps += 1
-        if getattr(event, "tree_depth", 0) > 16:
-            return Verdict.abort(reason="fork bomb mitigation: max depth exceeded")
+
+async def _on_process_exit(event: Any) -> None:
+    STATE.exits += 1
+    if event.exit_code != 0:
+        STATE.failures += 1
+
+
+async def _on_signal(sender: int, target: int, sig: int) -> Verdict:
+    return Verdict.pass_()
+
+
+async def _on_fork(parent: int, child: int) -> Verdict:
+    return Verdict.pass_()
+
+
+# see: cans/07-wire-plane.md#Wire-plane
+def _on_net_outbound(frame: bytearray) -> FilterAction:
+    if DENY_MARKER in frame:
+        return FilterAction.suspend(until=Deadline(0))
+    return FilterAction.forward()
+
+
+def _on_net_inbound(frame: bytearray) -> FilterAction:
+    STATE.net_inbound += 1
+    return FilterAction.forward()
+
+
+# see: cans/05-storage-plane.md#Storage-plane
+# see: cans/02-plugin-model.md#Unified-verdict
+def _on_fs_lookup(path: Path) -> Verdict:
+    if escapes_workspace(str(path)):
+        # Errno is the closed enum; PathTraversal maps to EPERM in the driver.
+        return Verdict.drop(
+            Errno.PATH_TRAVERSAL,
+            "lookup escapes the /workspace root",
+        )
+    if str(path) != IDENTITY_PATH:
         return Verdict.pass_()
+    return Verdict.patch(FsInodeAttr(
+        mode=0o400,
+        uid=0,
+        gid=0,
+        size=len(IDENTITY_CONTENT),
+        content=IDENTITY_CONTENT,
+    ))
 
-    # see: cans/07-wire-plane.md#Wire-plane
-    def on_net_outbound(self, frame: bytearray) -> FilterAction:
-        if DENY_MARKER in frame:
-            return FilterAction.suspend(until=Deadline(0))
-        return FilterAction.forward()
 
-    def on_net_inbound(self, frame: bytearray) -> FilterAction:
-        self._state.net_inbound += 1
-        return FilterAction.forward()
+# see: cans/plugins/redaction.md#Plugin-redaction
+def _on_fs_read(path: Path, buffer: bytes) -> bytes:
+    window = STATE.tail + buffer
+    masked = mask_tokens(window)
+    chunk = masked[len(masked) - len(buffer):] if buffer else b""
+    STATE.tail = masked[-CARRYOVER:] if masked else b""
+    return chunk
 
-    def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict: return Verdict.pass_()
-    def on_fs_symlink(self, target: Path, link: Path) -> Verdict: return Verdict.pass_()
-    def on_fs_mkdir(self, path: Path, mode: int) -> Verdict: return Verdict.pass_()
-    def on_fs_readdir(self, path: Path, entries: list) -> FilterAction: return FilterAction.forward()
-    def on_fs_readlink(self, path: Path) -> Verdict: return Verdict.pass_()
 
-    # see: cans/05-storage-plane.md#Storage-plane
-    # see: cans/02-plugin-model.md#Unified-verdict
-    def on_fs_lookup(self, path: Path) -> Verdict:
-        if escapes_workspace(str(path)):
-            # Errno is the closed enum; PathTraversal maps to EPERM in the driver.
-            return Verdict.drop(
-                Errno.PATH_TRAVERSAL,
-                "lookup escapes the /workspace root",
-            )
-        if str(path) != IDENTITY_PATH:
-            return Verdict.pass_()
-        return Verdict.patch(FsInodeAttr(
-            mode=0o400,
-            uid=0,
-            gid=0,
-            size=len(IDENTITY_CONTENT),
-            content=IDENTITY_CONTENT,
+def _on_fs_write(
+    path: Path, data: bytearray, pid: int, ctx: HandlerContext,
+) -> FilterAction:
+    data[:] = mask_tokens(bytes(data))
+    return FilterAction.forward()
+
+
+def _on_fs_lock(
+    path: Path, flock_cmd: int, flock_type: int, pid: int,
+) -> Verdict:
+    STATE.fs_locks += 1
+    return Verdict.pass_()
+
+
+def _on_fs_unlink(path: Path, ctx: Any) -> Verdict:
+    STATE.fs_unlinks += 1
+    path_str = str(path)
+    if path_str.endswith(".protected_source"):
+        return Verdict.suspend(until=Approval())
+    if path_str.endswith(".trashable"):
+        filename = path.name
+        return Verdict.patch(PatchPayload.fs_path_redirect(
+            target_path=f"/workspace/.agentsh_trash/{filename}"
         ))
+    return Verdict.pass_()
 
-    # see: cans/plugins/redaction.md#Plugin-redaction
-    def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
-        window = self._state.tail + buffer
-        masked = mask_tokens(window)
-        chunk = masked[len(masked) - len(buffer):] if buffer else b""
-        self._state.tail = masked[-CARRYOVER:] if masked else b""
-        return chunk
 
-    def on_fs_write(
-        self, path: Path, data: bytearray, pid: int, ctx: HandlerContext,
-    ) -> FilterAction:
-        data[:] = mask_tokens(bytes(data))
-        return FilterAction.forward()
+def _on_fs_rename(src: Path, dst: Path, ctx: Any) -> Verdict:
+    STATE.fs_renames += 1
+    if escapes_workspace(str(dst)):
+        return Verdict.drop(errno=Errno.PATH_TRAVERSAL, reason="rename escapes /workspace")
+    return Verdict.pass_()
 
-    def on_fs_lock(
-        self, path: Path, flock_cmd: int, flock_type: int, pid: int,
-    ) -> Verdict:
-        self._state.fs_locks += 1
-        return Verdict.pass_()
 
-    def on_fs_unlink(self, path: Path, ctx: Any) -> Verdict:
-        self._state.fs_unlinks += 1
-        path_str = str(path)
-        if path_str.endswith(".protected_source"):
-            return Verdict.suspend(until=Approval())
-        if path_str.endswith(".trashable"):
-            filename = path.name
-            return Verdict.patch(PatchPayload.fs_path_redirect(
-                target_path=f"/workspace/.agentsh_trash/{filename}"
-            ))
-        return Verdict.pass_()
+def _on_fs_setattr(path: Path, mode: int, size: int) -> Verdict:
+    return Verdict.pass_()
 
-    def on_fs_rename(self, src: Path, dst: Path, ctx: Any) -> Verdict:
-        self._state.fs_renames += 1
-        if escapes_workspace(str(dst)):
-            return Verdict.drop(errno=Errno.PATH_TRAVERSAL, reason="rename escapes /workspace")
-        return Verdict.pass_()
 
-    def on_host_lsm_exec(self, path: Path, pid: int) -> Verdict:
-        return Verdict.pass_()
+def _on_fs_symlink(target: Path, link: Path) -> Verdict:
+    return Verdict.pass_()
 
-    def on_host_pressure(self, level: int) -> Verdict:
-        return Verdict.pass_()
 
-    def on_host_keyring_access(self, key: str) -> Verdict:
-        return Verdict.pass_()
+def _on_fs_mkdir(path: Path, mode: int) -> Verdict:
+    return Verdict.pass_()
 
-    async def on_host_preempt(self, ctx: LifecycleCtx | None) -> None:
-        self._state.host_preempts += 1
 
-    def on_host_containment_breach(self, pid: int, path: Path, kind: str) -> None: pass
+def _on_fs_readdir(path: Path, entries: list) -> FilterAction:
+    return FilterAction.forward()
 
-    async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
-        self._state.vm_inits += 1
 
-    async def on_vm_ready(self, ctx: LifecycleCtx | None) -> None:
-        self._state.vm_readys += 1
+def _on_fs_readlink(path: Path) -> Verdict:
+    return Verdict.pass_()
 
-    async def on_vm_shutdown(self, ctx: LifecycleCtx | None) -> None:
-        self._state.vm_shutdowns += 1
 
-    async def on_pre_commit(self, ctx: LifecycleCtx | None) -> None:
-        self._state.pre_commits += 1
+def _on_host_lsm_exec(path: Path, pid: int) -> Verdict:
+    return Verdict.pass_()
 
-    async def on_post_commit(
-        self, ctx: LifecycleCtx | None, committed: bool,
-    ) -> None:
-        self._state.post_commits += 1
 
-    # see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
-    async def on_console_input(self, port: int, data: bytes) -> bytes:
-        return _OSC52_RE.sub(b"", data)
+def _on_host_pressure(level: int) -> Verdict:
+    return Verdict.pass_()
 
-    # see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
-    async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        window = self._state.console_tail + chunk
-        masked = mask_tokens(window)
-        out = masked[len(masked) - len(chunk):] if chunk else b""
-        self._state.console_tail = masked[-CARRYOVER:] if masked else b""
-        return out
 
-    async def on_exec_stdout(
-        self, pid: int, exec_id: int, chunk: bytes,
-    ) -> bytes:
-        self._state.exec_stdout += 1
-        return mask_tokens(chunk)
+def _on_host_keyring_access(key: str) -> Verdict:
+    return Verdict.pass_()
 
-    async def on_exec_stderr(
-        self, pid: int, exec_id: int, chunk: bytes,
-    ) -> bytes:
-        self._state.exec_stderr += 1
-        return mask_tokens(chunk)
 
-    async def on_exec_stdin(self, pid: int, exec_id: int, chunk: bytes) -> bytes: return chunk
+async def _on_host_preempt(ctx: Any) -> None:
+    STATE.host_preempts += 1
 
-    async def on_memory_pressure(
-        self, available_mb: int, total_mb: int,
-    ) -> None:
-        self._state.memory_pressures += 1
 
-    async def on_heartbeat(self, event: Any) -> None:
-        if (self._state.last_uptime_ms == event.uptime_ms
-                and self._state.heartbeats > 0):
-            self._state.stalls += 1
-        self._state.last_uptime_ms = event.uptime_ms
-        self._state.heartbeats += 1
+def _on_host_containment_breach(pid: int, path: Path, kind: str) -> None:
+    pass
 
-    async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        return WatchdogVerdict.ExecuteDefault
 
-    async def on_process_exit(self, event: Any) -> None:
-        self._state.exits += 1
-        if event.exit_code != 0:
-            self._state.failures += 1
+async def _on_vm_init(ctx: Any) -> None:
+    STATE.vm_inits += 1
 
-    async def on_signal(self, sender: int, target: int, sig: int) -> Verdict: return Verdict.pass_()
-    async def on_fork(self, parent: int, child: int) -> Verdict: return Verdict.pass_()
 
-    # see: cans/02-plugin-model.md#TrapFilter-predicates
-    # The predicate chain: cwd/env/uid/argv_regex constraints live in the
-    # filter, not in the handler body (AND-ed predicates; a handler-body
-    # guard duplicating them is redundant and should not be written).
-    # see: cans/02-plugin-model.md#Hook-context-restriction
-    # on_trap_deny(event, verdict, session): the verdict parameter is the
-    # DENYING Action (the unified enum), so break-glass can say "denied by
-    # X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
-    # see: cans/10-attestation.md#Hook-trace
-    # hook_trace read: every hook that fired for the trapped process
-    # carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
-    # ordinal); diagnostic only, excluded from Merkle roots. The
-    # comment-pinned HookSpan case (the hook-trace-coverage vector this
-    # example stands in for; vectors.json cannot express a hook-trace
-    # expectation today) asserts: { plugin: "hook-matrix-full",
-    # ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
+async def _on_vm_ready(ctx: Any) -> None:
+    STATE.vm_readys += 1
+
+
+async def _on_vm_shutdown(ctx: Any) -> None:
+    STATE.vm_shutdowns += 1
+
+
+async def _on_pre_commit(ctx: Any) -> None:
+    STATE.pre_commits += 1
+
+
+async def _on_post_commit(ctx: Any, committed: bool) -> None:
+    STATE.post_commits += 1
+
+
+# see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
+async def _on_console_input(port: int, data: bytes) -> bytes:
+    return _OSC52_RE.sub(b"", data)
+
+
+# see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
+async def _on_console_output(port: int, chunk: bytes) -> bytes:
+    window = STATE.console_tail + chunk
+    masked = mask_tokens(window)
+    out = masked[len(masked) - len(chunk):] if chunk else b""
+    STATE.console_tail = masked[-CARRYOVER:] if masked else b""
+    return out
+
+
+async def _on_exec_stdout(pid: int, exec_id: int, chunk: bytes) -> bytes:
+    STATE.exec_stdout += 1
+    return mask_tokens(chunk)
+
+
+async def _on_exec_stderr(pid: int, exec_id: int, chunk: bytes) -> bytes:
+    STATE.exec_stderr += 1
+    return mask_tokens(chunk)
+
+
+async def _on_exec_stdin(pid: int, exec_id: int, chunk: bytes) -> bytes:
+    return chunk
+
+
+async def _on_memory_pressure(available_mb: int, total_mb: int) -> None:
+    STATE.memory_pressures += 1
+
+
+async def _on_heartbeat(event: Any) -> None:
+    if (STATE.last_uptime_ms == event.uptime_ms
+            and STATE.heartbeats > 0):
+        STATE.stalls += 1
+    STATE.last_uptime_ms = event.uptime_ms
+    STATE.heartbeats += 1
+
+
+async def _on_watchdog(event: WatchdogEvent) -> WatchdogVerdict:
+    return WatchdogVerdict.ExecuteDefault
+
+
+def hook_matrix_full_plugin() -> KelirBuilder:
+    return (
+        KelirBuilder.plugin("hook-matrix-full")
+        .trap(
+            lambda t: t.on_trap(_on_trap)
+            .on_process_exit(_on_process_exit)
+            .on_signal(_on_signal)
+            .on_fork(_on_fork)
+        )
+        .fs(
+            lambda f: f.on_fs_lookup(_on_fs_lookup)
+            .on_fs_read(_on_fs_read)
+            .on_fs_write(_on_fs_write)
+            .on_fs_lock(_on_fs_lock)
+            .on_fs_unlink(_on_fs_unlink)
+            .on_fs_rename(_on_fs_rename)
+            .on_fs_setattr(_on_fs_setattr)
+            .on_fs_symlink(_on_fs_symlink)
+            .on_fs_mkdir(_on_fs_mkdir)
+            .on_fs_readdir(_on_fs_readdir)
+            .on_fs_readlink(_on_fs_readlink)
+        )
+        .net(
+            lambda n: n.on_net_outbound(_on_net_outbound)
+            .on_net_inbound(_on_net_inbound)
+        )
+        .console(
+            lambda c: c.on_console_input(_on_console_input)
+            .on_console_output(_on_console_output)
+        )
+        .exec(
+            lambda e: e.on_exec_stdout(_on_exec_stdout)
+            .on_exec_stderr(_on_exec_stderr)
+            .on_exec_stdin(_on_exec_stdin)
+        )
+        .host(
+            lambda h: h.on_host_lsm_exec(_on_host_lsm_exec)
+            .on_host_pressure(_on_host_pressure)
+            .on_host_keyring_access(_on_host_keyring_access)
+            .on_host_preempt(_on_host_preempt)
+            .on_host_containment_breach(_on_host_containment_breach)
+        )
+        .lifecycle(
+            lambda l: l.on_vm_init(_on_vm_init)
+            .on_vm_ready(_on_vm_ready)
+            .on_vm_shutdown(_on_vm_shutdown)
+            .on_pre_commit(_on_pre_commit)
+            .on_post_commit(_on_post_commit)
+        )
+        .telemetry(
+            lambda tm: tm.on_memory_pressure(_on_memory_pressure)
+            .on_heartbeat(_on_heartbeat)
+            .on_watchdog(_on_watchdog)
+        )
+    )
+
+
+async def _deny_forced_push(event: Any, ctx: Any) -> Verdict:
+    return Verdict.drop(Errno.EPOLICY, "forced push denied by policy")
 
 
 async def main() -> None:
     import platform
 
-    plugin = HookMatrixFullPlugin()
+    plugin = hook_matrix_full_plugin()
     builder = (
         kelir.builder(
             vcpus=2,
@@ -286,13 +361,23 @@ async def main() -> None:
             .with_env("CI", "1")
             .with_uid(0)
             .argv_matches(r"^--force$"),
-            pre=lambda event, ctx: Verdict.drop(
-                Errno.EPOLICY, "forced push denied by policy",
-            ),
+            pre=_deny_forced_push,
         )
         # see: cans/02-plugin-model.md#Chain-decisions
         # on_trap_deny moves into .deny(|d| d.on_trap_deny(…)); the
         # verdict parameter is the DENYING Action.
+        # see: cans/02-plugin-model.md#Hook-context-restriction
+        # on_trap_deny(event, verdict, session): the verdict parameter is the
+        # DENYING Action (the unified enum), so break-glass can say "denied by
+        # X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
+        # see: cans/10-attestation.md#Hook-trace
+        # hook_trace read: every hook that fired for the trapped process
+        # carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
+        # ordinal); diagnostic only, excluded from Merkle roots. The
+        # comment-pinned HookSpan case (the hook-trace-coverage vector this
+        # example stands in for; vectors.json cannot express a hook-trace
+        # expectation today) asserts: { plugin: "hook-matrix-full",
+        # ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
         .deny(
             lambda d: d.on_trap_deny(
                 lambda event, verdict, session: None,
@@ -312,11 +397,11 @@ async def main() -> None:
 
         rm_probe = await session.spawn("rm", ["/workspace/test.trashable"])
         assert rm_probe.exit_code == 0
-        print(f"[kelir] rm probe -> fs_unlinks={plugin.state.fs_unlinks} "
-              f"fs_renames={plugin.state.fs_renames}")
+        print(f"[kelir] rm probe -> fs_unlinks={STATE.fs_unlinks} "
+              f"fs_renames={STATE.fs_renames}")
 
         await asyncio.sleep(0.1)
-        s = plugin.state
+        s = STATE
         print(f"[kelir] heartbeats={s.heartbeats} stalls={s.stalls} "
               f"exits={s.exits} failures={s.failures} traps={s.traps} "
               f"fs_locks={s.fs_locks} net_inbound={s.net_inbound} "

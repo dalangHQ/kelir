@@ -5,9 +5,7 @@
 import { KelirBuilder } from "@kelir/core";
 
 async function main() {
-  const builder = await KelirBuilder.fromConfig("./fixtures/kelir.toml");
-  builder.seal();
-  const session = await builder.boot();
+  const session = await (await KelirBuilder.fromConfig("./fixtures/kelir.toml")).seal().boot();
 
   const r = await session.spawn("git", ["status"]);
   console.error(`[kelir] git status -> exit=${r.exitCode}`);

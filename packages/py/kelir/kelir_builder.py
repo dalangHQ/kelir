@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
 from inspect import Parameter
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal, NoReturn, Self
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, Literal, NoReturn, Self, TypeVar, cast, overload
 
 from kelir.builder_scopes import _VERB_ARITY, _VERB_RINGS
-from kelir.wire_planes import WireConfig, apply_wire_config
+from kelir.wire_planes import WireConfig
 from kelir.service_caps import materialize_cap
 from kelir.plugin_fusion import (
     FusedTrampoline,
@@ -21,21 +20,37 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.sdk_errors import EConfig
-from kelir.kelir_builder_scope import Handler, _SCOPE_VERBS, _Scope, _wrap_trap_deny
+from kelir.kelir_builder_scope import (
+    Handler,
+    VsockServiceEntry,
+    _SCOPE_VERBS,
+    _Scope,
+    _wrap_trap_deny,
+)
 from kelir.profile_config import ProfileConfig
 
 if TYPE_CHECKING:
+    from kelir.kelir_builder_scope import (
+        ActionsScopeProtocol,
+        ConsoleScopeProtocol,
+        DenyScopeProtocol,
+        ExecScopeProtocol,
+        FsScopeProtocol,
+        HostScopeProtocol,
+        LifecycleScopeProtocol,
+        NetScopeProtocol,
+        ParamsScopeProtocol,
+        StreamsScopeProtocol,
+        TelemetryScopeProtocol,
+        TrapScopeProtocol,
+        VsockScopeProtocol,
+    )
     from kelir.plugin_model import BasePlugin
 
 from kelir import LifecycleEvent, Session, TrapFilter
 
-
-@dataclass
-class VsockServiceEntry:
-    port: int
-    service: str
-    schema: dict[str, Any]
-    handler: Callable[[bytes], Awaitable[bytes]] | None = None
+_Mode = TypeVar("_Mode", bound=str)
+_Sealed = TypeVar("_Sealed", bound=str)
 
 
 # see: cans/artifacts/code/plugin-trait.rs#MountScope
@@ -109,6 +124,16 @@ def _plugin_create(name: str) -> KelirBuilder:
 
 # see: cans/02-plugin-model.md#Unified-builder
 class _PluginMount:
+    @overload
+    def __get__(
+        self, obj: None, objtype: type[KelirBuilder] | None = None
+    ) -> Callable[[str], KelirBuilder[Literal["plugin"], Literal["unsealed"]]]: ...
+    @overload
+    def __get__(
+        self, obj: KelirBuilder[_Mode, _Sealed], objtype: type[KelirBuilder] | None = None
+    ) -> Callable[
+        [KelirBuilder[Literal["plugin"], Literal["unsealed"]]], KelirBuilder[_Mode, _Sealed]
+    ]: ...
     def __get__(
         self, obj: KelirBuilder | None, objtype: type[KelirBuilder] | None = None
     ) -> Callable[..., KelirBuilder]:
@@ -138,7 +163,10 @@ def _plugin_instance_mount(host: KelirBuilder) -> Callable[..., KelirBuilder]:
 
 
 
-class KelirBuilder:
+class KelirBuilder(Generic[_Mode, _Sealed]):
+    def __new__(cls, *args: Any, **kwargs: Any) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
+        return cast("KelirBuilder[Literal['host'], Literal['unsealed']]", super().__new__(cls))
+
     def __init__(
         self,
         *,
@@ -197,6 +225,7 @@ class KelirBuilder:
         # L3-GAP: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
         self._vsock: list[tuple[Any, Handler]] = []
         self._mounted: bool = False
+        self._sealed: bool = False
         self._mounted_on: list[KelirBuilder] = []
         self.enabled: bool = True
 
@@ -214,13 +243,13 @@ class KelirBuilder:
     # see: cans/plugins/profile.md#Declarative-profile-execution
     # see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
     @classmethod
-    def from_config(cls, path: str) -> KelirBuilder:
+    def from_config(cls, path: str) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         from kelir.lifecycle_sandbox import _builder_kwargs, _parse_profile, _profile_model
 
         model = _profile_model(
             "KelirBuilder.from_config", _parse_profile("KelirBuilder.from_config", path)
         )
-        builder = cls(**_builder_kwargs(model))
+        builder = cast("KelirBuilder[Literal['host'], Literal['unsealed']]", cls(**_builder_kwargs(model)))
         if model.storage is not None:
             builder.storage(**model.storage)
         if model.wire is not None:
@@ -235,9 +264,10 @@ class KelirBuilder:
         return builder
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
-    def detached(self, detached: bool) -> Self:
+    def detached(self: KelirBuilder[Literal["host"], Literal["unsealed"]], detached: bool) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("detached")
+        self._check_sealed("detached")
         self._config["detached"] = detached
         return self
 
@@ -245,70 +275,63 @@ class KelirBuilder:
         return bool(self._config.get("detached", False))
 
     # see: cans/04-terminal-plane.md#Terminal-pipeline
-    def terminal(self, **kwargs: Any) -> Self:
+    def terminal(self: KelirBuilder[Literal["host"], Literal["unsealed"]], **kwargs: Any) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("terminal")
+        self._check_sealed("terminal")
         self._config["terminal"] = kwargs
         return self
 
     # see: cans/05-storage-plane.md#Workspace-commit
-    def storage(self, **kwargs: Any) -> Self:
+    def storage(self: KelirBuilder[Literal["host"], Literal["unsealed"]], **kwargs: Any) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("storage")
+        self._check_sealed("storage")
         self._config.setdefault("storage", {}).update(kwargs)
         return self
 
-    # see: cans/05-storage-plane.md#Workspace-commit
-    def lock_broker(
-        self,
-        enabled: bool = True,
-        *,
-        globs: list[str] | None = None,
-        non_blocking: bool | None = None,
-    ) -> Self:
-        if self._mode == "plugin":
-            self._raise_host_only("lock_broker")
-        if not isinstance(enabled, bool):
-            raise EConfig(".lock_broker(enabled) expects a bool")
-        if globs is None and non_blocking is None:
-            self._config.setdefault("storage", {})["lock_broker"] = enabled
-            return self
-        broker: dict[str, Any] = {"enabled": enabled}
-        if globs is not None:
-            broker["globs"] = list(globs)
-        if non_blocking is not None:
-            broker["non_blocking"] = non_blocking
-        self._config.setdefault("storage", {})["lock_broker"] = broker
-        return self
-
     # see: cans/07-wire-plane.md#DNS-policy-filter
-    def wire(self, **kwargs: Any) -> Self:
+    def wire(
+        self: KelirBuilder[Literal["host"], Literal["unsealed"]],
+        config: WireConfig | None = None,
+        **kwargs: Any,
+    ) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("wire")
+        self._check_sealed("wire")
+        if config is not None:
+            if not isinstance(config, WireConfig):
+                raise EConfig(".wire() expects a WireConfig or keyword arguments")
+            merged = config.to_wire_dict()
+            merged.update(kwargs)
+            self._config["wire"] = merged
+            return self
         self._config["wire"] = kwargs
         return self
 
-    # see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-    def wire_config(self, fn: Callable[[WireConfig], Any]) -> Self:
-        if self._mode == "plugin":
-            self._raise_host_only("wire_config")
-        self._config["wire"] = apply_wire_config(self._config.get("wire") or {}, fn)
-        return self
-
     # see: cans/03-sdk-architecture.md#Python-SDK
-    def params(self, model: type | Callable[[_Scope], Any]) -> Self:
+    def params(
+        self: KelirBuilder[Literal["host"], Literal["unsealed"]],
+        fn: Callable[[ParamsScopeProtocol], Any],
+    ) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("params")
-        if isinstance(model, type):
-            # L3-GAP: [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
-            self._params_model = model
-            return self
-        if callable(model):
-            return self._scope_entry("params", model)
-        raise EConfig(".params() expects a model type or a scope closure")
+        self._check_sealed("params")
+        if isinstance(fn, type) or not callable(fn):
+            raise EConfig(
+                ".params() expects a scope closure; register a model with "
+                ".params(lambda p: p.model(Model))"
+            )
+        return self._scope_entry("params", fn)
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
-    def use(self, plugin: BasePlugin[Any, Any] | KelirBuilder) -> Self:
+    def use(
+        self: KelirBuilder[Literal["host"], Literal["unsealed"]],
+        plugin: BasePlugin[Any, Any] | KelirBuilder[Literal["plugin"], Literal["unsealed"]],
+    ) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
+        if self._mode == "plugin":
+            self._raise_host_only("use")
+        self._check_sealed("use")
         from kelir.plugin_model import BasePlugin as _BasePlugin
         from kelir.plugin_model import hook_descriptors
 
@@ -342,13 +365,14 @@ class KelirBuilder:
         return self
 
     def trap(
-        self,
-        pattern: str | TrapFilter | Callable[[_Scope], Any],
+        self: KelirBuilder[_Mode, Literal["unsealed"]],
+        pattern: str | TrapFilter | Callable[[TrapScopeProtocol], Any],
         pre: Callable[..., Awaitable[Any]] | None = None,
         post: Callable[..., Awaitable[Any]] | None = None,
-    ) -> Self:
+    ) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         # see: cans/02-plugin-model.md#Foreign-plugin-proxy
         self._check_mounted("trap")
+        self._check_sealed("trap")
         if callable(pattern):
             return self._scope_entry("trap", pattern)
         snapshot = (
@@ -380,244 +404,105 @@ class KelirBuilder:
             self._next_ordinal += 1
         return self
 
-    def register_custom_action(
-        self,
-        name: str,
-        schema: dict[str, Any],
-        handler: Callable[..., Awaitable[Any]],
-    ) -> Self:
-        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        if self._mode == "plugin":
-            self._raise_host_only("register_custom_action")
-        self._hooks.append(
-            HookDescriptor(
-                ring=RingEvent.CUSTOM_ACTION,
-                stage=HookStage.SINGLE,
-                ordinal=self._next_ordinal,
-                custom_action_name=name,
-                run=handler,
-            )
-        )
-        self._next_ordinal += 1
-        return self
-
-    # see: cans/11-protocol.md#Control-channel
-    def register_stream_kind(
-        self,
-        kind: int,
-        schema: dict[str, Any],
-        handler: Callable[[bytes], Awaitable[bytes]],
-    ) -> Self:
-        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
-        if self._mode == "plugin":
-            self._raise_host_only("register_stream_kind")
-        self._hooks.append(
-            HookDescriptor(
-                ring=RingEvent.VSOCK_SERVICE,
-                stage=HookStage.SINGLE,
-                ordinal=self._next_ordinal,
-                vsock_kind=kind,
-                run=handler,
-            )
-        )
-        self._next_ordinal += 1
-        return self
-
     # see: cans/02-plugin-model.md#Unified-builder
-    def on_trap(self, handler: Handler) -> Self:
-        return self._on("on_trap", handler)
 
-    def on_process_exit(self, handler: Handler) -> Self:
-        return self._on("on_process_exit", handler)
 
-    def on_signal(self, handler: Handler) -> Self:
-        return self._on("on_signal", handler)
 
-    def on_fork(self, handler: Handler) -> Self:
-        return self._on("on_fork", handler)
 
-    def on_fs_lookup(self, handler: Handler) -> Self:
-        return self._on("on_fs_lookup", handler)
 
-    def on_fs_read(self, handler: Handler) -> Self:
-        return self._on("on_fs_read", handler)
 
-    def on_fs_write(self, handler: Handler) -> Self:
-        return self._on("on_fs_write", handler)
 
-    def on_fs_lock(self, handler: Handler) -> Self:
-        return self._on("on_fs_lock", handler)
 
-    def on_fs_unlink(self, handler: Handler) -> Self:
-        return self._on("on_fs_unlink", handler)
 
-    def on_fs_rename(self, handler: Handler) -> Self:
-        return self._on("on_fs_rename", handler)
 
-    def on_fs_setattr(self, handler: Handler) -> Self:
-        return self._on("on_fs_setattr", handler)
 
-    def on_fs_symlink(self, handler: Handler) -> Self:
-        return self._on("on_fs_symlink", handler)
 
-    def on_fs_mkdir(self, handler: Handler) -> Self:
-        return self._on("on_fs_mkdir", handler)
 
-    def on_fs_readdir(self, handler: Handler) -> Self:
-        return self._on("on_fs_readdir", handler)
 
-    def on_fs_readlink(self, handler: Handler) -> Self:
-        return self._on("on_fs_readlink", handler)
 
-    def on_net_outbound(self, handler: Handler) -> Self:
-        return self._on("on_net_outbound", handler)
 
-    def on_net_inbound(self, handler: Handler) -> Self:
-        return self._on("on_net_inbound", handler)
 
-    def on_socket_connect(self, handler: Handler) -> Self:
-        return self._on("on_socket_connect", handler)
 
-    def on_dns_query(self, handler: Handler) -> Self:
-        return self._on("on_dns_query", handler)
 
-    def on_socket_bind(self, handler: Handler) -> Self:
-        return self._on("on_socket_bind", handler)
 
-    def on_console_input(self, handler: Handler) -> Self:
-        return self._on("on_console_input", handler)
 
-    def on_console_output(self, handler: Handler) -> Self:
-        return self._on("on_console_output", handler)
 
-    def on_exec_stdout(self, handler: Handler) -> Self:
-        return self._on("on_exec_stdout", handler)
 
-    def on_exec_stderr(self, handler: Handler) -> Self:
-        return self._on("on_exec_stderr", handler)
 
-    def on_exec_stdin(self, handler: Handler) -> Self:
-        return self._on("on_exec_stdin", handler)
 
-    def on_host_lsm_exec(self, handler: Handler) -> Self:
-        return self._on("on_host_lsm_exec", handler)
 
-    def on_host_pressure(self, handler: Handler) -> Self:
-        return self._on("on_host_pressure", handler)
 
-    def on_host_keyring_access(self, handler: Handler) -> Self:
-        return self._on("on_host_keyring_access", handler)
 
-    def on_host_containment_breach(self, handler: Handler) -> Self:
-        return self._on("on_host_containment_breach", handler)
 
-    def on_vm_init(self, handler: Handler) -> Self:
-        return self._on("on_vm_init", handler)
 
-    def on_vm_ready(self, handler: Handler) -> Self:
-        return self._on("on_vm_ready", handler)
 
-    def on_vm_shutdown(self, handler: Handler) -> Self:
-        return self._on("on_vm_shutdown", handler)
 
-    # see: cans/08-lifecycle.md#State-machine
-    def on(self, event: Any, handler: Handler) -> Self:
-        if event == LifecycleEvent.VmInit:
-            return self.on_vm_init(handler)
-        if event == LifecycleEvent.VmReady:
-            return self.on_vm_ready(handler)
-        if event == LifecycleEvent.VmShutdown:
-            return self.on_vm_shutdown(handler)
-        if event == LifecycleEvent.VmPreempt:
-            return self.on_host_preempt(handler)
-        raise EConfig(f".on() expects a LifecycleEvent, got {event!r}")
 
-    def on_pre_commit(self, handler: Handler) -> Self:
-        return self._on("on_pre_commit", handler)
 
-    def on_post_commit(self, handler: Handler) -> Self:
-        return self._on("on_post_commit", handler)
 
-    def on_host_preempt(self, handler: Handler) -> Self:
-        return self._on("on_host_preempt", handler)
 
-    def on_memory_pressure(self, handler: Handler) -> Self:
-        return self._on("on_memory_pressure", handler)
 
-    def on_heartbeat(self, handler: Handler) -> Self:
-        return self._on("on_heartbeat", handler)
 
-    def on_watchdog(self, handler: Handler) -> Self:
-        return self._on("on_watchdog", handler)
-
-    def on_trap_deny(self, handler: Handler) -> Self:
-        if self._mode == "plugin":
-            self._raise_host_only("on_trap_deny")
-        self._hooks.append(
-            HookDescriptor(
-                ring=RingEvent.LIFECYCLE,
-                stage=HookStage.SINGLE,
-                ordinal=self._next_ordinal,
-                lifecycle_tag="trap-deny",
-                run=_wrap_trap_deny(handler),
-            )
-        )
-        self._next_ordinal += 1
+    def fs(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[FsScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
+        self._scope_entry("fs", fn)
+        fork_fn = self._fs_scope.get("fork_with")
+        if fork_fn is not None:
+            self._fork_fn = fork_fn
         return self
 
-    def fs(self, fn: Callable[[_Scope], Any]) -> Self:
-        return self._scope_entry("fs", fn)
-
-    def net(self, fn: Callable[[_Scope], Any]) -> Self:
+    def net(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[NetScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("net", fn)
 
-    def console(self, fn: Callable[[_Scope], Any]) -> Self:
+    def console(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[ConsoleScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("console", fn)
 
-    def exec(self, fn: Callable[[_Scope], Any]) -> Self:
+    def exec(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[ExecScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("exec", fn)
 
     # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-    def host(self, config_or_fn: dict[str, Any] | Callable[[_Scope], Any]) -> Self:
+    def host(self: KelirBuilder[_Mode, Literal["unsealed"]], config_or_fn: dict[str, Any] | Callable[[HostScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         if callable(config_or_fn):
             return self._scope_entry("host", config_or_fn)
         if self._mode == "plugin":
             self._raise_host_only("host")
+        self._check_sealed("host")
         if not isinstance(config_or_fn, dict):
             raise EConfig(".host() expects a host plane config mapping or a host scope closure")
         self._config["host"] = config_or_fn
         return self
 
     # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-    def checkpoint(self, config: dict[str, Any]) -> Self:
+    def checkpoint(self: KelirBuilder[Literal["host"], Literal["unsealed"]], config: dict[str, Any]) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         if self._mode == "plugin":
             self._raise_host_only("checkpoint")
+        self._check_sealed("checkpoint")
         if not isinstance(config, dict):
             raise EConfig(".checkpoint() expects a checkpoint plane config mapping")
         self._config["checkpoint"] = config
         return self
 
-    def lifecycle(self, fn: Callable[[_Scope], Any]) -> Self:
+    def lifecycle(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[LifecycleScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("lifecycle", fn)
 
-    def telemetry(self, fn: Callable[[_Scope], Any]) -> Self:
+    def telemetry(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[TelemetryScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("telemetry", fn)
 
-    def actions(self, fn: Callable[[_Scope], Any]) -> Self:
+    def actions(self: KelirBuilder[Literal["host"], Literal["unsealed"]], fn: Callable[[ActionsScopeProtocol], Any]) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         return self._scope_entry("actions", fn)
 
-    def streams(self, fn: Callable[[_Scope], Any]) -> Self:
+    def streams(self: KelirBuilder[Literal["host"], Literal["unsealed"]], fn: Callable[[StreamsScopeProtocol], Any]) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         return self._scope_entry("streams", fn)
 
-    def vsock(self, fn: Callable[[_Scope], Any]) -> Self:
+    def vsock(self: KelirBuilder[_Mode, Literal["unsealed"]], fn: Callable[[VsockScopeProtocol], Any]) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         return self._scope_entry("vsock", fn)
 
-    def deny(self, fn: Callable[[_Scope], Any]) -> Self:
+    def deny(self: KelirBuilder[Literal["host"], Literal["unsealed"]], fn: Callable[[DenyScopeProtocol], Any]) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
         return self._scope_entry("deny", fn)
 
     # see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
     def group(self, fn: Callable[[KelirBuilder], KelirBuilder | None]) -> Self:
         self._check_mounted("group")
+        self._check_sealed("group")
         result = fn(self)
         if result is not None and result is not self:
             raise EConfig("group() must return the builder it receives")
@@ -633,8 +518,9 @@ class KelirBuilder:
         return self
 
     # see: cans/02-plugin-model.md#Unified-builder
-    def context(self, fn: Handler) -> Self:
+    def context(self: KelirBuilder[Literal["plugin"], Literal["unsealed"]], fn: Handler) -> KelirBuilder[Literal["plugin"], Literal["unsealed"]]:
         self._check_mounted("context")
+        self._check_sealed("context")
         if self._mode == "host":
             raise EConfig(
                 ".context() is plugin-only: a host-mode KelirBuilder has no "
@@ -643,8 +529,9 @@ class KelirBuilder:
         self._context_fn = fn
         return self
 
-    def require(self, plugin: type | str) -> Self:
+    def require(self: KelirBuilder[_Mode, Literal["unsealed"]], plugin: type | str) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         self._check_mounted("require")
+        self._check_sealed("require")
         if isinstance(plugin, str):
             required = plugin
         else:
@@ -657,17 +544,27 @@ class KelirBuilder:
             self._requires.append(required)
         return self
 
-    def scope(self, scope: Any) -> Self:
+    def scope(self: KelirBuilder[_Mode, Literal["unsealed"]], scope: Any) -> KelirBuilder[_Mode, Literal["unsealed"]]:
         self._check_mounted("scope")
+        self._check_sealed("scope")
         self._scope = scope
         return self
 
-    def fork_with(self, fn: Callable[[KelirBuilder], KelirBuilder]) -> Self:
+    def fork_with(
+        self: KelirBuilder[Literal["plugin"], Literal["unsealed"]],
+        fn: Callable[[KelirBuilder], KelirBuilder],
+    ) -> KelirBuilder[Literal["plugin"], Literal["unsealed"]]:
         self._check_mounted("fork_with")
+        if self._mode == "host":
+            raise EConfig(
+                ".fork_with() is plugin-only: a host-mode KelirBuilder has no "
+                "plugin fork state; call it on KelirBuilder.plugin(name)"
+            )
+        self._check_sealed("fork_with")
         self._fork_fn = fn
         return self
 
-    def fork_state(self) -> KelirBuilder:
+    def fork_state(self: KelirBuilder[Literal["plugin"], Literal["unsealed"]]) -> KelirBuilder[Literal["plugin"], Literal["unsealed"]]:
         if self._mode == "host":
             raise EConfig(
                 "host-mode KelirBuilder forks via Session.fork(), not .fork_state()"
@@ -689,29 +586,9 @@ class KelirBuilder:
         forked._next_ordinal = self._next_ordinal
         return forked
 
-    def vsock_service(self, spec: Any, handler: Handler | None = None) -> Self:
-        self._check_mounted("vsock_service")
-        entry_handler: Handler | None = None
-        if isinstance(spec, VsockServiceEntry):
-            entry_handler = spec.handler
-        if handler is not None and entry_handler is not None:
-            raise EConfig(
-                "vsock service handler passed twice: pass it once, "
-                "as the vsock_service() argument"
-            )
-        resolved = handler if handler is not None else entry_handler
-        if resolved is None:
-            raise EConfig("vsock service declares no handler")
-        raw: Any = spec.get("port") if isinstance(spec, dict) else getattr(spec, "port", None)
-        if raw is not None and (
-            isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 or raw > 0xFFFFFFFF
-        ):
-            raise EConfig(f"vsock service port {raw} outside u32")
-        self._vsock.append((spec, resolved))
-        return self
-
     def _on(self, verb: str, handler: Handler) -> Self:
         self._check_mounted(verb)
+        self._check_sealed(verb)
         _check_arity(self._name or "host", verb, handler)
         ring_value, lifecycle_tag = _VERB_RINGS[verb]
         ring = _ring_for_value(ring_value)
@@ -732,8 +609,95 @@ class KelirBuilder:
         self._next_ordinal += 1
         return self
 
+    def _register_custom_action(
+        self,
+        name: str,
+        schema: dict[str, Any],
+        handler: Callable[..., Awaitable[Any]],
+    ) -> None:
+        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        if self._mode == "plugin":
+            self._raise_host_only("register_custom_action")
+        self._check_sealed("register_custom_action")
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.CUSTOM_ACTION,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                custom_action_name=name,
+                run=handler,
+            )
+        )
+        self._next_ordinal += 1
+
+    # see: cans/11-protocol.md#Control-channel
+    def _register_stream_kind(
+        self,
+        kind: int,
+        schema: dict[str, Any],
+        handler: Callable[[bytes], Awaitable[bytes]],
+    ) -> None:
+        # see: cans/02-plugin-model.md#Foreign-plugin-proxy
+        if self._mode == "plugin":
+            self._raise_host_only("register_stream_kind")
+        self._check_sealed("register_stream_kind")
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.VSOCK_SERVICE,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                vsock_kind=kind,
+                run=handler,
+            )
+        )
+        self._next_ordinal += 1
+
+    def _on_trap_deny(self, handler: Handler) -> None:
+        if self._mode == "plugin":
+            self._raise_host_only("on_trap_deny")
+        self._check_sealed("on_trap_deny")
+        self._hooks.append(
+            HookDescriptor(
+                ring=RingEvent.LIFECYCLE,
+                stage=HookStage.SINGLE,
+                ordinal=self._next_ordinal,
+                lifecycle_tag="trap-deny",
+                run=_wrap_trap_deny(handler),
+            )
+        )
+        self._next_ordinal += 1
+
+    def _vsock_service(self, spec: Any, handler: Handler | None = None) -> None:
+        self._check_mounted("vsock_service")
+        self._check_sealed("vsock_service")
+        entry_handler: Handler | None = None
+        if isinstance(spec, VsockServiceEntry):
+            entry_handler = spec.handler
+        if handler is not None and entry_handler is not None:
+            raise EConfig(
+                "vsock service handler passed twice: pass it once, "
+                "as the vsock_service() argument"
+            )
+        resolved = handler if handler is not None else entry_handler
+        if resolved is None:
+            raise EConfig("vsock service declares no handler")
+        raw: Any = spec.get("port") if isinstance(spec, dict) else getattr(spec, "port", None)
+        if raw is not None and (
+            isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 or raw > 0xFFFFFFFF
+        ):
+            raise EConfig(f"vsock service port {raw} outside u32")
+        self._vsock.append((spec, resolved))
+
+    def _set_params_model(self, model: type) -> None:
+        self._check_sealed("params")
+        if self._mode == "plugin":
+            self._raise_host_only("params")
+        # L3-GAP: [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
+        self._params_model = model
+
     def _scope_entry(self, name: str, fn: Callable[[_Scope], Any]) -> Self:
         self._check_mounted(name)
+        self._check_sealed(name)
         fn(_Scope(self, _SCOPE_VERBS[name]))
         return self
 
@@ -865,8 +829,22 @@ class KelirBuilder:
         self._validate_vsock(self._name, self._vsock)
 
     # see: cans/02-plugin-model.md#Unified-builder
-    def seal(self) -> Self:
+    def seal(
+        self: KelirBuilder[_Mode, Literal["unsealed"]],
+    ) -> KelirBuilder[_Mode, Literal["sealed"]]:
+        return cast("KelirBuilder[_Mode, Literal['sealed']]", self._seal_unchecked())
+
+    def _check_sealed(self, verb: str) -> None:
+        if self._sealed:
+            raise EConfig(f"Builder is sealed: .{verb}() called after .seal()")
+
+    def _seal_unchecked(self) -> Self:
+        fs_config = self._fs_scope.get("config") or {}
+        broker = fs_config.get("lock_broker") if isinstance(fs_config, dict) else None
+        if broker is not None:
+            self._config.setdefault("storage", {})["lock_broker"] = broker
         self._validate_all()
+        self._sealed = True
         return self
 
     @property
@@ -877,14 +855,14 @@ class KelirBuilder:
     def fuse(self) -> FusedTrampoline:
         return FusedTrampoline.fuse(self.hook_descriptors())
 
-    async def boot(self) -> Session:
+    async def boot(self: KelirBuilder[Literal["host"], _Sealed]) -> Session:
         # see: cans/03-sdk-architecture.md#Python-SDK
         from kelir import _bridge_safe_config, _load_native_bridge
         if self._mode == "plugin":
             raise EConfig(
                 "cannot boot a plugin-mode KelirBuilder; mount it on a host with .use()"
             )
-        self.seal()
+        self._seal_unchecked()
         fused = self.fuse()
         descriptor = fused.describe()
         bridge = _load_native_bridge()
@@ -933,12 +911,13 @@ class KelirBuilder:
                 materialize_cap(session.cap, registration.name, record)
         return session
 
-    async def __aenter__(self) -> Session:
-        self._session = await self.boot()
-        return self._session
+    async def __aenter__(self: KelirBuilder[Literal["host"], _Sealed]) -> Session:
+        session = await self.boot()
+        self._session = session
+        return session
 
     async def __aexit__(
-        self,
+        self: KelirBuilder[Literal["host"], _Sealed],
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
@@ -948,7 +927,7 @@ class KelirBuilder:
             self._session = None
 
 
-def kelir() -> KelirBuilder:
+def kelir() -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
     return KelirBuilder()
 
 
@@ -971,7 +950,7 @@ def builder(
     entropy_seed: int | None = None,
     embed_mode: str | None = None,
     mask_proc_environ: bool | None = None,
-) -> KelirBuilder:
+) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
     return KelirBuilder(
         vcpus=vcpus,
         memory_mb=memory_mb,

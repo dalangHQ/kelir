@@ -1,6 +1,8 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 
 import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
+
+type HostBuilder = KelirBuilder<"host", "unsealed", string, unknown, never, unknown>;
 import { Session } from "./session.lifecycle.js";
 import type { SuspendReason } from "./verdict.protocol.js";
 import { EConfig } from "./errors.sdk.js";
@@ -22,14 +24,14 @@ export interface SandboxOptions {
 
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 export class Sandbox {
-  private builder: KelirBuilder | null;
+  private builder: HostBuilder | null;
   private booted: Session | null;
   private readonly profile: ProfileSpec;
   private readonly configPath: string;
   private readonly detachedFlag: boolean;
 
   private constructor(
-    builder: KelirBuilder,
+    builder: HostBuilder,
     profile: ProfileSpec,
     sourcePath: string,
   ) {
@@ -45,7 +47,7 @@ export class Sandbox {
   }
 
   static async create(opts: SandboxOptions = {}): Promise<Sandbox> {
-    const builder = new KelirBuilder(opts.config ?? {});
+    const builder: HostBuilder = new KelirBuilder<"host", "unsealed", string, unknown, never, unknown>(opts.config ?? {});
     if (opts.detached !== undefined) {
       builder.detached(opts.detached);
     }
@@ -56,7 +58,7 @@ export class Sandbox {
     profile: ProfileSpec,
     path: string,
   ): Sandbox {
-    const builder = new KelirBuilder(configFromProfile(profile));
+    const builder: HostBuilder = new KelirBuilder<"host", "unsealed", string, unknown, never, unknown>(configFromProfile(profile));
     return new Sandbox(builder, profile, path);
   }
 

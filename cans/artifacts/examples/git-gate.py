@@ -5,45 +5,61 @@ from __future__ import annotations
 
 import asyncio
 import platform
+import re
+from pathlib import Path
 from typing import Optional
 
 import kelir
-from kelir import KelirBuilder, TrapEvent, Verdict
-from kelir.plugin_model import BasePlugin
+from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, Verdict
 from kelir.storage_planes import IdmapConfig
 
 
 PROTECTED = ("main", "master")
 
+_TOKEN_RE = re.compile(rb"sk_live_[A-Za-z0-9]{24}")
 
-class GitGatePlugin(BasePlugin):
-    name = "git-gate"
 
-    async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
-        binary = event.binary_path.rsplit("/", 1)[-1]
-        if binary != "git":
-            return Verdict.pass_()
-        if len(event.argv) < 2:
-            return Verdict.pass_()
-        if event.argv[1] == "push":
-            if "--force" in event.argv:
-                return Verdict.patch(
-                    argv=[a for a in event.argv if a != "--force"],
-                    env={"KELIR_DISARMED": "1"},
-                )
-            return Verdict.pass_()
-        if event.argv[1] == "commit":
-            if "-m" in event.argv:
-                idx = event.argv.index("-m")
-                msg = event.argv[idx + 1] if idx + 1 < len(event.argv) else ""
-            else:
-                msg = ""
-            if any(p in msg for p in PROTECTED):
-                return Verdict.abort(
-                    reason="EPOLICY: commit references protected branch",
-                )
-            return Verdict.pass_()
+# see: cans/plugins/redaction.md#Plugin-redaction
+def _mask_fs_write(
+    path: Path, data: bytearray, pid: int, ctx: HandlerContext,
+) -> FilterAction:
+    data[:] = _TOKEN_RE.sub(lambda m: b"*" * len(m.group(0)), bytes(data))
+    return FilterAction.forward()
+
+
+async def _gate_git_trap(event: TrapEvent) -> Optional[Verdict]:
+    binary = event.binary_path.rsplit("/", 1)[-1]
+    if binary != "git":
         return Verdict.pass_()
+    if len(event.argv) < 2:
+        return Verdict.pass_()
+    if event.argv[1] == "push":
+        if "--force" in event.argv:
+            return Verdict.patch(
+                argv=[a for a in event.argv if a != "--force"],
+                env={"KELIR_DISARMED": "1"},
+            )
+        return Verdict.pass_()
+    if event.argv[1] == "commit":
+        if "-m" in event.argv:
+            idx = event.argv.index("-m")
+            msg = event.argv[idx + 1] if idx + 1 < len(event.argv) else ""
+        else:
+            msg = ""
+        if any(p in msg for p in PROTECTED):
+            return Verdict.abort(
+                reason="EPOLICY: commit references protected branch",
+            )
+        return Verdict.pass_()
+    return Verdict.pass_()
+
+
+def git_gate_plugin() -> KelirBuilder:
+    return (
+        KelirBuilder.plugin("git-gate")
+        .fs(lambda f: f.on_fs_write(_mask_fs_write))
+        .trap(lambda t: t.on_trap(_gate_git_trap))
+    )
 
 
 def build_runtime() -> KelirBuilder:
@@ -57,14 +73,9 @@ def build_runtime() -> KelirBuilder:
         .storage(
             idmap=IdmapConfig(guest_uid=0, host_uid=0),
             shared_caches=[],
-            lock_broker=False,
-            synthetic_files=[],
-            mask_read=[],
             encapsulation="passthrough",
-            scan_engine="FastRegex",
-            carryover_bytes=1024,
         )
-        .use(GitGatePlugin())
+        .use(git_gate_plugin())
         .seal()
     )
 

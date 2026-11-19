@@ -29,7 +29,6 @@ from kelir import (
     TrapEvent,
     TrapFilter,
     Verdict,
-    VsockServiceEntry,
     relay_socket_path,
 )
 from kelir.sdk_errors import EConfig
@@ -472,10 +471,10 @@ def test_builder_trap_pattern_snapshot() -> None:
 def test_builder_lifecycle_decorator_registers_single_hook() -> None:
     builder = KelirBuilder()
 
-    @builder.on_vm_ready
     async def on_ready(ctx: object) -> None:
         return None
 
+    builder.lifecycle(lambda l: l.on_vm_ready(on_ready))
     trampoline = builder.fuse()
     assert trampoline.hook_count(RingEvent.LIFECYCLE) == 1
     hook = trampoline.chains[0].hooks[0]
@@ -488,22 +487,17 @@ def test_builder_vsock_service_validates_u32_port() -> None:
         return request
 
     builder = KelirBuilder()
-    entry = VsockServiceEntry(port=0, service="echo", schema={})
-    assert builder.vsock_service(entry, handler) is builder
-    entry = VsockServiceEntry(port=0xFFFFFFFF, service="echo", schema={})
-    assert builder.vsock_service(entry, handler) is builder
+    assert builder.vsock(lambda v: v.service(0, "echo", handler)) is builder
+    assert builder.vsock(lambda v: v.service(0xFFFFFFFF, "echo", handler)) is builder
     assert len(builder.vsock_services) == 2
     assert builder.vsock_services[0].port == 0
     assert builder.vsock_services[1].port == 0xFFFFFFFF
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=-1, service="echo", schema={})
-        builder.vsock_service(entry, handler)
+        builder.vsock(lambda v: v.service(-1, "echo", handler))
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=0x100000000, service="echo", schema={})
-        builder.vsock_service(entry, handler)
+        builder.vsock(lambda v: v.service(0x100000000, "echo", handler))
     with pytest.raises(EConfig, match=r"outside u32"):
-        entry = VsockServiceEntry(port=True, service="echo", schema={})
-        builder.vsock_service(entry, handler)
+        builder.vsock(lambda v: v.service(cast(Any, True), "echo", handler))
 
 
 def test_builder_register_stream_kind_validates_u16_at_fuse() -> None:
@@ -511,10 +505,10 @@ def test_builder_register_stream_kind_validates_u16_at_fuse() -> None:
         return request
 
     builder = KelirBuilder()
-    builder.register_stream_kind(0x0013, {"type": "object"}, handler)
+    builder.streams(lambda s: s.register(0x0013, {"type": "object"}, handler))
     assert builder.fuse().hook_count(RingEvent.VSOCK_SERVICE) == 1
     out_of_range = KelirBuilder()
-    out_of_range.register_stream_kind(0x10000, {"type": "object"}, handler)
+    out_of_range.streams(lambda s: s.register(0x10000, {"type": "object"}, handler))
     with pytest.raises(EConfig, match=r"outside u16"):
         out_of_range.fuse()
 

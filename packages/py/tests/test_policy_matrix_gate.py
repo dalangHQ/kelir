@@ -49,7 +49,7 @@ class PolicyMatrixPlugin(BasePlugin[None, None]):
         ctx.register_veto(VetoEvent.Suspend, lambda: POLICY_STATE.ready)
         ctx.register_veto(VetoEvent.ClockSkew, lambda: POLICY_STATE.ready)
 
-    async def on_vm_ready(self, _ctx: Any) -> None:
+    async def on_vm_ready(self, ctx: Any) -> None:
         POLICY_STATE.ready = True
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
@@ -63,7 +63,7 @@ class WatchdogSilencerPlugin(BasePlugin[None, None]):
 
     name = "watchdog-silencer"
 
-    async def on_watchdog(self, _event: WatchdogEvent) -> WatchdogVerdict:
+    async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
         if POLICY_STATE.planned_suspend:
             POLICY_STATE.suppressions += 1
             return WatchdogVerdict.Suppress
@@ -125,19 +125,21 @@ def build_runtime() -> KelirBuilder:
     async def quarantine(payload: dict[str, Any]) -> None:
         POLICY_STATE.quarantined_pids.append(payload["pid"])
 
-    builder.register_custom_action(
-        "quarantine",
-        {"type": "object",
-         "properties": {"pid": {"type": "integer"},
-                        "reason": {"type": "string"}},
-         "required": ["pid", "reason"]},
-        quarantine,
+    builder.actions(
+        lambda a: a.register(
+            "quarantine",
+            {"type": "object",
+             "properties": {"pid": {"type": "integer"},
+                            "reason": {"type": "string"}},
+             "required": ["pid", "reason"]},
+            quarantine,
+        )
     )
 
     async def echo(request: bytes) -> bytes:
         return request
 
-    builder.register_stream_kind(0x0013, {"type": "object", "properties": {}}, echo)
+    builder.streams(lambda s: s.register(0x0013, {"type": "object", "properties": {}}, echo))
 
     builder.trap(TrapFilter.binary("policy-allow"), pre=row_allow)
     builder.trap(TrapFilter.binary("policy-deny"), pre=row_deny)

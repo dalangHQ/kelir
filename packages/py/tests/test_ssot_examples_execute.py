@@ -17,6 +17,8 @@ _EXAMPLES = Path(__file__).resolve().parents[3] / "cans" / "artifacts" / "exampl
 
 def _load_example(name: str) -> Any:
     path = _EXAMPLES / f"{name}.py"
+    if not path.exists():
+        path = _EXAMPLES / "deferred" / f"{name}.py"
     module_name = f"kelir_example_{name.replace('-', '_')}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     assert spec is not None and spec.loader is not None

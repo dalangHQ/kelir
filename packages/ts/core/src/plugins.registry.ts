@@ -17,7 +17,7 @@ export interface AnomalyConfig extends PluginEnablement {
 }
 
 
-export function anomaly<P = unknown>(config: AnomalyConfig): KelirBuilder<"anomaly", unknown, never, P> {
+export function anomaly<P = unknown>(config: AnomalyConfig): KelirBuilder<"plugin", "unsealed", "anomaly", unknown, never, P> {
   return createPlugin<"anomaly", unknown, AnomalyConfig, never, P>("anomaly", { enabled: config.enabled, config });
 }
 
@@ -47,7 +47,7 @@ export interface ChaosConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function chaos<P = unknown>(config: ChaosConfig): KelirBuilder<"chaos", { chaos: ChaosHandle }, never, P> {
+export function chaos<P = unknown>(config: ChaosConfig): KelirBuilder<"plugin", "unsealed", "chaos", { chaos: ChaosHandle }, never, P> {
   return createPlugin<"chaos", { chaos: ChaosHandle }, ChaosConfig, never, P>("chaos", { enabled: config.enabled, config });
 }
 
@@ -62,7 +62,7 @@ export interface ContainerConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"container", { container: ContainerHandle }, never, P> {
+export function container<P = unknown>(config: ContainerConfig): KelirBuilder<"plugin", "unsealed", "container", { container: ContainerHandle }, never, P> {
   return createPlugin<"container", { container: ContainerHandle }, ContainerConfig, never, P>("container", { enabled: config.enabled, config });
 }
 
@@ -101,7 +101,7 @@ export interface DbProxyConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"db-proxy", { "db-proxy": DbProxyHandle }, never, P> {
+export function dbProxy<P = unknown>(config: DbProxyConfig): KelirBuilder<"plugin", "unsealed", "db-proxy", { "db-proxy": DbProxyHandle }, never, P> {
   return createPlugin<"db-proxy", { "db-proxy": DbProxyHandle }, DbProxyConfig, never, P>("db-proxy", { enabled: config.enabled, config });
 }
 
@@ -114,7 +114,7 @@ export interface EgressProxyConfig extends PluginEnablement {
 }
 
 
-export function egressProxy<P = unknown>(config: EgressProxyConfig): KelirBuilder<"egress-proxy", unknown, never, P> {
+export function egressProxy<P = unknown>(config: EgressProxyConfig): KelirBuilder<"plugin", "unsealed", "egress-proxy", unknown, never, P> {
   return createPlugin<"egress-proxy", unknown, EgressProxyConfig, never, P>("egress-proxy", { enabled: config.enabled, config });
 }
 
@@ -138,7 +138,7 @@ export interface L7HttpConfig extends PluginEnablement {
 }
 
 
-export function l7Http<P = unknown>(config: L7HttpConfig): KelirBuilder<"l7-http", unknown, never, P> {
+export function l7Http<P = unknown>(config: L7HttpConfig): KelirBuilder<"plugin", "unsealed", "l7-http", unknown, never, P> {
   return createPlugin<"l7-http", unknown, L7HttpConfig, never, P>("l7-http", { enabled: config.enabled, config });
 }
 
@@ -174,7 +174,7 @@ export interface LedgerConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function ledger<P = unknown>(config: LedgerConfig): KelirBuilder<"ledger", { ledger: LedgerHandle }, never, P> {
+export function ledger<P = unknown>(config: LedgerConfig): KelirBuilder<"plugin", "unsealed", "ledger", { ledger: LedgerHandle }, never, P> {
   return createPlugin<"ledger", { ledger: LedgerHandle }, LedgerConfig, never, P>("ledger", { enabled: config.enabled, config });
 }
 
@@ -184,7 +184,7 @@ export interface McpConfig extends PluginEnablement {
 }
 
 
-export function mcp<P = unknown>(config: McpConfig): KelirBuilder<"mcp", unknown, never, P> {
+export function mcp<P = unknown>(config: McpConfig): KelirBuilder<"plugin", "unsealed", "mcp", unknown, never, P> {
   return createPlugin<"mcp", unknown, McpConfig, never, P>("mcp", { enabled: config.enabled, config });
 }
 
@@ -210,7 +210,7 @@ export interface MeshConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function mesh<P = unknown>(config: MeshConfig): KelirBuilder<"mesh", { mesh: MeshHandle }, never, P> {
+export function mesh<P = unknown>(config: MeshConfig): KelirBuilder<"plugin", "unsealed", "mesh", { mesh: MeshHandle }, never, P> {
   return createPlugin<"mesh", { mesh: MeshHandle }, MeshConfig, never, P>("mesh", { enabled: config.enabled, config });
 }
 
@@ -228,7 +228,7 @@ export interface ProfileConfig extends PluginEnablement {
 }
 
 
-export function profile<P = unknown>(config: ProfileConfig): KelirBuilder<"profile", unknown, never, P> {
+export function profile<P = unknown>(config: ProfileConfig): KelirBuilder<"plugin", "unsealed", "profile", unknown, never, P> {
   return createPlugin<"profile", unknown, ProfileConfig, never, P>("profile", { enabled: config.enabled, config });
 }
 
@@ -251,7 +251,7 @@ export interface RedactionConfig extends PluginEnablement {
 }
 
 
-export function redaction<P = unknown>(config: RedactionConfig): KelirBuilder<"redaction", unknown, never, P> {
+export function redaction<P = unknown>(config: RedactionConfig): KelirBuilder<"plugin", "unsealed", "redaction", unknown, never, P> {
   return createPlugin<"redaction", unknown, RedactionConfig, never, P>("redaction", { enabled: config.enabled, config });
 }
 
@@ -264,7 +264,7 @@ export interface ReplayConfig extends PluginEnablement {
 }
 
 
-export function replay<P = unknown>(config: ReplayConfig): KelirBuilder<"replay", unknown, never, P> {
+export function replay<P = unknown>(config: ReplayConfig): KelirBuilder<"plugin", "unsealed", "replay", unknown, never, P> {
   return createPlugin<"replay", unknown, ReplayConfig, never, P>("replay", { enabled: config.enabled, config });
 }
 
@@ -300,7 +300,7 @@ export interface StepEvalConfig extends PluginEnablement {
 }
 
 
-export function stepEval<P = unknown>(config: StepEvalConfig): KelirBuilder<"step-eval", unknown, never, P> {
+export function stepEval<P = unknown>(config: StepEvalConfig): KelirBuilder<"plugin", "unsealed", "step-eval", unknown, never, P> {
   return createPlugin<"step-eval", unknown, StepEvalConfig, never, P>("step-eval", { enabled: config.enabled, config });
 }
 
@@ -332,7 +332,7 @@ export interface SupplyChainConfig extends PluginEnablement {
 }
 
 
-export function supplyChain<P = unknown>(config: SupplyChainConfig): KelirBuilder<"supply-chain", unknown, never, P> {
+export function supplyChain<P = unknown>(config: SupplyChainConfig): KelirBuilder<"plugin", "unsealed", "supply-chain", unknown, never, P> {
   return createPlugin<"supply-chain", unknown, SupplyChainConfig, never, P>("supply-chain", { enabled: config.enabled, config });
 }
 
@@ -341,7 +341,7 @@ export interface TaintConfig extends PluginEnablement {
 }
 
 
-export function taint<P = unknown>(config: TaintConfig): KelirBuilder<"taint", unknown, never, P> {
+export function taint<P = unknown>(config: TaintConfig): KelirBuilder<"plugin", "unsealed", "taint", unknown, never, P> {
   return createPlugin<"taint", unknown, TaintConfig, never, P>("taint", { enabled: config.enabled, config });
 }
 
@@ -360,7 +360,7 @@ export interface TerminalGuardConfig extends PluginEnablement {
 }
 
 
-export function terminalGuard<P = unknown>(config: TerminalGuardConfig): KelirBuilder<"terminal-guard", unknown, never, P> {
+export function terminalGuard<P = unknown>(config: TerminalGuardConfig): KelirBuilder<"plugin", "unsealed", "terminal-guard", unknown, never, P> {
   return createPlugin<"terminal-guard", unknown, TerminalGuardConfig, never, P>("terminal-guard", { enabled: config.enabled, config });
 }
 
@@ -373,7 +373,7 @@ export interface TokenShieldConfig extends PluginEnablement {
 }
 
 
-export function tokenShield<P = unknown>(config: TokenShieldConfig): KelirBuilder<"token-shield", unknown, never, P> {
+export function tokenShield<P = unknown>(config: TokenShieldConfig): KelirBuilder<"plugin", "unsealed", "token-shield", unknown, never, P> {
   return createPlugin<"token-shield", unknown, TokenShieldConfig, never, P>("token-shield", { enabled: config.enabled, config });
 }
 
@@ -388,7 +388,7 @@ export interface ToolGuardConfig extends PluginEnablement {
 }
 
 
-export function toolGuard<P = unknown>(config: ToolGuardConfig): KelirBuilder<"tool-guard", unknown, never, P> {
+export function toolGuard<P = unknown>(config: ToolGuardConfig): KelirBuilder<"plugin", "unsealed", "tool-guard", unknown, never, P> {
   return createPlugin<"tool-guard", unknown, ToolGuardConfig, never, P>("tool-guard", { enabled: config.enabled, config });
 }
 
@@ -401,7 +401,7 @@ export interface TransactionConfig extends PluginEnablement {
 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"transaction", { transaction: TransactionHandle }, never, P> {
+export function transaction<P = unknown>(config: TransactionConfig): KelirBuilder<"plugin", "unsealed", "transaction", { transaction: TransactionHandle }, never, P> {
   return createPlugin<"transaction", { transaction: TransactionHandle }, TransactionConfig, never, P>("transaction", { enabled: config.enabled, config });
 }
 
@@ -421,7 +421,7 @@ export interface VaultConfig extends PluginEnablement {
 }
 
 
-export function vault<P = unknown>(config: VaultConfig): KelirBuilder<"vault", unknown, never, P> {
+export function vault<P = unknown>(config: VaultConfig): KelirBuilder<"plugin", "unsealed", "vault", unknown, never, P> {
   return createPlugin<"vault", unknown, VaultConfig, never, P>("vault", { enabled: config.enabled, config });
 }
 
@@ -457,6 +457,6 @@ export interface WireIngressConfig extends PluginEnablement {
 }
 
 
-export function wireIngress<P = unknown>(config: WireIngressConfig): KelirBuilder<"wire-ingress", unknown, never, P> {
+export function wireIngress<P = unknown>(config: WireIngressConfig): KelirBuilder<"plugin", "unsealed", "wire-ingress", unknown, never, P> {
   return createPlugin<"wire-ingress", unknown, WireIngressConfig, never, P>("wire-ingress", { enabled: config.enabled, config });
 }

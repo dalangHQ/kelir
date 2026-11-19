@@ -101,7 +101,7 @@ check-coverage-gates: check-l7-stream-coverage check-outbox-coverage check-step-
 check-spec-drift:
     ./scripts/check-spec-drift.sh
 
-# --examples-run: run the nine patched examples as tests (Rust via the
+# --examples-run: run the six examples as tests (Rust via the
 # throwaway crate, Python directly, TypeScript via node on compiled output).
 # Hardware tier required for git-gate and hook-matrix-full; emulated Class 2
 # allowed for the rest. See scripts/check-examples-run.sh.
@@ -125,6 +125,22 @@ check-examples-thin:
 # --builder-parity: the unified KelirBuilder chain is identical in Rust/TS/Python.
 check-builder-parity:
     ./scripts/check-builder-parity.sh
+
+# --builder-chain: the unbroken single-expression chain holds in every
+# example under cans/artifacts/examples/: no builder rebinding, no
+# statement-level verb calls, no flat verb outside a scope, no BasePlugin,
+# no kelir.plugins.plugin_ alias. see: cans/15-operations.md#Builder-chain
+check-builder-chain:
+    python3 scripts/check-builder-chain-ast.py cans/artifacts/examples/
+
+# --negative-suites: compile-fail invariants hold in all three SDKs
+# (scope bleeding, post-seal mutation, host verbs on plugin builders).
+# The Python suite lands with the py track; until then this recipe fails
+# on its missing file. see: cans/15-operations.md#Negative-suites
+check-negative-suites:
+    cargo test -p kelir --test compile_fail_suite
+    pnpm --filter @kelir/core run test:compile-fail
+    pytest packages/py/tests/test_compile_fail.py
 
 # Compile-only gate for drivers with no CI test runner (Android AVF,
 # Termux proot); test execution needs hardware CI does not have.

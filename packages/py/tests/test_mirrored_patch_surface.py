@@ -95,10 +95,10 @@ def test_base_plugin_fs_unlink_rename_override_registers_rings() -> None:
 
 
 def test_builder_fs_unlink_rename_verbs_and_scope() -> None:
-    plugin = (
-        KelirBuilder.plugin("fs-verbs")
-        .on_fs_unlink(lambda _p, _c: Verdict.pass_())
-        .on_fs_rename(lambda _s, _d, _c: Verdict.pass_())
+    plugin = KelirBuilder.plugin("fs-verbs").fs(
+        lambda f: f.on_fs_unlink(lambda _p, _c: Verdict.pass_()).on_fs_rename(
+            lambda _s, _d, _c: Verdict.pass_()
+        )
     )
     assert [d.ring for d in plugin.hook_descriptors()] == [
         RingEvent.FS_UNLINK,
@@ -118,21 +118,21 @@ def test_builder_fs_unlink_rename_verbs_and_scope() -> None:
 
 def test_builder_fs_unlink_arity_checked() -> None:
     with pytest.raises(EConfig, match=r"on_fs_unlink.*takes 1 positional"):
-        KelirBuilder.plugin("arity").on_fs_unlink(lambda _p: Verdict.pass_())
+        KelirBuilder.plugin("arity").fs(
+            lambda f: f.on_fs_unlink(lambda _p: Verdict.pass_())
+        )
     with pytest.raises(EConfig, match=r"on_fs_rename.*takes 2 positional"):
-        KelirBuilder.plugin("arity").on_fs_rename(
-            lambda _s, _d: Verdict.pass_()
+        KelirBuilder.plugin("arity").fs(
+            lambda f: f.on_fs_rename(lambda _s, _d: Verdict.pass_())
         )
 
 
 def test_wire_config_divert_port_to_unix() -> None:
     builder = kelir.builder()
-
-    def _wire(w: WireConfig) -> None:
-        w.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
-        w.divert_port_to_unix(8000, "/run/agentsh/mcp.sock")
-
-    builder.wire_config(_wire)
+    wire = WireConfig()
+    wire.divert_port_to_unix(5433, "/run/agentsh/pgwire.sock")
+    wire.divert_port_to_unix(8000, "/run/agentsh/mcp.sock")
+    builder.wire(wire)
     assert builder._config["wire"] == {
         "dial_timeout_ms": 5000,
         "divert_ports": [
@@ -146,12 +146,10 @@ def test_wire_config_divert_port_to_unix() -> None:
 
 def test_wire_config_closure_sets_netstack_and_egress() -> None:
     builder = kelir.builder()
-
-    def _wire(w: WireConfig) -> None:
-        w.userspace_netstack = True
-        w.default_egress = "drop"
-
-    builder.wire_config(_wire)
+    wire = WireConfig()
+    wire.userspace_netstack = True
+    wire.default_egress = "drop"
+    builder.wire(wire)
     assert builder._config["wire"] == {
         "userspace_netstack": True,
         "default_egress": "drop",
@@ -168,8 +166,9 @@ def test_wire_config_divert_port_validates() -> None:
 
 
 def test_wire_config_is_host_only() -> None:
-    with pytest.raises(EConfig, match=r"host-only verb .wire_config"):
-        KelirBuilder.plugin("p").wire_config(lambda _w: None)
+    plugin_untyped: KelirBuilder = KelirBuilder.plugin("p")
+    with pytest.raises(EConfig, match=r"host-only verb \.wire\(\)"):
+        plugin_untyped.wire(WireConfig())
 
 
 def test_terminal_config_bridge_accepts_hierarchy_only() -> None:

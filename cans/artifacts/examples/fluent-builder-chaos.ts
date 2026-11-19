@@ -18,7 +18,7 @@ import {
 // .net scopes, pass/forward policy. L1/L2: descriptors only, no execution.
 // No build(): the plugin-mode builder is mounted as-is, and the host's
 // fuse() validates it.
-export function buildChaosPlugin(): KelirBuilder<"chaos", unknown, "ledger", unknown> {
+export function buildChaosPlugin(): KelirBuilder<"plugin", "unsealed", "chaos", unknown, "ledger", unknown> {
   return createPlugin("chaos")
     .requires<"ledger">()
     .scope({ paths: ["/workspace"] })
@@ -68,12 +68,14 @@ export function buildChaosHost(config: ChaosConfig) {
     tscLocked: true,
     enableWatchdog: false,
     driver: "auto",
-  }).use(chaos(config));
+  })
+    .use(chaos(config))
+    .seal();
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 async function main(): Promise<void> {
-  buildChaosHost(chaosConfig()).seal();
+  buildChaosHost(chaosConfig());
   buildChaosPlugin();
 }
 

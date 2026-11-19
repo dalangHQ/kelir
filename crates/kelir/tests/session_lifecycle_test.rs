@@ -88,16 +88,11 @@ async fn lc_04_draining_state_rejection_ebusy() -> Result<(), String> {
 #[tokio::test]
 #[ignore]
 async fn lc_07_cow_fork_uncloned_descriptor_veto() -> Result<(), String> {
-    let mut builder = KelirBuilder::new(builder_config());
-    builder.lifecycle_mut().register_veto(
-        kelir::plugin_model::VetoEvent::Fork,
-        Box::new(|| kelir::plugin_model::Veto {
-            allowed: false,
-            by: String::new(),
-            reason: String::new(),
-            recovery: None,
-        }),
-    );
+    let builder = KelirBuilder::new(builder_config()).lifecycle(|l| {
+        l.on_vm_init(|_ctx| Box::pin(async move { Ok::<(), kelir::plugin_model::PluginError>(()) }))
+            .register_veto(kelir::plugin_model::VetoEvent::Fork, Box::new(|| false))
+            .end()
+    });
     let session = builder
         .seal()
         .map_err(|e| e.to_string())?

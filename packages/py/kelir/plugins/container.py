@@ -1,3 +1,43 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
-from kelir.plugins.plugin_container import *  # noqa: F401,F403
-from kelir.plugins.plugin_container import __all__ as __all__  # noqa: F401
+# see: cans/plugins/container.md#Plugin-container
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from kelir.plugin_model import BasePlugin
+
+__all__ = [
+    "ContainerConfig",
+    "ContainerPlugin",
+    "container",
+    "container_builder",
+]
+
+
+@dataclass
+class ContainerConfig:
+    runtime: str = "crun"
+    isolate_var_lib_containers: bool = True
+    allow_unsandboxed: bool = False
+    pin_subuid_ranges: bool = True
+    scratch_device: str | None = None
+
+
+class ContainerPlugin(BasePlugin[None, None]):
+    name = "container"
+
+    def __init__(self, config: ContainerConfig | None = None) -> None:
+        self.config = config if config is not None else ContainerConfig()
+
+
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
+
+
+def container_builder(config: ContainerConfig | None = None) -> KelirBuilder:
+    cfg = config if config is not None else ContainerConfig()
+    return KelirBuilder.plugin("container").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def container(config: ContainerConfig | None = None) -> KelirBuilder:
+    return container_builder(config)

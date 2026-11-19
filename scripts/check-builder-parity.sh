@@ -112,7 +112,7 @@ ts_flat_present() { grep -qE "^  (async )?$(ts_name "$1")(<|\\()" "$TS_BUILDER";
 ts_registry_present() { grep -qE "^  $1\\(" "$TS_SCOPES"; }
 py_flat_present() {
     [ "$(awk -v verb="$1" '
-        /^class KelirBuilder:/ { in_class=1; next }
+        /^class KelirBuilder[:(]/ { in_class=1; next }
         in_class && ($0 ~ "^    (async )?def " verb "\\(" || $0 ~ "^    " verb " = ") { found=1 }
         END { print found+0 }
     ' "$PY_FILE")" = "1" ]
@@ -120,7 +120,7 @@ py_flat_present() {
 # see: cans/artifacts/config/builder-verbs.yaml
 py_is_descriptor() {
     [ "$(awk -v verb="$1" '
-        /^class KelirBuilder:/ { in_class=1; next }
+        /^class KelirBuilder[:(]/ { in_class=1; next }
         in_class && $0 ~ "^    " verb " = " { found=1 }
         END { print found+0 }
     ' "$PY_FILE")" = "1" ]
@@ -144,13 +144,25 @@ ts_scoped_present() {
     ' "$TS_SCOPES")" = "1" ]
 }
 py_scoped_present() {
-    [ "$(awk -v scope="$2" -v verb="$1" '
+    if [ "$(awk -v scope="$2" -v verb="$1" '
         /_SCOPE_VERBS: dict/ { in_map=1; next }
         in_map && /^}/ { in_map=0; next }
         in_map && /": \(/ { k=$0; sub(/^[[:space:]]*"/,"",k); sub(/".*/,"",k); cur=k }
         in_map && cur == scope && $0 ~ "\"" verb "\"" { found=1 }
         END { print found+0 }
-    ' "$PY_SCOPE_FILE")" = "1" ]
+    ' "$PY_SCOPE_FILE")" = "1" ]; then
+        return 0
+    fi
+    case "$1" in
+        end|register|service|model|config|require|fork_with|timeout|priority|rules)
+            [ "$(awk -v verb="$1" '
+                /^class _Scope:/ { in_scope=1; next }
+                in_scope && $0 ~ "^    def " verb "\\(" { found=1 }
+                END { print found+0 }
+            ' "$PY_SCOPE_FILE")" = "1" ]
+            ;;
+        *) return 1 ;;
+    esac
 }
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -169,6 +181,7 @@ classify_ts_sig() {
     if printf '%s' "$sig" | grep -q -- "Promise<Session"; then printf '%s' "terminal";
     elif printf '%s' "$sig" | grep -q -- ": this"; then printf '%s' "builder";
     elif printf '%s' "$sig" | grep -q -- ": KelirBuilder"; then printf '%s' "builder";
+    elif printf '%s' "$sig" | grep -q -- ": AnyBuilder"; then printf '%s' "builder";
     elif printf '%s' "$sig" | grep -qE -- ": [A-Za-z]+Scope<Ctx>"; then printf '%s' "scope";
     elif printf '%s' "$sig" | grep -q -- ": void"; then printf '%s' "void";
     elif printf '%s' "$sig" | grep -q -- ": HookRegistry"; then printf '%s' "registry";
@@ -295,7 +308,7 @@ check_ts_scoped_return() {
 }
 
 # see: cans/02-plugin-model.md#Unified-builder
-PY_CLASS_LINE="$(grep -n '^class KelirBuilder:' "$PY_FILE" | cut -d: -f1 || true)"
+PY_CLASS_LINE="$(grep -nE '^class KelirBuilder[:(]' "$PY_FILE" | cut -d: -f1 || true)"
 PY_SCOPE_END="0"
 PY_SCOPE_START="$(grep -n '^class _Scope:' "$PY_SCOPE_FILE" | cut -d: -f1 || true)"
 for verb in "${VERBS[@]}"; do
@@ -490,7 +503,8 @@ check_group_shape() {
     check
     if grep -A3 -E "pub fn group<F>\(self, configure: F\) -> Self" $RS_BUILDER | grep -q "FnOnce(Self) -> Self"; then :; else fail "rust: group() is not a closure taking the builder (want FnOnce(Self) -> Self)"; fi
     check
-    if grep -qF "group(fn: (builder: this) => this | void): this" "$TS_BUILDER"; then :; else fail "ts: group() is not a closure taking the builder (want group(fn: (builder: this) => this | void): this)"; fi
+    ts_group_sig="$(body_lines "$TS_BUILDER" '^  group\(' '^  guard\(' || true)"
+    if printf '%s' "$ts_group_sig" | grep -qF "fn: (builder: KelirBuilder<" && printf '%s' "$ts_group_sig" | grep -qF "| void" && printf '%s' "$ts_group_sig" | grep -qF "): KelirBuilder<"; then :; else fail "ts: group() is not a closure taking the builder (want group(fn: (builder: KelirBuilder<...>) => KelirBuilder<...> | void): KelirBuilder<...>)"; fi
     check
     if grep -A2 -E "^    def group\(self," "$PY_FILE" | grep -qF "Callable[[KelirBuilder]"; then :; else fail "py: group() is not a closure taking the builder (want def group(self, fn: Callable[[KelirBuilder], ...])"; fi
 }
@@ -500,8 +514,8 @@ check_guard_shape() {
     check
     if grep -A3 -E "pub fn guard<F>\(self, enabled: bool, configure: F\) -> Self" $RS_BUILDER | grep -q "FnOnce(Self) -> Self" && grep -qF "if enabled { configure(self) } else { self }" $RS_BUILDER; then :; else fail "rust: guard() is not boolean-conditional-only (want guard(enabled: bool, configure) applying the closure only when enabled)"; fi
     check
-    ts_guard_body="$(body_lines "$TS_BUILDER" '^  guard\(' '^  [a-zA-Z_]' || true)"
-    if grep -qF "guard(enabled: boolean," "$TS_BUILDER" && grep -A2 -F "guard(enabled: boolean," "$TS_BUILDER" | grep -qF "(builder: this)" && printf '%s' "$ts_guard_body" | grep -qE "if \(!?enabled\)"; then :; else fail "ts: guard() is not boolean-conditional-only (want guard(enabled: boolean, fn: (builder: this) => ...) applying the closure only when enabled)"; fi
+    ts_guard_sig="$(body_lines "$TS_BUILDER" '^  guard\(' '^  forkWith\(' || true)"
+    if printf '%s' "$ts_guard_sig" | grep -qF "enabled: boolean," && printf '%s' "$ts_guard_sig" | grep -qF "fn: (builder: KelirBuilder<" && printf '%s' "$ts_guard_sig" | grep -qF "| void" && printf '%s' "$ts_guard_sig" | grep -qE "if \(!?enabled\)"; then :; else fail "ts: guard() is not boolean-conditional-only (want guard(enabled: boolean, fn: (builder: KelirBuilder<...>) => KelirBuilder<...> | void) applying the closure only when enabled)"; fi
     check
     py_guard_body="$(body_lines "$PY_FILE" '^    def guard\(' '^    def ' || true)"
     if grep -A2 -E "^    def guard\(self, enabled: bool," "$PY_FILE" | grep -qF "Callable[[KelirBuilder]" && printf '%s' "$py_guard_body" | grep -qE "if (not )?enabled:"; then :; else fail "py: guard() is not boolean-conditional-only (want def guard(self, enabled: bool, fn: Callable[[KelirBuilder], ...]) applying the closure only when enabled)"; fi
@@ -563,7 +577,7 @@ check_plugin_mount_alias() {
     ts_mount_body="$(body_lines "$TS_BUILDER" '^  use<' '^  private checkedTrapContext' || true)"
     if printf '%s' "$ts_mount_body" | grep -q "typeof plugin" && printf '%s' "$ts_mount_body" | grep -qE "['\"]string['\"]" && printf '%s' "$ts_mount_body" | grep -qF "throw new EConfig"; then :; else fail "ts: .use()/.plugin() does not reject a string argument"; fi
     check
-    py_mount_region="$(body_lines "$PY_FILE" '^class _PluginMount:' '^class KelirBuilder:' || true)"
+    py_mount_region="$(body_lines "$PY_FILE" '^class _PluginMount:' '^class KelirBuilder[:(]' || true)"
     py_plugin_body="$(body_lines "$PY_FILE" '^    def plugin\(' '^    def ' || true)"
     if printf '%s\n%s' "$py_mount_region" "$py_plugin_body" | grep -qE "(obj|self|builder|host)\.use\("; then :; else fail "py: instance .plugin() does not mount via .use()"; fi
     check

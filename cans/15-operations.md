@@ -145,21 +145,27 @@
       - excluded from `just check-examples` (scripts/check-examples.sh
       - globs examples/*.rs, *.py non-recursively, so a subdirectory is
       - naturally out of the gate)
+      - Quarantined now: serverless-webhook, db-backed-runtime,
+      - multi-vm-swarm in Rust and TypeScript; the Python files follow
+      - with the Python track
+      - A coverage-named file in deferred/ still satisfies coverage;
+      - the canonical check accepts exactly one home per file, top
+      - level or deferred/: see: scripts/check-examples-canonical.sh
     - examples/ (top level) compiles in all three languages or it is not in
       - examples/ — a whole-fiction example lives in a subdirectory instead
     - No path filter: an SDK change anywhere can break an example
     - Local mirror: `just check-examples`, also in `just check-all`
   - Examples run
     - Job: examples-run
-    - Runs `just check-examples-run`: the nine patched examples execute as
+    - Runs `just check-examples-run`: the six examples execute as
       - tests in all three languages (Rust `cargo run --bin` in the same
       - throwaway crate check-examples builds; Python executes each file;
       - TypeScript runs node over the compiled examples). The work-order
-      - spells the cargo-example form with underscores (serverless_webhook);
-      - files use hyphens (serverless-webhook.rs)
+      - spells the cargo-example form with underscores (hook_matrix_full);
+      - files use hyphens (hook-matrix-full.rs)
     - Tier: hardware tier required for git-gate and hook-matrix-full
       - (skipped with a notice when /dev/kvm is absent, never a fake pass);
-      - emulated Class 2 allowed for the other seven
+      - emulated Class 2 allowed for the other four
     - Outcomes are PASS, RUNNING (still alive at the timeout: serve-forever
       - examples, unasserted, never counted as PASS), SKIP, COMPILE-GAP
       - (a WS-A..E surface is missing), FAIL, BLOCKED (toolchain missing)
@@ -410,6 +416,31 @@
       - Divergence in typestate encoding is allowed: Rust and TS may express a
         - constraint at compile time that Python expresses at boot(); the
         - behavioral outcome in vectors.json is what the gate asserts
+    - Builder chain
+      - Job: cans-check, step Builder chain AST gate
+      - Runs `just check-builder-chain`: scripts/check-builder-chain-ast.py
+      - scans cans/artifacts/examples/ non-recursively, so deferred/ is
+      - excluded by design; the quarantined examples are not chain-gated
+      - Fails on a mutable builder binding, a builder binding reassigned
+      - or continued after construction, a verb call on a bound builder
+      - as its own statement, a deleted flat verb outside its scope
+      - closure, a BasePlugin subclass or import, a
+      - kelir.plugins.plugin_ alias import, a lifecycle_mut call, a
+      - fallible chain verb other than seal, or a @ts-expect-error
+      - directive in a .ts example
+      - Verb set: see: artifacts/config/builder-verbs.yaml
+      - Scope home: see: 02-plugin-model.md#Nested-scopes
+      - Local mirror: `just check-builder-chain`
+    - Negative suites
+      - Job: examples-compile, step Negative suites
+      - Runs `just check-negative-suites`: the compile-fail invariants
+      - hold in all three SDKs — scope bleeding, post-seal mutation, and
+      - host verbs on a plugin-mode builder
+      - Rust: cargo test -p kelir --test compile_fail_suite
+      - TypeScript: pnpm --filter @kelir/core run test:compile-fail
+      - Python: pytest packages/py/tests/test_compile_fail.py, landing
+      - with the Python track
+      - Local mirror: `just check-negative-suites`
     - Chain parity
       - vectors.json must encode the same trap/pre/post/hook chain for each SDK
       - Each SDK executes that identical chain; CI diffs the observed

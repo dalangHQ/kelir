@@ -64,193 +64,209 @@ function maskTokens(window: string): string {
 
 const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
   // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-  .onNetOutbound((frame) => {
-    const text = Buffer.from(frame).toString("latin1");
-    if (text.includes(DENY_MARKER)) {
-      return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
-    }
-    return FilterAction.Forward;
-  })
-  .onNetInbound((_frame) => {
-    hookState.netInbound += 1;
-    return FilterAction.Forward;
-  })
-  .onFsSetattr((_path, _mode, _size) => Verdict.Pass)
-  .onFsSymlink((_target, _link) => Verdict.Pass)
-  .onFsMkdir((_path, _mode) => Verdict.Pass)
-  .onFsReaddir((_path, _entries) => FilterAction.Forward)
-  .onFsReadlink((_path) => Verdict.Pass)
+  .net((n) =>
+    n
+      .onNetOutbound((frame) => {
+        const text = Buffer.from(frame).toString("latin1");
+        if (text.includes(DENY_MARKER)) {
+          return FilterAction.Suspend({ until: SuspendUntil.deadline(0) });
+        }
+        return FilterAction.Forward;
+      })
+      .onNetInbound((_frame) => {
+        hookState.netInbound += 1;
+        return FilterAction.Forward;
+      }),
+  )
   // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
   // see: cans/02-plugin-model.md#FsInodeAttr-carries-full-mode,-uid,-gid,-size,-content
-  .onFsLookup((path) => {
-    // see: cans/02-plugin-model.md#Unified-verdict
-    // Errno is the closed enum; PathTraversal maps to EPERM in the driver.
-    if (escapesWorkspace(path)) {
-      return Verdict.Drop(Errno.PATH_TRAVERSAL,
-                           "lookup escapes the /workspace root");
-    }
-    if (path !== IDENTITY_PATH) return Verdict.Pass;
-    return Verdict.Patch({
-      mode: 0o400, uid: 0, gid: 0,
-      size: IDENTITY_CONTENT.length,
-      content: IDENTITY_CONTENT,
-    });
-  })
-  // see: cans/05-storage-plane.md#In-flight-read-masking
-  .onFsRead((_path, buffer) => {
-    const window = hookState.tail + Buffer.from(buffer).toString("latin1");
-    const masked = maskTokens(window);
-    const chunk = masked.slice(masked.length - buffer.length);
-    hookState.tail = masked.slice(-CARRYOVER);
-    return Buffer.from(chunk, "latin1");
-  })
-  .onFsWrite((_path, _buffer, _pid, _ctx) => {
-    return FilterAction.Forward;
-  })
-  .onFsLock((_path, _flockCmd, _flockType, _pid) => {
-    hookState.fsLocks += 1;
-    return Verdict.Pass;
-  })
-  .onFsUnlink((path, _ctx) => {
-    hookState.fsUnlinks += 1;
-    if (path.endsWith(".protected_source")) {
-      return Verdict.Suspend({ until: SuspendUntil.approval });
-    }
-    if (path.endsWith(".trashable")) {
-      const filename = path.split("/").pop();
-      return Verdict.Patch(PatchPayload.FsPathRedirect({
-        targetPath: `/workspace/.agentsh_trash/${filename}`,
-      }));
-    }
-    return Verdict.Pass;
-  })
-  .onFsRename((_src, dst, _ctx) => {
-    hookState.fsRenames += 1;
-    if (escapesWorkspace(dst)) {
-      return Verdict.Drop(Errno.PATH_TRAVERSAL, "rename escapes /workspace");
-    }
-    return Verdict.Pass;
-  })
-  // see: cans/04-terminal-plane.md#1.-ANSI-strip:-drops-OSC-52-(clipboard-hijack)-and-strips-OSC-0/1/2-(title-spoof)
-  .onConsoleInput(async (_port, bytes) => {
-    const text = Buffer.from(bytes).toString("latin1");
-    const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
-    return Buffer.from(stripped, "latin1");
-  })
-  // see: cans/04-terminal-plane.md#4.-Interposer-dispatch:-fires-ConsoleInterposer::on-console-output-for-in-place-masking
-  .onConsoleOutput(async (_port, chunk) => {
-    const window = hookState.consoleTail + Buffer.from(chunk).toString("latin1");
-    const masked = maskTokens(window);
-    const out = masked.slice(masked.length - chunk.length);
-    hookState.consoleTail = masked.slice(-CARRYOVER);
-    return Buffer.from(out, "latin1");
-  })
-  .onExecStdout(async (_pid, _execId, chunk) => {
-    hookState.execStdout += 1;
-    const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
-    return Buffer.from(masked, "latin1");
-  })
-  .onExecStderr(async (_pid, _execId, chunk) => {
-    hookState.execStderr += 1;
-    const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
-    return Buffer.from(masked, "latin1");
-  })
-  .onExecStdin((_pid, _execId, chunk) => chunk)
-  .onHostLsmExec((_path, _pid) => {
-    return Verdict.Pass;
-  })
-  .onHostPressure((_level) => {
-    return Verdict.Pass;
-  })
-  .onHostKeyringAccess((_key) => {
-    return Verdict.Pass;
-  })
-  .onHostPreempt((_ctx) => {
-    hookState.hostPreempts += 1;
-  })
-  .onHostContainmentBreach((_pid, _path, _kind) => {})
-  .onVmInit((_ctx) => {
-    hookState.vmInits += 1;
-  })
-  .onVmReady((_ctx) => {
-    hookState.vmReadys += 1;
-  })
-  .onVmShutdown((_ctx) => {
-    hookState.vmShutdowns += 1;
-  })
-  .onPreCommit((_ctx) => {
-    hookState.preCommits += 1;
-  })
-  .onPostCommit((_ctx, _committed) => {
-    hookState.postCommits += 1;
-  })
-  // see: cans/08-lifecycle.md#Heartbeat
-  .onHeartbeat(async (event) => {
-    if (hookState.lastUptimeMs === event.uptimeMs && hookState.heartbeats > 0) {
-      hookState.stalls += 1;
-    }
-    hookState.lastUptimeMs = event.uptimeMs;
-    hookState.heartbeats += 1;
-  })
-  .onWatchdog(async (_event): Promise<WatchdogVerdict> => {
-    return "execute-default";
-  })
-  .onMemoryPressure((_availableMb, _totalMb) => {
-    hookState.memoryPressures += 1;
-  })
-  // see: cans/02-plugin-model.md#TrapInterposer:-trap,-process-exit,-pressure,-heartbeat,-port,-signal
-  .onTrap(async (event, _c) => {
-    hookState.traps += 1;
-    if (event.treeDepth > 16) {
-      return Verdict.Abort({ reason: "fork bomb mitigation: max depth exceeded" });
-    }
-    return Verdict.Pass;
-  })
-  .onProcessExit(async (event) => {
-    hookState.exits += 1;
-    if (event.exitCode !== 0) hookState.failures += 1;
-  })
-  .onSignal((_sender, _target, _sig) => Verdict.Pass)
-  .onFork((_parent, _child) => Verdict.Pass);
-
-const runtime = kelir({
-  vcpus: 2, memoryMb: 2048, driver: "auto",
-  kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
-  rootfsErofs: "./fixtures/rootfs-hooks.erofs",
-  tscLocked: true, enableWatchdog: true,
-}).use(hookMatrixFullPlugin)
-  // see: cans/02-plugin-model.md#TrapFilter-predicates
-  // The predicate chain: cwd/env/uid/argv_regex constraints live in the
-  // filter, not in the handler body (AND-ed predicates; a handler-body
-  // guard duplicating them is redundant and should not be written).
-  .trap(
-    TrapFilter.binary("git")
-      .withArg("push")
-      .withCwd("/workspace/**")
-      .withEnv("CI", "1")
-      .withUid(0)
-      .argvMatches("^--force$"),
-    () => Verdict.Drop(Errno.EPOLICY, "forced push denied by policy"),
+  .fs((f) =>
+    f
+      .onFsLookup((path) => {
+        // see: cans/02-plugin-model.md#Unified-verdict
+        // Errno is the closed enum; PathTraversal maps to EPERM in the driver.
+        if (escapesWorkspace(path)) {
+          return Verdict.Drop(Errno.PATH_TRAVERSAL,
+                               "lookup escapes the /workspace root");
+        }
+        if (path !== IDENTITY_PATH) return Verdict.Pass;
+        return Verdict.Patch({
+          mode: 0o400, uid: 0, gid: 0,
+          size: IDENTITY_CONTENT.length,
+          content: IDENTITY_CONTENT,
+        });
+      })
+      // see: cans/05-storage-plane.md#In-flight-read-masking
+      .onFsRead((_path, buffer) => {
+        const window = hookState.tail + Buffer.from(buffer).toString("latin1");
+        const masked = maskTokens(window);
+        const chunk = masked.slice(masked.length - buffer.length);
+        hookState.tail = masked.slice(-CARRYOVER);
+        return Buffer.from(chunk, "latin1");
+      })
+      .onFsWrite((_path, _buffer, _pid, _ctx) => FilterAction.Forward)
+      .onFsLock((_path, _flockCmd, _flockType, _pid) => {
+        hookState.fsLocks += 1;
+        return Verdict.Pass;
+      })
+      .onFsUnlink((path, _ctx) => {
+        hookState.fsUnlinks += 1;
+        if (path.endsWith(".protected_source")) {
+          return Verdict.Suspend({ until: SuspendUntil.approval });
+        }
+        if (path.endsWith(".trashable")) {
+          const filename = path.split("/").pop();
+          return Verdict.Patch(PatchPayload.FsPathRedirect({
+            targetPath: `/workspace/.agentsh_trash/${filename}`,
+          }));
+        }
+        return Verdict.Pass;
+      })
+      .onFsRename((_src, dst, _ctx) => {
+        hookState.fsRenames += 1;
+        if (escapesWorkspace(dst)) {
+          return Verdict.Drop(Errno.PATH_TRAVERSAL, "rename escapes /workspace");
+        }
+        return Verdict.Pass;
+      })
+      .onFsSetattr((_path, _mode, _size) => Verdict.Pass)
+      .onFsSymlink((_target, _link) => Verdict.Pass)
+      .onFsMkdir((_path, _mode) => Verdict.Pass)
+      .onFsReaddir((_path, _entries) => FilterAction.Forward)
+      .onFsReadlink((_path) => Verdict.Pass),
   )
-  // see: cans/02-plugin-model.md#Chain-decisions
-  // on_trap_deny moves into .deny((d) => d.onTrapDeny(...)); the verdict
-  // parameter is the DENYING Action (the unified enum), so break-glass
-  // can say "denied by X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
-  // see: cans/10-attestation.md#Hook-trace
-  // hook_trace read: every hook that fired for the trapped process
-  // carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
-  // ordinal); diagnostic only, excluded from Merkle roots. The
-  // comment-pinned HookSpan case (the hook-trace-coverage vector this
-  // example stands in for; vectors.json cannot express a hook-trace
-  // expectation today) asserts: { plugin: "hook-matrix-full",
-  // ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
-  .deny((d) =>
-    d.onTrapDeny((_event: unknown, _verdict: Verdict, _session: unknown) => {}),
+  // see: cans/04-terminal-plane.md#1.-ANSI-strip:-drops-OSC-52-(clipboard-hijack)-and-strips-OSC-0/1/2-(title-spoof)
+  .console((c) =>
+    c
+      .onConsoleInput(async (_port, bytes) => {
+        const text = Buffer.from(bytes).toString("latin1");
+        const stripped = text.replace(/\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)?/g, "");
+        return Buffer.from(stripped, "latin1");
+      })
+      // see: cans/04-terminal-plane.md#4.-Interposer-dispatch:-fires-ConsoleInterposer::on-console-output-for-in-place-masking
+      .onConsoleOutput(async (_port, chunk) => {
+        const window = hookState.consoleTail + Buffer.from(chunk).toString("latin1");
+        const masked = maskTokens(window);
+        const out = masked.slice(masked.length - chunk.length);
+        hookState.consoleTail = masked.slice(-CARRYOVER);
+        return Buffer.from(out, "latin1");
+      }),
+  )
+  .exec((e) =>
+    e
+      .onExecStdout(async (_pid, _execId, chunk) => {
+        hookState.execStdout += 1;
+        const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
+        return Buffer.from(masked, "latin1");
+      })
+      .onExecStderr(async (_pid, _execId, chunk) => {
+        hookState.execStderr += 1;
+        const masked = maskTokens(Buffer.from(chunk).toString("latin1"));
+        return Buffer.from(masked, "latin1");
+      })
+      .onExecStdin((_pid, _execId, chunk) => chunk),
+  )
+  .host((h) =>
+    h
+      .onHostLsmExec((_path, _pid) => Verdict.Pass)
+      .onHostPressure((_level) => Verdict.Pass)
+      .onHostKeyringAccess((_key) => Verdict.Pass)
+      .onHostPreempt((_ctx) => {
+        hookState.hostPreempts += 1;
+      })
+      .onHostContainmentBreach((_pid, _path, _kind) => {}),
+  )
+  .lifecycle((l) =>
+    l
+      .onVmInit((_ctx) => {
+        hookState.vmInits += 1;
+      })
+      .onVmReady((_ctx) => {
+        hookState.vmReadys += 1;
+      })
+      .onVmShutdown((_ctx) => {
+        hookState.vmShutdowns += 1;
+      })
+      .onPreCommit((_ctx) => {
+        hookState.preCommits += 1;
+      })
+      .onPostCommit((_ctx, _committed) => {
+        hookState.postCommits += 1;
+      }),
+  )
+  // see: cans/08-lifecycle.md#Heartbeat
+  .telemetry((tm) =>
+    tm
+      .onHeartbeat(async (event) => {
+        if (hookState.lastUptimeMs === event.uptimeMs && hookState.heartbeats > 0) {
+          hookState.stalls += 1;
+        }
+        hookState.lastUptimeMs = event.uptimeMs;
+        hookState.heartbeats += 1;
+      })
+      .onWatchdog(async (_event): Promise<WatchdogVerdict> => {
+        return "execute-default";
+      })
+      .onMemoryPressure((_availableMb, _totalMb) => {
+        hookState.memoryPressures += 1;
+      }),
+  )
+  // see: cans/02-plugin-model.md#TrapInterposer:-trap,-process-exit,-pressure,-heartbeat,-port,-signal
+  .trap((t) =>
+    t
+      .onTrap(async (event, _c) => {
+        hookState.traps += 1;
+        if (event.treeDepth > 16) {
+          return Verdict.Abort({ reason: "fork bomb mitigation: max depth exceeded" });
+        }
+        return Verdict.Pass;
+      })
+      .onProcessExit(async (event) => {
+        hookState.exits += 1;
+        if (event.exitCode !== 0) hookState.failures += 1;
+      })
+      .onSignal((_sender, _target, _sig) => Verdict.Pass)
+      .onFork((_parent, _child) => Verdict.Pass),
   );
 
 async function main() {
-  runtime.seal();
-  const session: Session = await runtime.boot();
+  const session: Session = await kelir({
+    vcpus: 2, memoryMb: 2048, driver: "auto",
+    kernel: `./fixtures/vmlinux-6.6-${process.arch}-kelir`,
+    rootfsErofs: "./fixtures/rootfs-hooks.erofs",
+    tscLocked: true, enableWatchdog: true,
+  })
+    .use(hookMatrixFullPlugin)
+    // see: cans/02-plugin-model.md#TrapFilter-predicates
+    // The predicate chain: cwd/env/uid/argv_regex constraints live in the
+    // filter, not in the handler body (AND-ed predicates; a handler-body
+    // guard duplicating them is redundant and should not be written).
+    .trap(
+      TrapFilter.binary("git")
+        .withArg("push")
+        .withCwd("/workspace/**")
+        .withEnv("CI", "1")
+        .withUid(0)
+        .argvMatches("^--force$"),
+      () => Verdict.Drop(Errno.EPOLICY, "forced push denied by policy"),
+    )
+    // see: cans/02-plugin-model.md#Chain-decisions
+    // on_trap_deny moves into .deny((d) => d.onTrapDeny(...)); the verdict
+    // parameter is the DENYING Action (the unified enum), so break-glass
+    // can say "denied by X for Y, quarantine" — see: 03-sdk-architecture.md#Session-surfaces.
+    // see: cans/10-attestation.md#Hook-trace
+    // hook_trace read: every hook that fired for the trapped process
+    // carries a HookSpan (plugin, ring, verdict_kind, duration_ns,
+    // ordinal); diagnostic only, excluded from Merkle roots. The
+    // comment-pinned HookSpan case (the hook-trace-coverage vector this
+    // example stands in for; vectors.json cannot express a hook-trace
+    // expectation today) asserts: { plugin: "hook-matrix-full",
+    // ring: Trap, verdict_kind: Pass, duration_ns: 0, ordinal: 0 }.
+    .deny((d) =>
+      d.onTrapDeny((_event: unknown, _verdict: Verdict, _session: unknown) => {}),
+    )
+    .seal()
+    .boot();
   console.log(`[kelir] driver=${session.driverName} boot=${session.bootMs}ms`);
 
   const probe = await session.spawn("cat", [IDENTITY_PATH],

@@ -11,7 +11,7 @@ import kelir
 from kelir import BaseModel, Field, HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
 from kelir.plugins.db_proxy import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials, PgSchemaRewrite,
-    PgWireRewrite, SqliteOverVsock,
+    PgWireRewrite, SqliteOverVsock, net_l7_sql,
 )
 from kelir.plugins.ledger import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
@@ -46,7 +46,7 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
     async def post_migrate(c: HandlerContext) -> PostExecAction:
         receipt = await c.receipt()
         # see: cans/10-attestation.md#Typed-extensions
-        if receipt.net_l7_sql() is None:
+        if net_l7_sql(receipt) is None:
             return PostExecAction.rollback_and_halt()
         return PostExecAction.proceed()
 
@@ -109,9 +109,12 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             flush_fuse_before_commit=True,
         )))
         # see: cans/plugins/db-proxy.md#Plugin-db-proxy
+        .params(lambda p: p.model(MigrateParams))
         .trap(TrapFilter.binary("migrate"), pre=pre_migrate, post=post_migrate)
-        .on_pre_commit(_pre_commit)
-        .on_post_commit(_post_commit)
+        .lifecycle(
+            lambda l: l.on_pre_commit(_pre_commit)
+            .on_post_commit(_post_commit)
+        )
         .seal()
     )
 
@@ -126,7 +129,9 @@ async def main() -> None:
             await session.vm.import_snapshot(f.read())
 
         # see: cans/plugins/transaction.md#Temporal-savepoints
-        async with session.cap("transaction").scope(
+        transaction = session.cap("transaction")
+        assert transaction is not None, "transaction capability not mounted"
+        async with transaction.scope(
             "migrate-42",
             paths=["/workspace/migrations"],
             schemas=["migrate_schema"],
@@ -153,8 +158,8 @@ async def main() -> None:
         assert ledger is not None  # ledger is mounted above
         # see: cans/10-attestation.md#Execution-receipts
         final = await ledger.finalize(
-            include_merkle_root=True,
             include_delta=await ledger.get_causal_delta_from_parent(),
+            include_merkle_root=True,
         )
         print(f"[kelir] merkle={final.merkle_root} jws={final.signed_jws[:64]}…")
 

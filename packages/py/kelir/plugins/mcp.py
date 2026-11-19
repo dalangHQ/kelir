@@ -1,3 +1,39 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
-from kelir.plugins.plugin_mcp import *  # noqa: F401,F403
-from kelir.plugins.plugin_mcp import __all__ as __all__  # noqa: F401
+# see: cans/plugins/mcp.md#Plugin-mcp
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from kelir.plugin_model import BasePlugin
+
+__all__ = [
+    "McpConfig",
+    "McpPlugin",
+    "mcp",
+    "mcp_builder",
+]
+
+
+@dataclass
+class McpConfig:
+    max_frame_bytes: int = 16_777_216
+
+
+class McpPlugin(BasePlugin[None, None]):
+    name = "mcp"
+
+    def __init__(self, config: McpConfig | None = None) -> None:
+        self.config = config if config is not None else McpConfig()
+
+
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
+
+
+def mcp_builder(config: McpConfig | None = None) -> KelirBuilder:
+    cfg = config if config is not None else McpConfig()
+    return KelirBuilder.plugin("mcp").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def mcp(config: McpConfig | None = None) -> KelirBuilder:
+    return mcp_builder(config)

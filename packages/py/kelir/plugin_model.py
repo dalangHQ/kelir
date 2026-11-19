@@ -205,16 +205,22 @@ class BasePlugin(Generic[CtxT, ParamsT]):
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     def to_builder(self) -> KelirBuilder:
         from kelir import KelirBuilder
+        from kelir.kelir_builder_scope import _SCOPE_VERBS
 
         builder = KelirBuilder.plugin(self.name or type(self).__name__)
         for required in self.requires:
             builder.require(required)
+        scope_for_verb = {
+            verb: scope for scope, verbs in _SCOPE_VERBS.items() for verb in verbs
+        }
         for method_name in HOOK_RINGS:
             overridden = getattr(type(self), method_name, None)
             base = getattr(BasePlugin, method_name, None)
             if overridden is None or overridden is base:
                 continue
-            getattr(builder, method_name)(getattr(self, method_name))
+            entry = getattr(builder, scope_for_verb[method_name])
+            handler = getattr(self, method_name)
+            entry(lambda s, _m=method_name, _h=handler: getattr(s, _m)(_h))
         return builder
 
     async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:

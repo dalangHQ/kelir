@@ -60,6 +60,7 @@ all-plugins = [
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 plugin-vault = { path = "../kelir-plugins/plugin-vault" }
+trybuild = "1.0.104"
 
 [lints]
 workspace = true

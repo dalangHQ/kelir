@@ -404,8 +404,8 @@
     - see: artifacts/examples/autonomous-swe-agent.rs
     - see: artifacts/examples/autonomous-swe-agent.ts
     - see: artifacts/examples/autonomous-swe-agent.py
-    - see: artifacts/examples/multi-vm-swarm.rs
-    - see: artifacts/examples/serverless-webhook.ts
+    - see: artifacts/examples/deferred/multi-vm-swarm.rs
+    - see: artifacts/examples/deferred/serverless-webhook.ts
     - see: artifacts/examples/db-backed-runtime.py
     - Position: integration examples, not "the" example
       - Examples are canonical in cans/artifacts/examples
@@ -486,7 +486,7 @@
       - boot() on Sealed is the single terminal; boot() on Unsealed does not exist
       - Host-only: storage, terminal, wire, detached
       - Host-only: fast_boot, dax_window, seal, plugin, plugin_instance
-      - Host-only: trap_async, post_exec, lifecycle_mut
+      - Host-only: trap_async, post_exec
       - Host-only, scope-reached: params (.params), on_trap_deny (.deny)
       - Host-only, scope-reached: register_custom_action (.actions), register_stream_kind (.streams)
       - lock_broker folds into .fs(|f| f.config(…)); the standalone verb deletes

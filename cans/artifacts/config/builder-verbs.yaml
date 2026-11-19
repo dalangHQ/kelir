@@ -725,21 +725,6 @@ verbs:
       Flat form of the scope `requires` sub-node; writes the same Deps
       registry. Included so the gate sees both spellings resolve.
 
-  - name: on
-    rust: on
-    typescript: on
-    python: on
-    placement: flat
-    scope: lifecycle
-    returns: builder
-    args: "on(event: LifecycleEvent, handler)"
-    notes: >-
-      Legacy flat alias for the lifecycle scope verbs (on(VmReady, …) ==
-      .lifecycle(|s| s.on_vm_ready(…).end())). Appears in the illustrative
-      rust-handle-injection.rs excerpt; delegates to the lifecycle scope
-      so the scope-only rule holds. Flagged for A6 confirmation — if the
-      deletion lands, drop this entry and the excerpt call site.
-
   - name: seal
     rust: seal
     typescript: seal

@@ -29,7 +29,7 @@ export interface MountRecord {
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, any>
+export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, any, any, infer Deps, any>
   ? [Deps] extends [never]
     ? unknown
     : string extends Deps
@@ -41,7 +41,7 @@ export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, 
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
 export type PluginContextOf<P> =
-  P extends KelirBuilder<infer Name, infer C, any, any>
+  P extends KelirBuilder<any, any, infer Name, infer C, any, any>
     ? (C extends Record<string, unknown>
         ? (string extends keyof C
             ? { readonly [K in Name]: C }

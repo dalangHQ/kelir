@@ -154,8 +154,8 @@ kelir/
 │           │   ├── pty.py             # Python bindings for the pty plugin
 │           │   ├── vfs.py             # Python bindings for the vfs plugin
 │           │   ├── wire.py            # Python bindings for the wire plugin
-│           │   ├── plugin_chaos.py    # Python bindings for the chaos plugin
-│           │   └── plugin_ledger.py   # Python bindings for the ledger plugin
+│           │   ├── chaos.py           # Python bindings for the chaos plugin
+│           │   └── ledger.py          # Python bindings for the ledger plugin
 │           └── compat/
 │               └── compat_e2b.py      # Drop-in E2B Sandbox replacement class
 │

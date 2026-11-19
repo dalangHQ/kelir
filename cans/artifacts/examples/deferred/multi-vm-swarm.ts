@@ -3,45 +3,13 @@
 // see: cans/plugins/supply-chain.md#Plugin-supply-chain
 // see: cans/plugins/ledger.md#Plugin-ledger
 
-import { kelir, LifecycleEvent, VetoEvent,
+import { kelir, VetoEvent,
          type LedgerHandle, type MeshHandle, type Session } from "@kelir/core";
 import { mesh, supplyChain, ledger } from "@kelir/core";
 
 const SWARM_REGION = "swarm-coordination";
 
 let cacheReady = false;
-
-const runtime = kelir({
-  vcpus: 4, memoryMb: 8192, driver: "auto",
-  kernel: "./fixtures/vmlinux-6.6-aarch64-kelir",
-  rootfsErofs: "./fixtures/rootfs-swarm.erofs",
-  tscLocked: true, enableWatchdog: true,
-})
-  // see: cans/plugins/mesh.md#Plugin-mesh
-  .use(mesh({
-    peerIdentity: { trustDomain: "kelir.local", workloadPrefix: "swarm/worker" },
-    mtls: true,
-    traceparent: "inject-and-validate",
-    listeners: [
-      { port: 7001, service: "shard-exchange" },
-      { port: 7002, service: "winner-announce" },
-    ],
-  }))
-  // see: cans/plugins/supply-chain.md#Plugin-supply-chain
-  .use(supplyChain({
-    wxJit: {},
-    packageGuard: { managers: ["npm", "pip", "cargo"] },
-  }))
-  // see: cans/plugins/ledger.md#Plugin-ledger
-  .use(ledger({
-    storePath: ".kelir/swarm-audit.merkle.db",
-    merkleChain: true,
-    suppressLocalDb: false,
-    receipts: { includeSyscallCount: false },
-  }))
-  .on(LifecycleEvent.VmInit, async (lifecycle) => {
-    lifecycle.registerVeto(VetoEvent.Fork, () => cacheReady);
-  });
 
 async function runShard(child: Session, shardId: number, total: number) {
   await child.checkpoint.create(`swarm-shard-${shardId}/${total}`);
@@ -56,8 +24,46 @@ async function runShard(child: Session, shardId: number, total: number) {
 }
 
 async function main() {
-  runtime.seal();
-  const session = await runtime.boot();
+  const session = await kelir({
+    vcpus: 4, memoryMb: 8192, driver: "auto",
+    kernel: "./fixtures/vmlinux-6.6-aarch64-kelir",
+    rootfsErofs: "./fixtures/rootfs-swarm.erofs",
+    tscLocked: true, enableWatchdog: true,
+  })
+    // see: cans/plugins/mesh.md#Plugin-mesh
+    .use(mesh({
+      peerIdentity: { trustDomain: "kelir.local", workloadPrefix: "swarm/worker" },
+      mtls: true,
+      traceparent: "inject-and-validate",
+      listeners: [
+        { port: 7001, service: "shard-exchange" },
+        { port: 7002, service: "winner-announce" },
+      ],
+    }))
+    // see: cans/plugins/supply-chain.md#Plugin-supply-chain
+    .use(supplyChain({
+      wxJit: {},
+      packageGuard: { managers: ["npm", "pip", "cargo"] },
+    }))
+    // see: cans/plugins/ledger.md#Plugin-ledger
+    .use(ledger({
+      storePath: ".kelir/swarm-audit.merkle.db",
+      merkleChain: true,
+      suppressLocalDb: false,
+      receipts: { includeSyscallCount: false },
+    }))
+    .lifecycle((l) =>
+      l.onVmInit(async (lifecycle) => {
+        lifecycle.registerVeto(VetoEvent.Fork, () => cacheReady);
+      }),
+    )
+    .fs((f) =>
+      f.config({
+        lockBroker: { globs: ["/workspace/**"], nonBlocking: true },
+      }),
+    )
+    .seal()
+    .boot();
   try {
     await session.terminal.resize(120, 40);
     await session.checkpoint.create("swarm-cache-ready");

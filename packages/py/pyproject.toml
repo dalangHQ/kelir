@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "mypy>=1.13",
+    "pyright>=1.1.414",
     "pytest>=8"
 ]
 

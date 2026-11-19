@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -16,8 +16,8 @@ from kelir.plugin_model import (
     hook_descriptors,
 )
 from kelir.plugin_fusion import FusedTrampoline, RingEvent
-from kelir.plugins.plugin_chaos import ChaosConfig, chaos_builder
-from kelir.plugins.plugin_ledger import LedgerPlugin, ledger_builder
+from kelir.plugins.chaos import ChaosConfig, chaos_builder
+from kelir.plugins.ledger import LedgerPlugin, ledger_builder
 from kelir.sdk_errors import EConfig
 
 
@@ -52,7 +52,7 @@ def _chaos_fs_write(
 
 
 def test_builder_chain_mounts_plugin() -> None:
-    plugin = KelirBuilder.plugin("x").require(LedgerPlugin).on_trap(_trap)
+    plugin = KelirBuilder.plugin("x").require(LedgerPlugin).trap(lambda t: t.on_trap(_trap))
     assert plugin.name == "x"
     assert plugin.requires == ("ledger",)
     assert plugin.enabled is True
@@ -83,11 +83,11 @@ def test_require_satisfied_out_of_order_mount_passes_at_seal() -> None:
 
 
 def test_duplicate_mount_raises_econfig_at_seal() -> None:
-    plugin = KelirBuilder.plugin("x").on_trap(_trap)
+    plugin = KelirBuilder.plugin("x").trap(lambda t: t.on_trap(_trap))
     builder = KelirBuilder().use(plugin).use(plugin)
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
         builder.seal()
-    other = KelirBuilder.plugin("x").on_trap(_trap)
+    other = KelirBuilder.plugin("x").trap(lambda t: t.on_trap(_trap))
     twin = KelirBuilder().use(KelirBuilder.plugin("x")).use(other)
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
         twin.seal()
@@ -113,10 +113,10 @@ def test_require_satisfied_passes_prerequisite_check() -> None:
 
 
 def test_verb_after_mount_raises_econfig() -> None:
-    plugin = KelirBuilder.plugin("x").on_trap(_trap)
+    plugin = KelirBuilder.plugin("x").trap(lambda t: t.on_trap(_trap))
     KelirBuilder().use(plugin)
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
-        plugin.on_trap(_trap)
+        plugin.fs(lambda f: f.on_fs_lookup(lambda path: Verdict.pass_()))
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
         plugin.trap(lambda t: t.on_trap(_trap))
     with pytest.raises(EConfig, match=r"plugin already mounted: x"):
@@ -137,64 +137,70 @@ def test_host_only_verbs_raise_at_call_site() -> None:
     async def _quarantine(payload: dict[str, Any]) -> None:
         return None
 
-    plugin = KelirBuilder.plugin("x")
+    plugin_untyped: KelirBuilder = KelirBuilder.plugin("x")
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.detached\(\) called on plugin-mode builder",
     ):
-        plugin.detached(True)
+        plugin_untyped.detached(True)
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.terminal\(\) called on plugin-mode builder",
     ):
-        plugin.terminal(prompt=">")
+        plugin_untyped.terminal(prompt=">")
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.storage\(\) called on plugin-mode builder",
     ):
-        plugin.storage(lock_broker=True)
+        plugin_untyped.storage(lock_broker=True)
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.wire\(\) called on plugin-mode builder",
     ):
-        plugin.wire(sinkhole=None)
+        plugin_untyped.wire(sinkhole=None)
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.params\(\) called on plugin-mode builder",
     ):
-        plugin.params(dict)
+        plugin_untyped.params(cast(Any, dict))
     # see: cans/02-plugin-model.md#Chain-decisions
-    before = len(plugin.hook_descriptors())
-    plugin.trap(TrapFilter.binary("x"), pre=_trap)
-    assert len(plugin.hook_descriptors()) == before + 1
+    before = len(plugin_untyped.hook_descriptors())
+    plugin_untyped.trap(TrapFilter.binary("x"), pre=_trap)
+    assert len(plugin_untyped.hook_descriptors()) == before + 1
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.register_custom_action\(\) called on plugin-mode builder",
     ):
-        plugin.register_custom_action("q", {"type": "object"}, _quarantine)
+        plugin_untyped.actions(
+            lambda a: a.register("q", {"type": "object"}, _quarantine)
+        )
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.register_stream_kind\(\) called on plugin-mode builder",
     ):
-        plugin.register_stream_kind(0x0013, {"type": "object"}, _echo)
+        plugin_untyped.streams(
+            lambda s: s.register(0x0013, {"type": "object"}, _echo)
+        )
     with pytest.raises(
         EConfig,
         match=r"x: host-only verb \.on_trap_deny\(\) called on plugin-mode builder",
     ):
-        plugin.on_trap_deny(lambda event, session: None)
+        plugin_untyped.deny(lambda d: d.on_trap_deny(lambda event, session: None))
 
 
 def test_boot_plugin_mode_raises_econfig() -> None:
-    plugin = KelirBuilder.plugin("x")
+    plugin_untyped: KelirBuilder = KelirBuilder.plugin("x")
     with pytest.raises(
         EConfig, match=r"cannot boot a plugin-mode KelirBuilder"
     ):
-        asyncio.run(plugin.boot())
+        asyncio.run(plugin_untyped.boot())
 
 
 def test_use_host_builder_raises_econfig() -> None:
+    host_untyped: KelirBuilder = KelirBuilder()
+    other_untyped: KelirBuilder = KelirBuilder()
     with pytest.raises(EConfig, match=r"only a plugin-mode KelirBuilder"):
-        KelirBuilder().use(KelirBuilder())
+        host_untyped.use(other_untyped)
 
 
 def test_to_builder_converts_subclass_plugin() -> None:
@@ -217,30 +223,43 @@ def test_to_builder_converts_subclass_plugin() -> None:
 def test_all_24_verbs_resolve() -> None:
     plugin = (
         KelirBuilder.plugin("x")
-        .on_trap(_trap)
-        .on_process_exit(lambda event: None)
-        .on_fs_lookup(lambda path: Verdict.pass_())
-        .on_fs_read(lambda path, data: data)
-        .on_fs_write(lambda path, data, pid, ctx: FilterAction.forward())
-        .on_fs_lock(lambda path, fd, op, pid: Verdict.pass_())
-        .on_net_outbound(lambda frame: FilterAction.forward())
-        .on_net_inbound(lambda frame: FilterAction.forward())
-        .on_console_input(lambda port, data: data)
-        .on_console_output(lambda port, data: data)
-        .on_exec_stdout(lambda pid, exec_id, chunk: chunk)
-        .on_exec_stderr(lambda pid, exec_id, chunk: chunk)
-        .on_host_lsm_exec(lambda path, pid: Verdict.pass_())
-        .on_host_pressure(lambda level: Verdict.pass_())
-        .on_host_keyring_access(lambda key: Verdict.pass_())
-        .on_vm_init(lambda ctx: None)
-        .on_vm_ready(lambda ctx: None)
-        .on_vm_shutdown(lambda ctx: None)
-        .on_pre_commit(lambda ctx: None)
-        .on_post_commit(lambda ctx, committed: None)
-        .on_host_preempt(lambda ctx: None)
-        .on_memory_pressure(lambda used, total: None)
-        .on_heartbeat(lambda tick: None)
-        .on_watchdog(_watchdog)
+        .trap(lambda t: t.on_trap(_trap).on_process_exit(lambda event: None))
+        .fs(
+            lambda f: f.on_fs_lookup(lambda path: Verdict.pass_())
+            .on_fs_read(lambda path, data: data)
+            .on_fs_write(lambda path, data, pid, ctx: FilterAction.forward())
+            .on_fs_lock(lambda path, fd, op, pid: Verdict.pass_())
+        )
+        .net(
+            lambda n: n.on_net_outbound(lambda frame: FilterAction.forward())
+            .on_net_inbound(lambda frame: FilterAction.forward())
+        )
+        .console(
+            lambda c: c.on_console_input(lambda port, data: data)
+            .on_console_output(lambda port, data: data)
+        )
+        .exec(
+            lambda e: e.on_exec_stdout(lambda pid, exec_id, chunk: chunk)
+            .on_exec_stderr(lambda pid, exec_id, chunk: chunk)
+        )
+        .host(
+            lambda h: h.on_host_lsm_exec(lambda path, pid: Verdict.pass_())
+            .on_host_pressure(lambda level: Verdict.pass_())
+            .on_host_keyring_access(lambda key: Verdict.pass_())
+        )
+        .lifecycle(
+            lambda l: l.on_vm_init(lambda ctx: None)
+            .on_vm_ready(lambda ctx: None)
+            .on_vm_shutdown(lambda ctx: None)
+            .on_pre_commit(lambda ctx: None)
+            .on_post_commit(lambda ctx, committed: None)
+        )
+        .host(lambda h: h.on_host_preempt(lambda ctx: None))
+        .telemetry(
+            lambda t: t.on_memory_pressure(lambda used, total: None)
+            .on_heartbeat(lambda tick: None)
+            .on_watchdog(_watchdog)
+        )
     )
     descriptors = hook_descriptors(plugin)
     assert [d.ordinal for d in descriptors] == list(range(24))
@@ -280,7 +299,7 @@ def test_all_24_verbs_resolve() -> None:
 
 
 def test_host_verbs_share_the_24() -> None:
-    host = KelirBuilder().on_trap(_trap).on_vm_ready(lambda ctx: None)
+    host = KelirBuilder().trap(lambda t: t.on_trap(_trap)).lifecycle(lambda l: l.on_vm_ready(lambda ctx: None))
     descriptors = host.hook_descriptors()
     assert [d.ring for d in descriptors] == [RingEvent.TRAP, RingEvent.LIFECYCLE]
     assert descriptors[1].lifecycle_tag == "vm-ready"
@@ -329,47 +348,47 @@ def test_nested_scopes_match_flat_descriptors() -> None:
             .on_watchdog(_watchdog)
         )
     )
-    flat = (
+    scoped = (
         KelirBuilder.plugin("x")
-        .on_trap(_trap)
-        .on_process_exit(lambda event: None)
-        .on_fs_lookup(lambda path: Verdict.pass_())
-        .on_fs_read(lambda path, data: data)
-        .on_fs_write(lambda path, data, pid, ctx: FilterAction.forward())
-        .on_fs_lock(lambda path, fd, op, pid: Verdict.pass_())
-        .on_net_outbound(lambda frame: FilterAction.forward())
-        .on_net_inbound(lambda frame: FilterAction.forward())
-        .on_console_input(lambda port, data: data)
-        .on_console_output(lambda port, data: data)
-        .on_exec_stdout(lambda pid, exec_id, chunk: chunk)
-        .on_exec_stderr(lambda pid, exec_id, chunk: chunk)
-        .on_host_lsm_exec(lambda path, pid: Verdict.pass_())
-        .on_host_pressure(lambda level: Verdict.pass_())
-        .on_host_keyring_access(lambda key: Verdict.pass_())
-        .on_host_preempt(lambda ctx: None)
-        .on_vm_init(lambda ctx: None)
-        .on_vm_ready(lambda ctx: None)
-        .on_vm_shutdown(lambda ctx: None)
-        .on_pre_commit(lambda ctx: None)
-        .on_post_commit(lambda ctx, committed: None)
-        .on_memory_pressure(lambda used, total: None)
-        .on_heartbeat(lambda tick: None)
-        .on_watchdog(_watchdog)
+        .trap(lambda t: t.on_trap(_trap))
+        .trap(lambda t: t.on_process_exit(lambda event: None))
+        .fs(lambda f: f.on_fs_lookup(lambda path: Verdict.pass_()))
+        .fs(lambda f: f.on_fs_read(lambda path, data: data))
+        .fs(lambda f: f.on_fs_write(lambda path, data, pid, ctx: FilterAction.forward()))
+        .fs(lambda f: f.on_fs_lock(lambda path, fd, op, pid: Verdict.pass_()))
+        .net(lambda n: n.on_net_outbound(lambda frame: FilterAction.forward()))
+        .net(lambda n: n.on_net_inbound(lambda frame: FilterAction.forward()))
+        .console(lambda c: c.on_console_input(lambda port, data: data))
+        .console(lambda c: c.on_console_output(lambda port, data: data))
+        .exec(lambda e: e.on_exec_stdout(lambda pid, exec_id, chunk: chunk))
+        .exec(lambda e: e.on_exec_stderr(lambda pid, exec_id, chunk: chunk))
+        .host(lambda h: h.on_host_lsm_exec(lambda path, pid: Verdict.pass_()))
+        .host(lambda h: h.on_host_pressure(lambda level: Verdict.pass_()))
+        .host(lambda h: h.on_host_keyring_access(lambda key: Verdict.pass_()))
+        .host(lambda h: h.on_host_preempt(lambda ctx: None))
+        .lifecycle(lambda l: l.on_vm_init(lambda ctx: None))
+        .lifecycle(lambda l: l.on_vm_ready(lambda ctx: None))
+        .lifecycle(lambda l: l.on_vm_shutdown(lambda ctx: None))
+        .lifecycle(lambda l: l.on_pre_commit(lambda ctx: None))
+        .lifecycle(lambda l: l.on_post_commit(lambda ctx, committed: None))
+        .telemetry(lambda t: t.on_memory_pressure(lambda used, total: None))
+        .telemetry(lambda t: t.on_heartbeat(lambda tick: None))
+        .telemetry(lambda t: t.on_watchdog(_watchdog))
     )
     nested_keys = [
         (d.ring, d.lifecycle_tag, d.ordinal)
         for d in hook_descriptors(nested)
     ]
-    flat_keys = [
-        (d.ring, d.lifecycle_tag, d.ordinal) for d in hook_descriptors(flat)
+    scoped_keys = [
+        (d.ring, d.lifecycle_tag, d.ordinal) for d in hook_descriptors(scoped)
     ]
-    assert nested_keys == flat_keys
+    assert nested_keys == scoped_keys
 
 
 def test_scope_rejects_out_of_group_verb() -> None:
     plugin = KelirBuilder.plugin("x")
     with pytest.raises(EConfig, match=r"not in this scope"):
-        plugin.trap(lambda t: t.on_fs_write(lambda p, d, pid, c: None))
+        plugin.trap(lambda t: cast(Any, t).on_fs_write(lambda p, d, pid, c: None))
 
 
 def test_append_order_duplicate_handlers() -> None:
@@ -379,7 +398,7 @@ def test_append_order_duplicate_handlers() -> None:
     def _second(event: Any) -> Verdict:
         return Verdict.pass_()
 
-    plugin = KelirBuilder.plugin("x").on_trap(_first).on_trap(_second)
+    plugin = KelirBuilder.plugin("x").trap(lambda t: t.on_trap(_first)).trap(lambda t: t.on_trap(_second))
     descriptors = hook_descriptors(plugin)
     assert len(descriptors) == 2
     assert [d.ring for d in descriptors] == [RingEvent.TRAP, RingEvent.TRAP]
@@ -395,8 +414,8 @@ def test_multi_vsock_registers_each_service() -> None:
 
     plugin = (
         KelirBuilder.plugin("svc")
-        .vsock_service({"port": 5252, "service": "one"}, _serve)
-        .vsock_service({"port": 5253, "service": "two"}, _serve)
+        .vsock(lambda v: v.service(5252, "one", _serve))
+        .vsock(lambda v: v.service(5253, "two", _serve))
     )
     descriptors = hook_descriptors(plugin)
     assert len(descriptors) == 2
@@ -414,23 +433,21 @@ def test_vsock_validation_errors() -> None:
 
     with pytest.raises(EConfig, match=r"invalid port 0"):
         _boot_plugin(
-            KelirBuilder.plugin("x").vsock_service(
-                {"port": 0, "service": "s"}, _serve
-            )
+            KelirBuilder.plugin("x").vsock(lambda v: v.service(0, "s", _serve))
         )
     with pytest.raises(EConfig, match=r"invalid port 65536"):
         _boot_plugin(
-            KelirBuilder.plugin("x").vsock_service(
-                {"port": 65536, "service": "s"}, _serve
-            )
+            KelirBuilder.plugin("x").vsock(lambda v: v.service(65536, "s", _serve))
         )
     with pytest.raises(EConfig, match=r"no service name"):
         _boot_plugin(
-            KelirBuilder.plugin("x").vsock_service({"port": 5252}, _serve)
+            KelirBuilder.plugin("x").vsock(lambda v: v.service(5252, "", _serve))
         )
     with pytest.raises(EConfig, match=r"invalid port None"):
         _boot_plugin(
-            KelirBuilder.plugin("x").vsock_service({"service": "s"}, _serve)
+            KelirBuilder.plugin("x").vsock(
+                lambda v: v.service(cast(Any, None), "s", _serve)
+            )
         )
 
 
@@ -449,13 +466,13 @@ def test_scope_validation_errors() -> None:
 
 def test_arity_econfig() -> None:
     with pytest.raises(EConfig, match=r"takes 1 positional"):
-        KelirBuilder.plugin("x").on_fs_write(lambda path: None)
+        KelirBuilder.plugin("x").fs(lambda f: f.on_fs_write(lambda path: None))
     with pytest.raises(EConfig, match=r"takes 3 positional"):
-        KelirBuilder.plugin("x").on_trap(lambda a, b, c: None)
+        KelirBuilder.plugin("x").trap(lambda t: t.on_trap(lambda a, b, c: None))
     plugin = (
         KelirBuilder.plugin("x")
-        .on_trap(lambda event: Verdict.pass_())
-        .on_trap(lambda event, ctx: Verdict.pass_())
+        .trap(lambda t: t.on_trap(lambda event: Verdict.pass_()))
+        .trap(lambda t: t.on_trap(lambda event, ctx: Verdict.pass_()))
     )
     assert len(hook_descriptors(plugin)) == 2
 
@@ -513,7 +530,7 @@ def test_vsock_service_scope_and_fork() -> None:
     plugin = (
         KelirBuilder.plugin("svc")
         .scope({"paths": ["/workspace"]})
-        .vsock_service({"kind": 0x0013, "service": "svc"}, _serve)
+        .vsock(lambda v: v.service(0x0013, "svc", _serve))
     )
     assert plugin._scope == {"paths": ["/workspace"]}
     descriptors = hook_descriptors(plugin)
@@ -528,17 +545,35 @@ def test_vsock_service_scope_and_fork() -> None:
 
 def test_fork_with_replays_custom_fork() -> None:
     def _fork(plugin: KelirBuilder) -> KelirBuilder:
-        return KelirBuilder.plugin(f"{plugin.name}-child").on_trap(_trap)
+        return KelirBuilder.plugin(f"{plugin.name}-child").trap(
+            lambda t: t.on_trap(_trap)
+        )
 
-    plugin = KelirBuilder.plugin("f").on_trap(_trap).fork_with(_fork)
+    plugin = (
+        KelirBuilder.plugin("f").trap(lambda t: t.on_trap(_trap)).fork_with(_fork)
+    )
     forked = plugin.fork_state()
     assert forked.name == "f-child"
     assert [d.ring for d in hook_descriptors(forked)] == [RingEvent.TRAP]
 
 
+def test_fs_scope_fork_with_stores_without_mode_check() -> None:
+    def _fork(plugin: KelirBuilder) -> KelirBuilder:
+        return KelirBuilder.plugin(f"{plugin.name}-child")
+
+    host = KelirBuilder().fs(lambda f: f.fork_with(_fork))
+    assert host._fork_fn is _fork
+    plugin = KelirBuilder.plugin("f").fs(lambda f: f.fork_with(_fork))
+    assert plugin.fork_state().name == "f-child"
+    host_untyped: KelirBuilder = KelirBuilder()
+    with pytest.raises(EConfig, match=r"plugin-only"):
+        host_untyped.fork_with(_fork)
+
+
 def test_fork_state_on_host_raises_econfig() -> None:
+    host_untyped: KelirBuilder = KelirBuilder()
     with pytest.raises(EConfig, match=r"Session.fork"):
-        KelirBuilder().fork_state()
+        host_untyped.fork_state()
 
 
 def test_scope_end_returns_builder() -> None:
@@ -546,8 +581,10 @@ def test_scope_end_returns_builder() -> None:
     seen: list[KelirBuilder] = []
     plugin.trap(lambda t: seen.append(t.on_trap(_trap).end()))
     assert seen[0] is plugin
-    chained = KelirBuilder.plugin("y").trap(
-        lambda t: t.on_trap(_trap).end().on_process_exit(lambda event: None)
+    chained = (
+        KelirBuilder.plugin("y")
+        .trap(lambda t: t.on_trap(_trap))
+        .trap(lambda t: t.on_process_exit(lambda event: None))
     )
     assert [d.ring for d in hook_descriptors(chained)] == [
         RingEvent.TRAP,
@@ -578,38 +615,45 @@ def test_trap_scope_on_trap_deny() -> None:
 
 
 def test_plugin_instance_call_mounts_builder() -> None:
-    host = KelirBuilder().plugin(KelirBuilder.plugin("chaos"))
+    host_untyped: KelirBuilder = KelirBuilder()
+    chaos_untyped: KelirBuilder = KelirBuilder.plugin("chaos")
+    host = host_untyped.plugin(chaos_untyped)
     assert host is not None
     assert [r.name for r in host._plugin_registrations] == ["chaos"]
     assert KelirBuilder.plugin("chaos").name == "chaos"
+    other_untyped: KelirBuilder = KelirBuilder()
     with pytest.raises(EConfig, match=r"only a plugin-mode KelirBuilder"):
-        KelirBuilder().plugin(KelirBuilder())
+        host_untyped.plugin(other_untyped)
 
 
 def test_plugin_instance_call_with_name_raises_clear_econfig() -> None:
+    plugin_fn: Any = KelirBuilder().plugin
     with pytest.raises(
         EConfig, match=r"mounts a plugin-mode builder, not a name"
     ):
-        KelirBuilder().plugin("chaos")
+        plugin_fn("chaos")
     with pytest.raises(EConfig) as excinfo:
-        KelirBuilder().plugin("chaos")
+        plugin_fn("chaos")
     assert "expected a BasePlugin" not in str(excinfo.value)
     assert "KelirBuilder.plugin('chaos')" in str(excinfo.value)
 
 
 def test_plugin_instance_call_with_base_plugin_raises_clear_econfig() -> None:
+    plugin_fn: Any = KelirBuilder().plugin
     with pytest.raises(
         EConfig, match=r"mounts only a plugin-mode KelirBuilder"
     ):
-        KelirBuilder().plugin(LedgerPlugin())
+        plugin_fn(LedgerPlugin())
 
 
 def test_group_runs_block_on_same_builder() -> None:
-    plugin = KelirBuilder.plugin("x").group(lambda b: b.on_trap(_trap))
+    plugin = KelirBuilder.plugin("x").group(
+        lambda b: b.trap(lambda t: t.on_trap(_trap))
+    )
     assert [d.ring for d in hook_descriptors(plugin)] == [RingEvent.TRAP]
     assert plugin.group(lambda b: b) is plugin
     assert plugin.group(lambda b: None) is plugin
-    host = KelirBuilder().group(lambda b: b.on_trap(_trap))
+    host = KelirBuilder().group(lambda b: b.trap(lambda t: t.on_trap(_trap)))
     assert [d.ring for d in host.hook_descriptors()] == [RingEvent.TRAP]
     with pytest.raises(
         EConfig, match=r"group\(\) must return the builder it receives"
@@ -618,36 +662,48 @@ def test_group_runs_block_on_same_builder() -> None:
 
 
 def test_guard_applies_only_when_enabled() -> None:
-    skipped = KelirBuilder.plugin("x").guard(False, lambda b: b.on_trap(_trap))
+    skipped = KelirBuilder.plugin("x").guard(
+        False, lambda b: b.trap(lambda t: t.on_trap(_trap))
+    )
     assert hook_descriptors(skipped) == []
-    applied = KelirBuilder.plugin("y").guard(True, lambda b: b.on_trap(_trap))
+    applied = KelirBuilder.plugin("y").guard(
+        True, lambda b: b.trap(lambda t: t.on_trap(_trap))
+    )
     assert len(hook_descriptors(applied)) == 1
     chained = (
         KelirBuilder.plugin("z")
-        .group(lambda b: b.on_trap(_trap))
-        .guard(True, lambda b: b.on_process_exit(lambda event: None))
-        .guard(False, lambda b: b.on_fs_lookup(lambda path: Verdict.pass_()))
+        .group(lambda b: b.trap(lambda t: t.on_trap(_trap)))
+        .guard(True, lambda b: b.trap(lambda t: t.on_process_exit(lambda event: None)))
+        .guard(
+            False,
+            lambda b: b.fs(lambda f: f.on_fs_lookup(lambda path: Verdict.pass_())),
+        )
     )
     assert [d.ring for d in hook_descriptors(chained)] == [
         RingEvent.TRAP,
         RingEvent.PROCESS_EXIT,
     ]
     with pytest.raises(EConfig, match=r"expects a bool"):
-        KelirBuilder.plugin("w").guard(1, lambda b: b.on_trap(_trap))  # type: ignore[arg-type]
+        KelirBuilder.plugin("w").guard(
+            1, lambda b: b.trap(lambda t: t.on_trap(_trap))  # type: ignore[arg-type]
+        )
 
 
 def test_context_on_host_raises_econfig() -> None:
+    host_untyped: KelirBuilder = KelirBuilder()
     with pytest.raises(EConfig, match=r"\.context\(\) is plugin-only"):
-        KelirBuilder().context(lambda: {})
+        host_untyped.context(lambda: {})
     plugin = KelirBuilder.plugin("x").context(lambda: {"n": 1})
     assert plugin._context_fn is not None
     assert plugin._context_fn() == {"n": 1}
 
 
 def test_seal_validates_and_chains() -> None:
-    host = KelirBuilder().on_trap(_trap)
+    host = KelirBuilder().trap(lambda t: t.on_trap(_trap))
     assert host.seal() is host
-    assert host.seal().on_vm_ready(lambda ctx: None) is host
+    sealed_untyped: KelirBuilder = host.seal()
+    with pytest.raises(EConfig, match=r"Builder is sealed"):
+        sealed_untyped.lifecycle(lambda l: l.on_vm_ready(lambda ctx: None))
     with pytest.raises(
         EConfig, match=r"missing prerequisite: missing-dep required by host"
     ):
@@ -658,36 +714,57 @@ def test_seal_validates_plugin_shape_without_boot() -> None:
     async def _serve(data: bytes) -> bytes:
         return data
 
-    plugin = KelirBuilder.plugin("x").vsock_service(
-        {"port": 0, "service": "s"}, _serve
-    )
+    plugin = KelirBuilder.plugin("x").vsock(lambda v: v.service(0, "s", _serve))
     with pytest.raises(EConfig, match=r"invalid port 0"):
         plugin.seal()
 
 
 def test_lock_broker_verb() -> None:
-    host = KelirBuilder().lock_broker()
-    assert host._config["storage"]["lock_broker"] is True
-    assert host.lock_broker(False)._config["storage"]["lock_broker"] is False
-    merged = KelirBuilder().storage(shared_caches=["/x"]).lock_broker()
+    host = KelirBuilder().fs(
+        lambda f: f.config(
+            lock_broker={"globs": ["/workspace/**"], "non_blocking": True}
+        )
+    )
+    assert "storage" not in host._config
+    assert host.seal()._config["storage"]["lock_broker"] == {
+        "globs": ["/workspace/**"],
+        "non_blocking": True,
+    }
+    merged = (
+        KelirBuilder()
+        .storage(shared_caches=["/x"])
+        .fs(lambda f: f.config(lock_broker={"globs": [], "non_blocking": False}))
+    )
+    merged.seal()
     assert merged._config["storage"] == {
         "shared_caches": ["/x"],
-        "lock_broker": True,
+        "lock_broker": {"globs": [], "non_blocking": False},
     }
-    kept = KelirBuilder().lock_broker().storage(shared_caches=["/x"])
-    assert kept._config["storage"]["lock_broker"] is True
-    with pytest.raises(EConfig, match=r"host-only verb \.lock_broker\(\)"):
-        KelirBuilder.plugin("x").lock_broker()
-    with pytest.raises(EConfig, match=r"expects a bool"):
-        KelirBuilder().lock_broker("yes")  # type: ignore[arg-type]
+    kept = (
+        KelirBuilder()
+        .fs(lambda f: f.config(lock_broker={"globs": ["/x"], "non_blocking": True}))
+        .storage(shared_caches=["/x"])
+    )
+    kept.seal()
+    assert kept._config["storage"]["lock_broker"] == {
+        "globs": ["/x"],
+        "non_blocking": True,
+    }
+    plugin_untyped: KelirBuilder = KelirBuilder.plugin("x")
+    with pytest.raises(EConfig, match=r"host-only verb \.fs\.config\(\)"):
+        plugin_untyped.fs(
+            lambda f: f.config(lock_broker={"globs": [], "non_blocking": False})
+        )
+    with pytest.raises(EConfig, match=r"expects a dict"):
+        KelirBuilder().fs(lambda f: f.config(lock_broker="yes"))
 
 
 def test_fork_state_is_factory() -> None:
-    plugin = KelirBuilder.plugin("svc").on_trap(_trap)
+    plugin = KelirBuilder.plugin("svc").trap(lambda t: t.on_trap(_trap))
     forked = plugin.fork_state()
     assert forked is not plugin
     assert forked._mode == "plugin"
     assert forked.name == "svc"
-    forked.on_process_exit(lambda event: None)
+    forked.trap(lambda t: t.on_process_exit(lambda event: None))
     assert len(hook_descriptors(plugin)) == 1
     assert len(hook_descriptors(forked)) == 2

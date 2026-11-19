@@ -54,19 +54,13 @@ verbs:
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: params model verb; scope-only in ParamsScope via .model(); rust and ts retype the builder, py returns Self
+    note: params model verb; scope-only in ParamsScope via .model(); the ts flat direct-model form .params(schema) is deleted, only the closure scope entry .params((p) => p.model(...)) remains (overload rethreads Params); rust and ts retype the builder, py returns Self
   detached:
     placement: flat
     return: builder
     sdks: rust,ts,py
     status: fixed
     note: detached session flag verb
-  lock_broker:
-    placement: flat
-    return: builder
-    sdks: rust,ts,py
-    status: fixed
-    note: standalone host-only verb in all three SDKs since the chain fix
   fast_boot:
     placement: flat
     return: builder
@@ -101,23 +95,23 @@ verbs:
     placement: scoped
     scope: fs
     return: builder
-    sdks: rust
+    sdks: rust,ts,py
     status: fixed
-    note: scope-only in FsScope in Rust; TS/Py keep flat forkWith/fork_with (no scope forkWith sub-node yet)
+    note: FsScope-only in all three SDKs; the scope stores the fork fn (ts registry.fsScopeForkFn, py _fs_scope["fork_with"], promoted into the builder fork fn by .fs()) with no mode check, while the flat forkWith/fork_with stays plugin-only and rejects host mode
   vsock_service:
     placement: scoped
     scope: vsock
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: scope-only in VsockScope via .service(); vsockService in TS, vsock_service in Rust/Py is the flat spelling
+    note: scope-only in VsockScope via .service() in all three SDKs; the flat spellings (rust/py vsock_service, ts vsockService) are deleted from the builder surface
   on_trap_deny:
     placement: scoped
     scope: deny
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: trap deny hook verb; scope-only in DenyScope
+    note: trap deny hook verb; scope-only in DenyScope in all three SDKs; the ts flat builder verb onTrapDeny is deleted, DenyScope.onTrapDeny types the session as Session & Ctx
   register_custom_action:
     placement: scoped
     scope: actions
@@ -133,11 +127,12 @@ verbs:
     status: target
     note: scope-only in StreamsScope via .register(); pre-fix missing in ts (A5 added py register_stream_kind)
   register_veto:
-    placement: flat
+    placement: scoped
+    scope: lifecycle
     return: builder
     sdks: rust
     status: fixed
-    note: Rust-only, on LifecycleMut (reached via lifecycle_mut); returns Self; TS/Py have no register_veto
+    note: Rust-only, scope-only in LifecycleScope via .lifecycle(..); lifecycle_mut and LifecycleMut are deleted; TS/Py have no register_veto
   trap:
     placement: flat
     scope: trap
@@ -155,13 +150,13 @@ verbs:
     placement: flat
     return: builder
     sdks: rust,ts,py
-    status: target
-    note: named block of chain steps; the closure takes the (sub-)builder and returns it; all three SDKs
+    status: fixed
+    note: named block of chain steps; the closure takes the (sub-)builder and returns it; the only flat chain surface left in ts (a fold delegating each verb to its scope); all three SDKs
   guard:
     placement: flat
     return: builder
     sdks: rust,ts,py
-    status: target
+    status: fixed
     note: boolean conditional group; guard(enabled, f) applies f only when enabled, else the builder passes through; all three SDKs
   fork_state:
     placement: flat
@@ -181,12 +176,6 @@ verbs:
     sdks: rust
     status: fixed
     note: Rust-only post-exec gate; returns Self since the chain fix
-  on:
-    placement: flat
-    return: builder
-    sdks: ts
-    status: pin
-    note: ts-only generic lifecycle dispatcher; A1 to pin whether rust and py gain it
   derive:
     placement: flat
     return: builder
@@ -468,26 +457,26 @@ verbs:
     placement: registry
     return: registry
     sdks: ts
-    status: target
-    note: TS HookRegistry mutator; pre-fix returns void
+    status: fixed
+    note: TS HookRegistry mutator returning this
   addHook:
     placement: registry
     return: registry
     sdks: ts
-    status: target
-    note: TS HookRegistry mutator; pre-fix returns void
+    status: fixed
+    note: TS HookRegistry mutator returning this
   adoptHook:
     placement: registry
     return: registry
     sdks: ts
-    status: target
-    note: TS HookRegistry mutator; pre-fix returns void
+    status: fixed
+    note: TS HookRegistry mutator returning this
   validate:
     placement: registry
     return: registry
     sdks: ts
-    status: target
-    note: TS HookRegistry validator; pre-fix returns void
+    status: fixed
+    note: TS HookRegistry validator returning this
 behavior:
   group_shape:
     kind: closure_sub_builder

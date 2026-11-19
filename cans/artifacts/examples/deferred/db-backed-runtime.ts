@@ -31,7 +31,7 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       postgres: {
         listenPort: 5432,
         upstream: `${pgHost}:5432`,
-        rewriteRules: [["public.", "migrate_schema."]],
+        schemaRewrites: [{ fromSchema: "public.", toSchema: "migrate_schema." }],
       },
       // see: cans/plugins/db-proxy.md#Ephemeral-credentials-injected-at-host-connection-boundary
       credentials: {
@@ -59,12 +59,16 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       flushFuseBeforeCommit: true,
     }))
     // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-    .params(t.Object({
-      action: t.Literal("migrate"),
-      schemaName: t.String(),
-      targetVersion: t.Number(),
-      dryRun: t.Boolean(),
-    }))
+    .params((p) =>
+      p.model(
+        t.Object({
+          action: t.Literal("migrate"),
+          schemaName: t.String(),
+          targetVersion: t.Number(),
+          dryRun: t.Boolean(),
+        }),
+      ),
+    )
     .trap(TrapFilter.binary("migrate"), {
       pre: async (c) => {
         const proxy = c.cap<DbProxyHandle>("db-proxy");
@@ -81,18 +85,21 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       },
     })
     // see: cans/plugins/transaction.md#Plugin-transaction
-    .onPreCommit(async (ctx) => {
-      await ctx.cap<LedgerHandle>("ledger")?.flush();
-    })
-    .onPostCommit(async (_ctx, committed) => {
-      if (committed) {
-        console.log("[kelir] commit: per-entry leaf commit, staged snapshot "
-                    + "is next cold-start fixture");
-      } else {
-        console.log("[kelir] commit aborted: staging unlinked, broker upper "
-                    + "and tombstones dropped, last good snapshot kept");
-      }
-    });
+    .lifecycle((l) =>
+      l
+        .onPreCommit(async (ctx) => {
+          await ctx.cap<LedgerHandle>("ledger")?.flush();
+        })
+        .onPostCommit(async (_ctx, committed) => {
+          if (committed) {
+            console.log("[kelir] commit: per-entry leaf commit, staged snapshot "
+                        + "is next cold-start fixture");
+          } else {
+            console.log("[kelir] commit aborted: staging unlinked, broker upper "
+                        + "and tombstones dropped, last good snapshot kept");
+          }
+        }),
+    );
 }
 
 async function main() {
@@ -100,9 +107,7 @@ async function main() {
   const pgSecret = env.KELIR_PG_SECRET;
   if (!pgHost || !pgSecret) throw new Error("KELIR_PG_HOST and KELIR_PG_SECRET must be set");
 
-  const runtime = buildRuntime(pgHost, pgSecret);
-  runtime.seal();
-  const session = await runtime.boot();
+  const session = await buildRuntime(pgHost, pgSecret).seal().boot();
   try {
     // see: cans/09-snapshots.md#Snapshots
     await session.vm.importSnapshot(await readSnapshot(LOCAL_SNAPSHOT));
@@ -133,9 +138,10 @@ async function main() {
     // see: cans/plugins/ledger.md#Plugin-ledger
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
     const ledgerHandle = session.cap("ledger") as LedgerHandle;
+    const delta = await ledgerHandle.getCausalDeltaFromParent();
     const final = await ledgerHandle.finalize({
+      includeDelta: delta,
       includeMerkleRoot: true,
-      includeDelta: await ledgerHandle.getCausalDeltaFromParent(),
     });
     console.log(`[kelir] merkle=${final.merkleRoot} jws=${final.signedJws.slice(0, 64)}…`);
   } finally {

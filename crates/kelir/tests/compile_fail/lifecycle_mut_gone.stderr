@@ -1,0 +1,15 @@
+error[E0599]: no method named `lifecycle_mut` found for struct `KelirBuilder<Mode, SealState, Ctx, Deps, Plugins, Params>` in the current scope
+ --> tests/compile_fail/lifecycle_mut_gone.rs:6:13
+  |
+6 |     builder.lifecycle_mut();
+  |             ^^^^^^^^^^^^^
+  |
+help: there is a method `lifecycle` with a similar name, but with different arguments
+ --> src/builder_plugin.flow.rs
+  |
+  | /     pub fn lifecycle<F>(self, configure: F) -> Self
+  | |     where
+  | |         F: FnOnce(
+  | |             LifecycleScope<Plugins, Params, Mode, Ctx, Deps>,
+  | |         ) -> KelirBuilder<Mode, Unsealed, Ctx, Deps, Plugins, Params>,
+  | |______________________________________________________________________^

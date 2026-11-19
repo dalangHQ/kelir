@@ -1,3 +1,41 @@
-# see: cans/03-sdk-architecture.md#Python-SDK
-from kelir.plugins.plugin_transaction import *  # noqa: F401,F403
-from kelir.plugins.plugin_transaction import __all__ as __all__  # noqa: F401
+# see: cans/plugins/transaction.md#Plugin-transaction
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from kelir.plugin_model import BasePlugin
+
+__all__ = [
+    "TransactionConfig",
+    "TransactionPlugin",
+    "transaction",
+    "transaction_builder",
+]
+
+
+@dataclass
+class TransactionConfig:
+    timeout_ms: int = 30_000
+    auto_rollback_on_taint: bool = True
+    flush_fuse_before_commit: bool = True
+
+
+class TransactionPlugin(BasePlugin[None, None]):
+    name = "transaction"
+
+    def __init__(self, config: TransactionConfig | None = None) -> None:
+        self.config = config if config is not None else TransactionConfig()
+
+
+# see: cans/02-plugin-model.md#Unified-builder 
+from kelir import KelirBuilder
+
+
+def transaction_builder(config: TransactionConfig | None = None) -> KelirBuilder:
+    cfg = config if config is not None else TransactionConfig()
+    return KelirBuilder.plugin("transaction").context(lambda: cfg)
+
+
+# see: cans/02-plugin-model.md#Unified-builder
+def transaction(config: TransactionConfig | None = None) -> KelirBuilder:
+    return transaction_builder(config)

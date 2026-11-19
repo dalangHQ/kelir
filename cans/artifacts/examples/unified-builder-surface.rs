@@ -33,6 +33,8 @@ use kelir::{
             WorkspaceEncapsulation,
         },
         terminal_plane::PtyConfig,
+        terminal_plane::TerminalSanitizerConfig,
+        terminal_plane::TerminalWireframeGridConfig,
         wire_plane::{SinkholeConfig, SinkholeRule, TapFilter, WireConfig},
     },
     plugin_model::{
@@ -214,6 +216,8 @@ pub fn build_host() -> SurfaceHostBuilder {
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     .terminal(PtyConfig {
         cols: 120,
@@ -252,6 +256,7 @@ pub fn build_host() -> SurfaceHostBuilder {
         tap_filter: TapFilter::AllowUdpProxied,
         userspace_netstack: true,
         default_egress: "drop".into(),
+        dial_timeout_ms: 3_000,
     })
     .detached(false)
     .plugin_instance(LedgerPlugin::new(true))
@@ -346,7 +351,7 @@ pub fn build_host() -> SurfaceHostBuilder {
 pub fn host_only_verbs_rejected_on_plugin(
     plugin: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
 ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-    // plugin.terminal(PtyConfig { cols: 120, rows: 40, drop_osc52: true, strip_title: true, stream_engine: "StatelessRegex".into() });
+    // plugin.terminal(PtyConfig { cols: 120, rows: 40, wireframe_grid: .., stream_engine: "StatelessRegex".into(), sanitizer: .. });
     // plugin.storage(StoragePlaneConfig { idmap: IdmapConfig { guest_uid: 0, host_uid: 0 }, shared_caches: Vec::new(), lock_broker: true, encapsulation: WorkspaceEncapsulation::Passthrough });
     // plugin.wire(WireConfig { sinkhole: SinkholeConfig { rules: vec![SinkholeRule { host: "*".into(), allow: false }] }, ssh_agent_bridge: false, l4_proxies: Vec::new(), tap_filter: TapFilter::AllowUdpProxied, userspace_netstack: true, default_egress: "drop".into() });
     // plugin.fs(|f| f.config(Some(LockBrokerConfig { scope: LockScope::Globs(vec!["**/Cargo.lock".into()]), non_blocking: true }), None, None, Vec::new()));
@@ -361,22 +366,8 @@ pub fn host_only_verbs_rejected_on_plugin(
     // plugin.deny(|d| d.on_trap_deny(|_, _, _| async move { Ok::<(), PluginError>(()) }).end());
     // plugin.actions(|a| a.register("quarantine", kelir::serde_json::json!({}), |payload| async move { Ok::<(), Box<dyn std::error::Error + Send + Sync>>(()) }).end());
     // plugin.streams(|s| s.register(0x0013, kelir::serde_json::json!({}), |request| async move { Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(request) }).end());
-    // plugin.lifecycle_mut();
     plugin
 }
-
-// see: cans/02-plugin-model.md#Nested-scopes
-// Negative vector: f.on_trap(...) inside .fs(...) is a compile error in
-// Rust — FsScope has no on_trap method. Uncommenting the body must fail
-// the build with E0599 (no method named `on_trap` found for `FsScope`).
-// vectors.json cannot express an expected-error case (its schema carries
-// event/expected_verdict only), so the negative case is pinned here as a
-// comment-pinned block and in the TS/Py siblings.
-// fn negative_fs_on_trap(
-//     builder: KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams>,
-// ) -> KelirBuilder<Plugin, Unsealed, (), HNil, HNil, NoParams> {
-//     builder.fs(|f| f.on_trap(|_, _| Ok(Verdict::Pass)).end())
-// }
 
 // see: cans/02-plugin-model.md#Nested-scopes
 // Flat-fold pin: a flat chain exists only as a group() fold over the

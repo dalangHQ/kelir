@@ -1,0 +1,7 @@
+error[E0599]: no method named `boot` found for struct `KelirBuilder` in the current scope
+ --> tests/compile_fail/boot_on_unsealed.rs:6:28
+  |
+6 |     let _session = builder.boot();
+  |                            ^^^^ method not found in `KelirBuilder`
+  |
+  = note: the method was found for `KelirBuilder<Host, Sealed, Ctx, Deps, Plugins, Params>`

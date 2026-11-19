@@ -40,7 +40,7 @@ pub use builder_scopes::{
     LifecycleScope, NetScope, ParamsScope, ReadRules, RuleScope, ScopeRules, StreamsScope,
     TelemetryScope, TrapScope, VsockScope, WriteRules,
 };
-pub use builder_sdk::{Host, KelirBuilder, LifecycleMut, Plugin, Sealed, Unsealed};
+pub use builder_sdk::{Host, KelirBuilder, Plugin, Sealed, Unsealed};
 pub use hlist_sdk::{HCons, HList, HNil, NoParams};
 pub use kelir_interface::checkpoint::PidLineage;
 pub use kelir_interface::driver_interface::{SnapshotDescriptor, VmConfig, WatchdogAction};

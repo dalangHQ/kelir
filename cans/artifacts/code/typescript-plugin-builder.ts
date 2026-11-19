@@ -4,17 +4,25 @@
 // and the normative contract is
 // cans/02-plugin-model.md#Unified-builder (Agent 1).
 //
-// Target shape: ONE class KelirBuilder. new KelirBuilder(config) is the
-// host; createPlugin(name, options?) returns a plugin-mode KelirBuilder.
-// The 24 ring verbs + 8 closure scopes + context / requires / scope /
-// forkWith / vsockService exist in BOTH modes. Mount is merge by value:
-// host.use(plugin) appends the plugin's hooksForFusion after the host's
-// own hooks. Validation happens once, in seal(), over the host +
-// mounted plugins together; boot() seals implicitly when the builder is
-// not sealed yet. There is no build(): a plugin-mode builder is mounted
-// as-is, and a verb after seal() throws EConfig (the builder is sealed).
-// fuse() is internal, not a chain verb and not a terminal; boot() is the
-// single terminal. PluginContract / BuiltPlugin are deleted.
+// Target shape: ONE class KelirBuilder<TMode, TSealed, Name, Ctx, Deps,
+// Params>. new KelirBuilder(config) is the host; createPlugin(name,
+// options?) returns a plugin-mode KelirBuilder. The 8 closure scopes +
+// context / requires / scope / forkWith exist in BOTH modes; ring verbs
+// exist ONLY inside their scope closures (the flat builder-surface
+// on* verbs, top-level .on(), .onTrapDeny(), .registerCustomAction(),
+// .registerStreamKind(), .vsockService(), .lockBroker() and the
+// direct-model .params(schema) are deleted; a flat chain survives only
+// as a group() fold). TMode ("host"|"plugin") and TSealed
+// ("unsealed"|"sealed") ride private phantom markers so this:-parameter
+// gates reject host verbs on plugin builders, plugin-only verbs on
+// hosts, and any config verb after .seal() at compile time; the runtime
+// EConfig traps stay for JS callers. Mount is merge by value:
+// host.use(plugin) appends the plugin's hooks after the host's own
+// hooks. Validation happens once, in seal(), over the host + mounted
+// plugins together; boot() requires host mode and seals implicitly when
+// the builder is not sealed yet. There is no build(): a plugin-mode
+// builder is mounted as-is. fuse() is internal, not a chain verb and not
+// a terminal; boot() is the single terminal.
 //
 // Owned by: cans/02-plugin-model.md#Unified-builder
 // see: cans/02-plugin-model.md#Unified-builder
@@ -51,7 +59,7 @@ import type { TrapDenyEvent } from "./types.core.js";
 import type { LifecycleEvent } from "./verdict.protocol.js";
 
 // see: cans/02-plugin-model.md#Unified-builder
-export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, any>
+export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, any, any, infer Deps, any>
   ? [Deps] extends [never]
     ? unknown
     : string extends Deps
@@ -62,28 +70,28 @@ export type ValidateDeps<Ctx, P> = P extends KelirBuilder<any, any, infer Deps, 
   : unknown;
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface TrapScope<Name extends string, Ctx, Deps extends string> {
+export interface TrapScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onTrap(
     handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict | null> | Verdict | null,
-  ): TrapScope<Name, Ctx, Deps>;
+  ): TrapScope<TMode, TSealed, Name, Ctx, Deps>;
   onProcessExit(
     handler: (event: ProcessExitEvent) => Promise<void> | void,
-  ): TrapScope<Name, Ctx, Deps>;
+  ): TrapScope<TMode, TSealed, Name, Ctx, Deps>;
   onSignal(
     handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict,
-  ): TrapScope<Name, Ctx, Deps>;
+  ): TrapScope<TMode, TSealed, Name, Ctx, Deps>;
   onFork(
     handler: (parent: number, child: number) => Promise<Verdict> | Verdict,
-  ): TrapScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): TrapScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface FsScope<Name extends string, Ctx, Deps extends string> {
-  onFsLookup(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
+export interface FsScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
+  onFsLookup(handler: (path: string) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
   onFsRead(
     handler: (path: string, buffer: Uint8Array) => Uint8Array,
-  ): FsScope<Name, Ctx, Deps>;
+  ): FsScope<TMode, TSealed, Name, Ctx, Deps>;
   onFsWrite(
     handler: (
       path: string,
@@ -91,7 +99,7 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
       pid: number,
       ctx: TrapContext & Ctx,
     ) => FilterAction,
-  ): FsScope<Name, Ctx, Deps>;
+  ): FsScope<TMode, TSealed, Name, Ctx, Deps>;
   onFsLock(
     handler: (
       path: string,
@@ -99,122 +107,122 @@ export interface FsScope<Name extends string, Ctx, Deps extends string> {
       flockType: number,
       pid: number,
     ) => Verdict,
-  ): FsScope<Name, Ctx, Deps>;
-  onFsUnlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
-  onFsRename(handler: (src: string, dst: string) => Verdict): FsScope<Name, Ctx, Deps>;
+  ): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  onFsUnlink(handler: (path: string) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  onFsRename(handler: (src: string, dst: string) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
   onFsSetattr(
     handler: (path: string, mode: number, size: number) => Verdict,
-  ): FsScope<Name, Ctx, Deps>;
-  onFsSymlink(handler: (target: string, link: string) => Verdict): FsScope<Name, Ctx, Deps>;
-  onFsMkdir(handler: (path: string, mode: number) => Verdict): FsScope<Name, Ctx, Deps>;
+  ): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  onFsSymlink(handler: (target: string, link: string) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  onFsMkdir(handler: (path: string, mode: number) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
   onFsReaddir(
     handler: (path: string, entries: unknown[]) => FilterAction,
-  ): FsScope<Name, Ctx, Deps>;
-  onFsReadlink(handler: (path: string) => Verdict): FsScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  onFsReadlink(handler: (path: string) => Verdict): FsScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface NetScope<Name extends string, Ctx, Deps extends string> {
-  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
-  onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<Name, Ctx, Deps>;
+export interface NetScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
+  onNetOutbound(handler: (frame: Uint8Array) => FilterAction): NetScope<TMode, TSealed, Name, Ctx, Deps>;
+  onNetInbound(handler: (frame: Uint8Array) => FilterAction): NetScope<TMode, TSealed, Name, Ctx, Deps>;
   onSocketConnect(
     handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
-  ): NetScope<Name, Ctx, Deps>;
+  ): NetScope<TMode, TSealed, Name, Ctx, Deps>;
   onDnsQuery(
     handler: (pid: number, domain: string, qtype: number) => unknown,
-  ): NetScope<Name, Ctx, Deps>;
+  ): NetScope<TMode, TSealed, Name, Ctx, Deps>;
   onSocketBind(
     handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
-  ): NetScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): NetScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface ConsoleScope<Name extends string, Ctx, Deps extends string> {
+export interface ConsoleScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onConsoleInput(
     handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): ConsoleScope<Name, Ctx, Deps>;
+  ): ConsoleScope<TMode, TSealed, Name, Ctx, Deps>;
   onConsoleOutput(
     handler: (port: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): ConsoleScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): ConsoleScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface ExecScope<Name extends string, Ctx, Deps extends string> {
+export interface ExecScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onExecStdout(
     handler: (
       pid: number,
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ExecScope<Name, Ctx, Deps>;
+  ): ExecScope<TMode, TSealed, Name, Ctx, Deps>;
   onExecStderr(
     handler: (
       pid: number,
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ExecScope<Name, Ctx, Deps>;
+  ): ExecScope<TMode, TSealed, Name, Ctx, Deps>;
   onExecStdin(
     handler: (
       pid: number,
       execId: number,
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
-  ): ExecScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): ExecScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface HostScope<Name extends string, Ctx, Deps extends string> {
+export interface HostScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onHostLsmExec(
     handler: (path: string, pid: number) => Verdict,
-  ): HostScope<Name, Ctx, Deps>;
-  onHostPressure(handler: (level: number) => Verdict): HostScope<Name, Ctx, Deps>;
-  onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<Name, Ctx, Deps>;
+  ): HostScope<TMode, TSealed, Name, Ctx, Deps>;
+  onHostPressure(handler: (level: number) => Verdict): HostScope<TMode, TSealed, Name, Ctx, Deps>;
+  onHostKeyringAccess(handler: (key: string) => Verdict): HostScope<TMode, TSealed, Name, Ctx, Deps>;
   onHostPreempt(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): HostScope<Name, Ctx, Deps>;
+  ): HostScope<TMode, TSealed, Name, Ctx, Deps>;
   onHostContainmentBreach(
     handler: (pid: number, path: string, kind: string) => void,
-  ): HostScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): HostScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface LifecycleScope<Name extends string, Ctx, Deps extends string> {
+export interface LifecycleScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onVmInit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Name, Ctx, Deps>;
+  ): LifecycleScope<TMode, TSealed, Name, Ctx, Deps>;
   onVmReady(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Name, Ctx, Deps>;
+  ): LifecycleScope<TMode, TSealed, Name, Ctx, Deps>;
   onVmShutdown(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Name, Ctx, Deps>;
+  ): LifecycleScope<TMode, TSealed, Name, Ctx, Deps>;
   onPreCommit(
     handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): LifecycleScope<Name, Ctx, Deps>;
+  ): LifecycleScope<TMode, TSealed, Name, Ctx, Deps>;
   onPostCommit(
     handler: (ctx: LifecycleContext, committed: boolean) => Promise<void> | void,
-  ): LifecycleScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): LifecycleScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-export interface TelemetryScope<Name extends string, Ctx, Deps extends string> {
+export interface TelemetryScope<TMode extends "host" | "plugin", TSealed extends "unsealed" | "sealed", Name extends string, Ctx, Deps extends string> {
   onMemoryPressure(
     handler: (used: number, total: number) => Promise<void> | void,
-  ): TelemetryScope<Name, Ctx, Deps>;
+  ): TelemetryScope<TMode, TSealed, Name, Ctx, Deps>;
   onHeartbeat(
     handler: (event: HeartbeatEvent) => Promise<void> | void,
-  ): TelemetryScope<Name, Ctx, Deps>;
+  ): TelemetryScope<TMode, TSealed, Name, Ctx, Deps>;
   onWatchdog(
     handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict,
-  ): TelemetryScope<Name, Ctx, Deps>;
-  end(): KelirBuilder<Name, Ctx, Deps, unknown>;
+  ): TelemetryScope<TMode, TSealed, Name, Ctx, Deps>;
+  end(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, unknown>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -231,161 +239,59 @@ export interface TelemetryScope<Name extends string, Ctx, Deps extends string> {
 // cans/artifacts/examples/fluent-builder-chaos.ts, the one shape shared
 // by all three SDKs.
 export declare class KelirBuilder<
+  TMode extends "host" | "plugin" = "host" | "plugin",
+  TSealed extends "unsealed" | "sealed" = "unsealed" | "sealed",
   Name extends string = string,
   Ctx = unknown,
   Deps extends string = never,
   Params = unknown,
 > {
+  private readonly __mode: TMode;
+  private readonly __seal: TSealed;
   constructor(config?: KelirConfig);
 
-  requires<Req extends string>(): KelirBuilder<Name, Ctx, Deps | Req, Params>;
+  requires<Req extends string>(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps | Req, Params>;
   requires<P extends KelirBuilder<string, unknown, string, unknown>>(
     plugin: P,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  derive<NewCtx>(fn: (c: Ctx) => NewCtx): KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
-  context<NewCtx>(fn: (c: Ctx) => NewCtx): KelirBuilder<Name, Ctx & NewCtx, Deps, Params>;
-  scope(scope: MountScope): KelirBuilder<Name, Ctx, Deps, Params>;
+  ): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  derive<NewCtx>(fn: (c: Ctx) => NewCtx): KelirBuilder<TMode, TSealed, Name, Ctx & NewCtx, Deps, Params>;
+  context<NewCtx>(fn: (c: Ctx) => NewCtx): KelirBuilder<TMode, TSealed, Name, Ctx & NewCtx, Deps, Params>;
+  scope(scope: MountScope): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
   forkWith(
-    fn: () => KelirBuilder<Name, Ctx, Deps, Params>,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  vsockService(
-    port: number,
-    service: string,
-    schema: unknown,
-    handler: (request: unknown) => Promise<unknown> | unknown,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onTrap(
-    handler: (event: TrapInfo, c: TrapContext & Ctx) => Promise<Verdict | null> | Verdict | null,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onProcessExit(
-    handler: (event: ProcessExitEvent) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onSignal(
-    handler: (sender: number, target: number, sig: number) => Promise<Verdict> | Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onFork(
-    handler: (parent: number, child: number) => Promise<Verdict> | Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onFsLookup(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-  onFsRead(
-    handler: (path: string, buffer: Uint8Array) => Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onFsWrite(
-    handler: (
-      path: string,
-      buffer: Uint8Array,
-      pid: number,
-      ctx: TrapContext & Ctx,
-    ) => FilterAction,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onFsLock(
-    handler: (path: string, flockCmd: number, flockType: number, pid: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsUnlink(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsRename(handler: (src: string, dst: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsSetattr(
-    handler: (path: string, mode: number, size: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsSymlink(handler: (target: string, link: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsMkdir(handler: (path: string, mode: number) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsReaddir(
-    handler: (path: string, entries: unknown[]) => FilterAction,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onFsReadlink(handler: (path: string) => Verdict): KelirBuilder<Name, Ctx, Deps, Params>;
-  onNetOutbound(
-    handler: (frame: Uint8Array) => FilterAction,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onNetInbound(
-    handler: (frame: Uint8Array) => FilterAction,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onSocketConnect(
-    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onDnsQuery(
-    handler: (pid: number, domain: string, qtype: number) => unknown,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onSocketBind(
-    handler: (pid: number, proto: number, ip: [number, number, number, number], port: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onConsoleInput(
-    handler: (port: number, bytes: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onConsoleOutput(
-    handler: (port: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onExecStdout(
-    handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onExecStderr(
-    handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onExecStdin(
-    handler: (pid: number, execId: number, chunk: Uint8Array) => Promise<Uint8Array> | Uint8Array,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onHostLsmExec(
-    handler: (path: string, pid: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onHostPressure(
-    handler: (level: number) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onHostKeyringAccess(
-    handler: (key: string) => Verdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-onHostContainmentBreach(
-    handler: (pid: number, path: string, kind: string) => void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onVmInit(
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onVmReady(
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onVmShutdown(
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onPreCommit(
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onPostCommit(
-    handler: (ctx: LifecycleContext, committed: boolean) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onHostPreempt(
-    handler: (ctx: LifecycleContext) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onMemoryPressure(
-    handler: (used: number, total: number) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onHeartbeat(
-    handler: (event: HeartbeatEvent) => Promise<void> | void,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  onWatchdog(
-    handler: (event: WatchdogEvent) => Promise<WatchdogVerdict> | WatchdogVerdict,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  trap(fn: (scope: TrapScope<Name, Ctx, Deps>) => TrapScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
+    fn: () => KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>,
+  ): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  trap(fn: (scope: TrapScope<TMode, TSealed, Name, Ctx, Deps>) => TrapScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
   trap(
     filter: string | TrapFilter,
     handler: TrapHandler<Ctx, Params> | TrapHandlers<Ctx, Params>,
-  ): KelirBuilder<Name, Ctx, Deps, Params>;
-  fs(fn: (scope: FsScope<Name, Ctx, Deps>) => FsScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  net(fn: (scope: NetScope<Name, Ctx, Deps>) => NetScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  console(fn: (scope: ConsoleScope<Name, Ctx, Deps>) => ConsoleScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  exec(fn: (scope: ExecScope<Name, Ctx, Deps>) => ExecScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  host(fn: (scope: HostScope<Name, Ctx, Deps>) => HostScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  lifecycle(fn: (scope: LifecycleScope<Name, Ctx, Deps>) => LifecycleScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  telemetry(fn: (scope: TelemetryScope<Name, Ctx, Deps>) => TelemetryScope<Name, Ctx, Deps> | void): KelirBuilder<Name, Ctx, Deps, Params>;
-  group(fn: (builder: this) => this | void): this;
-  guard(enabled: boolean, fn: (builder: this) => this): this;
-  forkState(): KelirBuilder<Name, Ctx, Deps, Params>;
+  ): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  fs(fn: (scope: FsScope<TMode, TSealed, Name, Ctx, Deps>) => FsScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  net(fn: (scope: NetScope<TMode, TSealed, Name, Ctx, Deps>) => NetScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  console(fn: (scope: ConsoleScope<TMode, TSealed, Name, Ctx, Deps>) => ConsoleScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  exec(fn: (scope: ExecScope<TMode, TSealed, Name, Ctx, Deps>) => ExecScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  host(fn: (scope: HostScope<TMode, TSealed, Name, Ctx, Deps>) => HostScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  lifecycle(fn: (scope: LifecycleScope<TMode, TSealed, Name, Ctx, Deps>) => LifecycleScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  telemetry(fn: (scope: TelemetryScope<TMode, TSealed, Name, Ctx, Deps>) => TelemetryScope<Name, Ctx, Deps> | void): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
+  group(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    fn: (builder: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>) => KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  guard(
+    this: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>,
+    enabled: boolean,
+    fn: (builder: KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>) => KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params> | void,
+  ): KelirBuilder<TMode, "unsealed", Name, Ctx, Deps, Params>;
+  forkState(): KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params>;
 
   hooksForFusion(): readonly HookDescriptor[];
 
   use<P extends KelirBuilder<string, unknown, string, unknown> | KelirPlugin>(
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+  ): KelirBuilder<TMode, TSealed, Name, Ctx & PluginContextOf<P>, Deps, Params>;
 
   plugin<P extends KelirBuilder<string, unknown, string, unknown> | KelirPlugin>(
     plugin: P & ValidateDeps<Ctx, P>,
-  ): KelirBuilder<Name, Ctx & PluginContextOf<P>, Deps, Params>;
+  ): KelirBuilder<TMode, TSealed, Name, Ctx & PluginContextOf<P>, Deps, Params>;
 
   terminal(config: TerminalConfig): this;
   storage<C = Ctx>(config: StorageConfig<C>): KelirBuilder<Name, Ctx & C, Deps, Params>;
@@ -424,8 +330,10 @@ onHostContainmentBreach(
   ): this;
   // see: cans/02-plugin-model.md#Unified-builder
   // seal() is the one validation; fuse() is internal, not a chain verb.
-  seal(): this;
-  boot(): Promise<Session & Ctx>;
+  seal(): KelirBuilder<TMode, "sealed", Name, Ctx, Deps, Params>;
+  boot(
+    this: KelirBuilder<"host", TSealed, Name, Ctx, Deps, Params>,
+  ): Promise<Session & Ctx>;
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
@@ -434,7 +342,7 @@ onHostContainmentBreach(
 export declare function createPlugin<Name extends string>(
   name: Name,
   options?: CreatePluginOptions,
-): KelirBuilder<Name, unknown, never, unknown>;
+): KelirBuilder<"plugin", "unsealed", Name, unknown, never, unknown>;
 
 // see: cans/02-plugin-model.md#Unified-builder
 // Deleted shapes: PluginContract, BuiltPlugin, build(). Nothing is

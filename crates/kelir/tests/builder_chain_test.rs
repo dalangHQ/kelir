@@ -1,6 +1,6 @@
 // see: cans/02-plugin-model.md#Unified-builder
 use kelir::interface::driver_interface::VmConfig;
-use kelir::interface::plugin_model::{KelirPlugin, PluginError, Veto, VetoEvent};
+use kelir::interface::plugin_model::{KelirPlugin, PluginError, VetoEvent};
 use kelir::interface::protocol_wire::Verdict;
 use kelir::plugin_model::FilterAction;
 use kelir::{HNil, Host, KelirBuilder, NoParams, PostExecAction, TrapFilter, Unsealed};
@@ -67,30 +67,13 @@ fn unbreakable_host_chain_seals() {
 
 // see: cans/02-plugin-model.md#Unified-builder
 #[test]
-fn lifecycle_mut_chains_and_returns_builder() {
-    let mut builder = test_builder();
-    builder
-        .lifecycle_mut()
-        .register_veto(
-            VetoEvent::Fork,
-            Box::new(|| Veto {
-                allowed: true,
-                by: String::new(),
-                reason: String::new(),
-                recovery: None,
-            }),
-        )
-        .register_veto(
-            VetoEvent::Suspend,
-            Box::new(|| Veto {
-                allowed: false,
-                by: String::new(),
-                reason: String::new(),
-                recovery: None,
-            }),
-        )
-        .end();
-    let sealed = builder
+fn lifecycle_scope_registers_vetoes_in_chain() {
+    let sealed = test_builder()
+        .lifecycle(|l| {
+            l.register_veto(VetoEvent::Fork, Box::new(|| true))
+                .register_veto(VetoEvent::Suspend, Box::new(|| false))
+                .end()
+        })
         .trap_scope(|t| t.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end())
         .seal();
     assert!(sealed.is_ok());

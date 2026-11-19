@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable
 
 import kelir
-from kelir import Approval, Deadline, Errno, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict, VsockServiceEntry
+from kelir import Approval, Deadline, Errno, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict
 from kelir.plugin_model import (
-    BasePlugin,
+    LifecycleCtx,
     VetoEvent,
     WatchdogEvent,
     WatchdogVerdict,
@@ -32,34 +32,48 @@ class PolicyState:
 POLICY_STATE = PolicyState()
 
 
-class PolicyMatrixPlugin(BasePlugin):
-    name = "policy-matrix"
-
-    # see: cans/08-lifecycle.md#Lifecycle-vetoes
-    async def on_vm_init(self, ctx) -> None:
-        ctx.register_veto(VetoEvent.Suspend, lambda: POLICY_STATE.ready)
-        ctx.register_veto(VetoEvent.ClockSkew, lambda: POLICY_STATE.ready)
-
-    async def on_vm_ready(self, _ctx) -> None:
-        POLICY_STATE.ready = True
-
-    # see: cans/08-lifecycle.md#Watchdog
-    async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        if event.last_active_pid is not None:
-            POLICY_STATE.mitigations += 1
-            return WatchdogVerdict.Mitigate
-        return WatchdogVerdict.ExecuteDefault
+# see: cans/08-lifecycle.md#Lifecycle-vetoes
+async def _policy_vm_init(ctx: LifecycleCtx) -> None:
+    ctx.register_veto(VetoEvent.Suspend, lambda: POLICY_STATE.ready)
+    ctx.register_veto(VetoEvent.ClockSkew, lambda: POLICY_STATE.ready)
 
 
-class WatchdogSilencerPlugin(BasePlugin):
-    name = "watchdog-silencer"
+async def _policy_vm_ready(ctx: LifecycleCtx) -> None:
+    POLICY_STATE.ready = True
 
-    # see: cans/08-lifecycle.md#Watchdog
-    async def on_watchdog(self, _event: WatchdogEvent) -> WatchdogVerdict:
-        if POLICY_STATE.planned_suspend:
-            POLICY_STATE.suppressions += 1
-            return WatchdogVerdict.Suppress
-        return WatchdogVerdict.ExecuteDefault
+
+# see: cans/08-lifecycle.md#Watchdog
+async def _policy_watchdog(event: WatchdogEvent) -> WatchdogVerdict:
+    if event.last_active_pid is not None:
+        POLICY_STATE.mitigations += 1
+        return WatchdogVerdict.Mitigate
+    return WatchdogVerdict.ExecuteDefault
+
+
+# see: cans/08-lifecycle.md#Watchdog
+async def _silencer_watchdog(event: WatchdogEvent) -> WatchdogVerdict:
+    if POLICY_STATE.planned_suspend:
+        POLICY_STATE.suppressions += 1
+        return WatchdogVerdict.Suppress
+    return WatchdogVerdict.ExecuteDefault
+
+
+def policy_matrix_plugin() -> KelirBuilder:
+    return (
+        KelirBuilder.plugin("policy-matrix")
+        .lifecycle(
+            lambda l: l.on_vm_init(_policy_vm_init)
+            .on_vm_ready(_policy_vm_ready)
+        )
+        .telemetry(lambda t: t.on_watchdog(_policy_watchdog))
+    )
+
+
+def watchdog_silencer_plugin() -> KelirBuilder:
+    return (
+        KelirBuilder.plugin("watchdog-silencer")
+        .telemetry(lambda t: t.on_watchdog(_silencer_watchdog))
+    )
 
 
 PreExecHandler = Callable[[HandlerContext], Awaitable[Verdict]]
@@ -136,26 +150,21 @@ def build_runtime() -> KelirBuilder:
             enable_watchdog=True,
             driver="auto",
         )
-        .use(PolicyMatrixPlugin())
-        .use(WatchdogSilencerPlugin())
+        .use(policy_matrix_plugin())
+        .use(watchdog_silencer_plugin())
         # see: cans/02-plugin-model.md#Custom(schema)
-        .register_custom_action(
-            "quarantine",
-            {"type": "object",
-             "properties": {"pid": {"type": "integer"},
-                            "reason": {"type": "string"}},
-             "required": ["pid", "reason"]},
-            quarantine,
+        .actions(
+            lambda a: a.register(
+                "quarantine",
+                {"type": "object",
+                 "properties": {"pid": {"type": "integer"},
+                                "reason": {"type": "string"}},
+                 "required": ["pid", "reason"]},
+                quarantine,
+            )
         )
         # see: cans/11-protocol.md#Control-channel
-        .vsock_service(
-            VsockServiceEntry(
-                port=0x0013,
-                service="echo",
-                schema={"type": "object", "properties": {}},
-            ),
-            echo,
-        )
+        .vsock(lambda v: v.service(0x0013, "echo", echo))
         .trap(TrapFilter.binary("policy-allow"), pre=row_allow)
         .trap(TrapFilter.binary("policy-deny"), pre=row_deny)
         .trap(TrapFilter.binary("policy-rewrite"), pre=row_rewrite)

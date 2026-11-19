@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    "baseUrl": ".",
+    "paths": {
+      "@kelir/core": [
+        "./src/index.ts"
+      ]
+    }
+  },
+  "extends": "./tsconfig.json",
+  "include": [
+    "tests/compile-fail/**/*"
+  ]
+}

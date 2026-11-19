@@ -113,6 +113,8 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ns_per_instruction: None,
         preemption_grace_ms: 0,
         entropy_seed: None,
+        balloon: None,
+        mask_proc_environ: true,
     })
     .storage(StoragePlaneConfig {
         idmap: IdmapConfig {
@@ -122,6 +124,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         shared_caches: vec![],
         lock_broker: false,
         encapsulation: WorkspaceEncapsulation::Passthrough,
+        dax_window: None,
     })
     .plugin_instance(GitGatePlugin)
     .seal()?

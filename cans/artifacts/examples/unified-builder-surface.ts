@@ -33,18 +33,13 @@ import {
 // Structural verbs: context, requires, scope, forkWith. The vsock service
 // and the 24 ring verbs are scope-reached: .vsock() carries the service,
 // the 8 ring scopes carry the verbs.
-export function buildSurfacePlugin(): KelirBuilder<
-  "surface",
-  { surface: boolean },
-  "ledger",
-  unknown
-> {
+export function buildSurfacePlugin(): KelirBuilder<"plugin", "unsealed", "surface", { surface: boolean }, "ledger", unknown> {
   return createPlugin("surface")
     .context(() => ({ surface: true }))
     .requires<"ledger">()
     .scope({ paths: ["/workspace"] })
     .forkWith(
-      (): KelirBuilder<"surface", { surface: boolean }, "ledger", unknown> =>
+      (): KelirBuilder<"plugin", "unsealed", "surface", { surface: boolean }, "ledger", unknown> =>
         buildSurfacePlugin(),
     )
     .vsock((v) => v.service(0x0013, "echo", async (request) => request))
@@ -115,13 +110,13 @@ export function buildSurfacePlugin(): KelirBuilder<
 // see: cans/02-plugin-model.md#Unified-builder
 // The ledger provider the surface plugin requires: the name "ledger" is
 // what satisfies requires<"ledger"> at seal time. One trivial verb.
-export function buildLedgerPlugin(): KelirBuilder<"ledger", unknown, never, unknown> {
+export function buildLedgerPlugin(): KelirBuilder<"plugin", "unsealed", "ledger", unknown, never, unknown> {
   return createPlugin("ledger").telemetry((t) => t.onHeartbeat((_event) => {}));
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
 // The merge-ordering second mount: no requires, one trivial verb.
-export function buildPlainPlugin(): KelirBuilder<"plain", unknown, never, unknown> {
+export function buildPlainPlugin(): KelirBuilder<"plugin", "unsealed", "plain", unknown, never, unknown> {
   return createPlugin("plain").telemetry((t) => t.onHeartbeat((_event) => {}));
 }
 
@@ -223,23 +218,33 @@ export function hostOnlyVerbsRejectedOnPlugin(): string[] {
       }
     }
   };
+  const anyPlugin = plugin as any;
   probe("terminal", () => {
-    plugin.terminal({ cols: 120, rows: 40 });
+    anyPlugin.terminal({ cols: 120, rows: 40 });
   });
   probe("storage", () => {
-    plugin.storage({ lockBroker: true });
+    anyPlugin.storage({ lockBroker: true });
   });
   probe("wire", () => {
-    plugin.wire({});
-  });
-  probe("fs.config.lockBroker", () => {
-    plugin.fs((f) => f.config({ lockBroker: { globs: ["**/Cargo.lock"] } }));
-  });
-  probe("params", () => {
-    plugin.params((p) => p.model(t.Object({})));
+    anyPlugin.wire({});
   });
   probe("detached", () => {
-    plugin.detached(true);
+    anyPlugin.detached(true);
+  });
+  probe("fs.config.lockBroker", () => {
+    anyPlugin.fs((f: any) => f.config({ lockBroker: { globs: ["**/Cargo.lock"] } }));
+  });
+  probe("params", () => {
+    anyPlugin.params((p: any) => p.model(t.Object({})));
+  });
+  probe("actions", () => {
+    anyPlugin.actions((a: any) => a.register("quarantine", t.Object({}), async () => {}));
+  });
+  probe("streams", () => {
+    anyPlugin.streams((s: any) => s.register(0x0013, t.Object({}), async () => new Uint8Array(0)));
+  });
+  probe("deny", () => {
+    anyPlugin.deny((d: any) => d.onTrapDeny(() => {}));
   });
   return rejected;
 }
@@ -249,7 +254,7 @@ export function hostOnlyVerbsRejectedOnPlugin(): string[] {
 export async function hostOnlyBootRejectedOnPlugin(): Promise<boolean> {
   const plugin = createPlugin("surface");
   try {
-    await plugin.boot();
+    await (plugin as unknown as { boot(): Promise<unknown> }).boot();
     return false;
   } catch (error) {
     return error instanceof EConfig;
@@ -257,19 +262,9 @@ export async function hostOnlyBootRejectedOnPlugin(): Promise<boolean> {
 }
 
 // see: cans/02-plugin-model.md#Nested-scopes
-// Negative vector: f.onTrap(...) inside .fs(...) is a type error in
-// TypeScript — the FsScope interface has no onTrap member. Uncommenting
-// the body must fail tsc with "Property 'onTrap' does not exist on type
-// 'FsScope<...>'". vectors.json cannot express an expected-error case
-// (its schema carries event/expected_verdict only), so the negative case
-// is pinned here as a comment-pinned block and in the rs/py siblings.
-//
-// export function negativeFsOnTrap(
-//   builder: KelirBuilder<"surface", unknown, never, unknown>,
-// ): KelirBuilder<"surface", unknown, never, unknown> {
-//   return builder.fs((f) => f.onTrap((_event) => Verdict.Pass));
-// }
-
+// The negative vector negativeFsOnTrap (f.onTrap inside .fs(...)) now
+// lives in packages/ts/core/tests/compile-fail/builder.negative.ts; the
+// expect-error pin there is the executable form of this block.
 // see: cans/02-plugin-model.md#Nested-scopes
 // Flat-fold pin: a flat chain exists only as a group() fold over the
 // scopes — a readability fold that produces the same descriptors (same
@@ -335,9 +330,9 @@ export function buildFlatFoldPlugin() {
 async function main(): Promise<void> {
   buildSurfaceHost().seal();
   const rejected = hostOnlyVerbsRejectedOnPlugin();
-  if (rejected.length !== 6) {
+  if (rejected.length !== 9) {
     throw new Error(
-      `host-only rejection: expected 6 verbs, got ${rejected.length}: ${rejected.join(", ")}`,
+      `host-only rejection: expected 9 verbs, got ${rejected.length}: ${rejected.join(", ")}`,
     );
   }
   if (!(await hostOnlyBootRejectedOnPlugin())) {
