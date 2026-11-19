@@ -279,6 +279,20 @@ verbs:
     sdks: rust,ts,py
     status: fixed
     note: scope-only in TrapScope; scoped return is the scope itself
+  on_signal:
+    placement: scoped
+    scope: trap
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in TrapScope; scoped return is the scope itself
+  on_fork:
+    placement: scoped
+    scope: trap
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in TrapScope; scoped return is the scope itself
   on_fs_lookup:
     placement: scoped
     scope: fs
@@ -321,6 +335,69 @@ verbs:
     sdks: rust,ts,py
     status: fixed
     note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_setattr:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_symlink:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_mkdir:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_readdir:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  on_fs_readlink:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; scoped return is the scope itself
+  config:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; fs scope config carrying lock_broker, carryover_bytes, scan_engine, snoops; scoped return is the scope itself
+  timeout:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; per-scope scheduling timeout; scoped return is the scope itself
+  priority:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; per-scope scheduling priority; scoped return is the scope itself
+  rules:
+    placement: scoped
+    scope: fs
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in FsScope; per-rule policy inside a hook; scoped return is the scope itself
   on_net_outbound:
     placement: scoped
     scope: net
@@ -329,6 +406,27 @@ verbs:
     status: fixed
     note: scope-only in NetScope; scoped return is the scope itself
   on_net_inbound:
+    placement: scoped
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in NetScope; scoped return is the scope itself
+  on_socket_connect:
+    placement: scoped
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in NetScope; scoped return is the scope itself
+  on_dns_query:
+    placement: scoped
+    scope: net
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in NetScope; scoped return is the scope itself
+  on_socket_bind:
     placement: scoped
     scope: net
     return: builder
@@ -363,6 +461,13 @@ verbs:
     sdks: rust,ts,py
     status: fixed
     note: scope-only in ExecScope; scoped return is the scope itself
+  on_exec_stdin:
+    placement: scoped
+    scope: exec
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in ExecScope; scoped return is the scope itself
   on_host_lsm_exec:
     placement: scoped
     scope: host
@@ -385,6 +490,13 @@ verbs:
     status: fixed
     note: scope-only in HostScope; scoped return is the scope itself
   on_host_preempt:
+    placement: scoped
+    scope: host
+    return: builder
+    sdks: rust,ts,py
+    status: fixed
+    note: scope-only in HostScope; scoped return is the scope itself
+  on_host_containment_breach:
     placement: scoped
     scope: host
     return: builder
