@@ -65,6 +65,8 @@ jobs:
         run: just check-builder-parity
       - name: Builder chain AST gate (--builder-chain)
         run: just check-builder-chain
+      - name: Builder verbs sync (--builder-verbs-sync)
+        run: just check-builder-verbs-sync
       - name: Touched files within write budget
         if: github.event_name == 'pull_request'
         run: |

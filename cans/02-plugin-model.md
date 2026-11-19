@@ -814,8 +814,9 @@
         - Entry-point names are the scope names in all three SDKs
       - Entry-point names are the group names in all three SDKs
       - Each entry point takes a closure receiving a scope builder
-        - The closure returns the builder via .end() in Rust
-        - In TS/Py it may return the scope or void; there is no .end() in TS/Py
+        - The closure returns the builder via .end() in Rust; every Rust scope struct defines .end() (13)
+        - In TS the 8 ring-group scopes declare end(): Owner as an optional terminator; the 5 orphan-verb scopes have no .end(); a TS closure may return the scope or void
+        - In Py every scope Protocol declares end() -> KelirBuilder and the single runtime _Scope implements it once; a Py closure may return the scope or None
         - .end() is a Rust type-system artifact, not a semantic one: the Rust closure must return the builder, and .end() is how it does it
         - The parent chain resumes after the closure returns
       - Scope typing pin: scopes are checked types in every SDK
@@ -826,20 +827,24 @@
         - Scope type shapes: see: artifacts/code/scope-builders.rs
         - Scope type shapes: see: artifacts/code/python-scope-protocol.py
         - Scope type shapes: see: artifacts/code/typescript-scope-interface.ts
-      - Scope sub-nodes (one shape in all three SDKs)
-        - config(cfg) — scope-level config
+      - Scope sub-nodes (method home: one table, all three SDKs)
+        - requires / timeout / priority — every chain scope: trap, fs, net, console, exec, host, lifecycle, telemetry, actions, streams, vsock, params, deny
+        - config / fork_with / rules — FsScope only
+        - MountScope is not a chain scope (mount argument, no closure, no ring verbs); RuleScope is the rules builder inside .rules(), not a chain scope
+        - Storage is name-keyed per scope: Rust scope_timeout("trap", d) / scope_priority("trap", i); TS/Py record the same way
+        - config(cfg) — scope-level config, FsScope only
           - fs: .fs(|f| f.config(…)) carries lock_broker, carryover_bytes, scan_engine, snoops
           - Python kwargs shape: .fs(lambda f: f.config(lock_broker=…))
           - storage.lock_broker.scope_globs rides .fs config, not a standalone verb
-        - requires::<P>() — scope-level deps
+        - requires::<P>() — scope-level deps, every scope
           - TS .requires<P>() inside the scope; Py .require(P) inside the scope
-        - fork_with(f) — scope-level fork policy
+        - fork_with(f) — scope-level fork policy, FsScope only
           - TS .forkWith(fn) inside the scope
-        - timeout(d) / priority(i) — per-scope scheduling
+        - timeout(d) / priority(i) — per-scope scheduling, every scope
           - The verbs land here; the ordering/timeout SEMANTICS land in
             - #Hook-ordering and #Per-ring-timeouts (Segregated-ring-traits)
           - TrapFilter predicate grammar: see: #TrapFilter-predicates
-        - rules(|r| r.read.allow(glob).deny(glob).write.mask(regex)) — per-rule policy inside a hook
+        - rules(|r| r.read.allow(glob).deny(glob).write.mask(regex)) — per-rule policy inside a hook, FsScope only
           - TS camelCase inside the scope: r.read.allow(glob).deny(glob).write.mask(regex)
           - The mechanical replacement for hook-matrix-full.py's IDENTITY_PATH/DENY_MARKER/CARRYOVER constants
       - Scope groups organise the chain only

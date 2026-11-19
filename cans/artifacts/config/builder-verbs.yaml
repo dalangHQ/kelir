@@ -1,30 +1,37 @@
-# builder-verbs.yaml — machine-readable SSOT of the unified builder verb set.
+# builder-verbs.yaml — spec-side mirror of the unified builder verb set.
 #
 # Owned by: cans/02-plugin-model.md#Unified-builder
 # see: cans/02-plugin-model.md#Unified-builder
 # see: cans/02-plugin-model.md#Chain-decisions
 # see: cans/03-sdk-architecture.md#Unified-builder-surface
 #
-# Consumed by: scripts/check-builder-parity.sh (A6 CI gate). The gate reads
-# this file, not the prose pin: every verb the gate checks must be listed
-# here, and every verb listed here must exist in the named SDKs.
+# This file is the spec-side mirror of scripts/builder-parity-verbs.yaml,
+# which is the machine SSOT the parity gate reads. The mirror carries the
+# same verb set plus per-verb args signature summaries and notes, which
+# the machine schema has no fields for. scripts/check-builder-verbs-sync.py
+# keeps the two in agreement; a verb added to either file without its
+# counterpart fails that gate. The earlier claim that the parity gate
+# reads this file was false; the gate never read it.
 #
 # Fields per verb:
 #   name: canonical snake_case id (the Rust spelling, unless noted).
 #   rust / typescript / python: the verb name per SDK; null means the SDK
 #     has no such verb (use the note for the per-SDK equivalent, if any).
+#     A null column the sync gate does not expect fails the sync.
 #   placement: flat (a direct method on the builder) | scoped-entry (the
 #     scope entry point itself) | both (a flat verb also exposed in a scope).
 #     | scoped (reachable ONLY inside the named scope; no flat builder
 #     equivalent — every orphan-scope register verb is `scoped`, so the
 #     flat chain cannot reach it and the scope is the only home).
+#     | registry (a TS HookRegistry mutator, not a builder verb).
 #   scope: the scope entry name that also exposes a flat verb; null when
-#     the verb has no scope form.
+#     the verb has no scope form; all when the verb lives in every scope.
 #   returns: builder (Self / this, the chain continues) | sealed-builder
 #     (seal: Rust Result<Sealed>, TS this + sealed flag, Py Self) |
 #     session (boot, the terminal step; no further builder verbs) |
 #     scope (a scoped verb; the chain stays on the scope) |
-#     void (a host-only register verb with no builder continuation).
+#     void (a host-only register verb with no builder continuation) |
+#     registry (a HookRegistry method returning this).
 #   args: free-form summary of the call-site signature shape, for the
 #     A6 gate's arity check. Not a type signature; types live in the
 #     owning SDK artifact.
@@ -34,7 +41,10 @@
 # Parity rule (A6): a verb is green only when every non-null SDK
 # column resolves and the `placement` agrees across SDKs. A null SDK
 # column is a deliberate absence (e.g. Rust has no `.end()` on TS-style
-# scopes; TS/Py have no `.end()` at all), never a bug.
+# scopes; TS/Py have no `.end()` at all), never a bug. Entries under
+# the pre-boot plane setters that no SDK implements yet are pinned
+# future surface, not live verbs: the sync gate fails if any SDK gains
+# one without the machine file gaining the verb.
 #
 # This file pins verbs, not handlers: the handler predicates
 # (TrapFilter grammar) live in trap-filter-predicates.rs; the ring
@@ -96,13 +106,13 @@ verbs:
 
   - name: register_veto
     rust: register_veto
-    typescript: registerVeto
-    python: register_veto
+    typescript: null
+    python: null
     placement: scoped-entry
     scope: lifecycle
     returns: scope
     args: "(event: VetoEvent, callback: () => bool)"
-    notes: Veto only on the events named in VetoEvent::Fork and peers.
+    notes: Rust-only. Veto only on the events named in VetoEvent::Fork and peers.
 
   # ── Trap ring ───────────────────────────────────────────────────
   # see: cans/02-plugin-model.md#Segregated-ring-traits
@@ -453,6 +463,93 @@ verbs:
     args: "async (w: &WatchdogEvent) => Result<WatchdogVerdict, PluginError>"
     notes: Returns WatchdogVerdict (not () ); the only telemetry verb whose result gates virtio-wdt.
 
+  # ── Scope entry points (ring groups) ────────────────────────
+  # see: cans/02-plugin-model.md#Nested-scopes
+  # see: cans/artifacts/code/scope-builders.rs
+  #
+  # Each entry opens its scope for a closure; the entry itself carries
+  # no verb meaning beyond opening the scope. trap is the exception: it
+  # is also a flat filter verb, so it is placement both, not scoped-entry.
+  - name: fs
+    rust: fs
+    typescript: fs
+    python: fs
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust fs(|s: FsScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the fs scope; home of the on_fs_* ring verbs.
+
+  - name: net
+    rust: net
+    typescript: net
+    python: net
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust net(|s: NetScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the net scope; home of the on_net_* / on_socket_* / on_dns_query verbs.
+
+  - name: console
+    rust: console
+    typescript: console
+    python: console
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust console(|s: ConsoleScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the console scope; home of on_console_input / on_console_output.
+
+  - name: exec
+    rust: exec
+    typescript: exec
+    python: exec
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust exec(|s: ExecScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the exec scope; home of the on_exec_* verbs.
+
+  - name: host
+    rust: host
+    typescript: host
+    python: host
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust host(|s: HostScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the host scope; home of the on_host_* verbs.
+
+  - name: lifecycle
+    rust: lifecycle
+    typescript: lifecycle
+    python: lifecycle
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust lifecycle(|s: LifecycleScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the lifecycle scope; home of the on_vm_* / on_pre_commit / on_post_commit verbs.
+
+  - name: telemetry
+    rust: telemetry
+    typescript: telemetry
+    python: telemetry
+    placement: scoped-entry
+    scope: null
+    returns: builder
+    args: "Rust telemetry(|s: TelemetryScope| -> KelirBuilder); TS/Py (fn: (scope) => scope | void)"
+    notes: Opens the telemetry scope; home of on_memory_pressure / on_heartbeat / on_watchdog.
+
+  - name: trap
+    rust: trap
+    typescript: trap
+    python: trap
+    placement: both
+    scope: trap
+    returns: builder
+    args: "Rust trap(filter, handler) and trap_scope(|s: TrapScope| -> KelirBuilder); TS/Py overloaded trap(filter, handler) / trap((scope) => scope | void)"
+    notes: Flat filter form and scope-closure form are one verb; Py takes a callable pattern for the scope form.
+
   # ── Shared scope sub-nodes (placement: both) ────────────────────
   # see: cans/02-plugin-model.md#Nested-scopes
   # see: cans/artifacts/code/scope-builders.rs
@@ -465,7 +562,7 @@ verbs:
     rust: config
     typescript: config
     python: config
-    placement: both
+    placement: scoped
     scope: fs
     returns: scope
     args: "per-scope fields; fs: (lock_broker?, carryover_bytes?, scan_engine?, snoops?)"
@@ -480,7 +577,7 @@ verbs:
     typescript: requires
     python: require
     placement: both
-    scope: fs
+    scope: all
     returns: scope
     args: "Rust requires::<P>(); TS requires<Req extends string>(); Py require(plugin: type | str)"
     notes: >-
@@ -506,8 +603,8 @@ verbs:
     rust: timeout
     typescript: timeout
     python: timeout
-    placement: both
-    scope: fs
+    placement: scoped
+    scope: all
     returns: scope
     args: "Rust timeout(d: Duration); TS timeout(seconds: number); Py timeout(seconds: float)"
     notes: >-
@@ -520,8 +617,8 @@ verbs:
     rust: priority
     typescript: priority
     python: priority
-    placement: both
-    scope: fs
+    placement: scoped
+    scope: all
     returns: scope
     args: "Rust priority(i: i32); TS priority(i: number); Py priority(i: int)"
     notes: >-
@@ -533,7 +630,7 @@ verbs:
     rust: rules
     typescript: rules
     python: rules
-    placement: both
+    placement: scoped
     scope: fs
     returns: scope
     args: "rules(rules: ScopeRules)"
@@ -676,17 +773,18 @@ verbs:
   # see: cans/02-plugin-model.md#Chain-decisions
   # see: cans/03-sdk-architecture.md#Unified-builder-surface
   - name: use
-    rust: use_plugin
+    rust: r#use
     typescript: use
     python: use
     placement: flat
     scope: null
     returns: builder
-    args: "Rust use_plugin::<P>(p: P) -> Self; TS use(plugin); Py use(plugin) -> Self"
+    args: "Rust r#use::<PCtx, PDeps>(p: P) -> Self; TS use(plugin); Py use(plugin) -> Self"
     notes: >-
-      Rust spells it use_plugin (`use` is a keyword); the canonical id
-      stays `use`. Appends P::Context to the Plugins HList / accumulates
-      Ctx / appends to the registry — one meaning.
+      Rust spells it r#use (`use` is a keyword); the canonical id
+      stays `use`. The PyO3 bridge method use_plugin is a different
+      function, not the builder verb. Appends P::Context to the Plugins
+      HList / accumulates Ctx / appends to the registry — one meaning.
 
   - name: with_composite
     rust: with_composite
@@ -717,8 +815,8 @@ verbs:
     rust: require
     typescript: requires
     python: require
-    placement: flat
-    scope: null
+    placement: both
+    scope: all
     returns: builder
     args: "Rust require::<P>(); TS requires<Req extends string>(); Py require(plugin)"
     notes: >-
@@ -751,6 +849,181 @@ verbs:
       Python enters via __aenter__ (RAII: __aexit__ terminates). Walks the
       registry, materializes capability structs from each plugin Context
       before the first handler fires.
+
+  - name: plugin
+    rust: plugin
+    typescript: plugin
+    python: plugin
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust plugin::<PCtx, PDeps>(plugin) -> Self; TS plugin<P>(plugin); Py plugin(name | builder)"
+    notes: Mount by value; instance .plugin(builder) mounts via .use() in all three SDKs, a string argument is rejected in TS/Py.
+
+  - name: plugin_instance
+    rust: plugin_instance
+    typescript: pluginInstance
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust plugin_instance::<P>(plugin: P) -> Self where P: KelirPlugin + Clone; TS pluginInstance<P>(plugin)"
+    notes: Trait-plugin mount by value; TS delegates to use() like Rust plugin_instance delegates to plugin(). Py has no separate verb; instance mounting rides the plugin descriptor.
+
+  - name: context
+    rust: context
+    typescript: context
+    python: context
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust context::<NextCtx>(factory); TS context<NewCtx>(fn: (c: Ctx) => NewCtx); Py context(fn: Handler)"
+    notes: Plugin-only context factory verb; retypes the builder.
+
+  - name: detached
+    rust: detached
+    typescript: detached
+    python: detached
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust detached(detached: bool); TS detached(detached: boolean); Py detached(detached: bool)"
+    notes: Host-only detached session flag verb.
+
+  - name: fast_boot
+    rust: fast_boot
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust fast_boot(mode: FastBootMode)"
+    notes: Rust-only host verb; TS/Py have no fast_boot.
+
+  - name: dax_window
+    rust: dax_window
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust dax_window(mode: DaxWindowMode)"
+    notes: Rust-only host verb; TS/Py have no dax_window.
+
+  - name: fork_state
+    rust: null
+    typescript: forkState
+    python: fork_state
+    placement: flat
+    scope: null
+    returns: builder
+    args: "TS forkState(): AnyBuilder; Py fork_state() -> KelirBuilder"
+    notes: Factory, not a chain verb; Rust fork_state is a KelirPlugin trait method, not a builder verb; host-mode fork errors in all three SDKs.
+
+  - name: guard
+    rust: guard
+    typescript: guard
+    python: guard
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust guard(enabled: bool, configure); TS guard(enabled, fn); Py guard(enabled: bool, fn)"
+    notes: Boolean conditional group; guard(enabled, f) applies f only when enabled, else the builder passes through.
+
+  - name: scope
+    rust: scope
+    typescript: scope
+    python: scope
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust scope(scope: MountScope); TS scope(scope); Py scope(scope: Any)"
+    notes: Mount scope verb.
+
+  - name: trap_async
+    rust: trap_async
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust trap_async(filter, f) -> Self (async handler)"
+    notes: Rust-only async trap form; returns Self since the chain fix.
+
+  - name: post_exec
+    rust: post_exec
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust post_exec(filter, f) -> Self (async handler)"
+    notes: Rust-only post-exec gate; returns Self since the chain fix.
+
+  - name: derive
+    rust: null
+    typescript: derive
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "TS derive<NewCtx>(fn: (c: Ctx) => NewCtx)"
+    notes: TS-only context derivation verb; A1 to pin whether Rust and Py gain it.
+
+  - name: trap_scope
+    rust: trap_scope
+    typescript: null
+    python: null
+    placement: flat
+    scope: null
+    returns: builder
+    args: "Rust trap_scope(|s: TrapScope| -> KelirBuilder)"
+    notes: Rust-only name for the trap scope form; TS/Py cover it with the overloaded trap.
+
+  # ── TS HookRegistry verbs (placement: registry) ─────────────────
+  # see: cans/03-sdk-architecture.md#TypeScript-SDK
+  #
+  # Mutators and validators on the TS HookRegistry, not builder verbs.
+  # The parity gate checks them in hook.registry.ts only.
+  - name: setScope
+    rust: null
+    typescript: setScope
+    python: null
+    placement: registry
+    scope: null
+    returns: registry
+    args: "TS setScope(scope: MountScope): this"
+    notes: TS HookRegistry mutator returning this.
+
+  - name: addHook
+    rust: null
+    typescript: addHook
+    python: null
+    placement: registry
+    scope: null
+    returns: registry
+    args: "TS addHook(hook: {...}): this"
+    notes: TS HookRegistry mutator returning this.
+
+  - name: adoptHook
+    rust: null
+    typescript: adoptHook
+    python: null
+    placement: registry
+    scope: null
+    returns: registry
+    args: "TS adoptHook(hook: HookDescriptor): this"
+    notes: TS HookRegistry mutator returning this.
+
+  - name: validate
+    rust: null
+    typescript: validate
+    python: null
+    placement: registry
+    scope: null
+    returns: registry
+    args: "TS validate(): this"
+    notes: TS HookRegistry validator returning this.
 
   # ── Pre-boot plane + VM typestate setters (placement: flat) ─────
   # see: cans/artifacts/code/vm-config-defaults.rs
@@ -860,18 +1133,24 @@ verbs:
     notes: "Enables virtio-wdt; on_watchdog returns WatchdogVerdict."
 
 # ────────────────────────────────────────────────────────────────────
-# A6 gate contract (scripts/check-builder-parity.sh)
+# Sync contract (scripts/check-builder-verbs-sync.py)
 # ────────────────────────────────────────────────────────────────────
-# The gate reads this file, not the prose pin. Rules it enforces:
-#   1. every verb in `verbs:` resolves in every non-null SDK column;
-#   2. no SDK exposes a builder verb absent from this list (reverse
-#      direction — catches verbs added in code but never pinned);
-#   3. `placement` agrees across SDKs: a `scoped` verb must not be
-#      callable flat in any SDK; a `flat` verb must exist on all three;
-#   4. canonical `name` is unique (the `params` overload is one entry);
-#   5. a `null` SDK column is a deliberate absence and passes.
-# Adding a verb = one entry here + the three SDK spellings, in the same
-# PR. The gate is the machine half of the "one builder surface" pin
+# The parity gate reads scripts/builder-parity-verbs.yaml, not this
+# file. This file is the spec-side mirror of that machine SSOT, and the
+# sync gate enforces the agreement. Rules it enforces:
+#   1. every machine-file verb has an entry here (params maps to the
+#      params + params_model overload split; both must exist);
+#   2. every entry here has a machine-file verb, except params_model
+#      (covered by machine-file params), requires (known-open: scope
+#      requires is not yet gated), and the pinned future-surface
+#      entries below, which must stay unimplemented in all three SDKs;
+#   3. the non-null SDK columns cover the machine file's sdks set,
+#      and the per-SDK spellings agree;
+#   4. `placement`/`scope` agree after vocabulary normalization
+#      (machine scoped == scoped-entry here for ring verbs).
+# Adding a verb = one entry here + the machine-file entry + the three
+# SDK spellings, in the same PR. The sync gate is the machine half of
+# the "one builder surface" pin
 # (cans/03-sdk-architecture.md#Unified-builder-surface); the prose half
 # lives in cans/02-plugin-model.md#Unified-builder.
 

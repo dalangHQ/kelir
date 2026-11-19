@@ -2134,6 +2134,11 @@ harness_tests:
     forms, seal rejects duplicate mounts and empty trap filters, guard
     applies only when enabled); 6 tests, no plan case covers the chain
     surface yet (L1/L2 wiring addition).
+- file: crates/kelir/tests/compile_fail_suite.rs
+  reason: Trybuild negative suite per cans/02-plugin-model.md#Unified-builder
+    and cans/02-plugin-model.md#Nested-scopes (comment-pinned negative vectors
+    migrated out of unified-builder-surface.rs); compile-fail fixtures only, no
+    plan case covers the builder negative surface yet (L1/L2 wiring addition).
 - file: crates/kelir-engine/tests/wire_scope_test.rs
   reason: Mount-scope net-filter dispatch test per cans/02-plugin-model.md#Mount-scoping
     (WO3-C6); outbound and inbound net hooks gated by MountScope net_cidrs/net_ports via

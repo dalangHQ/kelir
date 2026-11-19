@@ -857,6 +857,7 @@ kelir/
     ├── builder-parity-verbs.yaml
     ├── check-builder-chain-ast.py
     ├── check-builder-parity.sh
+    ├── check-builder-verbs-sync.py
     ├── check-canon.sh
     ├── check-examples-canonical.sh
     ├── check-examples-run.sh

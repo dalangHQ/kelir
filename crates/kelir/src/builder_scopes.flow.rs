@@ -65,14 +65,6 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         self
     }
 
-    pub fn fork_with<F>(mut self, f: F) -> Self
-    where
-        F: Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
-    {
-        self.builder = self.builder.fork_with(f);
-        self
-    }
-
     pub fn timeout(mut self, d: Duration) -> Self {
         self.builder = self.builder.scope_timeout("trap", d);
         self
@@ -640,14 +632,6 @@ impl<Plugins: HList, Params: 'static, Mode, Ctx, Deps: HList>
         P: KelirPlugin,
     {
         self.builder = self.builder.scope_require::<P>();
-        self
-    }
-
-    pub fn fork_with<F>(mut self, f: F) -> Self
-    where
-        F: Fn(&str) -> Box<dyn AnyPlugin> + Send + Sync + 'static,
-    {
-        self.builder = self.builder.fork_with(f);
         self
     }
 

@@ -5,7 +5,7 @@
 # see: scripts/check-builder-parity.sh
 schema:
   placement: flat on the builder, both flat and inside a scope, scoped inside a scope only, or registry for TS HookRegistry only
-  scope: scope the verb lives in or opens, empty otherwise
+  scope: scope the verb lives in or opens, empty otherwise, all for every chain scope (trap fs net console exec host lifecycle telemetry actions streams vsock params deny)
   return: builder Self-this-KelirBuilder, sealed Rust Result Sealed else builder, terminal boot only, scope the scope type, registry HookRegistry this
   sdks: sdks the verb is required in, absence outside the list is not a failure
   status: fixed true pre-fix, target FIXED target differing pre-fix, pin A1 must pin the target
@@ -21,9 +21,9 @@ verbs:
   plugin_instance:
     placement: flat
     return: builder
-    sdks: rust
+    sdks: rust,ts
     status: fixed
-    note: Rust-only trait-plugin mount; TS/Py mount trait plugins through use()
+    note: trait-plugin mount by value; TS spells it pluginInstance and delegates to use() like Rust plugin_instance delegates to plugin(); Py mounts trait plugins through the plugin descriptor, which dispatches names to _plugin_create and builders to _plugin_instance_mount
   seal:
     placement: flat
     return: sealed
@@ -80,11 +80,12 @@ verbs:
     status: fixed
     note: context factory verb; rust and ts retype the builder, py returns Self
   require:
-    placement: flat
+    placement: both
+    scope: all
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: dependency requirement verb; ts spells it requires
+    note: dependency requirement verb, flat and in every scope; ts spells it requires; rust scoped spelling is requires, flat is require, py is require in both homes
   scope:
     placement: flat
     return: builder
@@ -92,12 +93,12 @@ verbs:
     status: fixed
     note: mount scope verb
   fork_with:
-    placement: scoped
+    placement: both
     scope: fs
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: FsScope-only in all three SDKs; the scope stores the fork fn (ts registry.fsScopeForkFn, py _fs_scope["fork_with"], promoted into the builder fork fn by .fs()) with no mode check, while the flat forkWith/fork_with stays plugin-only and rejects host mode
+    note: flat plugin-only fork policy on the builder plus the FsScope-only form; the scope stores the fork fn (ts registry.fsScopeForkFn, py _fs_scope["fork_with"], promoted into the builder fork fn by .fs()) with no mode check, while the flat forkWith/fork_with stays plugin-only and rejects host mode
   vsock_service:
     placement: scoped
     scope: vsock
@@ -379,18 +380,18 @@ verbs:
     note: scope-only in FsScope; fs scope config carrying lock_broker, carryover_bytes, scan_engine, snoops; scoped return is the scope itself
   timeout:
     placement: scoped
-    scope: fs
+    scope: all
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: scope-only in FsScope; per-scope scheduling timeout; scoped return is the scope itself
+    note: every scope; per-scope scheduling timeout, stored name-keyed per scope; scoped return is the scope itself
   priority:
     placement: scoped
-    scope: fs
+    scope: all
     return: builder
     sdks: rust,ts,py
     status: fixed
-    note: scope-only in FsScope; per-scope scheduling priority; scoped return is the scope itself
+    note: every scope; per-scope scheduling priority, stored name-keyed per scope; scoped return is the scope itself
   rules:
     placement: scoped
     scope: fs

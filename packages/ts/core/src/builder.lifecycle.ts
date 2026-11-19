@@ -304,6 +304,27 @@ export class KelirBuilder<
         builder.paramsSchema = schema;
         return scope;
       },
+      // see: cans/02-plugin-model.md#Nested-scopes
+      requires<Req extends string>(
+        name?: Req,
+      ): ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> {
+        if (name !== undefined && !builder.registry.requiredDeps.includes(name)) {
+          builder.registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(
+        seconds: number,
+      ): ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> {
+        builder.registry.scopeTimeoutSeconds["params"] = seconds;
+        return scope;
+      },
+      priority(
+        i: number,
+      ): ParamsScope<Ctx, KelirBuilder<"host", "unsealed", Name, Ctx, Deps, Params>> {
+        builder.registry.scopePriorities["params"] = i;
+        return scope;
+      },
     };
     fn(scope);
     return this as unknown as KelirBuilder<TMode, TSealed, Name, Ctx, Deps, Params2>;

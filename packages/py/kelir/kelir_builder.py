@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     )
     from kelir.plugin_model import BasePlugin
 
-from kelir import LifecycleEvent, Session, TrapFilter
+from kelir import Session, TrapFilter
 
 _Mode = TypeVar("_Mode", bound=str)
 _Sealed = TypeVar("_Sealed", bound=str)
@@ -219,6 +219,8 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
         self._requires: list[str] = []
         self._scope: Any = None
         self._fs_scope: dict[str, Any] = {}
+        self._scope_timeouts: dict[str, float] = {}
+        self._scope_priorities: dict[str, int] = {}
         self._context_fn: Handler | None = None
         self._fork_fn: Callable[[KelirBuilder], KelirBuilder] | None = None
         self._handlers: list[tuple[str, Handler, int]] = []
@@ -698,7 +700,7 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
     def _scope_entry(self, name: str, fn: Callable[[_Scope], Any]) -> Self:
         self._check_mounted(name)
         self._check_sealed(name)
-        fn(_Scope(self, _SCOPE_VERBS[name]))
+        fn(_Scope(self, name, _SCOPE_VERBS[name]))
         return self
 
     def _check_mounted(self, verb: str) -> None:

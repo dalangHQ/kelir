@@ -82,6 +82,10 @@ export interface TrapScope<Ctx, Owner = unknown> {
       child: number,
     ) => Promise<Verdict> | Verdict,
   ): TrapScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): TrapScope<Ctx, Owner>;
+  timeout(seconds: number): TrapScope<Ctx, Owner>;
+  priority(i: number): TrapScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -177,6 +181,10 @@ export interface NetScope<Ctx, Owner = unknown> {
       port: number,
     ) => Verdict,
   ): NetScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): NetScope<Ctx, Owner>;
+  timeout(seconds: number): NetScope<Ctx, Owner>;
+  priority(i: number): NetScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -194,6 +202,10 @@ export interface ConsoleScope<Ctx, Owner = unknown> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): ConsoleScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): ConsoleScope<Ctx, Owner>;
+  timeout(seconds: number): ConsoleScope<Ctx, Owner>;
+  priority(i: number): ConsoleScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -220,6 +232,10 @@ export interface ExecScope<Ctx, Owner = unknown> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): ExecScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): ExecScope<Ctx, Owner>;
+  timeout(seconds: number): ExecScope<Ctx, Owner>;
+  priority(i: number): ExecScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -238,6 +254,10 @@ export interface HostScope<Ctx, Owner = unknown> {
       kind: string,
     ) => Promise<void> | void,
   ): HostScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): HostScope<Ctx, Owner>;
+  timeout(seconds: number): HostScope<Ctx, Owner>;
+  priority(i: number): HostScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -261,6 +281,10 @@ export interface LifecycleScope<Ctx, Owner = unknown> {
       committed: boolean,
     ) => Promise<void> | void,
   ): LifecycleScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): LifecycleScope<Ctx, Owner>;
+  timeout(seconds: number): LifecycleScope<Ctx, Owner>;
+  priority(i: number): LifecycleScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -280,6 +304,10 @@ export interface TelemetryScope<Ctx, Owner = unknown> {
       event: WatchdogEvent,
     ) => Promise<WatchdogVerdict> | WatchdogVerdict,
   ): TelemetryScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): TelemetryScope<Ctx, Owner>;
+  timeout(seconds: number): TelemetryScope<Ctx, Owner>;
+  priority(i: number): TelemetryScope<Ctx, Owner>;
   end(): Owner;
 }
 
@@ -290,6 +318,10 @@ export interface ActionsScope<Ctx = never, Owner = unknown> {
     schema: Schema<P>,
     handler: (payload: P) => Promise<void> | void,
   ): ActionsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): ActionsScope<Ctx, Owner>;
+  timeout(seconds: number): ActionsScope<Ctx, Owner>;
+  priority(i: number): ActionsScope<Ctx, Owner>;
 }
 
 // see: cans/artifacts/code/typescript-scope-interface.ts#StreamsScope
@@ -299,6 +331,10 @@ export interface StreamsScope<Ctx = never, Owner = unknown> {
     schema: Schema<unknown>,
     handler: (request: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   ): StreamsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): StreamsScope<Ctx, Owner>;
+  timeout(seconds: number): StreamsScope<Ctx, Owner>;
+  priority(i: number): StreamsScope<Ctx, Owner>;
 }
 
 // see: cans/artifacts/code/typescript-scope-interface.ts#VsockScope
@@ -308,11 +344,19 @@ export interface VsockScope<Ctx = never, Owner = unknown> {
     service: string,
     handler: (request: unknown) => Promise<unknown> | unknown,
   ): VsockScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): VsockScope<Ctx, Owner>;
+  timeout(seconds: number): VsockScope<Ctx, Owner>;
+  priority(i: number): VsockScope<Ctx, Owner>;
 }
 
 // see: cans/artifacts/code/typescript-scope-interface.ts#ParamsScope
 export interface ParamsScope<Ctx = never, Owner = unknown> {
   model<S extends Schema<any>>(schema: S): ParamsScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): ParamsScope<Ctx, Owner>;
+  timeout(seconds: number): ParamsScope<Ctx, Owner>;
+  priority(i: number): ParamsScope<Ctx, Owner>;
 }
 
 // see: cans/artifacts/code/typescript-scope-interface.ts#DenyScope
@@ -324,6 +368,10 @@ export interface DenyScope<Ctx = never, Owner = unknown> {
       session: Session & Ctx,
     ) => Promise<void> | void,
   ): DenyScope<Ctx, Owner>;
+  // see: cans/02-plugin-model.md#Nested-scopes
+  requires<Req extends string>(name?: Req): DenyScope<Ctx, Owner>;
+  timeout(seconds: number): DenyScope<Ctx, Owner>;
+  priority(i: number): DenyScope<Ctx, Owner>;
 }
 
 function unpack(event: unknown): readonly unknown[] {
@@ -419,8 +467,8 @@ export class HookRegistry<Ctx = unknown> {
   readonly vsockEntries: VsockServiceEntry[] = [];
   fsScopeConfig?: FsScopeConfig;
   fsScopeForkFn?: () => KelirBuilder<any, any, any, any, any, any>;
-  fsScopeTimeoutSeconds?: number;
-  fsScopePriority?: number;
+  scopeTimeoutSeconds: Record<string, number> = {};
+  scopePriorities: Record<string, number> = {};
   fsScopeRules?: ScopeRules;
 
   constructor(pluginName?: string) {
@@ -519,8 +567,8 @@ export class HookRegistry<Ctx = unknown> {
     copy.vsockEntries.push(...this.vsockEntries);
     copy.fsScopeConfig = this.fsScopeConfig;
     copy.fsScopeForkFn = this.fsScopeForkFn;
-    copy.fsScopeTimeoutSeconds = this.fsScopeTimeoutSeconds;
-    copy.fsScopePriority = this.fsScopePriority;
+    copy.scopeTimeoutSeconds = { ...this.scopeTimeoutSeconds };
+    copy.scopePriorities = { ...this.scopePriorities };
     copy.fsScopeRules = this.fsScopeRules;
     return copy;
   }
@@ -546,6 +594,20 @@ export class HookRegistry<Ctx = unknown> {
       },
       onFork(handler) {
         registry.onFork(handler);
+        return scope;
+      },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["trap"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["trap"] = i;
         return scope;
       },
       end() {
@@ -626,11 +688,11 @@ export class HookRegistry<Ctx = unknown> {
         return scope;
       },
       timeout(seconds) {
-        registry.fsScopeTimeoutSeconds = seconds;
+        registry.scopeTimeoutSeconds["fs"] = seconds;
         return scope;
       },
       priority(i) {
-        registry.fsScopePriority = i;
+        registry.scopePriorities["fs"] = i;
         return scope;
       },
       rules(rules) {
@@ -672,6 +734,20 @@ export class HookRegistry<Ctx = unknown> {
         registry.onSocketBind(handler);
         return scope;
       },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["net"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["net"] = i;
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -693,6 +769,20 @@ export class HookRegistry<Ctx = unknown> {
       },
       onConsoleOutput(handler) {
         registry.onConsoleOutput(handler);
+        return scope;
+      },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["console"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["console"] = i;
         return scope;
       },
       end() {
@@ -720,6 +810,20 @@ export class HookRegistry<Ctx = unknown> {
       },
       onExecStdin(handler) {
         registry.onExecStdin(handler);
+        return scope;
+      },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["exec"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["exec"] = i;
         return scope;
       },
       end() {
@@ -757,6 +861,20 @@ export class HookRegistry<Ctx = unknown> {
         registry.onHostContainmentBreach(handler);
         return scope;
       },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["host"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["host"] = i;
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -792,6 +910,20 @@ export class HookRegistry<Ctx = unknown> {
         registry.onPostCommit(handler);
         return scope;
       },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["lifecycle"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["lifecycle"] = i;
+        return scope;
+      },
       end() {
         return endTarget();
       },
@@ -817,6 +949,20 @@ export class HookRegistry<Ctx = unknown> {
       },
       onWatchdog(handler) {
         registry.onWatchdog(handler);
+        return scope;
+      },
+      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
+      },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["telemetry"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["telemetry"] = i;
         return scope;
       },
       end() {
@@ -1567,7 +1713,21 @@ export class HookRegistry<Ctx = unknown> {
       ): ActionsScope<Ctx, Owner> {
         registry.registerCustomAction(name, schema, handler);
         return scope;
+      },      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
       },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["actions"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["actions"] = i;
+        return scope;
+      },
+
     };
     fn(scope);
     return this;
@@ -1586,7 +1746,21 @@ export class HookRegistry<Ctx = unknown> {
       ): StreamsScope<Ctx, Owner> {
         registry.registerStreamKindBytes(kind, schema, handler);
         return scope;
+      },      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
       },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["streams"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["streams"] = i;
+        return scope;
+      },
+
     };
     fn(scope);
     return this;
@@ -1605,7 +1779,21 @@ export class HookRegistry<Ctx = unknown> {
       ): VsockScope<Ctx, Owner> {
         registry.vsockService(port, service, unknownSchema, handler);
         return scope;
+      },      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
       },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["vsock"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["vsock"] = i;
+        return scope;
+      },
+
     };
     fn(scope);
     return this;
@@ -1626,7 +1814,21 @@ export class HookRegistry<Ctx = unknown> {
       ): DenyScope<Ctx, Owner> {
         registry.onTrapDeny(handler);
         return scope;
+      },      requires(name) {
+        if (name !== undefined && !registry.requiredDeps.includes(name)) {
+          registry.requiredDeps.push(name);
+        }
+        return scope;
       },
+      timeout(seconds) {
+        registry.scopeTimeoutSeconds["deny"] = seconds;
+        return scope;
+      },
+      priority(i) {
+        registry.scopePriorities["deny"] = i;
+        return scope;
+      },
+
     };
     fn(scope);
     return this;
