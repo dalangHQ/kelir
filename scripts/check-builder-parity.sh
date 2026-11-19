@@ -12,6 +12,7 @@ RS_SCOPES="crates/kelir/src/builder_scopes.flow.rs"
 TS_BUILDER="packages/ts/core/src/builder.lifecycle.ts"
 TS_SCOPES="packages/ts/core/src/hook.registry.ts"
 PY_FILE="packages/py/kelir/kelir_builder.py"
+PY_SCOPE_FILE="packages/py/kelir/kelir_builder_scope.py"
 GATE_FAIL=0
 CHECKS=0
 FAILED=0
@@ -262,20 +263,20 @@ check_ts_registry_return() {
     done < <(grep -nE "^  ${verb}\\(" "$TS_SCOPES" || true)
 }
 check_py_return() {
-    local verb="$1" expected="$2" range_start="$3" range_end="$4" class sig n
+    local verb="$1" expected="$2" range_start="$3" range_end="$4" file="${5:-$PY_FILE}" class sig n
     while IFS=':' read -r n _; do
         [ -n "$n" ] || continue
-        sig="$(join_sig "$PY_FILE" "$n" 12 '->.*:|\)')"
+        sig="$(join_sig "$file" "$n" 12 '->.*:|\)')"
         class="$(classify_py_sig "$sig")"
         check
         if py_accept "$expected" "$class"; then
             if [ "$class" = "terminal" ]; then printf '%s\n' "$verb" >> "$WORK/terminal.py"; fi
         else
-            fail "py: .$verb returns $class, want $expected ($PY_FILE:$n)"
+            fail "py: .$verb returns $class, want $expected ($file:$n)"
         fi
     done < <(awk -v verb="$verb" -v from="$range_start" -v to="$range_end" '
         NR >= from && (to == 0 || NR < to) && $0 ~ "^    (async )?def " verb "\\(" { print NR ":" $0 }
-    ' "$PY_FILE" || true)
+    ' "$file" || true)
 }
 check_ts_scoped_return() {
     local verb="$1" tname="$2" stype="$3" block
@@ -294,9 +295,9 @@ check_ts_scoped_return() {
 }
 
 # see: cans/02-plugin-model.md#Unified-builder
-PY_CLASS_LINE="$(grep -n '^class KelirBuilder:' "$PY_FILE" | cut -d: -f1)"
-PY_SCOPE_END="$(grep -n '^class _PluginMount:' "$PY_FILE" | cut -d: -f1)"
-PY_SCOPE_START="$(grep -n '^class _Scope:' "$PY_FILE" | cut -d: -f1)"
+PY_CLASS_LINE="$(grep -n '^class KelirBuilder:' "$PY_FILE" | cut -d: -f1 || true)"
+PY_SCOPE_END="0"
+PY_SCOPE_START="$(grep -n '^class _Scope:' "$PY_SCOPE_FILE" | cut -d: -f1 || true)"
 for verb in "${VERBS[@]}"; do
     placement="${PLACEMENT[$verb]}"
     expected="${RET[$verb]}"
@@ -372,7 +373,7 @@ for verb in "${VERBS[@]}"; do
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
                     check
                     if py_scoped_present "$verb" "$scope"; then
-                        check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END"
+                        check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END" "$PY_SCOPE_FILE"
                     else
                         fail "py: .$verb missing from _SCOPE_VERBS[$scope] (scoped)"
                     fi
@@ -417,14 +418,15 @@ ts_scope_methods="$(awk '
     cur != "" && /^}/ { cur=""; next }
     cur != "" && $0 ~ /^[[:space:]]+on[A-Z][A-Za-z]*\(/ { m=$0; sub(/^[[:space:]]+/,"",m); sub(/\(.*/,"",m); print m }
     cur != "" && $0 ~ /^[[:space:]]+[a-z][A-Za-z]*\(/ { m=$0; sub(/^[[:space:]]+/,"",m); sub(/\(.*/,"",m); print m }
+    cur != "" && $0 ~ /^[[:space:]]+[a-z][A-Za-z]*</ { m=$0; sub(/^[[:space:]]+/,"",m); sub(/<.*/,"",m); print m }
 ' "$TS_SCOPES")"
-bad_ts_scope="$(printf '%s\n' "$ts_scope_methods" | grep -vE '^on[A-Z]|^end$|^register$|^service$|^model$' || true)"
+bad_ts_scope="$(printf '%s\n' "$ts_scope_methods" | grep -vE '^on[A-Z]|^end$|^register$|^service$|^model$|^config$|^requires$|^forkWith$|^timeout$|^priority$|^rules$' || true)"
 if [ -n "$bad_ts_scope" ]; then fail "ts: non-leaf method inside a scope interface (nesting depth > 1): $bad_ts_scope"; fi
 check
 py_scope_defs="$(awk -v from="$PY_SCOPE_START" -v to="$PY_SCOPE_END" '
-    NR >= from && NR < to && $0 ~ /^    def [a-z_]+/ { m=$0; sub(/^    def /,"",m); sub(/\(.*/,"",m); print m }
-' "$PY_FILE")"
-bad_py_scope="$(printf '%s\n' "$py_scope_defs" | grep -vE '^(on_[a-z_]+|__init__|_scoped_on|end|register|service|model)$' || true)"
+    NR >= from && (to == 0 || NR < to) && $0 ~ /^    def [a-z_]+/ { m=$0; sub(/^    def /,"",m); sub(/\(.*/,"",m); print m }
+' "$PY_SCOPE_FILE")"
+bad_py_scope="$(printf '%s\n' "$py_scope_defs" | grep -vE '^(on_[a-z_]+|__init__|_scoped_on|end|register|service|model|config|require|fork_with|timeout|priority|rules)$' || true)"
 if [ -n "$bad_py_scope" ]; then fail "py: non-leaf method inside _Scope (nesting depth > 1): $bad_py_scope"; fi
 
 # see: cans/artifacts/config/builder-verbs.yaml
@@ -435,7 +437,7 @@ check
 ts_end_count="$(grep -cE '^  end\(\): Owner;$' "$TS_SCOPES" || true)"
 if [ "$ts_end_count" != "8" ]; then fail "ts: scope .end() declared $ts_end_count times, want 8 (one per scope)"; fi
 check
-py_end_count="$(awk -v from="$PY_SCOPE_START" -v to="$PY_SCOPE_END" 'NR >= from && (to == 0 || NR < to) && $0 ~ "^    def end\(" { n++ } END { print n+0 }' "$PY_FILE")"
+py_end_count="$(awk -v from="$PY_SCOPE_START" -v to="$PY_SCOPE_END" 'NR >= from && (to == 0 || NR < to) && $0 ~ "^    def end\(" { n++ } END { print n+0 }' "$PY_SCOPE_FILE")"
 if [ "$py_end_count" != "1" ]; then fail "py: _Scope.end() defined $py_end_count times, want 1"; fi
 
 # see: scripts/builder-parity-verbs.yaml
