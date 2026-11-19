@@ -512,6 +512,6 @@ behavior:
   vectors_total:
     kind: vectors_total
     sdks: rust,ts,py
-    total: 63
+    total: 96
     cases: plugin-builder-seal,plugin-builder-trap-filter,plugin-builder-trap-scope,plugin-builder-lock-broker,plugin-builder-chaos-only
-    note: vectors.json carries the 5 chain cases on top of the 58 base vectors
+    note: vectors.json carries the 5 chain cases on top of the base vectors

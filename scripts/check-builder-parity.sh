@@ -150,7 +150,7 @@ py_scoped_present() {
         in_map && /": \(/ { k=$0; sub(/^[[:space:]]*"/,"",k); sub(/".*/,"",k); cur=k }
         in_map && cur == scope && $0 ~ "\"" verb "\"" { found=1 }
         END { print found+0 }
-    ' "$PY_FILE")" = "1" ]
+    ' "$PY_SCOPE_FILE")" = "1" ]
 }
 
 # see: cans/02-plugin-model.md#Unified-builder
