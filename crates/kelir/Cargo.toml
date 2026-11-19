@@ -62,6 +62,10 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 plugin-vault = { path = "../kelir-plugins/plugin-vault" }
 trybuild = "1.0.104"
 
+[[test]]
+name = "compile_fail"
+path = "tests/compile_fail/builder_negative.rs"
+
 [lints]
 workspace = true
 

@@ -268,12 +268,44 @@ test("guard applies the block only when enabled", () => {
 });
 
 test("lockBroker rides .fs((f) => f.config(...))", () => {
-  const builder = kelir().fs(
-    (f) => f.config({ lockBroker: { globs: ["/workspace/**"], nonBlocking: true } }),
+  const routed = kelir()
+    .fs((f) =>
+      f.config({ lockBroker: { globs: ["/workspace/**"], nonBlocking: true } }),
+    )
+    .seal();
+  assert.deepEqual(
+    (routed as unknown as { lockBrokerCfg?: unknown }).lockBrokerCfg,
+    { globs: ["/workspace/**"], nonBlocking: true },
   );
-  assert.equal(
-    builder.storage({ lockBroker: true }),
-    builder,
+  const merged = kelir()
+    .storage({ idmap: { guestUid: 0, hostUid: 0 } })
+    .fs((f) => f.config({ lockBroker: { globs: [], nonBlocking: false } }))
+    .seal();
+  const state = merged as unknown as {
+    storageCfg?: { idmap?: { guestUid: number; hostUid: number } };
+    lockBrokerCfg?: unknown;
+  };
+  assert.deepEqual(state.storageCfg?.idmap, { guestUid: 0, hostUid: 0 });
+  assert.deepEqual(state.lockBrokerCfg, { globs: [], nonBlocking: false });
+  const host = kelir();
+  assert.throws(
+    () =>
+      host.storage({
+        lockBroker: true,
+      } as unknown as Parameters<typeof host.storage>[0]),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message ===
+        "storage() does not accept lockBroker: set it via .fs((f) => f.config({ lockBroker }))",
+  );
+  assert.throws(
+    () =>
+      kelir().fs((f) =>
+        f.config({ lockBroker: "yes" } as unknown as Parameters<typeof f.config>[0]),
+      ),
+    (error: unknown) =>
+      error instanceof EConfig &&
+      error.message === "fs.config(lockBroker=...) expects a record",
   );
   const sealed = kelir()
     .fs((f) => f.config({ lockBroker: { globs: ["/workspace/**"] } }))

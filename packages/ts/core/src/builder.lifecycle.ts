@@ -231,6 +231,11 @@ export class KelirBuilder<
   ): KelirBuilder<TMode, TSealed, Name, Ctx & C, Deps, Params> {
     this.checkVerb(".storage");
     if (this.mode === "plugin") this.rejectHostOnly(".storage");
+    if ("lockBroker" in config) {
+      throw new EConfig(
+        "storage() does not accept lockBroker: set it via .fs((f) => f.config({ lockBroker }))",
+      );
+    }
     this.storageCfg = config;
     return this as unknown as KelirBuilder<TMode, TSealed, Name, Ctx & C, Deps, Params>;
   }
@@ -843,6 +848,9 @@ export class KelirBuilder<
   // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
   seal(): KelirBuilder<TMode, "sealed", Name, Ctx, Deps, Params> {
     if (!this.sealedFlag) {
+      // see: cans/02-plugin-model.md#Nested-scopes
+      const broker = this.registry.fsScopeConfig?.lockBroker;
+      if (broker !== undefined) this.lockBrokerCfg = broker;
       this.validate();
       this.validateMounts();
       this.sealedFlag = true;
@@ -899,7 +907,7 @@ export class KelirBuilder<
         idmapGuestUid: this.storageCfg?.idmap?.guestUid,
         idmapHostUid: this.storageCfg?.idmap?.hostUid,
         sharedCaches: this.storageCfg?.sharedCaches,
-        lockBroker: this.storageCfg?.lockBroker ?? this.lockBrokerCfg !== undefined,
+        lockBroker: this.lockBrokerCfg !== undefined,
         lockBrokerGlobs: this.lockBrokerCfg?.globs as string[] | undefined,
         lockBrokerNonBlocking: this.lockBrokerCfg?.nonBlocking,
         encapsulation: this.storageCfg?.encapsulation,

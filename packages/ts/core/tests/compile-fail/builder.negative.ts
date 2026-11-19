@@ -63,3 +63,9 @@ export function negativeGuardOnSealed(): unknown {
   // @ts-expect-error Argument of type 'this' is not assignable to parameter of 'this'
   return sealed.guard(true, (b) => b);
 }
+
+// see: cans/05-storage-plane.md#Host-inode-lock-broker
+export function negativeStorageLockBroker(): unknown {
+  // @ts-expect-error Object literal may only specify known properties, and 'lockBroker' does not exist in type 'StorageConfig'
+  return kelir().storage({ lockBroker: true });
+}

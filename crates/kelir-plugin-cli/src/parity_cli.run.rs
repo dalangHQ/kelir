@@ -313,6 +313,88 @@ fn assert_hook_trace_coverage(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/02-plugin-model.md#Nested-scopes
+// see: cans/artifacts/config/builder-verbs.yaml (group: the fold form of a flat chain)
+fn nested_sibling_name(merge_name: &str) -> Option<String> {
+    let rest = merge_name.strip_prefix("plugin-merge-")?;
+    let rest = match rest.strip_suffix("-rules") {
+        Some(base) => format!("{base}-events"),
+        None => rest.to_string(),
+    };
+    Some(format!("plugin-builder-nested-{rest}"))
+}
+
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn plugin_hook_chain(descriptor: &FusedTrampolineDescriptor) -> Vec<(TrampolineRing, u32)> {
+    descriptor
+        .rings
+        .iter()
+        .flat_map(|chain| {
+            chain
+                .hooks
+                .iter()
+                .filter(|hook| hook.plugin_name.is_some())
+                .map(move |hook| (chain.ring, hook.ordinal))
+        })
+        .collect()
+}
+
+// see: cans/02-plugin-model.md#Nested-scopes
+// see: cans/15-operations.md#Unified-builder-parity-vectors
+fn assert_group_fold_equivalence(vectors: &[VectorCase]) -> Result<(), String> {
+    let mut paired = 0usize;
+    for vector in vectors {
+        let Some(builder) = &vector.plugin_builder else {
+            continue;
+        };
+        if builder.scope.is_none() {
+            continue;
+        }
+        let Some(nested_name) = nested_sibling_name(&vector.name) else {
+            // scope-pinned vectors outside the canonical plugin-merge- family (e.g. the
+            // bespoke plugin-builder-chaos-only case) have no nested sibling to pair with
+            continue;
+        };
+        let Some(nested) = vectors
+            .iter()
+            .find(|candidate| candidate.name == nested_name)
+        else {
+            return Err(format!(
+                "parity: group() fold vector `{}` has no nested-scope sibling `{nested_name}` in vectors.json",
+                vector.name
+            ));
+        };
+        let Some(nested_builder) = &nested.plugin_builder else {
+            return Err(format!(
+                "parity: nested-scope vector `{nested_name}` carries no plugin_builder case"
+            ));
+        };
+        // the group() fold mounts host hooks ahead of the plugin chain; strip them so
+        // both forms describe the same plugin-only chain
+        let host_hooks = builder.host_rings.len() as u32;
+        let folded: Vec<(TrampolineRing, u32)> = plugin_hook_chain(&builder_descriptor(builder))
+            .into_iter()
+            .map(|(ring, ordinal)| (ring, ordinal - host_hooks))
+            .collect();
+        let nested_chain = plugin_hook_chain(&builder_descriptor(nested_builder));
+        if folded != nested_chain {
+            return Err(format!(
+                "parity: group() fold vector `{}` folds to {folded:?}; nested-scope vector `{nested_name}` builds {nested_chain:?} — the fold must yield the same plugin chain as the nested scopes",
+                vector.name
+            ));
+        }
+        paired += 1;
+    }
+    if paired == 0 {
+        return Err(
+            "parity: no scope-pinned group() fold vectors in vectors.json; the fold/nested-scope descriptor equivalence is unverified"
+                .to_string(),
+        );
+    }
+    println!("parity: group() fold / nested-scope descriptor equivalence OK ({paired} pair(s))");
+    Ok(())
+}
+
 pub fn assert_vectors(vectors: &[VectorCase]) -> Result<ParityReport, String> {
     if vectors.is_empty() {
         return Err("parity: vectors.json declares 0 vectors; nothing to assert".to_string());
@@ -522,6 +604,7 @@ pub fn assert_vectors(vectors: &[VectorCase]) -> Result<ParityReport, String> {
     }
     assert_trapfilter_coverage(vectors)?;
     assert_hook_trace_coverage(vectors)?;
+    assert_group_fold_equivalence(vectors)?;
     Ok(report)
 }
 
@@ -678,33 +761,39 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some(other) => {
             return Err(CliError::usage(format!(
-                "parity: unknown action `{other}` (expected `run [path] [--action-coverage] [--l7-stream-coverage] [--outbox-coverage] [--step-dag-coverage] [--swarm-mesh-coverage]`)"
+                "parity: unknown action `{other}` (expected `run [path] [--vectors <path>] [--action-coverage] [--l7-stream-coverage] [--outbox-coverage] [--step-dag-coverage] [--swarm-mesh-coverage]`)"
             )));
         }
     }
-    let positional: Vec<&String> = rest
-        .iter()
-        .filter(|arg| {
-            if arg.as_str() == "--action-coverage" {
-                action_coverage = true;
-                false
-            } else if arg.as_str() == "--l7-stream-coverage" {
-                l7_stream_coverage = true;
-                false
-            } else if arg.as_str() == "--outbox-coverage" {
-                outbox_coverage = true;
-                false
-            } else if arg.as_str() == "--step-dag-coverage" {
-                step_dag_coverage = true;
-                false
-            } else if arg.as_str() == "--swarm-mesh-coverage" {
-                swarm_mesh_coverage = true;
-                false
-            } else {
-                true
-            }
-        })
-        .collect();
+    let mut positional: Vec<&String> = Vec::new();
+    let mut index = 0usize;
+    while index < rest.len() {
+        let arg = rest[index].as_str();
+        if arg == "--action-coverage" {
+            action_coverage = true;
+        } else if arg == "--l7-stream-coverage" {
+            l7_stream_coverage = true;
+        } else if arg == "--outbox-coverage" {
+            outbox_coverage = true;
+        } else if arg == "--step-dag-coverage" {
+            step_dag_coverage = true;
+        } else if arg == "--swarm-mesh-coverage" {
+            swarm_mesh_coverage = true;
+        } else if arg == "--vectors" {
+            let Some(value) = rest.get(index + 1) else {
+                return Err(CliError::usage(
+                    "parity: --vectors requires a path argument (e.g. --vectors vectors.json)",
+                ));
+            };
+            path = value.clone();
+            index += 1;
+        } else if let Some(value) = arg.strip_prefix("--vectors=") {
+            path = value.to_string();
+        } else {
+            positional.push(&rest[index]);
+        }
+        index += 1;
+    }
     if let Some(custom) = positional.first() {
         path = (*custom).clone();
     }

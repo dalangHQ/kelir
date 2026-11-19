@@ -138,7 +138,7 @@ check-builder-chain:
 # The Python suite lands with the py track; until then this recipe fails
 # on its missing file. see: cans/15-operations.md#Negative-suites
 check-negative-suites:
-    cargo test -p kelir --test compile_fail_suite
+    cargo test -p kelir --test compile_fail
     pnpm --filter @kelir/core run test:compile-fail
     pytest packages/py/tests/test_compile_fail.py
 

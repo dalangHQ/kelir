@@ -21,7 +21,6 @@ pub struct SharedCacheConfig {
 pub struct StoragePlaneConfig {
     pub idmap: IdmapConfig,
     pub shared_caches: Vec<SharedCacheConfig>,
-    pub lock_broker: bool,
     pub encapsulation: WorkspaceEncapsulation,
     pub dax_window: Option<String>,
 }

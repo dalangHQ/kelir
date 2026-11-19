@@ -274,7 +274,6 @@ export function storageConfigFromProfile(
             hostUid: asInt(idmap.host_uid) ?? 0,
           },
     sharedCaches,
-    lockBroker: asBool(asRecord(storage.lock_broker)?.enabled),
     encapsulation: asStr(storage.encapsulation),
     daxWindow: asStr(storage.dax_window),
   };

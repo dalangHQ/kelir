@@ -60,7 +60,6 @@ export interface StorageConfig {
     readonly guestMount: string;
     readonly readOnly?: boolean;
   }[];
-  readonly lockBroker?: boolean;
   readonly encapsulation?: string;
   readonly daxWindow?: string;
 }

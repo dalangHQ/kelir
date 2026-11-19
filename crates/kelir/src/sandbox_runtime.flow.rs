@@ -154,7 +154,6 @@ pub(crate) fn storage_plane_config(profile: &SandboxProfile) -> Option<StoragePl
     Some(StoragePlaneConfig {
         idmap: kelir_engine::planes::storage::IdmapConfig::default(),
         shared_caches,
-        lock_broker: false,
         encapsulation: kelir_engine::planes::storage::WorkspaceEncapsulation::default(),
         dax_window: storage.dax_window.clone(),
     })

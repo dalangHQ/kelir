@@ -4,7 +4,7 @@
 // see: fluent-chain.work-order.md Part 1 §4.4 (comment-pinned negative
 // vectors migrated out of unified-builder-surface.rs)
 #[test]
-fn compile_fail_suite() {
+fn builder_negative() {
     let t = trybuild::TestCases::new();
-    t.compile_fail("tests/compile_fail/*.rs");
+    t.compile_fail("tests/compile_fail/cases/*.rs");
 }

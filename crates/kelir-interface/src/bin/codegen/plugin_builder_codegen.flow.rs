@@ -1,6 +1,7 @@
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/03-sdk-architecture.md#Python-SDK
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -89,7 +90,56 @@ fn kebab_plugin_type(name: &str) -> Option<String> {
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
+fn context_ident(rhs: &str) -> Option<String> {
+    rhs.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+        .find(|part| {
+            !part.is_empty() && !matches!(*part, "Arc" | "Box" | "Rc" | "dyn" | "PhantomData")
+        })
+        .map(str::to_string)
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+// Deps are declared as the providing plugin's Context type (e.g. HCons<SqlProxyCtx, HNil>);
+// scan every plugin crate once so a Context type resolves to the plugin that mounts it.
+fn scan_context_types(src: &Path, plugin_name: &str) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    let mut entries: Vec<PathBuf> = Vec::new();
+    let dir = fs::read_dir(src).map_err(|e| format!("cannot list {}: {e}", src.display()))?;
+    for entry in dir {
+        let entry = entry.map_err(|e| format!("cannot list {}: {e}", src.display()))?;
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "rs") {
+            entries.push(path);
+        }
+    }
+    entries.sort();
+    for path in &entries {
+        let text =
+            fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        for line in text.lines() {
+            let trimmed = line.trim();
+            let Some(rest) = trimmed.strip_prefix("type Context") else {
+                continue;
+            };
+            if !rest.starts_with(' ') && !rest.starts_with('=') {
+                continue;
+            }
+            let Some((_, rhs)) = rest.split_once('=') else {
+                continue;
+            };
+            if let Some(ident) = context_ident(rhs.trim().trim_end_matches(';')) {
+                out.push((ident, plugin_name.to_string()));
+            }
+        }
+    }
+    Ok(out)
+}
+
+// see: cans/02-plugin-model.md#Unified-builder
+fn scan_requires(
+    src: &Path,
+    context_plugins: &BTreeMap<String, String>,
+) -> Result<Vec<String>, String> {
     let mut requires: Vec<String> = Vec::new();
     let mut entries: Vec<PathBuf> = Vec::new();
     let dir = fs::read_dir(src).map_err(|e| format!("cannot list {}: {e}", src.display()))?;
@@ -123,8 +173,17 @@ fn scan_requires(src: &Path) -> Result<Vec<String>, String> {
                     let rhs = rhs.trim().trim_end_matches(';');
                     let peers: Vec<String> = rhs
                         .split(|ch: char| !ch.is_ascii_alphanumeric())
-                        .filter_map(kebab_plugin_type)
-                        .collect();
+                        .filter(|part| !part.is_empty() && *part != "HCons" && *part != "HNil")
+                        .map(|part| match kebab_plugin_type(part) {
+                            Some(kebab) => Ok(kebab),
+                            None => context_plugins.get(part).cloned().ok_or_else(|| {
+                                format!(
+                                    "{}: Deps entry {part} resolves to neither a plugin type nor a plugin context",
+                                    path.display()
+                                )
+                            }),
+                        })
+                        .collect::<Result<Vec<_>, String>>()?;
                     for peer in peers {
                         if !requires.contains(&peer) {
                             requires.push(peer);
@@ -147,11 +206,26 @@ pub fn load_builder_plugins(
     projections: &[Projection],
 ) -> Result<Vec<BuilderPlugin>, String> {
     let plugins_src = root.join("crates/kelir-plugins");
+    let mut context_plugins: BTreeMap<String, String> = BTreeMap::new();
+    for proj in projections {
+        let dir = plugins_src.join(&proj.krate.dir_name);
+        for (ctx_type, plugin) in scan_context_types(&dir.join("src"), &proj.krate.plugin_name)? {
+            if let Some(previous) = context_plugins.get(&ctx_type) {
+                if previous != &plugin {
+                    return Err(format!(
+                        "plugin context {ctx_type} is declared by both {previous} and {plugin}"
+                    ));
+                }
+            } else {
+                context_plugins.insert(ctx_type, plugin);
+            }
+        }
+    }
     let mut plugins: Vec<BuilderPlugin> = Vec::new();
     for proj in projections {
         let dir = plugins_src.join(&proj.krate.dir_name);
         let level = parse_tier(&dir, &proj.krate.plugin_name)?;
-        let requires = scan_requires(&dir.join("src"))?;
+        let requires = scan_requires(&dir.join("src"), &context_plugins)?;
         plugins.push(BuilderPlugin {
             name: proj.krate.plugin_name.clone(),
             module_name: proj.krate.module_name.clone(),

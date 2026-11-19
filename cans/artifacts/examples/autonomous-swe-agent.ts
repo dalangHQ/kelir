@@ -107,7 +107,6 @@ const buildRuntime = () =>
         { hostPath: "~/.cache/pip", guestMount: "/root/.cache/pip", readOnly: true },
         { hostPath: "~/.cargo/registry", guestMount: "/usr/local/cargo/registry", readOnly: true }
       ],
-      lockBroker: true,
     })
 
     .wire({

@@ -804,23 +804,14 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
             self.apply_fs_cfg(&mut storage);
             return storage;
         };
-        let lock_broker = self
-            .registration
-            .lock_broker_cfg
-            .as_ref()
-            .map(|broker| kelir_engine::planes::storage::LockBrokerWiring {
+        let lock_broker = self.registration.lock_broker_cfg.as_ref().map(|broker| {
+            kelir_engine::planes::storage::LockBrokerWiring {
                 scope_globs: match &broker.scope {
                     LockScope::Globs(globs) => globs.clone(),
                 },
                 non_blocking: broker.non_blocking,
-            })
-            .or_else(|| {
-                cfg.lock_broker
-                    .then(|| kelir_engine::planes::storage::LockBrokerWiring {
-                        scope_globs: Vec::new(),
-                        non_blocking: false,
-                    })
-            });
+            }
+        });
         let mut storage = kelir_engine::planes::storage::StorageConfig {
             shared_caches: cfg
                 .shared_caches

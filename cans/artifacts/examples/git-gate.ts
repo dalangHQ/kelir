@@ -54,7 +54,6 @@ async function main() {
     .storage({
       idmap: { guestUid: 0, hostUid: 0 },
       sharedCaches: [],
-      lockBroker: false,
       encapsulation: "passthrough",
     })
     .use(gitGatePlugin)

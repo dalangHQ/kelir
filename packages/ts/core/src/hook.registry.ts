@@ -376,6 +376,38 @@ function validateScope(scope: MountScope, name: string): void {
   }
 }
 
+// see: cans/02-plugin-model.md#Nested-scopes
+function validateFsScopeConfig(cfg: FsScopeConfig): FsScopeConfig {
+  const broker = cfg.lockBroker;
+  if (broker === undefined) {
+    return cfg;
+  }
+  if (typeof broker !== "object" || Array.isArray(broker)) {
+    throw new EConfig("fs.config(lockBroker=...) expects a record");
+  }
+  for (const key of Object.keys(broker)) {
+    if (key !== "globs" && key !== "nonBlocking") {
+      throw new EConfig(`fs.config(lockBroker) has unknown key ${key}`);
+    }
+  }
+  if (
+    broker.globs !== undefined &&
+    (!Array.isArray(broker.globs) ||
+      broker.globs.some((glob) => typeof glob !== "string"))
+  ) {
+    throw new EConfig(
+      "fs.config(lockBroker.globs=...) expects an array of strings",
+    );
+  }
+  if (
+    broker.nonBlocking !== undefined &&
+    typeof broker.nonBlocking !== "boolean"
+  ) {
+    throw new EConfig("fs.config(lockBroker.nonBlocking=...) expects a boolean");
+  }
+  return cfg;
+}
+
 export class HookRegistry<Ctx = unknown> {
   private readonly pluginName?: string;
   readonly hooks: HookDescriptor[] = [];
@@ -580,7 +612,7 @@ export class HookRegistry<Ctx = unknown> {
         if (pluginMode === true) {
           throw new EConfig(`${registry.owner} called host-only verb fs.config`);
         }
-        registry.fsScopeConfig = cfg;
+        registry.fsScopeConfig = validateFsScopeConfig(cfg);
         return scope;
       },
       requires(name) {

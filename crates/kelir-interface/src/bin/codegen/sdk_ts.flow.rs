@@ -113,7 +113,7 @@ fn emit_ts_group(proj: &Projection) -> Result<Vec<String>, String> {
     match context_handle(&proj.krate.plugin_name) {
         None => {
             lines.push(format!(
-                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", unknown, never, P> {{"
+                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"plugin\", \"unsealed\", \"{name}\", unknown, never, P> {{"
             ));
             lines.push(format!(
                 "  return createPlugin<\"{name}\", unknown, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"
@@ -127,7 +127,7 @@ fn emit_ts_group(proj: &Projection) -> Result<Vec<String>, String> {
             };
             lines.push(SERVICE_LOOKUP_SEE.trim_end().to_string());
             lines.push(format!(
-                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"{name}\", {{ {key}: {handle_type} }}, never, P> {{"
+                "export function {factory}<P = unknown>(config: {config}): KelirBuilder<\"plugin\", \"unsealed\", \"{name}\", {{ {key}: {handle_type} }}, never, P> {{"
             ));
             lines.push(format!(
                 "  return createPlugin<\"{name}\", {{ {key}: {handle_type} }}, {config}, never, P>(\"{name}\", {{ enabled: config.enabled, config }});"

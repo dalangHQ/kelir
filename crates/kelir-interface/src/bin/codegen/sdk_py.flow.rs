@@ -657,11 +657,11 @@ pub fn emit_py_barrel(projections: &[Projection]) -> String {
     ordered.sort_by_key(|proj| proj.krate.module_name.clone());
     for proj in &ordered {
         lines.push(format!(
-            "from kelir.plugins.plugin_{} import {} as {}",
+            "from kelir.plugins.{} import {} as {}",
             proj.krate.module_name, proj.root.rust_name, proj.root.rust_name
         ));
         lines.push(format!(
-            "from kelir.plugins.plugin_{} import {} as {}",
+            "from kelir.plugins.{} import {} as {}",
             proj.krate.module_name, proj.krate.plugin_class, proj.krate.plugin_class
         ));
     }
@@ -669,7 +669,7 @@ pub fn emit_py_barrel(projections: &[Projection]) -> String {
     lines.push("# see: cans/03-sdk-architecture.md#Python-SDK".to_string());
     for proj in &ordered {
         lines.push(format!(
-            "from . import plugin_{} as {}",
+            "from . import {} as {}",
             proj.krate.module_name, proj.krate.module_name
         ));
     }

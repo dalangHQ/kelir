@@ -205,7 +205,7 @@ fn main() -> ExitCode {
         .collect();
     let expected_modules: HashSet<String> = projections
         .iter()
-        .map(|proj| format!("plugin_{}", proj.krate.module_name))
+        .map(|proj| proj.krate.module_name.clone())
         .collect();
     check_py_modules(&root, &expected_modules).unwrap_or_else(|e| die(&e));
     let mut module_writes: Vec<(PathBuf, String)> = Vec::new();
@@ -223,7 +223,7 @@ fn main() -> ExitCode {
         content.push_str(&plugin_builder_codegen::emit_python_factory(builder));
         module_writes.push((
             root.join(format!(
-                "packages/py/kelir/plugins/plugin_{}.py",
+                "packages/py/kelir/plugins/{}.py",
                 proj.krate.module_name
             )),
             content,

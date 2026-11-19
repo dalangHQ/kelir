@@ -436,7 +436,7 @@
       - Runs `just check-negative-suites`: the compile-fail invariants
       - hold in all three SDKs — scope bleeding, post-seal mutation, and
       - host verbs on a plugin-mode builder
-      - Rust: cargo test -p kelir --test compile_fail_suite
+      - Rust: cargo test -p kelir --test compile_fail
       - TypeScript: pnpm --filter @kelir/core run test:compile-fail
       - Python: pytest packages/py/tests/test_compile_fail.py, landing
       - with the Python track

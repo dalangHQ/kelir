@@ -140,7 +140,7 @@ export function buildSurfaceHost() {
     driver: "auto",
   })
     .terminal({ cols: 120, rows: 40 })
-    .storage({ idmap: { guestUid: 0, hostUid: 0 }, lockBroker: true })
+    .storage({ idmap: { guestUid: 0, hostUid: 0 } })
     .wire({})
     .detached(false)
     .use(buildLedgerPlugin())

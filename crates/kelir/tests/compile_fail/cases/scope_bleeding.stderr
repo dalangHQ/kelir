@@ -1,5 +1,5 @@
 warning: unused import: `Host`
- --> tests/compile_fail/scope_bleeding.rs:2:13
+ --> tests/compile_fail/cases/scope_bleeding.rs:2:13
   |
 2 | use kelir::{Host, KelirBuilder, Verdict, VmConfig};
   |             ^^^^
@@ -7,7 +7,7 @@ warning: unused import: `Host`
   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 error[E0599]: no method named `on_trap` found for struct `FsScope<Plugins, Params, Mode, Ctx, Deps>` in the current scope
- --> tests/compile_fail/scope_bleeding.rs:6:19
+ --> tests/compile_fail/cases/scope_bleeding.rs:6:19
   |
 6 |         .fs(|f| f.on_trap(|_event, _ctx| Ok(Verdict::Pass)).end());
   |                   ^^^^^^^ method not found in `FsScope<HNil, NoParams, Host, (), HNil>`
