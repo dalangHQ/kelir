@@ -12,7 +12,7 @@
     "files": true,
     "removeComments": false,
     "removeEmptyLines": false,
-    "compress": true,
+    "compress": false,
     "topFilesLength": 5,
     "showLineNumbers": false,
     "truncateBase64": false,
@@ -29,7 +29,7 @@
   },
   "include": [
     //    "AGENTS.md",
-     "cans/",
+  //   "cans/",
       "cans/artifacts/examples",
    //   "crates",
    //     "packages",
