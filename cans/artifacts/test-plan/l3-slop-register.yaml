@@ -1,5 +1,5 @@
 $schema: kelir-test-plan/l3-slop-register/v1
-generated: 203 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
+generated: 200 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
 total_cases: 260
 covered_red_gap: 208
 entries:
