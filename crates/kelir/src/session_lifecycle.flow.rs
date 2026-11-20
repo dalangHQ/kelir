@@ -13,7 +13,7 @@ pub use kelir_interface::handles_lifecycle::{
 use kelir_interface::hex_codec::encode_hex;
 use kelir_interface::plugin_model::{LifecycleEvent, MountScope, PipelineBinder, PluginError};
 use kelir_interface::spawn_transport::{SpawnRequest, SpawnTransport};
-use plugin_step_eval::{StepEvalConfig, StepEvaluator};
+use kelir_interface::step_verdict::PostExecGate;
 use serde::Serialize;
 
 use crate::builder_sdk::Registration;
@@ -78,8 +78,8 @@ where
     plugins: Plugins,
     registration: Registration,
     operator_lease: Option<String>,
-    // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
-    step_evaluator: Arc<StepEvaluator>,
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    post_exec_gates: Arc<Vec<Arc<dyn PostExecGate>>>,
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub vm: VmHandle,
     pub vsock: VsockHandle,
@@ -91,7 +91,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         core: kelir_engine::Session,
         plugins: Plugins,
         registration: Registration,
-        step_evaluator: Arc<StepEvaluator>,
+        post_exec_gates: Arc<Vec<Arc<dyn PostExecGate>>>,
     ) -> Self {
         Self {
             vm: core.vm(),
@@ -100,7 +100,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             plugins,
             registration,
             operator_lease: None,
-            step_evaluator,
+            post_exec_gates,
             _params: PhantomData,
         }
     }
@@ -159,9 +159,9 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         &self.core
     }
 
-    // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
-    pub fn step_evaluator(&self) -> &Arc<StepEvaluator> {
-        &self.step_evaluator
+    // see: cans/03-sdk-architecture.md#Session-surfaces
+    pub fn post_exec_gates(&self) -> &[Arc<dyn PostExecGate>] {
+        &self.post_exec_gates
     }
 
     // see: cans/10-attestation.md#Execution-receipts
@@ -359,12 +359,6 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         // see: cans/08-lifecycle.md#CoW-fork
         // see: cans/08-lifecycle.md#Watchdog
         child.run_lifecycle_hook(LifecycleEvent::VmInit).await?;
-        // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
-        let step_evaluator = Arc::new(StepEvaluator::new(
-            Arc::clone(child.checkpoint.ops()),
-            self.step_evaluator.config().clone(),
-            self.step_evaluator.gates().to_vec(),
-        ));
         Ok(Self {
             vm: child.vm(),
             vsock: VsockHandle,
@@ -372,7 +366,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
             plugins: self.plugins.clone(),
             registration,
             operator_lease: None,
-            step_evaluator,
+            post_exec_gates: Arc::clone(&self.post_exec_gates),
             _params: PhantomData,
         })
     }
@@ -382,46 +376,12 @@ impl Session<HNil, NoParams> {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub async fn attach(session_id: &[u8; 16]) -> Result<Self, PluginError> {
         let core = kelir_engine::Session::attach(session_id)?;
-        // see: cans/plugins/step-eval.md#Service-exports-(step-eval)
-        let step_evaluator = Arc::new(StepEvaluator::new(
-            Arc::clone(core.checkpoint.ops()),
-            StepEvalConfig::default(),
-            Vec::new(),
-        ));
         Ok(Self::from_parts(
             core,
             HNil,
             Registration::default(),
-            step_evaluator,
+            Arc::new(Vec::new()),
         ))
-    }
-}
-
-// see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
-#[cfg(feature = "plugin-ledger")]
-impl<Plugins: HList, Params> Session<Plugins, Params> {
-    // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
-    pub async fn get_causal_delta_from_parent(
-        &self,
-    ) -> Result<kelir_interface::telemetry::CausalDelta, PluginError>
-    where
-        Plugins: Capability<plugin_ledger::LedgerCtx>,
-    {
-        let ledger = self
-            .cap::<plugin_ledger::LedgerCtx>()
-            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
-        ledger.get_causal_delta_from_parent().await
-    }
-
-    // see: cans/plugins/ledger.md#Ledger-handler-API
-    pub async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError>
-    where
-        Plugins: Capability<plugin_ledger::LedgerCtx>,
-    {
-        let ledger = self
-            .cap::<plugin_ledger::LedgerCtx>()
-            .ok_or_else(|| PluginError::Halt("ECONFIG: ledger capability not mounted".into()))?;
-        ledger.count_denials(ppid).await
     }
 }
 

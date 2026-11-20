@@ -8,9 +8,9 @@ const MERKLE_SEE: &str = "// see: cans/10-attestation.md#Execution-receipts
 ";
 const MERKLE_SEE_IND: &str = "    // see: cans/10-attestation.md#Execution-receipts
 ";
-const WAL_SEE: &str = "// see: cans/plugins/ledger.md#Merkle-WAL-specification
+const WAL_SEE: &str = "// see: cans/10-attestation.md#Execution-receipts
 ";
-const WAL_SEE_IND: &str = "    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+const WAL_SEE_IND: &str = "    // see: cans/10-attestation.md#Execution-receipts
 ";
 
 // see: cans/10-attestation.md#Execution-receipts
@@ -26,7 +26,7 @@ const DOMAIN_LEAVES: &[DomainLeafSpec] = &[DomainLeafSpec {
     skip: &["wall_clock_ns", "phase_timings", "hook_trace", "fs_vfs_ext"],
 }];
 
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/10-attestation.md#Execution-receipts
 struct PackedRecordSpec {
     struct_name: &'static str,
     record_len_const: &'static str,
@@ -394,7 +394,7 @@ pub fn emit_domain_leaves(model: &Model) -> Result<String, String> {
     Ok(out)
 }
 
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/10-attestation.md#Execution-receipts
 pub fn emit_packed_records(model: &Model) -> Result<String, String> {
     let mut out = String::new();
     for spec in PACKED_RECORDS {

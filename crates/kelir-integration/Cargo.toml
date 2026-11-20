@@ -8,7 +8,8 @@ publish = false
 [dependencies]
 kelir-engine = { path = "../kelir-engine" }
 kelir-interface = { path = "../kelir-interface" }
-kelir = { path = "../kelir", features = ["all-plugins"] }
+kelir = { path = "../kelir" }
+kelir-bundle = { path = "../kelir-bundle" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }

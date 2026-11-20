@@ -18,3 +18,6 @@ pub struct CredentialDescriptor {
     pub audience: String,
     pub placeholder: String,
 }
+
+// see: cans/plugins/vault.md#Metadata-service-(vault)
+pub const VAULT_METADATA_VSOCK_PORT: u32 = 80;

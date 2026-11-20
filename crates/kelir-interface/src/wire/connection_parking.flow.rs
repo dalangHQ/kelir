@@ -1,10 +1,10 @@
-// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 // see: cans/08-lifecycle.md#Lifecycle-state-machine
 use std::collections::HashMap;
 
 use crate::driver_interface::ExternalSuspendKind;
 
-// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RollbackPolicy {
     #[default]
@@ -12,7 +12,7 @@ pub enum RollbackPolicy {
     Drop,
 }
 
-// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionParkingConfig {
     pub enabled: bool,
@@ -36,7 +36,7 @@ impl Default for ConnectionParkingConfig {
     }
 }
 
-// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParkedConnection {
     pub id: u64,
@@ -45,7 +45,7 @@ pub struct ParkedConnection {
     pub parked_for: ExternalSuspendKind,
 }
 
-// see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+// see: cans/07-wire-plane.md#Pre-policy-drop-zones
 pub struct ConnectionParking {
     config: ConnectionParkingConfig,
     parked: HashMap<u64, ParkedConnection>,
@@ -53,7 +53,7 @@ pub struct ConnectionParking {
 }
 
 impl ConnectionParking {
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn new(config: ConnectionParkingConfig) -> Self {
         Self {
             config,
@@ -62,17 +62,17 @@ impl ConnectionParking {
         }
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn config(&self) -> &ConnectionParkingConfig {
         &self.config
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn parked_count(&self) -> usize {
         self.parked.len()
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn park(
         &mut self,
         peer: String,
@@ -96,12 +96,12 @@ impl ConnectionParking {
         Some(id)
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn resume(&mut self, id: u64) -> Option<ParkedConnection> {
         self.parked.remove(&id)
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn resume_all(&mut self) -> Vec<ParkedConnection> {
         self.parked
             .drain()
@@ -109,7 +109,7 @@ impl ConnectionParking {
             .collect()
     }
 
-    // see: cans/plugins/wire-ingress.md#Connection-parking-on-suspend
+    // see: cans/07-wire-plane.md#Pre-policy-drop-zones
     pub fn reset_on_rollback(&mut self) -> Vec<u64> {
         if self.config.rollback_policy != RollbackPolicy::Reset {
             return Vec::new();

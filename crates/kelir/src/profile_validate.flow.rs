@@ -180,9 +180,6 @@ impl SandboxProfile {
         let wire = self.wire.as_ref();
         let checkpoint = self.checkpoint.as_ref();
         let host = self.host.as_ref();
-        let plugins = self.plugins.as_ref();
-        let ledger = plugins.and_then(|p| p.ledger.as_ref());
-        let tool_guard = plugins.and_then(|p| p.tool_guard.as_ref());
         Ok(EffectiveConfig {
             policy_plane_mutability: self
                 .invariants
@@ -215,11 +212,6 @@ impl SandboxProfile {
             step_dag: checkpoint.and_then(|c| c.step_dag.clone()),
             catalog: host.and_then(|h| h.catalog.clone()),
             telemetry_ring: host.and_then(|h| h.telemetry_ring.clone()),
-            ledger_merkle_wal: ledger.and_then(|l| l.merkle_wal.clone()),
-            ledger_otel: ledger.and_then(|l| l.otel.clone()),
-            tool_guard_interposition: tool_guard.and_then(|t| t.mcp_interposition.clone()),
-            tool_guard_taint: tool_guard.and_then(|t| t.taint_governance.clone()),
-            mcp: plugins.and_then(|p| p.mcp.clone()),
         })
     }
 
@@ -235,94 +227,6 @@ impl SandboxProfile {
                 config.schema_tenant_partitioning = partitioning;
             }
             config.fallback_sqlite_path = catalog.fallback_sqlite_path.clone();
-        }
-        config
-    }
-
-    // see: cans/plugins/ledger.md#Plugin-ledger
-    #[cfg(feature = "plugin-ledger")]
-    pub fn to_ledger_config(&self) -> plugin_ledger::LedgerConfig {
-        let mut config = plugin_ledger::LedgerConfig::default();
-        if let Some(ledger) = self.plugins.as_ref().and_then(|p| p.ledger.as_ref()) {
-            if let Some(wal) = ledger.merkle_wal.as_ref() {
-                if let Some(store) = wal.store_path.clone() {
-                    config.store_path = PathBuf::from(store);
-                }
-                if let Some(enabled) = wal.enabled {
-                    config.merkle_chain = enabled;
-                }
-                if let Some(standard) = wal.hashing_standard {
-                    config.hashing_standard =
-                        plugin_ledger::HashingStandard::from_name(standard.as_str())
-                            .unwrap_or_default();
-                }
-                if let Some(record) = wal.record_pre_redaction_hash {
-                    config.record_pre_redaction_hash = record;
-                }
-                if let Some(include) = wal.include_hook_spans_in_root {
-                    config.include_hook_spans_in_root = include;
-                }
-                config.witness_cosigning_endpoint = wal.witness_cosigning_endpoint.clone();
-            }
-            if let Some(otel) = ledger.otel.as_ref() {
-                let mut otel_config = plugin_ledger::OtelConfig::default();
-                if let Some(endpoint) = otel.endpoint.clone() {
-                    otel_config.endpoint = endpoint;
-                }
-                if let Some(service) = otel.service_name.clone() {
-                    otel_config.service_name = service;
-                }
-                if let Some(propagate) = otel.propagate_w3c_traceparent {
-                    otel_config.propagate_w3c_traceparent = propagate;
-                }
-                if let Some(gauges) = otel.export_diagnostic_pmu_gauges {
-                    otel_config.export_diagnostic_pmu_gauges = gauges;
-                }
-                config.otel = Some(otel_config);
-            }
-        }
-        config
-    }
-
-    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
-    #[cfg(feature = "plugin-tool-guard")]
-    pub fn to_tool_guard_config(&self) -> plugin_tool_guard::ToolGuardConfig {
-        let mut config = plugin_tool_guard::ToolGuardConfig::default();
-        if let Some(tool_guard) = self.plugins.as_ref().and_then(|p| p.tool_guard.as_ref()) {
-            if let Some(interposition) = tool_guard.mcp_interposition.as_ref() {
-                if let Some(pin) = interposition.pin_schemas {
-                    config.pin_schemas = pin;
-                }
-                if let Some(max) = interposition.max_invocations_per_trace {
-                    config.max_invocations_per_trace = max;
-                }
-                if let Some(bytes) = interposition.max_frame_bytes {
-                    config.max_frame_bytes = bytes;
-                }
-                if let Some(detect) = interposition.detect_semantic_rug_pull {
-                    config.detect_semantic_rug_pull = detect;
-                }
-                if let Some(strict) = interposition.strict_ast_parameter_validation {
-                    config.strict_ast_parameter_validation = strict;
-                }
-            }
-            if let Some(taint) = tool_guard.taint_governance.as_ref()
-                && let Some(propagate) = taint.propagate_byte_range_taints
-            {
-                config.propagate_byte_range_taints = propagate;
-            }
-        }
-        config
-    }
-
-    // see: cans/plugins/mcp.md#Plugin-mcp
-    #[cfg(feature = "plugin-mcp")]
-    pub fn to_mcp_config(&self) -> plugin_mcp::McpConfig {
-        let mut config = plugin_mcp::McpConfig::default();
-        if let Some(mcp) = self.plugins.as_ref().and_then(|p| p.mcp.as_ref())
-            && let Some(bytes) = mcp.max_frame_bytes
-        {
-            config.max_frame_bytes = bytes;
         }
         config
     }
@@ -432,25 +336,6 @@ impl SandboxProfile {
         {
             return Err(halt(
                 "host.telemetry_ring.sliding_window_depth must be greater than zero".to_string(),
-            ));
-        }
-        if let Some(interposition) = self
-            .plugins
-            .as_ref()
-            .and_then(|p| p.tool_guard.as_ref())
-            .and_then(|t| t.mcp_interposition.as_ref())
-            && interposition.max_frame_bytes == Some(0)
-        {
-            return Err(halt(
-                "plugins.tool_guard.mcp_interposition.max_frame_bytes must be greater than zero"
-                    .to_string(),
-            ));
-        }
-        if let Some(mcp) = self.plugins.as_ref().and_then(|p| p.mcp.as_ref())
-            && mcp.max_frame_bytes == Some(0)
-        {
-            return Err(halt(
-                "plugins.mcp.max_frame_bytes must be greater than zero".to_string(),
             ));
         }
         Ok(())
@@ -694,98 +579,6 @@ impl SandboxProfile {
                 .as_ref()
                 .and_then(|h| h.telemetry_ring.as_ref())
                 .and_then(|r| r.sliding_window_depth),
-        )?;
-        let base_wal = base
-            .plugins
-            .as_ref()
-            .and_then(|p| p.ledger.as_ref())
-            .and_then(|l| l.merkle_wal.as_ref());
-        let wal = self
-            .plugins
-            .as_ref()
-            .and_then(|p| p.ledger.as_ref())
-            .and_then(|l| l.merkle_wal.as_ref());
-        check_guard_kept(
-            "plugins.ledger.merkle_wal.sign_leaves",
-            base_wal.and_then(|w| w.sign_leaves),
-            wal.and_then(|w| w.sign_leaves),
-        )?;
-        check_guard_kept(
-            "plugins.ledger.merkle_wal.fsync_on_reap",
-            base_wal.and_then(|w| w.fsync_on_reap),
-            wal.and_then(|w| w.fsync_on_reap),
-        )?;
-        check_guard_kept(
-            "plugins.ledger.merkle_wal.record_pre_redaction_hash",
-            base_wal.and_then(|w| w.record_pre_redaction_hash),
-            wal.and_then(|w| w.record_pre_redaction_hash),
-        )?;
-        check_guard_kept(
-            "plugins.ledger.merkle_wal.include_hook_spans_in_root",
-            base_wal.and_then(|w| w.include_hook_spans_in_root),
-            wal.and_then(|w| w.include_hook_spans_in_root),
-        )?;
-        let base_guard = base.plugins.as_ref().and_then(|p| p.tool_guard.as_ref());
-        let guard = self.plugins.as_ref().and_then(|p| p.tool_guard.as_ref());
-        let base_interposition = base_guard.and_then(|g| g.mcp_interposition.as_ref());
-        let interposition = guard.and_then(|g| g.mcp_interposition.as_ref());
-        check_ceiling(
-            "plugins.tool_guard.mcp_interposition.max_frame_bytes",
-            base_interposition.and_then(|i| i.max_frame_bytes),
-            interposition.and_then(|i| i.max_frame_bytes),
-        )?;
-        check_ceiling(
-            "plugins.tool_guard.mcp_interposition.max_invocations_per_trace",
-            base_interposition.and_then(|i| i.max_invocations_per_trace.map(u64::from)),
-            interposition.and_then(|i| i.max_invocations_per_trace.map(u64::from)),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.mcp_interposition.pin_schemas",
-            base_interposition.and_then(|i| i.pin_schemas),
-            interposition.and_then(|i| i.pin_schemas),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.mcp_interposition.halt_on_schema_drift",
-            base_interposition.and_then(|i| i.halt_on_schema_drift),
-            interposition.and_then(|i| i.halt_on_schema_drift),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.mcp_interposition.detect_semantic_rug_pull",
-            base_interposition.and_then(|i| i.detect_semantic_rug_pull),
-            interposition.and_then(|i| i.detect_semantic_rug_pull),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.mcp_interposition.strict_ast_parameter_validation",
-            base_interposition.and_then(|i| i.strict_ast_parameter_validation),
-            interposition.and_then(|i| i.strict_ast_parameter_validation),
-        )?;
-        let base_taint = base_guard.and_then(|g| g.taint_governance.as_ref());
-        let taint = guard.and_then(|g| g.taint_governance.as_ref());
-        check_guard_kept(
-            "plugins.tool_guard.taint_governance.untrusted_ingress_taints",
-            base_taint.and_then(|t| t.untrusted_ingress_taints),
-            taint.and_then(|t| t.untrusted_ingress_taints),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.taint_governance.propagate_byte_range_taints",
-            base_taint.and_then(|t| t.propagate_byte_range_taints),
-            taint.and_then(|t| t.propagate_byte_range_taints),
-        )?;
-        check_guard_kept(
-            "plugins.tool_guard.taint_governance.mutating_verbs_require_approval",
-            base_taint.and_then(|t| t.mutating_verbs_require_approval),
-            taint.and_then(|t| t.mutating_verbs_require_approval),
-        )?;
-        check_ceiling(
-            "plugins.mcp.max_frame_bytes",
-            base.plugins
-                .as_ref()
-                .and_then(|p| p.mcp.as_ref())
-                .and_then(|m| m.max_frame_bytes),
-            self.plugins
-                .as_ref()
-                .and_then(|p| p.mcp.as_ref())
-                .and_then(|m| m.max_frame_bytes),
         )?;
         Ok(())
     }

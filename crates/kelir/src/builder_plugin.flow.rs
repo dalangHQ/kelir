@@ -16,10 +16,10 @@ use kelir_interface::plugin_model::{
     PluginDeps, PluginError,
 };
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::step_verdict::PostExecAction;
 use kelir_interface::storage::DirEntry;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
 use kelir_interface::wire::DnsVerdict;
-use plugin_step_eval::PostExecAction;
 
 use crate::builder_scopes::{
     ConsoleScope, ExecScope, FsScope, FsScopeConfig, HostScope, LifecycleScope, NetScope,

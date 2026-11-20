@@ -641,7 +641,6 @@ fn pe_03_overlapping_mutator_scope_eambiguous() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml#case_id
 #[test]
-#[ignore]
 fn pe_02_cyclic_dependency_graph_abort() -> Result<(), String> {
     let registrations = [
         PluginRegistration::new("plugin_a -> plugin_b", true),

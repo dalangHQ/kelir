@@ -3,12 +3,14 @@
 ## Architectural Invariants
 
 * **Isomorphic Config Law**: Every declarative profile table (`[session]`, `[storage]`, `[wire]`, `[terminal]`, `[host]`, `[checkpoint]`, `[plugins.*]`) maps 1:1 to typed engine and plane config structs deriving `Default`, `Serialize`, and `Deserialize`.
-* **Zero Displaced State**: Plane configurations describe only plane transport and drivers. Cross-cutting features (Vault, Auth, Dynamic Policies) belong strictly to their respective plugin crates.
+* **Zero Displaced State**: Plane configurations describe only plane transport and drivers. Cross-cutting features (Vault, Auth, Dynamic Policies) belong strictly to their respective plugin crates. *Done (Agents D/E, 2026-11-20): plugin sub-schemas moved to kelir-bundle, credential/vault, chaos and mesh shapes moved to their plugin crates, facade keeps `plugins:` as an opaque section.*
 * **L1/L2 Execution Boundary**: Implement only compilable types, builder wiring, descriptor mapping, and pipeline plumbing. All deep kernel/hypervisor logic, cryptographic signatures, and transport execution remain explicit `// TODO (L3)` tags registered in `l3-slop-register.yaml`.
 
 ---
 
 ## 1. Vault Isolation from Wire Plane
+
+*Done (Agent E, 2026-11-20): `WireConfig` carries no `vaults`/`CredentialDescriptor`; credential types live in plugin-vault (`plugin_vault::credential_vault`).*
 
 Wire plane configuration describes purely Layer 2–4 network transport. It does not carry credentials, secret descriptors, or vault injection metadata.
 

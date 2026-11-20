@@ -12,9 +12,9 @@ use kelir_interface::plugin_model::{
     LifecycleParticipant, NetInterposer, PluginError, SystemTelemetryParticipant, TrapInterposer,
 };
 use kelir_interface::protocol_wire::{FilterAction, Heartbeat, ProcessExit, TrapEvent, Verdict};
+use kelir_interface::step_verdict::{PostExecAction, PostExecGate};
 use kelir_interface::storage::DirEntry;
 use kelir_interface::wire::DnsVerdict;
-use plugin_step_eval::{PostExecAction, PostExecGate};
 
 use crate::trap_filter::filter_matches;
 

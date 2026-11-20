@@ -16,8 +16,8 @@ use kelir_interface::plugin_model::{
     SystemTelemetryParticipant, TrapInterposer, VetoList,
 };
 use kelir_interface::protocol_wire::{TrapEvent, Verdict};
+use kelir_interface::step_verdict::PostExecGate;
 use kelir_interface::vsock_mesh::{VsockServiceHandler, VsockServiceSpec};
-use plugin_step_eval::{PostExecGate, StepEvalConfig, StepEvaluator};
 
 use crate::builder_scopes::{FsScopeConfig, ScopeRules};
 
@@ -33,11 +33,7 @@ use crate::sandbox_runtime::{
 use crate::session_lifecycle::Session;
 use crate::trap_filter::TrapFilter;
 
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
-
-pub use plugin_step_eval::{PostExecAction, StepVerdict};
+pub use kelir_interface::step_verdict::{PostExecAction, StepVerdict};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unsealed;
@@ -476,6 +472,16 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
         self.plugin(plugin)
     }
 
+    // see: cans/02-plugin-model.md#Unified-builder
+    pub fn mount_instance<P>(mut self, plugin: P) -> Self
+    where
+        P: KelirPlugin + Clone + 'static,
+    {
+        let scope = KelirPlugin::default_scope(&plugin);
+        self.registration.instances.push((Box::new(plugin), scope));
+        self
+    }
+
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub fn plugin_instance<P>(
         self,
@@ -784,16 +790,11 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         for mounted in &mut registration.mounted {
             gates.extend(std::mem::take(&mut mounted.registry.post_exec));
         }
-        let step_evaluator = Arc::new(StepEvaluator::new(
-            checkpoint_ops,
-            StepEvalConfig::default(),
-            gates,
-        ));
         Ok(Session::from_parts(
             core,
             self.plugins,
             registration,
-            step_evaluator,
+            Arc::new(gates),
         ))
     }
 
@@ -851,24 +852,5 @@ impl<Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList>
     // see: cans/03-sdk-architecture.md#Rust-SDK
     pub async fn boot(self) -> Result<Session<Plugins, Params>, PluginError> {
         self.finish_boot().await
-    }
-}
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-pub trait ToolGuardExt: Sized {
-    fn tool(self, spec: ToolSpec) -> Self;
-}
-
-// see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-#[cfg(feature = "plugin-tool-guard")]
-impl<Plugins: HList, Params: 'static, Ctx, Deps: HList> ToolGuardExt
-    for KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
-{
-    fn tool(mut self, spec: ToolSpec) -> Self {
-        let plugin = ToolGuardPlugin::new().tool(spec);
-        let scope = KelirPlugin::default_scope(&plugin);
-        self.registration.instances.push((Box::new(plugin), scope));
-        self
     }
 }

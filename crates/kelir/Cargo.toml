@@ -23,43 +23,11 @@ ciborium = { workspace = true }
 toml = { workspace = true }
 serde_yaml = { workspace = true }
 
-plugin-anomaly = { path = "../kelir-plugins/plugin-anomaly", optional = true }
-plugin-chaos = { path = "../kelir-plugins/plugin-chaos", optional = true }
-plugin-container = { path = "../kelir-plugins/plugin-container", optional = true }
-plugin-db-proxy = { path = "../kelir-plugins/plugin-db-proxy", optional = true }
-plugin-egress-proxy = { path = "../kelir-plugins/plugin-egress-proxy", optional = true }
-plugin-l7-http = { path = "../kelir-plugins/plugin-l7-http", optional = true }
-plugin-ledger = { path = "../kelir-plugins/plugin-ledger", optional = true }
-plugin-mcp = { path = "../kelir-plugins/plugin-mcp", optional = true }
-plugin-mesh = { path = "../kelir-plugins/plugin-mesh", optional = true }
-plugin-profile = { path = "../kelir-plugins/plugin-profile" }
-plugin-redaction = { path = "../kelir-plugins/plugin-redaction", optional = true }
-plugin-replay = { path = "../kelir-plugins/plugin-replay", optional = true }
-plugin-step-eval = { path = "../kelir-plugins/plugin-step-eval" }
-plugin-supply-chain = { path = "../kelir-plugins/plugin-supply-chain", optional = true }
-plugin-taint = { path = "../kelir-plugins/plugin-taint", optional = true }
-plugin-terminal-guard = { path = "../kelir-plugins/plugin-terminal-guard", optional = true }
-plugin-token-shield = { path = "../kelir-plugins/plugin-token-shield", optional = true }
-plugin-tool-guard = { path = "../kelir-plugins/plugin-tool-guard", optional = true }
-plugin-transaction = { path = "../kelir-plugins/plugin-transaction", optional = true }
-plugin-vault = { path = "../kelir-plugins/plugin-vault", optional = true }
-plugin-wire-ingress = { path = "../kelir-plugins/plugin-wire-ingress", optional = true }
-
 [features]
 default = []
-all-plugins = [
-    "plugin-anomaly", "plugin-chaos", "plugin-container", "plugin-db-proxy",
-    "plugin-egress-proxy", "plugin-l7-http", "plugin-ledger",
-    "plugin-mcp", "plugin-mesh", "plugin-redaction", "plugin-replay",
-    "plugin-supply-chain",
-    "plugin-taint", "plugin-terminal-guard", "plugin-token-shield",
-    "plugin-tool-guard", "plugin-transaction",
-    "plugin-vault", "plugin-wire-ingress"
-]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-plugin-vault = { path = "../kelir-plugins/plugin-vault" }
 trybuild = "1.0.104"
 
 [[test]]

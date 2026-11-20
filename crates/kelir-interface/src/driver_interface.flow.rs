@@ -294,7 +294,7 @@ pub fn check_hw_lockfile(
     attest_hw_lockfile(&records, capabilities)
 }
 
-// see: cans/plugins/replay.md#Invariants-and-policy-(replay)
+// see: cans/05-driver-plane.md#Deterministic-replay
 pub fn reject_emulated_deterministic_clock(
     backend: &str,
     deterministic_clock: bool,
@@ -314,7 +314,7 @@ pub struct VmConfig {
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
     pub rootfs_erofs_path: PathBuf,
-    // see: cans/plugins/profile.md#Session-identity-(profile)
+    // see: cans/03-sdk-architecture.md#Session-surfaces
     pub tenant_id: Option<String>,
     // L3-GAP: [hypervisor_driver]: consumed by hardware-vmm drivers selecting the guest MMU leaf mapping (4/16KB) at boot.; slop: hardcoded 4K mapping on 16K host, silent boot
     pub page_size_kb: u32,
@@ -498,27 +498,27 @@ pub trait Stream: Send + Sync {
     fn flush(&mut self) -> Result<(), std::io::Error>;
 }
 
-// see: cans/plugins/replay.md#Deterministic-RNG
+// see: cans/05-driver-plane.md#Deterministic-replay
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntropyBackend {
     VirtioRng,
     SeededChaCha20 { seed: u64 },
 }
 
-// see: cans/plugins/replay.md#Deterministic-RNG
+// see: cans/05-driver-plane.md#Deterministic-replay
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntropyStreamPosition {
     pub offset_bytes: u64,
 }
 
-// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+// see: cans/05-driver-plane.md#Deterministic-replay
 #[derive(Debug, Clone, Copy)]
 pub struct PmuSample {
     pub retired_instructions: u64,
     pub sampled_at_ns: u64,
 }
 
-// see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+// see: cans/05-driver-plane.md#Deterministic-replay
 pub trait PmuSampler: Send + Sync {
     fn on_pmu_sample(&self, sample: &PmuSample);
 }
@@ -627,46 +627,46 @@ pub trait VmmDriver: Send + Sync {
             "unfreeze_vcpus: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    // see: cans/05-driver-plane.md#Two-phase-commit
     // L3-GAP: [rt_03_2pc_pre_commit_vcpu_pause_drain]: backend drivers override drain_fuse with the in-flight FUSE drain.; slop: commit issued while vCPUs still executing
     async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "drain_fuse: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    // see: cans/05-driver-plane.md#Two-phase-commit
     // L3-GAP: [relational_transaction]: backend drivers override commit_broker_upper with the broker upper commit.; slop: commit Ok, broker upper never replayed to disk
     async fn commit_broker_upper(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "commit_broker_upper: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
+    // see: cans/05-driver-plane.md#Two-phase-commit
     // L3-GAP: [relational_transaction]: backend drivers override discard_broker_upper with the broker upper discard.; slop: discard Ok, broker upper file never deleted
     async fn discard_broker_upper(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "discard_broker_upper: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    // see: cans/05-driver-plane.md#Deterministic-replay
     // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: backend drivers override step_clock_window with the retired-instruction clock step.; slop: single replay asserted, no window-for-window comparison
     async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "step_clock_window: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/replay.md#Cycle-exact-instruction-clock-stepping
+    // see: cans/05-driver-plane.md#Deterministic-replay
     // L3-GAP: [hypervisor_driver]: backend drivers override register_pmu_sampler with the host PMU counter arming.; slop: sampler Ok, host PMU counters never armed
     fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
             "register_pmu_sampler: no native backend override (L3)".into(),
         ))
     }
-    // see: cans/plugins/replay.md#Deterministic-RNG
+    // see: cans/05-driver-plane.md#Deterministic-replay
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError>;
-    // see: cans/plugins/replay.md#Deterministic-RNG
+    // see: cans/05-driver-plane.md#Deterministic-replay
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError>;
-    // see: cans/plugins/replay.md#Deterministic-RNG
+    // see: cans/05-driver-plane.md#Deterministic-replay
     async fn restore_entropy_position(
         &mut self,
         position: EntropyStreamPosition,

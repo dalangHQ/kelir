@@ -6,6 +6,7 @@
     - Tier 2 cross-ring security governance (taint)
     - Depends on (taint): kelir-interface (ring hooks + metadata store)
     - Exposes: TaintTrackingService
+    - ByteRange and TaintSet live in kelir-interface/src/byte_range.flow.rs (shared label contract); plugin-taint re-exports them; see: cans/02-plugin-model.md#Facade-blindness
     - Lifecycle attachment (taint): see: 08-lifecycle.md#Lifecycle-vetoes
   - Service exports (taint)
     - Exports TaintTrackingService via PipelineBinder for byte-range taint

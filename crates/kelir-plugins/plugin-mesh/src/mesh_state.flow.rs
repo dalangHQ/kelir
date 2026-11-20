@@ -4,15 +4,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::mesh_types::{PeerSessionHandshake, SpiffeId, SpiffeSvid};
 use async_trait::async_trait;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     AnyPlugin, HandlerCtx, KelirPlugin, PipelineBinder, PluginDeps,
 };
-use kelir_interface::vsock_mesh::{
-    PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
-};
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::handshake::HandshakeDriver;
 use crate::{MeshConfig, PeerIdentity, PeerRejection, TraceParentPropagation};
@@ -220,10 +219,13 @@ impl MeshPlugin {
                 peer.cid, peer.port, handshake.svid.spiffe_id.trust_domain
             )));
         }
-        if peer
-            .spiffe_id
-            .as_ref()
-            .is_some_and(|peer_id| peer_id != &handshake.svid.spiffe_id)
+        // see: cans/plugins/mesh.md#SPIFFE-identity-(mesh)
+        if let Some(recorded) = self.state.peers.lock().ok().and_then(|peers| {
+            peers
+                .iter()
+                .find(|record| record.cid == peer.cid && record.port == peer.port)
+                .and_then(|record| record.spiffe_id.clone())
+        }) && recorded != handshake.svid.spiffe_id
         {
             return Err(PluginError::Halt(format!(
                 "ECONNREFUSED: peer {}:{} vsock identity diverges from the handshake SVID",

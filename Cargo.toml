@@ -45,6 +45,7 @@ members = [
     "crates/kelir-adapters/mcp-server",
     "crates/kelir-bindings/napi",
     "crates/kelir-bindings/pyo3",
+    "crates/kelir-bundle",
     "crates/kelir-catalog",
     "crates/kelir-checkpoint",
     "crates/kelir-drivers/driver-avf",

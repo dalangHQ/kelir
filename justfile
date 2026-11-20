@@ -155,6 +155,19 @@ check-drivers:
 check-layers:
     cargo run -p kelir-plugin-cli -- check --layers
 
+# ── Law 8: core blindness gate ──
+# G1 facade manifest: zero plugin-* deps. G2 facade src: zero plugin tokens
+# (plugin_model is the accepted seam: the generic model lives in
+# kelir-interface per cans/02-plugin-model.md#Facade-blindness).
+# G3 facade dep graph: zero plugin crates at any depth. G4 structural lint.
+check-core-blindness:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ! grep -qE '^[[:space:]]*plugin-' crates/kelir/Cargo.toml
+    [ "$(git grep -iE 'plugin_' -- crates/kelir/src | grep -viE 'plugin_model|plugin_instance|\[plugin_engine\]' | wc -l)" -eq 0 ]
+    [ "$(cargo tree -p kelir -e normal 2>/dev/null | grep -cE 'plugin-')" -eq 0 ]
+    cargo run -p kelir-plugin-cli -- check --layers
+
 check-budgets:
     cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
 

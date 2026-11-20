@@ -12,7 +12,7 @@ use kelir_interface::plugin_model::PluginError;
 use serde::{Deserialize, Serialize};
 
 use crate::builder_sdk::{Host, KelirBuilder, Unsealed};
-use crate::hlist_sdk::{HCons, HNil, NoParams};
+use crate::hlist_sdk::{HNil, NoParams};
 use crate::planes::storage_plane::{FsReconcileRequest, SharedCacheConfig, StoragePlaneConfig};
 use crate::planes::terminal_plane::{
     PtyConfig, TerminalSanitizerConfig, TerminalWireframeGridConfig,
@@ -20,19 +20,16 @@ use crate::planes::terminal_plane::{
 use crate::planes::wire_plane::{L4Proxy, MtlsConfig, SinkholeConfig, TapFilter, WireConfig};
 use crate::session_lifecycle::{Session, SpawnResult};
 use kelir_interface::storage::CommitStats;
-use plugin_profile::{ProfileCtx, ProfilePlugin};
 
 pub use crate::profile_schema::{
     ArtifactsProfile, BalloonProfile, BudgetProfile, CatalogProfile, CheckpointProfile,
     ClockProfile, ComputeProfile, CowBrokerProfile, DevicesProfile, DriverProfile,
     DriverProfileTop, EffectiveConfig, EmbedMode, EmulatedTierClassification, FfiBoundaryProfile,
-    HashingStandard, HostProfile, InheritanceLattice, InvariantsProfile, IsolationEnvelopeProfile,
-    L4DiversionMtlsProfile, L4DiversionProfile, L4DiversionProxyProfile, LedgerPluginProfile,
-    McpInterpositionProfile, McpPluginProfile, MemorySafety, MerkleWalProfile,
-    OperatorLeaseProfile, OtelProfile, OutboxDeferralProfile, PhysicalityCheck, PluginsProfile,
-    PolicyPlaneMutability, RejectionMode, SessionProfile, ShimProfile, StepDagProfile,
-    StepDagStorage, StorageProfile, StorageTopProfile, TaintGovernanceProfile,
-    TelemetryRingProfile, ToolGuardPluginProfile, VirtioRngProfile, VirtioShmProfile,
+    HostProfile, InheritanceLattice, InvariantsProfile, IsolationEnvelopeProfile,
+    L4DiversionMtlsProfile, L4DiversionProfile, L4DiversionProxyProfile, MemorySafety,
+    OperatorLeaseProfile, OutboxDeferralProfile, PhysicalityCheck, PolicyPlaneMutability,
+    RejectionMode, SessionProfile, ShimProfile, StepDagProfile, StepDagStorage, StorageProfile,
+    StorageTopProfile, TelemetryRingProfile, VirtioRngProfile, VirtioShmProfile,
     VirtioShmRegionProfile, WatchdogProfile, WireProfile,
 };
 
@@ -60,7 +57,8 @@ pub struct SandboxProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<HostProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub plugins: Option<PluginsProfile>,
+    // see: cans/02-plugin-model.md#Facade-blindness
+    pub plugins: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attestation: Option<serde_json::Value>,
 }
@@ -370,11 +368,11 @@ pub(crate) fn checkpoint_plane_config(profile: &SandboxProfile) -> Option<Checkp
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-type ProfileHostBuilder = KelirBuilder<Host, Unsealed, (), HNil, HCons<ProfileCtx, HNil>, NoParams>;
+type HostBuilder = KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams>;
 
 pub struct Sandbox {
-    builder: Option<ProfileHostBuilder>,
-    session: Option<Session<HCons<ProfileCtx, HNil>, NoParams>>,
+    builder: Option<HostBuilder>,
+    session: Option<Session<HNil, NoParams>>,
     profile: SandboxProfile,
     source_path: PathBuf,
 }
@@ -390,9 +388,7 @@ impl Sandbox {
     }
 
     pub async fn create(opts: SandboxOptions) -> Result<Self, PluginError> {
-        let builder = KelirBuilder::new(opts.config)
-            .plugin_instance(ProfilePlugin::new())
-            .detached(opts.detached);
+        let builder = KelirBuilder::new(opts.config).detached(opts.detached);
         Ok(Self {
             builder: Some(builder),
             session: None,
@@ -404,7 +400,7 @@ impl Sandbox {
     fn from_profile(profile: SandboxProfile, path: PathBuf) -> Result<Self, PluginError> {
         profile.validate()?;
         let config = profile.to_vm_config();
-        let builder = KelirBuilder::new(config).plugin_instance(ProfilePlugin::new());
+        let builder = KelirBuilder::new(config);
         Ok(Self {
             builder: Some(builder),
             session: None,
@@ -421,7 +417,7 @@ impl Sandbox {
         &self.source_path
     }
 
-    pub fn session(&self) -> Option<&Session<HCons<ProfileCtx, HNil>, NoParams>> {
+    pub fn session(&self) -> Option<&Session<HNil, NoParams>> {
         self.session.as_ref()
     }
 

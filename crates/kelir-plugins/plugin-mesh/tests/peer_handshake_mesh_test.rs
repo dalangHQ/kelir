@@ -3,10 +3,9 @@ use std::io;
 
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::{HandlerCtx, KelirPlugin};
-use kelir_interface::vsock_mesh::{
-    PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler,
-};
+use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler};
 use plugin_mesh::{MeshConfig, MeshPlugin, PeerIdentity, TraceParentPropagation};
+use plugin_mesh::{PeerSessionHandshake, SpiffeId, SpiffeSvid};
 
 struct ForeignHandshakeStream {
     data: Vec<u8>,
@@ -76,11 +75,7 @@ async fn pm_14_mesh_rejects_foreign_trust_domain_peer() -> Result<(), String> {
         traceparent: TraceParentPropagation::InjectAndValidate,
         listeners: Vec::new(),
     });
-    let peer = VsockPeer {
-        cid: 7,
-        port: 5252,
-        spiffe_id: None,
-    };
+    let peer = VsockPeer { cid: 7, port: 5252 };
     let stream: Box<dyn Stream> = Box::new(ForeignHandshakeStream::new(foreign_domain_frame()?));
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
     plugin

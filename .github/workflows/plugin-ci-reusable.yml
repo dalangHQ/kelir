@@ -42,6 +42,10 @@ jobs:
             -D clippy::unreachable
       - name: Contract audit (same command as `just check-plugin`)
         run: cargo run -p kelir-plugin-cli -- check -p ${{ inputs.plugin }}
+      # see: cans/02-plugin-model.md#Facade-blindness (Law 8 gate, same
+      # recipe as ci.yml lint-and-types; no path back into the facade).
+      - name: Core blindness gate (Law 8)
+        run: cargo run -p kelir-plugin-cli -- check --layers
 
   vectors:
     needs: [audit]

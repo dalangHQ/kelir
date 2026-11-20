@@ -5,7 +5,9 @@
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::protocol_wire::Errno;
 
-pub use kelir_interface::chaos_types::FaultDirection;
+#[path = "chaos_types.flow.rs"]
+pub mod chaos_types;
+pub use chaos_types::FaultDirection;
 
 #[path = "fault_table.flow.rs"]
 pub mod fault_table;

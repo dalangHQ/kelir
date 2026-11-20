@@ -13,7 +13,7 @@ use kelir_interface::hex_codec::encode_hex;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroize;
 
-pub use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
+pub use crate::credential_vault::{CredentialDescriptor, CredentialKind};
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service.token_ttl_seconds
 pub const DEFAULT_TOKEN_TTL_SECONDS: u32 = 60;

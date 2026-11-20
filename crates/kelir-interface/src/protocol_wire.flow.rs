@@ -80,7 +80,7 @@ wire_enum! { MsgType, MSG_TYPES, {
     Signal = 0x0005,
 }}
 
-// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+// see: cans/11-protocol.md#Interposition-contract
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecveMutation {
     pub new_binary: Option<String>,
@@ -137,17 +137,17 @@ pub type Verdict = Action;
 // see: cans/02-plugin-model.md#Unified-verdict
 pub type FilterAction = Action;
 
-// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
+// see: cans/11-protocol.md#Memory-mapping-flags
 pub const PROT_NONE: u32 = 0;
 pub const PROT_READ: u32 = 1;
 pub const PROT_WRITE: u32 = 2;
 pub const PROT_EXEC: u32 = 4;
 
-// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
+// see: cans/11-protocol.md#Memory-mapping-flags
 pub const MFD_CLOEXEC: u32 = 0x0001;
 pub const MFD_ALLOW_SEALING: u32 = 0x0002;
 
-// see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
+// see: cans/11-protocol.md#Interposition-contract
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrappedSyscall {
     pub nr: i64,

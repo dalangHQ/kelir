@@ -1023,6 +1023,20 @@
       - Case schema: see: artifacts/code/plugin-builder-vectors.rs
       - Gate: see: 15-operations.md#Fluent-builder-parity-vectors
 
+  - Facade blindness
+    - The facade crate crates/kelir is core: zero plugin knowledge at any depth
+      - Zero plugin-* entries in crates/kelir/Cargo.toml dependencies
+      - Zero plugin_ tokens in crates/kelir/src, case-insensitive, including cfg gates and doc comments
+      - The dependency graph of crates/kelir contains zero plugin crates at any depth
+      - Aggregation of plugins lives in the kelir-bundle crate: see: 01-architecture.md#Composition-root
+    - Shared protocol contracts live in kelir-interface
+      - PostExecAction, StepVerdict, PostExecGate live in kelir-interface/src/step_verdict.flow.rs
+      - ByteRange, TaintSet live in kelir-interface/src/byte_range.flow.rs
+      - plugin-step-eval re-exports the step contracts; zero type duplication
+    - Plugin config parsing is plugin-owned
+      - PluginConfigParser in kelir-interface plugin_model: each plugin parses its own plugins.<name> raw section
+      - The facade never names a plugin in errors, YAML sub-schemas, or builder sugar
+      - Facade sugar (ToolGuardExt, ledger Session methods) lives in kelir-bundle
 - [1]: artifacts/code/plugin-trait.rs
 - [2]: 03-sdk-architecture.md#Language-surfaces
 - [3]: 15-operations.md#Coverage-gates

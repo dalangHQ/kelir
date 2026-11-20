@@ -7,7 +7,7 @@ Do not edit by hand: CI runs `just check-scorecard`.
 
 | Total Invariants | Domains | Integration Tier | Unit Tier | E2E Tier |
 |---:|---:|---:|---:|---:|
-| 254 | 17 | 168 | 73 | 13 |
+| 255 | 17 | 169 | 73 | 13 |
 
 ## Domain Coverage Matrix
 
@@ -21,7 +21,7 @@ Do not edit by hand: CI runs `just check-scorecard`.
 | `governance_vault` | `gv` | 12 | 7 | 0 | 0 | 5 | pass |
 | `hypervisor_driver` | `hd` | 28 | 22 | 0 | 0 | 6 | pass |
 | `lifecycle_checkpoint` | `lc` | 25 | 19 | 0 | 0 | 6 | pass |
-| `plugin_engine` | `pe` | 21 | 9 | 0 | 0 | 12 | pass |
+| `plugin_engine` | `pe` | 22 | 12 | 0 | 0 | 10 | pass |
 | `protocol_mux` | `pm` | 14 | 7 | 0 | 0 | 7 | pass |
 | `relational_transaction` | `rt` | 12 | 8 | 0 | 0 | 4 | pass |
 | `storage_plane` | `sp` | 25 | 18 | 0 | 0 | 7 | pass |
@@ -111,7 +111,7 @@ Thresholds below come from perf/budgets.toml (enforce = true) where a key is dec
 
 ## Platform Executable Subset
 
-Host: linux/x86_64; hypervisors present: none. Executable on this host: 227 / 254 cases.
+Host: linux/x86_64; hypervisors present: none. Executable on this host: 228 / 255 cases.
 
 | Hypervisor | Cases | Executable Here |
 |---|---:|---:|
@@ -135,3 +135,14 @@ Host: linux/x86_64; hypervisors present: none. Executable on this host: 227 / 25
 | AS-06 | Anti-Tautology Assertion | Hardcoded literals enforced in test fixtures | pass |
 | AS-07 | Hardware Platform Tier | Strict KVM/HVF/WHP probing via `doctor` | pass |
 | AS-08 | Zero-Dangling Host Resources | Post-run host FD and tmpfs sweep | pass |
+
+## Core Purity (Law 8)
+
+Facade blindness after the Law 8 purge (verified by `just check-core-blindness`, G1-G4):
+facade `crates/kelir` carries 0 plugin deps in its manifest, 0 non-seam `plugin_` tokens
+in src (accepted seams: plugin_model, plugin_instance, [plugin_engine] audit tags), and
+0 plugin crates in its dependency graph at any depth; `kelir-bundle` aggregates all 21
+plugins and owns the facade sugar (ToolGuardExt, LedgerSessionExt, plugin profile
+schemas). Byte-range label contracts (ByteRange, TaintSet) live in kelir-interface;
+same-tier plugin-to-plugin deps are lint-forbidden (pe_01) and registration graphs are
+cycle-checked at boot (pe_02).

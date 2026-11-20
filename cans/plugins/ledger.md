@@ -32,6 +32,7 @@
         - This invariant is the reason the WAL exists separately from receipts
       - Ownership: core generates receipts; plugin-ledger persists and exports
       - Ledger handler API
+    - Session accessors (`LedgerSessionExt`) live in kelir-bundle as of Law 8; see: cans/02-plugin-model.md#Facade-blindness
         - c.cap("ledger").flush() (TS/Py) / c.cap::<LedgerCtx>().flush() (RS) forces WAL flush and OTel export
         - count_denials(ppid) -> u64; TS countDenials(ppid); Py count_denials(ppid)
         - blake3_of_producing_process(path) -> str; TS blake3OfProducingProcess

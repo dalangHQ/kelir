@@ -2,7 +2,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use kelir_interface::credential_vault::{CredentialDescriptor, CredentialKind};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::TrapInterposer;
@@ -11,6 +10,7 @@ use kelir_interface::vsock_mesh::VsockPeer;
 use kelir_plugin_testkit::LoopbackStream;
 use kelir_plugin_testkit::block_on;
 use kelir_plugin_testkit::handlers_testkit::handler_ctx;
+use plugin_vault::credential_vault::{CredentialDescriptor, CredentialKind};
 use plugin_vault::service_vault::{
     CarrierInjector, CredentialBroker, CredentialBrokerService, TokenRequest, VaultError,
 };
@@ -135,11 +135,7 @@ fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
     use kelir_interface::vsock_mesh::VsockServiceHandler;
     let plugin = VaultPlugin::new().with_session_guest_cid(3);
     let ctx = handler_ctx([0u8; 16], 1);
-    let foreign = VsockPeer {
-        cid: 7,
-        port: 80,
-        spiffe_id: None,
-    };
+    let foreign = VsockPeer { cid: 7, port: 80 };
     match block_on(plugin.on_connect(&foreign, Box::new(LoopbackStream::new(1)), &ctx)) {
         Err(PluginError::Halt(msg)) if msg.starts_with("ECONNREFUSED:") => (),
         Err(err) => {
@@ -153,11 +149,7 @@ fn gv_09_metadata_non_vsock_peer_econnrefused() -> Result<(), String> {
             );
         }
     }
-    let session_peer = VsockPeer {
-        cid: 3,
-        port: 80,
-        spiffe_id: None,
-    };
+    let session_peer = VsockPeer { cid: 3, port: 80 };
     block_on(plugin.on_connect(&session_peer, Box::new(LoopbackStream::new(1)), &ctx))
         .map_err(|err| format!("{err:?}"))?;
     Ok(())

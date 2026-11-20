@@ -5,7 +5,7 @@ plan:
   name: "kelir canonical test plan"
   structure_doc: "cans/artifacts/test-plan/test-plan-structure.md"
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
-  total_cases: 260
+  total_cases: 261
   domains: 17
   total_scenarios: 35
   scenario_families: 8
@@ -50,7 +50,7 @@ domains:
     description: "Vsock port 5252, Control channel (0x0000), Stream Mux (0x0001), sub-lanes (EXEC, VFS, BULK), framing limits, window-update flow control."
   plugin_engine:
     prefix: "pe"
-    case_count: 21
+    case_count: 22
     description: "KelirPlugin trait, segregated ring traits, unified Verdict / FilterAction evaluation, static dispatch tables, filter-before-FFI gate (<2µs)."
   governance_vault:
     prefix: "gv"
@@ -1361,6 +1361,13 @@ cases:
     target_crate: "crates/kelir-engine"
     quadrant: "true_negative"
     title: "Trap Pass for an exec whose effect writes outside MountScope Drops at on_fs_write and dirties zero host bytes"
+  - case_id: "pe_22_facade_zero_plugin_knowledge"
+    file: "cases/plugin_engine/pe_22_facade_zero_plugin_knowledge.yaml"
+    domain: "plugin_engine"
+    target_tier: "unit"
+    target_crate: "crates/kelir-plugin-cli"
+    quadrant: "true_negative"
+    title: "Facade crate carrying a plugin dependency or plugin_ token fails the layers check (Law 8 core blindness)"
 
   # ── Domain 10: governance_vault (gv) [13 cases] ───────────────
   - case_id: "gv_01_metadata_service_scoped_token"

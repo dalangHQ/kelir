@@ -79,7 +79,7 @@ pub mod serde_hex_32 {
     }
 }
 
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/11-protocol.md#Wire-encoding
 pub mod serde_hex_64 {
     use serde::de::Error;
     use serde::{Deserialize, Deserializer, Serializer};

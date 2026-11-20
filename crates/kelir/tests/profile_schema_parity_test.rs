@@ -607,42 +607,6 @@ fn ws_d1_every_new_key_maps_to_an_effective_config_field() -> Result<(), Box<dyn
     assert_eq!(ring.feature_extraction, Some(true));
     assert_eq!(ring.sliding_window_depth, Some(300));
     assert_eq!(ring.export_feature_vector, Some(true));
-    let wal = effective
-        .ledger_merkle_wal
-        .as_ref()
-        .ok_or("plugins.ledger.merkle_wal missing")?;
-    assert!(matches!(
-        wal.hashing_standard,
-        Some(kelir::sandbox_runtime::HashingStandard::Rfc6962DualBlake3Sha256)
-    ));
-    assert_eq!(wal.record_pre_redaction_hash, Some(true));
-    assert_eq!(wal.include_hook_spans_in_root, Some(true));
-    assert_eq!(
-        wal.witness_cosigning_endpoint.as_deref(),
-        Some("https://witness.internal.net/v1/sth")
-    );
-    let otel = effective
-        .ledger_otel
-        .as_ref()
-        .ok_or("plugins.ledger.otel missing")?;
-    assert_eq!(
-        otel.endpoint.as_deref(),
-        Some("http://localhost:4318/v1/traces")
-    );
-    let guard = effective
-        .tool_guard_interposition
-        .as_ref()
-        .ok_or("plugins.tool_guard.mcp_interposition missing")?;
-    assert_eq!(guard.max_frame_bytes, Some(16777216));
-    assert_eq!(guard.detect_semantic_rug_pull, Some(true));
-    assert_eq!(guard.strict_ast_parameter_validation, Some(true));
-    let taint = effective
-        .tool_guard_taint
-        .as_ref()
-        .ok_or("plugins.tool_guard.taint_governance missing")?;
-    assert_eq!(taint.propagate_byte_range_taints, Some(true));
-    let mcp = effective.mcp.as_ref().ok_or("plugins.mcp missing")?;
-    assert_eq!(mcp.max_frame_bytes, Some(16777216));
     let mapped = parse_yaml_fixture()?.to_catalog_config();
     assert_eq!(mapped.backend, kelir_catalog::CatalogBackend::Postgres);
     assert_eq!(
@@ -680,16 +644,13 @@ fn overlay_widening_a_budget_ceiling_fails_with_e_security_violation()
     );
     let mut dropped_guard = base.clone();
     dropped_guard
-        .plugins
+        .wire
         .as_mut()
-        .ok_or("plugins missing")?
-        .ledger
+        .ok_or("wire missing")?
+        .outbox_deferral
         .as_mut()
-        .ok_or("ledger missing")?
-        .merkle_wal
-        .as_mut()
-        .ok_or("merkle_wal missing")?
-        .record_pre_redaction_hash = Some(false);
+        .ok_or("outbox_deferral missing")?
+        .drop_on_rollback = Some(false);
     let err = match dropped_guard.validate_overlay(&base) {
         Ok(()) => return Err("dropped pre-redaction guard passed validation".into()),
         Err(err) => err,

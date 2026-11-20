@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "pe_22_facade_zero_plugin_knowledge"
+title: "Facade crate carrying a plugin dependency or plugin_ token fails the layers check (Law 8 core blindness)"
+domain: "plugin_engine"
+target_tier: "unit"
+target_crate: "crates/kelir-plugin-cli"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/02-plugin-model.md#Facade-blindness"
+  statement: "The facade crates/kelir is core: zero plugin-* entries in its Cargo.toml dependencies and zero plugin_ tokens in crates/kelir/src outside the accepted seams (plugin_model, plugin_instance, [plugin_engine] audit tags) per the G2 allowlist. Enforcement: kelir-plugin-cli check --layers carries a facade source-prefix rule and a facade manifest rule; just check-core-blindness runs the same gate in CI."
+  blast_radius_if_breached: "Architectural collapse back into the facade-dependency tar pit: one plugin dep re-imports the full plugin closure into every consumer of the facade and reintroduces cyclic build coupling."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent renames the plugin dep or hides the type behind a local alias (type X = plugin_y::X) so the token scan misses it."
+  anti_slop_mitigation: "AS-01 runs kelir-plugin-cli check --layers over a mock tree (KELIR_PLUGIN_CLI_ROOT) with both a plugin-mcp dep in the facade manifest and a plugin_mcp token in facade src, and asserts both exit 1 naming the culprit."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "ci.linter"
+    agent_id: "agt_pe_22"
+    trust: "reviewed"
+  initial_state:
+    mock_facade: "crates/kelir with plugin-mcp dep + plugin_mcp src token"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "kelir-plugin-cli check --layers (KELIR_PLUGIN_CLI_ROOT=mock tree)"
+  input_params:
+    facade_manifest_dep: "plugin-mcp"
+    facade_src_token: "plugin_mcp"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "plugin.layering"
+    culprit: "crates/kelir/Cargo.toml declares a plugin dependency / crates/kelir/src names a plugin token"
+    remedy: "Move the plugin surface to kelir-bundle; the facade is core (cans/02-plugin-model.md#Facade-blindness)"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "ci.layering_violation_caught"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "HypervisorFault"
+    fault_reason: "layer violation"
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert!(!output.status.success() && stderr.contains(\"plugin_mcp\"));"

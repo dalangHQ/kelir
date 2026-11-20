@@ -4,7 +4,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 
 use kelir_interface::checkpoint::{CheckpointOps, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
@@ -15,30 +14,8 @@ use kelir_interface::telemetry::CausalDelta;
 use crate::StepEvalPlugin;
 use crate::step_dag::{StepAttribution, StepDag, StepDagConfig, StepDagError, StepDagStorage};
 
-// see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PostExecAction {
-    Proceed,
-    RollbackAndHalt,
-}
-
-// see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StepVerdict {
-    Commit,
-    Rollback,
-    YieldToHost,
-}
-
-impl PostExecAction {
-    // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
-    pub const fn to_step_verdict(self) -> StepVerdict {
-        match self {
-            Self::Proceed => StepVerdict::Commit,
-            Self::RollbackAndHalt => StepVerdict::Rollback,
-        }
-    }
-}
+// see: cans/02-plugin-model.md#Facade-blindness
+pub use kelir_interface::step_verdict::{PostExecAction, PostExecGate, StepVerdict};
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
 pub struct StepSlot {
@@ -66,19 +43,6 @@ impl StepSlot {
 
     pub fn pending_delta(&self) -> Option<&CausalDelta> {
         self.pending_delta.as_ref()
-    }
-}
-
-// see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
-#[async_trait]
-pub trait PostExecGate: Send + Sync {
-    async fn check(
-        &self,
-        event: &TrapEvent,
-        ctx: &HandlerCtx,
-    ) -> Result<PostExecAction, PluginError> {
-        let _ = (event, ctx);
-        Ok(PostExecAction::Proceed)
     }
 }
 

@@ -1,8 +1,9 @@
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
+use crate::mesh_types::PeerSessionHandshake;
 use kelir_interface::codec_protocol::MAX_FRAME_PAYLOAD;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::vsock_mesh::{PeerSessionHandshake, VsockPeer};
+use kelir_interface::vsock_mesh::VsockPeer;
 
 use crate::{MeshPlugin, PeerRejection};
 

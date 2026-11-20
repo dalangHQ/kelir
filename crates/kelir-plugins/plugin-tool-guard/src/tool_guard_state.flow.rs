@@ -18,7 +18,7 @@ use crate::service_tool_guard::{
     ToolsListResult, decode_tools_list,
 };
 use crate::{ToolGuardConfig, ToolSpec};
-use plugin_taint::ByteRange;
+use kelir_interface::byte_range::ByteRange;
 
 impl Default for ToolGuardConfig {
     fn default() -> Self {

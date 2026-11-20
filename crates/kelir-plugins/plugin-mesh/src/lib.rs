@@ -1,6 +1,13 @@
 // see: cans/plugins/mesh.md#Plugin-mesh
 #![forbid(unsafe_code)]
 
+#[path = "mesh_types.flow.rs"]
+pub mod mesh_types;
+pub use mesh_types::{
+    MeshElection, PeerSessionHandshake, ShmRing, ShmRingError, SpiffeId, SpiffeSvid,
+    VirtioShmRegion,
+};
+
 #[path = "federation.run.rs"]
 pub mod federation;
 

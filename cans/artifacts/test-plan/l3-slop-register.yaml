@@ -1,7 +1,7 @@
 $schema: kelir-test-plan/l3-slop-register/v1
 generated: 200 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
-total_cases: 260
-covered_red_gap: 208
+total_cases: 261
+covered_red_gap: 206
 entries:
 - case_id: ad_01_radix_layer_unpack_whiteout_merge
   status: red
@@ -1426,37 +1426,6 @@ entries:
   - Exported manifest contains no base digest; base stored under cas/blobs with parent_digest None
   code_todos:
   - crates/kelir-interface/src/handles_lifecycle.flow.rs
-- case_id: pe_01_downward_only_tier_dependency_lint
-  status: red
-  domain: plugin_engine
-  target_crate: crates/kelir-engine
-  slop_risks:
-  - 'layers::check() extended to scan only kelir_engine::/kelir_drivers:: prefixes while Tier 1 plugin-mcp importing Tier 3 plugin-ledger still passes'
-  - Lint disabled or narrowed in CI so the upward import passes with exit 0 and no ci.layering_violation_caught event
-  - Tier 1 plugin reaches Tier 3 behavior through a new shared helper crate instead of ServiceRegistry/EventBus, keeping the upward edge
-  must_not:
-  - Disable or narrow layers::check() to make the import pass
-  - Route Tier 1 to Tier 3 through a new shared crate instead of ServiceRegistry/EventBus
-  acceptance:
-  - layers::check() returns Err containing 'layer violation' for Tier 1 importing Tier 3
-  - Exit code 1 with audit event ci.layering_violation_caught and zero state modified
-  code_todos: []
-- case_id: pe_02_cyclic_dependency_graph_abort
-  status: red
-  domain: plugin_engine
-  target_crate: crates/kelir-engine
-  slop_risks:
-  - Boot accepts cyclic [plugin_a -> plugin_b, plugin_b -> plugin_a] and returns Ok(session), recursing or deadlocking at init
-  - Cycle check dedupes names only and never walks edges, so a 3-node cycle passes
-  - Boot aborts with a generic Halt that never names the cycle, so the diagnostic names no culprit
-  must_not:
-  - Validate registration shape and dedupe only, without walking the dependency edges for cycles
-  - Return Ok(session) for a cyclic graph
-  acceptance:
-  - Session::boot_with_plugins returns Err(PluginError::Halt) mentioning 'Cyclic dependency'
-  - Receipt exit_kind HypervisorFault with fault_reason EConfig('Cyclic dependency') and event plugin.cyclic_dependency_aborted
-  code_todos:
-  - crates/kelir-engine/src/plugin_registry/resolve.flow.rs
 - case_id: pe_03_overlapping_mutator_scope_eambiguous
   status: red
   domain: plugin_engine

@@ -2,8 +2,9 @@
 use kelir::interface::driver_interface::VmConfig;
 use kelir::interface::plugin_model::{KelirPlugin, PluginError, VetoEvent};
 use kelir::interface::protocol_wire::Verdict;
+use kelir::interface::step_verdict::PostExecAction;
 use kelir::plugin_model::FilterAction;
-use kelir::{HNil, Host, KelirBuilder, NoParams, PostExecAction, TrapFilter, Unsealed};
+use kelir::{HNil, Host, KelirBuilder, NoParams, TrapFilter, Unsealed};
 
 fn test_builder() -> KelirBuilder<Host, Unsealed, (), HNil, HNil, NoParams> {
     KelirBuilder::new(VmConfig {

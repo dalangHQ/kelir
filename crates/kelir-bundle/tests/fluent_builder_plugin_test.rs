@@ -1,6 +1,5 @@
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 use std::path::Path;
-#[cfg(feature = "plugin-ledger")]
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,11 +14,10 @@ use kelir::interface::plugin_model::{
 use kelir::interface::protocol_wire::Verdict;
 use kelir::interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 use kelir::plugin_model::FilterAction;
-use kelir::{HNil, Host, KelirBuilder, NoParams, ProfilePlugin, TrapFilter, Unsealed};
+use kelir::{HNil, Host, KelirBuilder, NoParams, TrapFilter, Unsealed};
+use kelir_bundle::ProfilePlugin;
 
-#[cfg(feature = "plugin-ledger")]
-use kelir::LedgerPlugin;
-#[cfg(feature = "plugin-chaos")]
+use kelir_bundle::LedgerPlugin;
 use plugin_chaos::{ChaosConfig, ChaosPlugin};
 
 struct _NullVsock;
@@ -561,7 +559,6 @@ fn multi_vsock_registers_in_order() {
 }
 
 // see: cans/02-plugin-model.md#Fluent-plugin-creation-builder
-#[cfg(feature = "plugin-ledger")]
 #[test]
 fn canonical_chaos_shape() -> Result<(), PluginError> {
     let chaos = KelirBuilder::named("chaos")
@@ -584,7 +581,6 @@ fn canonical_chaos_shape() -> Result<(), PluginError> {
 }
 
 // see: cans/plugins/chaos.md#Plugin-chaos
-#[cfg(feature = "plugin-chaos")]
 #[test]
 fn chaos_plugin_wraps_into_builder() {
     let plugin = ChaosPlugin::new(ChaosConfig::default());

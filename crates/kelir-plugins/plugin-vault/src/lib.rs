@@ -1,7 +1,10 @@
 // see: cans/plugins/vault.md#Plugin-vault
 #![forbid(unsafe_code)]
 
-use kelir_interface::credential_vault::CredentialDescriptor;
+#[path = "credential_vault.flow.rs"]
+pub mod credential_vault;
+
+pub use credential_vault::{CredentialDescriptor, CredentialKind, VAULT_METADATA_VSOCK_PORT};
 
 #[path = "boot_diversion.flow.rs"]
 pub mod boot_diversion;

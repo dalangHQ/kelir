@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 kelir-interface = { path = "../../kelir-interface" }
 async-trait = { workspace = true }
+serde = { workspace = true }
 blake3 = { workspace = true }
 getrandom = { workspace = true }
 subtle = { workspace = true }

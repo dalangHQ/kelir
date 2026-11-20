@@ -6,6 +6,7 @@
     - Tier 2 governance and protocol proxy (tool-guard)
     - Depends on (tool-guard): kelir-interface, plugin-mcp
     - Imports plugin-mcp AST and call definitions directly
+    - Byte-range labels (ByteRange, TaintSet) come from kelir-interface/src/byte_range.flow.rs; see: cans/02-plugin-model.md#Facade-blindness
     - Exposes: ToolRegistryService
     - VirtIO device attachment (tool-guard): see: 01-architecture.md#VirtIO-Device-Complex
     - Lifecycle attachment (tool-guard): see: 08-lifecycle.md#Lifecycle-vetoes
@@ -32,6 +33,7 @@
       - Description rewriting or smuggled parameters halt with ESecurityViolation
       - Schema drift events emit structured audit telemetry before VM panic
     - Host extensible hook pipeline
+    - The `.tool()` builder sugar lives in kelir-bundle (`ToolGuardExt`) as of Law 8; see: cans/02-plugin-model.md#Facade-blindness
       - Exposes typed pre-call and post-call interception to host runtimes
       - Mount via builder.use(toolGuard()) decorates builder with .tool()
       - Rust: exposes ToolGuardExt extension trait for direct builder chaining

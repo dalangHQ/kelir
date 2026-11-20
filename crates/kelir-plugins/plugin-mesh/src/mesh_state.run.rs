@@ -1,7 +1,7 @@
 // see: cans/plugins/mesh.md#Plugin-mesh
 use async_trait::async_trait;
 use kelir_interface::plugin_model::{LifecycleCtx, LifecycleParticipant, PluginError};
-use kelir_interface::vsock_mesh::SpiffeSvid;
+use crate::mesh_types::SpiffeSvid;
 
 use crate::mesh_state::{MeshPlugin, MeshState};
 

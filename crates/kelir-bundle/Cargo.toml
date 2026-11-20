@@ -1,0 +1,53 @@
+[package]
+name = "kelir-bundle"
+version = "1.0.0"
+edition = "2024"
+license = "FSL-1.1-Apache-2.0"
+publish = false
+
+[dependencies]
+kelir = { path = "../kelir" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+plugin-anomaly = { path = "../kelir-plugins/plugin-anomaly" }
+plugin-chaos = { path = "../kelir-plugins/plugin-chaos" }
+plugin-container = { path = "../kelir-plugins/plugin-container" }
+plugin-db-proxy = { path = "../kelir-plugins/plugin-db-proxy" }
+plugin-egress-proxy = { path = "../kelir-plugins/plugin-egress-proxy" }
+plugin-l7-http = { path = "../kelir-plugins/plugin-l7-http" }
+plugin-ledger = { path = "../kelir-plugins/plugin-ledger" }
+plugin-mcp = { path = "../kelir-plugins/plugin-mcp" }
+plugin-mesh = { path = "../kelir-plugins/plugin-mesh" }
+plugin-profile = { path = "../kelir-plugins/plugin-profile" }
+plugin-redaction = { path = "../kelir-plugins/plugin-redaction" }
+plugin-replay = { path = "../kelir-plugins/plugin-replay" }
+plugin-step-eval = { path = "../kelir-plugins/plugin-step-eval" }
+plugin-supply-chain = { path = "../kelir-plugins/plugin-supply-chain" }
+plugin-taint = { path = "../kelir-plugins/plugin-taint" }
+plugin-terminal-guard = { path = "../kelir-plugins/plugin-terminal-guard" }
+plugin-token-shield = { path = "../kelir-plugins/plugin-token-shield" }
+plugin-tool-guard = { path = "../kelir-plugins/plugin-tool-guard" }
+plugin-transaction = { path = "../kelir-plugins/plugin-transaction" }
+plugin-vault = { path = "../kelir-plugins/plugin-vault" }
+plugin-wire-ingress = { path = "../kelir-plugins/plugin-wire-ingress" }
+
+[lints]
+workspace = true
+
+[package.metadata.kelir]
+allowed_levels = ["L1", "L2", "L3"]
+
+[dev-dependencies]
+plugin-ledger = { path = "../kelir-plugins/plugin-ledger" }
+serde_yaml = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+kelir-engine = { path = "../kelir-engine" }
+kelir-interface = { path = "../kelir-interface" }
+kelir-wire = { path = "../kelir-wire" }
+kelir-terminal = { path = "../kelir-terminal" }
+kelir-checkpoint = { path = "../kelir-checkpoint" }
+kelir-host = { path = "../kelir-host" }
+kelir-storage = { path = "../kelir-storage" }
+kelir-storage-io = { path = "../kelir-storage-io" }
+toml = { workspace = true }

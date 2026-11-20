@@ -2,8 +2,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 
+use crate::credential_vault::CredentialDescriptor;
 use async_trait::async_trait;
-use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
@@ -11,9 +11,9 @@ use kelir_interface::plugin_model::{
     TrapInterposer, VirtioDevice,
 };
 use kelir_interface::runtime_block::block_on;
-use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
+use crate::credential_vault::VAULT_METADATA_VSOCK_PORT;
 use crate::service_vault::{
     CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken,
     TokenRequest, VaultError,

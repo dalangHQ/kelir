@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use kelir_interface::byte_range::{ByteRange, TaintSet};
 use kelir_interface::plugin_model::PluginError;
 use plugin_mcp::WithParamsPredicate;
 use plugin_mcp::ast::{JsonRpcId, parse_json_rpc_request, parse_json_rpc_response};
-use plugin_taint::{ByteRange, TaintSet};
 use serde_json::Value;
 
 // see: cans/plugins/mcp.md#MCP-contract

@@ -2,17 +2,15 @@
 
 // L3-GAP: [protocol_mux]: tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
 pub mod addon_abi;
-#[path = "addon_abi.flow.rs"]
-pub mod addon_abi_flow;
 pub mod capability_registry;
 pub use capability_registry::CapabilityRegistry;
 #[path = "capability_registry.flow.rs"]
 pub mod capability_registry_flow;
-pub mod chaos_types;
+#[path = "byte_range.flow.rs"]
+pub mod byte_range;
 pub mod checkpoint;
 #[path = "codec_protocol.flow.rs"]
 pub mod codec_protocol;
-pub mod credential_vault;
 #[path = "driver_interface.flow.rs"]
 pub mod driver_interface;
 #[path = "errno_types.flow.rs"]
@@ -42,6 +40,8 @@ pub mod protocol_wire;
 #[path = "runtime_block.flow.rs"]
 pub mod runtime_block;
 pub mod spawn_transport;
+#[path = "step_verdict.flow.rs"]
+pub mod step_verdict;
 pub mod storage;
 pub mod telemetry;
 pub mod terminal;

@@ -8,7 +8,7 @@ use crate::plugin_model::PluginError;
 // see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
 pub const ECONFIG_CODE: &str = "EConfig";
 
-// see: cans/plugins/supply-chain.md#Invariants-and-policy-(supply-chain)
+// see: cans/03-sdk-architecture.md#Runtime-surface
 pub const EWXVIOLATION_CODE: &str = "EWXVIOLATION";
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy

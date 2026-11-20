@@ -978,3 +978,12 @@ pub fn foreign_suspend_action() -> FilterAction {
         until: SuspendUntil::Approval,
     }
 }
+
+// see: cans/02-plugin-model.md#Facade-blindness
+pub trait PluginConfigParser: Send + Sync {
+    const PLUGIN_NAME: &'static str;
+
+    fn parse_config<T: for<'de> Deserialize<'de>>(
+        raw: &serde_json::Value,
+    ) -> Result<T, PluginError>;
+}
