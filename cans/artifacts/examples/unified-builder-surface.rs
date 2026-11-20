@@ -242,7 +242,6 @@ pub fn build_host() -> SurfaceHostBuilder {
         encapsulation: WorkspaceEncapsulation::Passthrough,
         // lock_broker rides .fs(|f| f.config(…)) below; the StoragePlaneConfig
         // literal keeps its live field set for the host face.
-        lock_broker: true,
     })
     .wire(WireConfig {
         sinkhole: SinkholeConfig {

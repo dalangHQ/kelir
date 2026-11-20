@@ -1,4 +1,5 @@
 // see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
+// TODO (L3) [plugin_engine]: implement peer publish routing, await-winner, and mTLS handshake framing validation.; slop: peer publish routing never lands, federation messages never reach peers, mTLS handshake framing goes unvalidated.
 // L3-GAP: [protocol_mux]: peer publish routes shard announcements over the peer federation streams with traceparent propagation; slop: announcement unrouted, traceparent lost, shards never converge
 // L3-GAP: [protocol_mux]: await-winner awaits the winning shard announcement on the mesh listener streams until the election settles; slop: no listener wait, winning shard never awaited, election never settles
 // L3-GAP: [protocol_mux]: mTLS handshake framing validation over the peer federation streams across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS

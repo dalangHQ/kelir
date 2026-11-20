@@ -4,9 +4,7 @@
 
 // see: cans/11-protocol.md#Wire-framing
 pub use kelir_interface::codec_protocol::{
-    FLAG_CLOSE, FLAG_DATA, FLAG_OPEN, FLAG_RST, FLAG_WINDOW_UPDATE, HEADER_LEN,
-    MAX_CONTROL_PAYLOAD, MAX_FRAME_PAYLOAD, MAX_STREAM_ID, decode_header, decode_msg_type,
-    encode_msg_frame,
+    HEADER_LEN, MAX_CONTROL_PAYLOAD, MAX_FRAME_PAYLOAD, decode_header,
 };
 
 // see: cans/11-protocol.md#Binary-exec-channel

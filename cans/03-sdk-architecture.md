@@ -456,7 +456,7 @@
       - RS: Result<(), PluginError>; TS: Promise<void>, throws on failure
       - Py: Awaitable[None], raises on failure; failures are session errors
       - Never a silent no-op: a failed deny hook surfaces as a session error
-      - Every scope carries config / requires / fork_with / timeout / priority / rules
+      - Scope sub-nodes ride the method-home table: see: 02-plugin-model.md#Nested-scopes — requires / timeout / priority on every scope, config / fork_with / rules on FsScope only
       - TypeScript scopes are generic interfaces; Python scopes are Protocols
         - TS shapes: see: artifacts/code/typescript-scope-interface.ts
         - Py shapes: see: artifacts/code/python-scope-protocol.py

@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "bp_06_python_export_spec_renders_toml_fields"
+title: "Python Sandbox.export_spec renders known TOML fields to disk"
+domain: "bindings_py"
+target_tier: "unit"
+target_crate: "packages/py"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/profile.md#Bidirectional-extraction"
+  statement: "Sandbox.export_spec serializes the ingested profile back to disk with the known TOML fields intact: extraction is bidirectional, profile in equals profile out."
+  blast_radius_if_breached: "Exported profiles silently drop fields, so a round-tripped profile boots a different machine than the one declared."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts export_spec returns without checking the file on disk."
+  anti_slop_mitigation: "AS-01 asserts the written bytes equal the expected TOML rendering."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.python"
+    agent_id: "agt_bp_06"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "sdk"
+  command: "Sandbox.from_profile(profile, 'profile.toml').export_spec(str(out))"
+  input_params:
+    profile: "{session: {id: 's1', compute: {vcpus: 4, memory_mb: 2048}}}"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "sdk.python"
+    culprit: "none — profile exported"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "profile.exported"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert out.read_text() == '[session]\\nid = \"s1\"\\n\\n[session.compute]\\nvcpus = 4\\nmemory_mb = 2048\\n';"

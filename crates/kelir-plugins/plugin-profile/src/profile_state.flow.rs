@@ -4,8 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    FsInterposer, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, PluginDeps,
-    StreamFrameSink,
+    FsInterposer, KelirPlugin, MountScope, PipelineBinder, PluginDeps, StreamFrameSink,
 };
 use kelir_interface::protocol_wire::StreamKind;
 use serde_json::Value;
@@ -396,7 +395,3 @@ impl KelirPlugin for ProfilePlugin {
         pipeline.bind_fs_scoped(fs_stage, MountScope::default());
     }
 }
-
-// see: cans/plugins/profile.md#Plugin-profile
-
-impl LifecycleParticipant for ProfilePlugin {}

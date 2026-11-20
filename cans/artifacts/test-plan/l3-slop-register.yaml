@@ -1,7 +1,7 @@
 $schema: kelir-test-plan/l3-slop-register/v1
-generated: 174 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
-total_cases: 254
-covered_red_gap: 179
+generated: 200 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
+total_cases: 260
+covered_red_gap: 208
 entries:
 - case_id: ad_01_radix_layer_unpack_whiteout_merge
   status: red
@@ -666,6 +666,22 @@ entries:
   - Profile AST contains the URL pointer and never the raw secret, event vault.placeholder_resolved
   code_todos:
   - crates/kelir-plugins/plugin-vault/src/metadata_endpoint.flow.rs
+- case_id: gv_13_vault_placeholder_env_rejected_esecurityviolation
+  status: red
+  domain: governance_vault
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - the vault:// placeholder resolves directly to the plaintext secret in the profile AST
+  - on_trap returns Ok(Pass) for the placeholder env file, so the secret resolves into the guest environment
+  - metadata_endpoint resolves vault:// by direct substitution instead of through the metadata service
+  must_not:
+  - resolve a vault:// placeholder by direct substitution in the profile AST
+  - let an env file carrying vault:// pass the trap
+  acceptance:
+  - env file load fails with ESecurityViolation and no secret bytes reach the guest (AS-01)
+  - metadata_endpoint.on_trap returns Err(Halt) until the metadata service lands
+  code_todos:
+  - crates/kelir-plugins/plugin-vault/src/metadata_endpoint.run.rs
 - case_id: hd_01_nohardware_vmm_fatal_abort
   status: red
   domain: hypervisor_driver
@@ -1063,6 +1079,21 @@ entries:
   - New tool call during Draining returns the EBUSY diagnostic
   code_todos:
   - crates/kelir-engine/src/session_lifecycle.flow.rs
+- case_id: lc_05_monotonic_clock_clamp_on_resume
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - resume succeeds without comparing guest monotonic timestamps before and after
+  - resume returns Ok while the monotonic clock jumps backwards, so step windows misorder
+  - the checkpoint snapshot stub halts resume, so no clock comparison ever runs
+  must_not:
+  - assert resume Ok without comparing monotonic timestamps
+  - clamp the clock by resetting it instead of monotonic max
+  acceptance:
+  - monotonic_after >= monotonic_before strictly (AS-04A)
+  code_todos:
+  - crates/kelir-checkpoint/src/real_checkpoint.run.rs
 - case_id: lc_06_hvf_chunked_page_promoter_2mb
   status: gap
   domain: lifecycle_checkpoint
@@ -1108,6 +1139,22 @@ entries:
   - trapped_task_result == Err(EFAULT) and active_held_traps_count() == 0 before the reset
   - Memory and registers reset only after the trap unblocks
   code_todos: []
+- case_id: lc_09_graceful_shutdown_syncfs_flushed
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - stop issues SIGKILL immediately instead of awaiting MSG_SHUTDOWN_ACK
+  - StoragePlane::reconcile runs without the anchored reconciler and fails closed, so syncfs never flushes
+  - a DirtyShutdown receipt is treated as graceful because the test only checks the process exited
+  must_not:
+  - treat a DirtyShutdown receipt as graceful
+  - skip the MSG_SHUTDOWN_ACK wait on the stop path
+  acceptance:
+  - receipt exit_kind == Normal rather than DirtyShutdown or HardKilled (AS-03)
+  - stop awaits MSG_SHUTDOWN_ACK before SIGKILL
+  code_todos:
+  - crates/kelir-storage/src/reconciler.run.rs
 - case_id: lc_10_abrupt_kill_dirty_shutdown_receipt
   status: red
   domain: lifecycle_checkpoint
@@ -1262,6 +1309,23 @@ entries:
   - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-interface/src/driver_interface.flow.rs
   - packages/py/kelir/plugin_model.py
+- case_id: lc_19_delta_chain_unbounded_compaction
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - compaction finishes without verifying delta depth reduced to 1
+  - compaction reports finished while delta depth stays unbounded
+  - the checkpoint snapshot stub halts compaction, so no manifest is ever rewritten
+  must_not:
+  - assert compaction finished without verifying delta depth reduced to 1
+  - rewrite the manifest without updating parent_digest to the ancestor base
+  acceptance:
+  - snapshot manifest parent_digest is updated to ancestor base (AS-02)
+  - delta depth == 1 after compaction
+  code_todos:
+  - crates/kelir-checkpoint/src/real_checkpoint.run.rs
+  - crates/kelir-checkpoint/src/compaction.flow.rs
 - case_id: lc_20_portable_snapshot_archive_export
   status: red
   domain: lifecycle_checkpoint
@@ -1315,6 +1379,21 @@ entries:
   - crates/kelir-engine/src/session_lifecycle.flow.rs
   - crates/kelir-interface/src/driver_interface.flow.rs
   - crates/kelir-plugins/plugin-replay/src/replay_state.flow.rs
+- case_id: lc_24_step_evaluator_begin_commit_clears_active_descriptor
+  status: red
+  domain: lifecycle_checkpoint
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - commit_step returns Ok without checking the active descriptor is cleared
+  - begin_step/commit_step return Ok while the active descriptor is never cleared, so a later trap attributes work to a finished step
+  - the checkpoint snapshot stub halts begin_step, so no descriptor is ever registered
+  must_not:
+  - assert commit_step Ok without checking active_descriptor is None
+  - dispatch a step with no active slot after commit
+  acceptance:
+  - active_descriptor is None after commit_step and dispatch pushes no step with no active slot (AS-02)
+  code_todos:
+  - crates/kelir-checkpoint/src/real_checkpoint.run.rs
 - case_id: lc_base_snapshot_capture
   status: red
   domain: lifecycle_checkpoint
@@ -1890,6 +1969,51 @@ entries:
   - Verdict is Drop with errno EPERM, event supply_chain.high_entropy_blocked
   code_todos:
   - crates/kelir-plugins/plugin-supply-chain/src/state.flow.rs
+- case_id: sc_03_seccomp_unotify_wx_jit_mediation
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - mprotect succeeds without checking seccomp-unotify file descriptor notifications
+  - on_trap returns Ok(Pass) for the execve, so JIT mediation never runs and unverified code executes
+  - mediate_execve returns Err(Halt) for every execve, so no JIT code ever runs
+  must_not:
+  - assert mprotect Ok without a seccomp-unotify event
+  - pass an execve through the trap without mediation
+  acceptance:
+  - seccomp_unotify event was received and processed on host (AS-01)
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
+- case_id: sc_04_verified_jit_catalog_token_grant
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - token granted to any binary requesting it without checking catalog BLAKE3
+  - mediate_execve grants the token without the catalog BLAKE3 match
+  - mediate_execve returns Err(Halt) for a verified binary, so catalogued JIT code never runs
+  must_not:
+  - grant a JIT token without checking catalog BLAKE3
+  - trust the binary path without hashing its bytes
+  acceptance:
+  - token granted only when binary_blake3 matches catalog entry (AS-06)
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
+- case_id: sc_05_unverified_binary_jit_ewxviolation
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - generic permission error returned without halting the violating process
+  - unverified binary runs instead of halting with EWXVIOLATION
+  - mediate_execve returns Ok(Pass) for an unverified binary, so the JIT gate never fires
+  must_not:
+  - return a generic permission error without halting the violating process
+  - let an unverified binary reach execve
+  acceptance:
+  - exact EWXVIOLATION error and SIGKILL signal delivery (AS-03)
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
 - case_id: sc_06_package_guard_pip_lifecycle_block
   status: red
   domain: supply_chain_security
@@ -1920,6 +2044,36 @@ entries:
   - sh_ancestor_trapped() == true before any node execve
   - leaf_node_executed() == false with event supply_chain.ancestor_trapped
   code_todos: []
+- case_id: sc_08_memfd_create_dynamic_elf_block
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - memfd_create succeeds without checking fexecve execution trap
+  - memfd_create succeeds and fexecve runs the dynamic ELF
+  - mediate_execve returns Ok(Pass) for a memfd-backed execve, so anonymous code executes
+  must_not:
+  - assert memfd_create Ok without checking the fexecve trap
+  - let a memfd-backed ELF reach execve
+  acceptance:
+  - fexecve on memfd file descriptor halts with EWXVIOLATION (AS-03)
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
+- case_id: sc_09_whitelisted_interpreter_entropy_bypass
+  status: red
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - legitimate python -c 'import base64; ...' commands blocked on entropy alone
+  - on_trap returns Err(Halt) for the whitelisted interpreter, so legitimate python -c commands die
+  - on_trap returns Ok(Pass) for any high-entropy argv, so obfuscated payloads pass
+  must_not:
+  - reject a whitelisted /usr/bin/python invocation on entropy alone
+  - pass high-entropy argv from a non-whitelisted binary
+  acceptance:
+  - whitelisted binary path /usr/bin/python bypasses entropy rejection (AS-06)
+  code_todos:
+  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
 - case_id: sc_10_stderr_script_blocked_diagnostic
   status: gap
   domain: supply_chain_security
@@ -1935,6 +2089,21 @@ entries:
   - Guest stderr contains 'blocked npm lifecycle script at node_modules/bad/install.js'
   - Exit code 126 with event supply_chain.diagnostic_emitted
   code_todos: []
+- case_id: bound_fuse_ops_dispatches_synthetic_lookup
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir
+  slop_risks:
+  - boot binds FuseOps without dispatching a lookup through it, so synthetic files stay unreachable
+  - FuseOps::dispatch returns Err(Halt) for every Lookup, so no synthetic file ever resolves
+  - the session binds a NopFuseOps to satisfy the seal and the synthetic lookup silently misses
+  must_not:
+  - assert the boot binds FuseOps without dispatching a Lookup through it
+  - bind a NopFuseOps or any silent default to satisfy the seal
+  acceptance:
+  - dispatched Lookup returns the synthetic inode for the registered .env file (AS-02)
+  code_todos:
+  - crates/kelir-storage/src/fuse.run.rs
 - case_id: sp_01_host_cow_upper_discard_on_rollback
   status: red
   domain: storage_plane
@@ -1952,6 +2121,36 @@ entries:
   code_todos:
   - crates/kelir-engine/src/planes/storage/plane.flow.rs
   - crates/kelir-storage-io/src/io.run.rs
+- case_id: sp_02_symlink_traversal_escape_exdev
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - file open fails without matching exact EXDEV errno, so a symlink escape is reported as a generic error
+  - Reconciler::contain returns Ok without the containment check, so a symlink escape reaches the host
+  - contain returns Err(Halt) for every path, so no legitimate file ever opens
+  must_not:
+  - assert file open failed without matching exact EXDEV errno
+  - resolve a symlink outside the workspace root
+  acceptance:
+  - errno == libc::EXDEV on openat2 resolution (AS-03)
+  code_todos:
+  - crates/kelir-storage/src/reconciler.run.rs
+- case_id: sp_03_setuid_bit_strip_invariant
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - chmod returns 0 without inspecting host file mode bits via libc::stat
+  - chmod 4755 commits with S_ISUID intact, so a setuid binary escapes the guest
+  - the reconciler strips the bits on read but not on commit, so the host file keeps them
+  must_not:
+  - assert chmod returned 0 without inspecting host file mode bits
+  - commit a file with S_ISUID or S_ISGID set
+  acceptance:
+  - host st_mode & 0o6000 == 0 on committed file (AS-02)
+  code_todos:
+  - crates/kelir-storage/src/reconciler.run.rs
 - case_id: sp_06_host_cow_broker_dir_merge_cache
   status: gap
   domain: storage_plane
@@ -2065,6 +2264,21 @@ entries:
   - External host open() returns raw EACCES under Locked encapsulation
   - host_stat('workspace').st_mode & 0o777 == 0
   code_todos: []
+- case_id: sp_13_synthetic_fuse_inode_read_only_0400
+  status: red
+  domain: storage_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - synthetic file written to disk or chmod/write allowed on synthetic inode
+  - FuseOps::dispatch returns Err(Halt) for the synthetic Lookup, so the read-only inode never materializes
+  - the synthetic inode is created with writable mode and the guest chmods it
+  must_not:
+  - write a synthetic file to disk or allow chmod/write on a synthetic inode
+  - serve a synthetic inode from the host filesystem
+  acceptance:
+  - file does not exist on host SSD; guest write returns EACCES (AS-02)
+  code_todos:
+  - crates/kelir-storage/src/fuse.run.rs
 - case_id: sp_14_in_flight_read_masking_pattern_replace
   status: red
   domain: storage_plane
@@ -2432,6 +2646,22 @@ entries:
   - '''sk-an'' + ''t-12345'' across two chunks redacts to ''API key is [REDACTED] confirmed'''
   - Carryover window holds MAX_PLACEHOLDER_LEN - 1 bytes across chunk boundaries
   code_todos: []
+- case_id: tp_07_vt100_wireframe_matrix_determinism
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - matrix contains non-empty lines without asserting bitwise hash equivalence
+  - TerminalOps::resize returns Err(Halt), so the guest never sees the new window and the wireframe matrix is never computed
+  - the matrix is rendered from a stale frame and the test only checks it is non-empty
+  must_not:
+  - assert the matrix contains non-empty lines without asserting bitwise hash equivalence
+  - render the wireframe from a stale frame
+  acceptance:
+  - hardcoded BLAKE3 hash of standard 80x24 wireframe screen matrix matches (AS-06)
+  code_todos:
+  - crates/kelir-terminal/src/real_terminal.run.rs
+  - crates/kelir-terminal/src/vt100.flow.rs
 - case_id: tp_08_disclosure_ansi_box_inline_render
   status: gap
   domain: terminal_plane
@@ -2480,6 +2710,81 @@ entries:
   - Guest 'python3 -c "import sys; print(sys.stdout.isatty())"' outputs 'True'
   - console_port0_bytes_observed() == 0 during the PTY exec
   code_todos: []
+- case_id: tp_11_stream_replay_monotonic_cursor_read
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - read succeeds without verifying that re-reading from cursor 0 yields identical bytes
+  - append_stream_chunk returns Err(Halt), so no stream bytes are ever recorded and replay reads nothing
+  - the cursor advances on read, so a re-read returns different bytes
+  must_not:
+  - assert read Ok without verifying re-reading from cursor 0 yields identical bytes
+  - move the cursor on a read
+  acceptance:
+  - run_1_bytes == run_2_bytes byte-for-byte (AS-06)
+  code_todos:
+  - crates/kelir-terminal/src/real_terminal.run.rs
+- case_id: tp_12_stream_replay_client_reconnect_resume
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - read completes without checking cursor progression
+  - reconnect resumes from the wrong cursor, so the client replays stale bytes or skips live ones
+  - append_stream_chunk returns Err(Halt), so the reconnect has no stream to resume from
+  must_not:
+  - assert read completed without checking cursor progression
+  - resume a reconnect from cursor 0 instead of the last acknowledged cursor
+  acceptance:
+  - next_cursor matches offset + bytes_read exactly (AS-03)
+  code_todos:
+  - crates/kelir-terminal/src/real_terminal.run.rs
+- case_id: tp_13_exec_log_file_per_exec_isolation
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - stdout written to SQLite database instead of flat log files
+  - append_stream_chunk returns Err(Halt), so no exec log is ever written
+  - two execs share one log file and their output interleaves
+  must_not:
+  - assert the log exists without checking the catalog stayed untouched
+  - share one log file across execs
+  acceptance:
+  - zero new rows in catalog.db during 10MB terminal log burst (AS-02)
+  code_todos:
+  - crates/kelir-terminal/src/real_terminal.run.rs
+- case_id: tp_14_window_resize_exec_control_propagation
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - resize returns Ok without checking guest ioctl(TIOCGWINSZ) result
+  - resize returns Err(Halt), so the exec control never propagates the new size
+  - the host resizes the PTY but the guest keeps the old window
+  must_not:
+  - assert resize Ok without checking guest ioctl(TIOCGWINSZ)
+  - resize the PTY without propagating to the guest
+  acceptance:
+  - guest command 'stty size' outputs '40 120' (AS-03)
+  code_todos:
+  - crates/kelir-terminal/src/real_terminal.run.rs
+- case_id: tp_15_shim_openpty_returns_distinct_master_slave
+  status: red
+  domain: terminal_plane
+  target_crate: crates/kelir-shim
+  slop_risks:
+  - open succeeds without checking the fds are distinct and the channel carries bytes
+  - "open_pty_slave returns Err(PtyOpen { errno: 0 }) and the ShimError Display impl itself returns Err(fmt::Error), so the failure is unreportable"
+  - master and slave are the same fd, so the channel echoes instead of carrying bytes
+  must_not:
+  - assert open Ok without checking the fds are distinct and the channel carries bytes
+  - leak either fd on failure
+  acceptance:
+  - master != slave, both >= 0, and a byte round-trips; both fds closed at the end (AS-02/AS-08)
+  code_todos:
+  - crates/kelir-shim/src/pty_terminal.run.rs
 - case_id: vr_02_doorbell_mmio_eventfd_coherency
   status: gap
   domain: virtio_rings
@@ -2694,6 +2999,21 @@ entries:
   - HostInterposer evaluation stopwatch reads < 2000ns
   - gate_2_us=2 budget enforced with no allocation in the path
   code_todos: []
+- case_id: wp_01_default_deny_ingress_drop
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - frames dropped without verifying guest observed ICMP Port Unreachable or silent drop
+  - intercept_ethernet_frame returns Err(Halt), so no frame is ever inspected and default-deny never engages
+  - the drop is asserted from the host side only while the guest still receives the frame
+  must_not:
+  - assert frames dropped without verifying guest observed ICMP Port Unreachable or silent drop
+  - pass an ingress frame without interception
+  acceptance:
+  - zero raw/ICMP bytes transmitted across the host physical interface (AS-02)
+  code_todos:
+  - crates/kelir-wire/src/smoltcp.run.rs
 - case_id: wp_02_synthetic_dns_nxdomain_enforcement
   status: red
   domain: wire_plane
@@ -2745,6 +3065,36 @@ entries:
   - Outbound connection completes over a plain unprivileged host socket
   code_todos:
   - crates/kelir-wire/src/smoltcp.run.rs
+- case_id: wp_05_udp_nat_full_cone_mapping
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - new host sockets allocated for every unique remote peer IP
+  - udp_nat_alloc returns Err(Halt), so no guest UDP flow is ever mapped
+  - the mapping is keyed per remote peer instead of per guest source port
+  must_not:
+  - assert the mapping exists without counting host sockets
+  - allocate a host socket per remote peer
+  acceptance:
+  - exactly 1 host UDP socket opened when guest sends to peer A and peer B from same port (AS-02)
+  code_todos:
+  - crates/kelir-wire/src/udp_nat.run.rs
+- case_id: wp_06_udp_socket_reaper_slab_limit
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - slab grows past 1024 entries without eviction
+  - the reaper never evicts, so the slab grows unbounded and host fds exhaust
+  - udp_nat_alloc returns Err(Halt), so no flow is ever allocated and the slab stays empty
+  must_not:
+  - assert the slab is bounded without counting live host UDP sockets
+  - evict an active flow to satisfy the limit
+  acceptance:
+  - active host UDP socket descriptors <= 1024 after 2000 unique source ports (AS-08)
+  code_todos:
+  - crates/kelir-wire/src/udp_nat.run.rs
 - case_id: wp_09_dns_gateway_host_state_tracking
   status: gap
   domain: wire_plane
@@ -2809,6 +3159,51 @@ entries:
   - upstream_connect_header('Proxy-Authorization').is_some() == true
   code_todos:
   - crates/kelir-plugins/plugin-egress-proxy/src/service_egress_proxy.flow.rs
+- case_id: wp_14_port_forward_ephemeral_allocation
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - fallback port hardcoded instead of querying OS socket name
+  - bind_host_listener returns pending, so no port is ever forwarded and the guest service is unreachable
+  - the returned port is below 1024 and the bind fails on a privileged port
+  must_not:
+  - hardcode a fallback port instead of querying OS socket name
+  - return a port below 1024
+  acceptance:
+  - returned port > 1024 and matches getsockname on the host listener (AS-03)
+  code_todos:
+  - crates/kelir-transport/src/host_bind.run.rs
+- case_id: wp_15_port_forward_collision_abort
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - bind error silently caught and an ephemeral port allocated instead
+  - a colliding bind silently falls back to an ephemeral port, so two guests share one forwarded port
+  - bind_host_listener returns pending, so the collision is never detected
+  must_not:
+  - silently catch the bind error and allocate an ephemeral port
+  - share one forwarded port across guests
+  acceptance:
+  - exact WireError::PortOccupied error match (AS-03)
+  code_todos:
+  - crates/kelir-transport/src/host_bind.run.rs
+- case_id: wp_16_port_forward_so_linger_zero_release
+  status: red
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - socket closed normally, leaving it in TIME_WAIT state
+  - the listener closes without SO_LINGER 0, so the port sits in TIME_WAIT and the next forward fails with EADDRINUSE
+  - bind_host_listener returns pending, so the release path is never exercised
+  must_not:
+  - assert the port released without re-binding it immediately
+  - close the listener without SO_LINGER 0
+  acceptance:
+  - host port immediately re-bindable without EADDRINUSE (AS-08)
+  code_todos:
+  - crates/kelir-transport/src/host_bind.run.rs
 code_only:
 - domain: adapters_ingestion
   target_crate: crates/kelir-adapters/kelir-pack

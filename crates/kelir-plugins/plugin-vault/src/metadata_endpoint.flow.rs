@@ -5,20 +5,18 @@ use std::thread::JoinHandle;
 use async_trait::async_trait;
 use kelir_interface::credential_vault::CredentialDescriptor;
 use kelir_interface::driver_interface::Stream;
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
-    PipelineBinder, PluginDeps, TokenRevocation, TrapInterposer, VirtioDevice,
+    FsInterposer, HandlerCtx, KelirPlugin, MountScope, PipelineBinder, PluginDeps, TokenRevocation,
+    TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use kelir_interface::runtime_block::block_on;
 use kelir_interface::vsock_mesh::VAULT_METADATA_VSOCK_PORT;
 use kelir_interface::vsock_mesh::{VsockPeer, VsockServiceHandler, VsockServiceSpec};
 
 use crate::service_vault::{
     CredentialBroker, CredentialBrokerService, DEFAULT_TOKEN_TTL_SECONDS, IssuedToken,
-    TokenRequest, VAULT_PLACEHOLDER_PREFIX, VaultError,
+    TokenRequest, VaultError,
 };
 use crate::synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 use crate::{METADATA_CREDENTIALS_PREFIX, VaultConfig, WIRE_PLANE_BRIDGE_CID};
@@ -257,25 +255,6 @@ impl KelirPlugin for VaultPlugin {
     }
 }
 
-// see: cans/plugins/vault.md#Plugin-vault
-#[async_trait]
-impl TrapInterposer for VaultPlugin {
-    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        // TODO (L3) [gv_12_vault_placeholder_profile_resolution]: resolve the placeholder through the metadata service at exec; slop: vault:// placeholder resolves directly to the plaintext secret in the profile AST.
-        if let Some(key) = event
-            .envp
-            .iter()
-            .find_map(|(key, value)| value.contains(VAULT_PLACEHOLDER_PREFIX).then_some(key))
-        {
-            return Ok(Verdict::Drop {
-                errno: Errno::Esecurityviolation,
-                reason: format!("vault:// placeholder in env {key}"),
-            });
-        }
-        Ok(Verdict::Pass)
-    }
-}
-
 // see: cans/plugins/vault.md#Service-exports-(vault)
 #[derive(Clone)]
 pub struct CredentialBrokerCtx {
@@ -311,28 +290,6 @@ impl TokenRevocation for CredentialBroker {
     // see: cans/08-lifecycle.md#Rollback
     async fn revoke_session_tokens(&self, session_id: &str) -> Result<(), PluginError> {
         CredentialBrokerService::revoke_all(self, session_id)
-            .await
-            .map_err(halt)?;
-        Ok(())
-    }
-}
-
-// see: cans/plugins/vault.md#Revocation
-#[async_trait]
-impl LifecycleParticipant for VaultPlugin {
-    // see: cans/plugins/vault.md#Revocation
-    async fn on_vm_init(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        self.endpoint
-            .broker()
-            .bind_session(ctx.session_id)
-            .map_err(halt)
-    }
-
-    // see: cans/plugins/vault.md#Revocation
-    async fn on_vm_shutdown(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        self.endpoint
-            .broker()
-            .revoke_all(ctx.session_id)
             .await
             .map_err(halt)?;
         Ok(())

@@ -4,13 +4,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::{
-    KelirPlugin, MountScope, NetInterposer, PipelineBinder, PluginDeps, PluginError, VirtioDevice,
+    KelirPlugin, MountScope, PipelineBinder, PluginDeps, VirtioDevice,
 };
-use kelir_interface::protocol_wire::FilterAction;
 
-use crate::l7_parser::{
-    HttpRequest, HttpResponse, L7Parser, parse_http_request, synthetic_403_receipt,
-};
+use crate::l7_parser::{HttpRequest, HttpResponse, L7ParseError, L7Parser, synthetic_403_receipt};
+use crate::l7_tls::{HostKeyringDecryptor, TlsDecryptor};
 
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,30 +229,17 @@ impl KelirPlugin for L7HttpPlugin {
     }
 }
 
-// see: cans/plugins/l7-http.md#Service-exports-(l7-http)
-impl NetInterposer for HttpPolicy {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        if !self.config.protocol_inspection {
-            return Ok(FilterAction::Forward);
-        }
-        let Ok((request, _)) = parse_http_request(frame) else {
-            return Ok(FilterAction::Forward);
-        };
-        let host = Self::request_host(&request);
-        let path = Self::request_path(&request);
-        if self.config.sinkhole.verdict(host, &request.method, path) {
-            Ok(FilterAction::Forward)
-        } else {
-            // TODO (L3) [wire_plane]: write the 403 receipt from deny_receipt onto the diverted L4 stream; the wire plane exposes no stream write-back sink yet; slop: denied L7 requests pass without a 403 receipt; the guest sees a hung stream instead of a denial.
-            Ok(FilterAction::Drop {
-                errno: Errno::Eperm,
-                reason: "l7-http: sinkhole denied the request".into(),
-            })
-        }
-    }
-}
-
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
 pub fn parser_with_config(config: &L7HttpConfig) -> L7Parser {
     L7Parser::new(config.protocol_inspection)
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+impl TlsDecryptor for HostKeyringDecryptor {
+    fn decrypt(&self, _record: &[u8]) -> Result<Vec<u8>, L7ParseError> {
+        // TODO (L3) [wire_plane]: fetch the session key from the host keyring and decrypt the TLS record; no keyring read exists yet.; slop: TLS records pass through undecrypted, L7 rules blind
+        Err(L7ParseError::TlsUnavailable(
+            "host keyring tls decrypt is TODO (L3)".into(),
+        ))
+    }
 }

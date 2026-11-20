@@ -5,7 +5,7 @@ pub mod case_map;
 pub mod perf_budgets;
 #[path = "perf_budgets.rs"]
 pub mod perf_budgets_contract;
-#[path = "spec_anchors.run.rs"]
+#[path = "spec_anchors.flow.rs"]
 pub mod spec_anchors;
 
 pub use case_map::{CaseMap, HarnessTest, MapEntry};

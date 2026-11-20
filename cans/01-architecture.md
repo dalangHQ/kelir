@@ -105,10 +105,13 @@
           - Level is the filename suffix: .rs is L1, .flow.rs is L2, .run.rs is L3.
           - Crate role is [package.metadata.kelir].allowed_levels in the crate Cargo.toml.
           - Placement invariant: level_of(file) is in crate.allowed_levels, enforced by kelir-maturity check.
-          - Content rules per level live in perf/maturity-policy.toml; this wave they report as warnings, placement failures fail the job.
-          - L2 tolerates plumbing os-reach: pure libc constants, std::net types with no IO, reads of a tool's own inputs, session-directory lifecycle; guest-affecting IO and domain-trait impls are L3.
+          - Levels never leak concern into one another: L1 holds no runtime or IO concern, L2 holds no L3 bodies, L3 holds no contract or wiring beyond signatures.
+          - Content rules per level live in perf/maturity-policy.toml; forbid_mode is error, so content and structural failures fail the job alongside placement failures.
+          - L2 tolerates plumbing os-reach only as precise carve-outs in kelir-maturity: pure libc constants and types with no libc call, std::net pure types, import-only lines (use / pub use re-exports), reads of a named lockfile/path constant, std::process::id(), session-directory lifecycle (create_dir_all/remove_dir_all), and read-only stat of a stored path (std::fs::metadata(&self.…)); L1 tolerates the same pure-type position (an os token with no call) and still forbids every os call; one named exemption: KelirBuilder::from_config reading a caller-supplied profile path (host-side SDK entry, spec-pinned), covering the shared _parse_profile loader it calls and the Sandbox/Session export_spec writers; os-reach and the S3/S4 runtime-and-IO structure rules do not apply to developer-tooling crates (kelir-plugin-cli, kelir-testkit, kelir-plugin-testkit, kelir-maturity) or to binary entry points (src/bin/ and crate-root src/main.rs), which are host-side, not guest code; S3 exempts a runtime built only inside fn block_on (it builds a runtime by definition; widening the contract crates to L3 was rejected at converge); guest-affecting IO stays forbidden; L2 domain-trait-impl forbids the data-plane/ops traits in .flow.rs, while LifecycleParticipant/TrapInterposer dispatch impls are L2 wiring (they dispatch to in-crate policy/service fns, no IO, no L3-deferred content).
+          - L3 stub shape (S6): every fn in a .run.rs file is a stub — its body holds a // TODO (L3) marker, or is a single-expression return, or is a build_*/new constructor doing field init only; any other body fails.
+          - packages/ TS+Py follow the same layering (contract/wiring/meat split), enforced by scripts/check-packages-maturity.py and wired into just check-all and the CI maturity-check job.
           - The composition root calls the plane seams, not Real* types.
-            - Each plane .run.rs file holds a pub(crate) build_* fn.
+            - Each Real* .run.rs file holds a pub(crate) build_* fn.
             - It returns Arc<dyn Trait>; the crate .flow.rs seam delegates.
             - No .flow.rs file and no lib.rs names a Real* type.
             - The L2 direct-impl-construct rule guards every other L2 file.
@@ -116,12 +119,12 @@
             - Its L3 bodies have no L2 seam in-crate.
             - The plane crates' Real* types stay pub-reachable past the composition root.
             - kelir-maturity check reports it as concern-leak:C1.
-            - It warns while forbid_mode is warn, fails once it flips to error.
+            - It fails now that forbid_mode is error.
             - Binary entry points under src/bin/ do not count.
             - The seam wave closed all six hits (2026-11-13).
             - Each plane crate now has one .flow.rs seam; hits are zero.
           - A prepared .run.rs stub carrying an L3 deferral marker warns until the L3 phase fills it; the markers are removed as bodies land.
-          - Current phase is L1/L2 only: no new L3 bodies land until the L3 phase opens; pre-existing L3-shaped bodies are labeled .run.rs as found, not written.
+          - Current phase is L1/L2 only: no new L3 bodies land until the L3 phase opens; a .run.rs file holds only signatures and // TODO (L3) markers — no meat, however old.
           - Maturity, test status, plugin tier, and target tier are four orthogonal axes.
         - Zero-panic production invariant
           - Workspace-wide deny on unwrap_used, expect_used, and panic
@@ -289,7 +292,7 @@
       - All Option; defaults 1, 256, empty, empty, true, false
       - Home: crates/kelir-interface/src/driver_interface.flow.rs:274
   - Host memory pressure watcher
-    - Crate topology: kelir-host owns RealHostOps (pressure.run.rs, balloon.run.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
+    - Crate topology: kelir-host owns RealHostOps (pressure.flow.rs, balloon.flow.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
     - Trait seam: kelir-interface::host::HostOps (subscribe_pressure, poll_pressure_events, inflate_balloon, reclaim)
     - Balloon convergence loop: see: 08-lifecycle.md#Balloon-convergence
     - Linux: subscribe to cgroup v2 memory.pressure via io_uring/epoll

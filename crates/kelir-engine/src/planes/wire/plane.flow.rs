@@ -16,8 +16,6 @@ use kelir_interface::wire::outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxFr
 use kelir_interface::wire::udp_nat::UdpNatOps;
 use kelir_interface::wire::{ConnectionParking, ConnectionParkingConfig};
 
-use super::unbound_ops::{UnboundDnsOps, UnboundL4DivertOps, UnboundNetOps, UnboundUdpNatOps};
-
 // see: cans/07-wire-plane.md#Port-forwarding
 #[derive(Debug, thiserror::Error)]
 pub enum WireError {
@@ -45,12 +43,6 @@ pub struct WirePlane {
     parking: Arc<Mutex<ConnectionParking>>,
 }
 
-impl Default for WirePlane {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // see: cans/07-wire-plane.md#Wire-architecture
 pub type WireOps = (
     Arc<dyn NetOps>,
@@ -60,15 +52,6 @@ pub type WireOps = (
 );
 
 impl WirePlane {
-    pub fn new() -> Self {
-        Self::with_ops(
-            Arc::new(UnboundNetOps),
-            Arc::new(UnboundDnsOps),
-            Arc::new(UnboundUdpNatOps),
-            Arc::new(UnboundL4DivertOps),
-        )
-    }
-
     pub fn with_ops(
         net_ops: Arc<dyn NetOps>,
         dns_ops: Arc<dyn DnsOps>,

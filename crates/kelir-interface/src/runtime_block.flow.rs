@@ -23,6 +23,7 @@ impl Wake for ThreadWaker {
 pub fn block_on<F: Future>(future: F) -> F::Output {
     if let Some(runtime) = RUNTIME
         .get_or_init(|| {
+            // see: cans/01-architecture.md#Codebase-invariants
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()

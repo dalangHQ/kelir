@@ -3,7 +3,6 @@ use async_trait::async_trait;
 pub use kelir_engine::planes::storage::LockBrokerWiring;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{HandlerCtx, LockBrokerCoordination};
-use kelir_interface::protocol_wire::Verdict;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -55,17 +54,23 @@ pub(crate) struct HostFdEntry {
 }
 
 #[derive(Default)]
+// TODO (L3) [storage_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) struct HostFdCache {
     entries: HashMap<LockKey, HostFdEntry>,
 }
 
+// TODO (L3) [storage_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 impl HostFdCache {
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    pub(crate) fn remove_namespace(&mut self, namespace: [u8; 16]) {
-        self.entries.retain(|key, _| key.namespace != namespace);
+    pub(crate) fn remove_namespace(&mut self, _namespace: [u8; 16]) {
+        // TODO (L3) [storage_plane]: drop every cached host fd entry in namespace.; slop: cached host fds never dropped, released locks keep their fds open.
     }
 }
 
+// TODO (L3) [storage_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub struct LockBroker {
     engine: Arc<PipelineEngine>,
     cache: RwLock<HostFdCache>,
@@ -85,7 +90,7 @@ impl LockBroker {
             engine,
             cache: RwLock::new(HostFdCache::default()),
             states: RwLock::new(HashMap::new()),
-            namespace: [0; 16],
+            namespace: Default::default(),
             wiring,
         }
     }
@@ -95,9 +100,8 @@ impl LockBroker {
         &self.wiring
     }
 
-    pub fn with_namespace(mut self, namespace: [u8; 16]) -> Self {
-        self.namespace = namespace;
-        self
+    pub fn with_namespace(self, namespace: [u8; 16]) -> Self {
+        Self { namespace, ..self }
     }
 
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
@@ -107,82 +111,31 @@ impl LockBroker {
 
     pub fn acquire(
         &self,
-        request: &LockRequest,
-        ctx: &HandlerCtx,
+        _request: &LockRequest,
+        _ctx: &HandlerCtx,
     ) -> Result<LockGrant, PluginError> {
         // L3-GAP: [storage_plane]: match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM; slop: undeclared path mediated, EPERM never denied
-        let blocking = request.blocking && !self.wiring.non_blocking;
-        let flock_cmd = match (request.kind, blocking) {
-            // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
-            (LockKind::Shared, true) => 1,
-            (LockKind::Shared, false) => 5,
-            (LockKind::Exclusive, true) => 2,
-            (LockKind::Exclusive, false) => 6,
-        };
-        let flock_type: i16 = match request.kind {
-            LockKind::Shared => 0,
-            LockKind::Exclusive => 1,
-        };
-        match self.engine.dispatch_fs_lock(
-            &request.host_path,
-            flock_cmd,
-            flock_type,
-            request.pid,
-            ctx,
-        )? {
-            Verdict::Pass => {}
-            Verdict::Drop { errno, reason } => {
-                return Err(PluginError::Halt(format!(
-                    "lock denied by interposer: {reason} ({})",
-                    errno.as_str()
-                )));
-            }
-            Verdict::Patch(_) => {
-                return Err(PluginError::Halt(
-                    "lock interposer returned Patch, unsupported for locks".into(),
-                ));
-            }
-            Verdict::Suspend { .. } => {
-                return Err(PluginError::Halt(
-                    "lock interposer returned Suspend, unsupported for locks".into(),
-                ));
-            }
-            Verdict::Abort { reason } => {
-                return Err(PluginError::Halt(format!(
-                    "lock aborted by interposer: {reason}"
-                )));
-            }
-            _ => {
-                return Err(PluginError::Halt(
-                    "lock interposer returned an unknown verdict".into(),
-                ));
-            }
-        }
+        // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: host fd cache lookup, flock delegation, EWOULDBLOCK on conflict; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
-        let key = LockKey {
-            namespace: request.namespace,
-            guest_inode: request.guest_inode,
-        };
-        let _ = (&self.cache, &self.states, key);
+        // TODO (L3) [storage_plane]: mediate the lock request through the interposer and the host flock delegation.; slop: lock mediated in memory only, no host flock and a contender lock succeeds.
         Err(PluginError::Halt(
             "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
         ))
     }
 
-    pub fn release(&self, key: LockKey) -> Result<(), PluginError> {
+    pub fn release(&self, _key: LockKey) -> Result<(), PluginError> {
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_UN plus host fd cache release in the enclave; slop: in-memory lock table, no host flock, contender succeeds
-        let _ = key;
+        // TODO (L3) [storage_plane]: release the lock and its host fd through the flock delegation.; slop: release drops the memory entry only, the host flock stays held and the next acquirer blocks forever.
         Err(PluginError::Halt(
             "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::release needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
         ))
     }
 
-    pub fn state(&self, key: LockKey) -> Result<LockState, PluginError> {
-        let states = self
-            .states
-            .read()
-            .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-        Ok(states.get(&key).copied().unwrap_or(LockState::Free))
+    pub fn state(&self, _key: LockKey) -> Result<LockState, PluginError> {
+        // TODO (L3) [storage_plane]: read the current lock state for key from the broker state table.; slop: lock state always reads free, two holders take the same lock.
+        Err(PluginError::Halt(
+            "TODO (L3): LockBroker::state needs the broker state table read".into(),
+        ))
     }
 }
 
@@ -191,24 +144,19 @@ impl LockBroker {
 impl LockBrokerCoordination for LockBroker {
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
     async fn release_transaction_locks(&self) -> Result<(), PluginError> {
-        self.release_transaction_locks_for(self.namespace).await
+        // TODO (L3) [storage_plane]: release every transaction lock held in this broker namespace.; slop: transaction locks never released, aborted transactions hold locks forever.
+        Err(PluginError::Halt(
+            "TODO (L3): LockBroker::release_transaction_locks needs the namespace lock release"
+                .into(),
+        ))
     }
 
     // see: cans/05-storage-plane.md#Host-inode-lock-broker
-    async fn release_transaction_locks_for(&self, namespace: [u8; 16]) -> Result<(), PluginError> {
+    async fn release_transaction_locks_for(&self, _namespace: [u8; 16]) -> Result<(), PluginError> {
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: close the released host fds through the enclave flock delegation; slop: in-memory lock table, no host flock, contender succeeds
-        {
-            let mut states = self
-                .states
-                .write()
-                .map_err(|_| PluginError::Halt("lock broker state lock poisoned".into()))?;
-            states.retain(|key, _| key.namespace != namespace);
-        }
-        let mut cache = self
-            .cache
-            .write()
-            .map_err(|_| PluginError::Halt("lock broker fd cache lock poisoned".into()))?;
-        cache.remove_namespace(namespace);
-        Ok(())
+        // TODO (L3) [storage_plane]: release every transaction lock in namespace and close the released host fds.; slop: transaction locks released without closing fds, host fds leak per transaction.
+        Err(PluginError::Halt(
+            "TODO (L3): LockBroker::release_transaction_locks_for needs the namespace lock release and host fd close".into(),
+        ))
     }
 }

@@ -156,10 +156,8 @@ fn plugin_mode_fork_state_clones_and_fork_with_wins() {
     let plugin = KelirBuilder::named("forked");
     let cloned = plugin.fork_state("child");
     assert_eq!(cloned.name(), "forked");
-    let custom = KelirBuilder::named("parent").trap_scope(|t| {
-        t.fork_with(|_child| Box::new(KelirBuilder::named("child-plugin")))
-            .end()
-    });
+    let custom = KelirBuilder::named("parent")
+        .fork_with(|_child| Box::new(KelirBuilder::named("child-plugin")));
     let forked = custom.fork_state("child");
     assert_eq!(forked.name(), "child-plugin");
 }

@@ -3,6 +3,8 @@
 
 #[path = "service_redaction.flow.rs"]
 pub mod service_redaction;
+#[path = "service_redaction.run.rs"]
+pub mod service_redaction_run;
 
 pub use service_redaction::{
     MaskReadConfig, MaskReadRule, ReadMaskEngine, RedactionConfig, RedactionCtx, RedactionPlugin,

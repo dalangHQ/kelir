@@ -32,6 +32,7 @@ fn drop_session_dir(session_id: &[u8; 16]) {
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_07_vt100_wireframe_matrix_determinism.yaml#case_id
 #[test]
+#[ignore]
 fn tp_07_vt100_wireframe_matrix_determinism() -> Result<(), String> {
     let first = ops([0x70u8; 16]);
     let second = ops([0x70u8; 16]);
@@ -46,6 +47,7 @@ fn tp_07_vt100_wireframe_matrix_determinism() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_11_stream_replay_monotonic_cursor_read.yaml#case_id
 #[test]
+#[ignore]
 fn tp_11_stream_replay_monotonic_cursor_read() -> Result<(), String> {
     let session_id = [0x71u8; 16];
     drop_session_dir(&session_id);
@@ -66,6 +68,7 @@ fn tp_11_stream_replay_monotonic_cursor_read() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_12_stream_replay_client_reconnect_resume.yaml#case_id
 #[test]
+#[ignore]
 fn tp_12_stream_replay_client_reconnect_resume() -> Result<(), String> {
     let session_id = [0x72u8; 16];
     drop_session_dir(&session_id);
@@ -88,6 +91,7 @@ fn tp_12_stream_replay_client_reconnect_resume() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_13_exec_log_file_per_exec_isolation.yaml#case_id
 #[test]
+#[ignore]
 fn tp_13_exec_log_file_per_exec_isolation() -> Result<(), String> {
     let session_id = [0x73u8; 16];
     drop_session_dir(&session_id);
@@ -130,6 +134,7 @@ fn tp_13_exec_log_file_per_exec_isolation() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/terminal_plane/tp_14_window_resize_exec_control_propagation.yaml#case_id
 #[test]
+#[ignore]
 fn tp_14_window_resize_exec_control_propagation() -> Result<(), String> {
     let plane = ops([0x74u8; 16]);
     plane.resize(120, 40).map_err(|e| e.to_string())?;

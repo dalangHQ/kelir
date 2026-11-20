@@ -1,6 +1,6 @@
 - Snapshots
   - Snapshot taxonomy
-    - Live home: manifest graph walks live in crates/kelir-checkpoint/src/manifest_graph.run.rs; step slots in crates/kelir-checkpoint/src/step_slot.run.rs
+    - Live home: manifest graph walks live in crates/kelir-checkpoint/src/manifest_graph.flow.rs; step slots in crates/kelir-plugins/plugin-step-eval/src/step_slot.flow.rs
     - Restore modes
       - Branch-from-any-depth
         - Restore accepts any snapshot digest in the chain, including intermediate nodes
@@ -16,7 +16,7 @@
       - Not included in user-visible CausalDelta chains
       - Digest recorded in host-side cache manifest for audit; not in receipts
   - Archives and portability
-    - Live home: compaction and restore live in crates/kelir-checkpoint/src/compaction.run.rs; export archive assembly in crates/kelir-checkpoint/src/real_checkpoint.run.rs
+    - Live home: compaction and restore live in crates/kelir-checkpoint/src/compaction.flow.rs; export archive assembly in crates/kelir-checkpoint/src/real_checkpoint.run.rs
     - Export format: single Content-Addressed .kelir-snap binary stream
       - Step DAGs retain signed reviewer authorizations across archives
       - Attestation manifests record causal step dependencies and lineages

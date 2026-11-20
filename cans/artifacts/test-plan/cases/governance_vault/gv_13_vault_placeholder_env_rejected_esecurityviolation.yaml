@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "gv_13_vault_placeholder_env_rejected_esecurityviolation"
+title: "vault:// placeholder in an env file is rejected with ESecurityViolation"
+domain: "governance_vault"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/vault.md#Guest-integration"
+  statement: "A vault:// placeholder appearing in an env file is rejected with ESecurityViolation at exec: placeholders resolve only through the metadata service, never by direct substitution in the profile AST."
+  blast_radius_if_breached: "A vault:// placeholder resolves directly to the plaintext secret in the profile AST and leaks into the guest environment."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent resolves the vault:// placeholder directly to the plaintext secret in the profile AST."
+  anti_slop_mitigation: "AS-01 asserts the env file load fails with ESecurityViolation and no secret bytes reach the guest."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "plugin.vault"
+    agent_id: "agt_gv_13"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "VaultPlugin::on_trap for the execve that loads an env file containing DB_PASS=vault://db_password"
+  input_params:
+    action: "reject_placeholder_in_env"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "vault.profile"
+    culprit: "vault:// placeholder in env file"
+    remedy: "resolve through the metadata service"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "vault.placeholder_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert_eq!(err, ESecurityViolation); assert!(!env_contains_secret_bytes);"

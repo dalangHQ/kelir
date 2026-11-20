@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "bp_07_python_export_spec_round_trips_fixture_sections"
+title: "Python Sandbox.export_spec round-trips every fixture section"
+domain: "bindings_py"
+target_tier: "unit"
+target_crate: "packages/py"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/profile.md#Bidirectional-extraction"
+  statement: "Sandbox.export_spec round-trips the canonical kelir.yaml fixture: every top-level section survives ingestion and export with identical keys and values."
+  blast_radius_if_breached: "Profile sections are silently dropped in round-trip, so a fixture that boots in one SDK shape boots differently after export."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts export_spec returns without comparing the exported mapping to the loaded fixture."
+  anti_slop_mitigation: "AS-01 asserts exported keys equal loaded keys and exported == loaded."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.python"
+    agent_id: "agt_bp_07"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "sdk"
+  command: "Sandbox.from_profile(loaded_kelir_yaml, str(fixture)).export_spec(str(out))"
+  input_params:
+    fixture: "cans/artifacts/examples/fixtures/kelir.yaml"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "sdk.python"
+    culprit: "none — fixture round-tripped"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "profile.exported"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert list(exported.keys()) == list(loaded.keys()); assert exported == loaded;"

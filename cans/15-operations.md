@@ -118,8 +118,8 @@
     - Runs `just check-maturity`: every .rs file's level from its filename
       - suffix (.rs L1, .flow.rs L2, .run.rs L3) must sit in its crate's
       - [package.metadata.kelir] allowed_levels
-    - Content rules in perf/maturity-policy.toml report as warnings this
-      - wave; placement failures fail the job
+    - Content rules in perf/maturity-policy.toml fail the job now that
+      - forbid_mode is error; placement failures fail the job
     - Scope is src/ files only; tests/ and benches/ are excluded, test files
       - are governed by NG-01 (names, placement), not by filename level
     - A prepared .run.rs stub carrying an L3 deferral marker warns, not fails, until
@@ -127,9 +127,11 @@
     - Crate-shape rule concern-leak:C1: a crate with three or more lib
       - .run.rs files and no .flow.rs file is a concern leak (its L3 bodies
       - have no L2 seam in-crate); src/bin/ entry points do not count; it
-      - warns while forbid_mode is warn and fails once it flips to error
+      - fails now that forbid_mode is error
       - the seam wave closed all six hits (2026-11-13); current hits zero
     - Runs in <2s; the only gate for body maturity
+    - Packages/ TS+Py follow the same contract/wiring/meat split;
+      - `just check-packages-maturity` enforces it in check-all and CI
     - No path filter: a file move anywhere can break placement
     - Local mirror: `just check-maturity`
     - Level meanings and placement rule: see: 01-architecture.md#Codebase-invariants

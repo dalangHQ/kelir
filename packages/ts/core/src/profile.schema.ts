@@ -6,8 +6,8 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Section, stringify as stringifyToml } from "@ltd/j-toml";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { readFile } from "node:fs/promises";
 import { EConfig } from "./errors.sdk.js";
+import { readProfileText } from "./profile.schema.run.js";
 import { parse as parseToml } from "@ltd/j-toml";
 import type {
   KelirConfig,
@@ -168,7 +168,7 @@ export async function readProfile(path: string): Promise<ProfileSpec> {
       `readProfile: unsupported profile extension for \`${path}\` (expected .toml, .yaml, or .yml)`,
     );
   }
-  const text = await readFile(path, "utf8");
+  const text = await readProfileText(path);
   return parseProfile(text, profileFormatForPath(path));
 }
 

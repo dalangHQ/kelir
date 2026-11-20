@@ -19,8 +19,8 @@ use std::path::PathBuf;
 // writes remain in sparse extents. Compaction flattens ancestor deltas
 // in a single-pass block copy on export; compaction writes a new
 // consolidated manifest pointing to the ancestor base. Live home:
-// crates/kelir-checkpoint/src/compaction.run.rs (compaction, restore),
-// crates/kelir-checkpoint/src/manifest_graph.run.rs (head, lineage).
+// crates/kelir-checkpoint/src/compaction.flow.rs (compaction, restore),
+// crates/kelir-checkpoint/src/manifest_graph.flow.rs (head, lineage).
 // the broker drops the upper file and tombstones, base untouched,
 // FALLOC_FL_PUNCH_HOLE + posix_fadvise(DONTNEED); rollback also
 // closes host sockets, guest sees ECONNRESET/EPIPE, sockets are not

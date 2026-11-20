@@ -7,8 +7,10 @@ mod codec_protocol;
 #[path = "introspect_trap.run.rs"]
 mod introspect_trap;
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
-#[path = "pty_terminal.run.rs"]
+#[path = "pty_terminal.flow.rs"]
 mod pty_terminal;
+#[path = "pty_terminal.run.rs"]
+mod pty_terminal_run;
 // see: cans/11-protocol.md#Trap-fast-path
 #[path = "trap_protocol.run.rs"]
 mod trap_protocol;

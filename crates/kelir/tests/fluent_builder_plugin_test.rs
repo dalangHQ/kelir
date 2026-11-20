@@ -121,9 +121,9 @@ fn full_flat_chain_builds_and_binds() -> Result<(), PluginError> {
         .require::<ProfilePlugin>()
         .context(|| ())
         .scope(MountScope::default())
+        .fork_with(|_child| Box::new(ProfilePlugin::new()))
         .trap_scope(|t| {
-            t.fork_with(|_child| Box::new(ProfilePlugin::new()))
-                .on_trap(|_event, _ctx| Ok(Verdict::Pass))
+            t.on_trap(|_event, _ctx| Ok(Verdict::Pass))
                 .on_process_exit(|_event, _ctx| Ok(()))
                 .end()
         })

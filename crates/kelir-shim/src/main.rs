@@ -10,8 +10,10 @@ mod codec_protocol;
 mod introspect_trap;
 #[path = "multiplexer_protocol.run.rs"]
 mod multiplexer_protocol;
-#[path = "pty_terminal.run.rs"]
+#[path = "pty_terminal.flow.rs"]
 mod pty_terminal;
+#[path = "pty_terminal.run.rs"]
+mod pty_terminal_run;
 #[path = "trap_protocol.run.rs"]
 mod trap_protocol;
 

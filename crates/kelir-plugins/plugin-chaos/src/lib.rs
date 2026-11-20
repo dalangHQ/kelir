@@ -9,6 +9,8 @@ pub use kelir_interface::chaos_types::FaultDirection;
 
 #[path = "fault_table.flow.rs"]
 pub mod fault_table;
+#[path = "fault_table.run.rs"]
+pub mod fault_table_run;
 
 pub use fault_table::{ChaosPlugin, FaultTable};
 

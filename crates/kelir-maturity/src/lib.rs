@@ -7,9 +7,9 @@ use serde::Deserialize;
 pub mod levels;
 #[path = "policy.flow.rs"]
 pub mod policy;
-#[path = "structure.run.rs"]
+#[path = "structure.flow.rs"]
 pub mod structure;
-#[path = "tree.run.rs"]
+#[path = "tree.flow.rs"]
 pub mod tree;
 
 pub use levels::{crate_of, level_of};

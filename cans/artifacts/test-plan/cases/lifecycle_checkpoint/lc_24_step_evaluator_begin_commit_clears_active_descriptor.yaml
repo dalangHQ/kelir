@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "lc_24_step_evaluator_begin_commit_clears_active_descriptor"
+title: "StepEvaluator begin/commit clears the active step descriptor"
+domain: "lifecycle_checkpoint"
+target_tier: "integration"
+target_crate: "crates/kelir-engine"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)"
+  statement: "StepEvaluator::begin_step registers the pre-exec snapshot descriptor as active for the lineage, and commit_step clears it so no committed step stays active and no dispatch pushes a step with no active slot."
+  blast_radius_if_breached: "A committed step stays active and a later trap dispatch attributes work to a finished step, corrupting step-window accounting and rollback targets."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts commit_step returns Ok without checking the active descriptor is cleared."
+  anti_slop_mitigation: "AS-02 asserts active_descriptor is None after commit_step and that dispatch pushes no step with no active slot."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "engine.checkpoint"
+    agent_id: "agt_lc_24"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "StepEvaluator::new(plane.ops(), StepEvalConfig::default(), []).begin_step(lineage, descriptor); commit_step(lineage); active_descriptor(lineage)"
+  input_params:
+    descriptor_id: "pre-exec"
+
+expected_observations:
+  exit_code: 0
+  state_modified: true
+  diagnostic:
+    domain: "engine.checkpoint"
+    culprit: "none — committed step cleared"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "step.committed"
+    chain_valid: true
+    state_modified_field: true
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(evaluator.active_descriptor(lineage)?, None);"

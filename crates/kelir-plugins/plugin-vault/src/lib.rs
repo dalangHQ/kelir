@@ -9,10 +9,16 @@ pub mod boot_diversion;
 pub mod metadata;
 #[path = "metadata_endpoint.flow.rs"]
 pub mod metadata_endpoint;
+#[path = "metadata_endpoint.run.rs"]
+pub mod metadata_endpoint_run;
 #[path = "service_vault.flow.rs"]
 pub mod service_vault;
+#[path = "service_vault.run.rs"]
+pub mod service_vault_run;
 #[path = "synthetic_env.flow.rs"]
 pub mod synthetic_env;
+#[path = "synthetic_env.run.rs"]
+pub mod synthetic_env_run;
 
 pub use boot_diversion::{IMDS_DESTINATION, ImdsBootDiversion};
 

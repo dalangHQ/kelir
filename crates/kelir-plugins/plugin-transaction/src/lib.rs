@@ -4,6 +4,8 @@
 // L3-GAP: [relational_transaction]: tests/test_transaction.rs per cans/artifacts/config/project-structure.txt; slop: test_transaction.rs missing, 2PC paths untested, Ok(()) stubs pass vacuously
 #[path = "coordination.flow.rs"]
 pub mod coordination;
+#[path = "coordination.run.rs"]
+pub mod coordination_run;
 #[path = "service_transaction.flow.rs"]
 pub mod service_transaction;
 
