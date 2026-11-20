@@ -1,12 +1,14 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use kelir_interface::checkpoint::{CheckpointNode, CheckpointOps, ManifestGraph, PidLineage};
+use kelir_interface::checkpoint::{CheckpointOps, ManifestGraph, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::telemetry::MetricRegistry;
 
+// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) struct RealCheckpointOps {
     pub(crate) graph: RwLock<ManifestGraph>,
     pub(crate) next_node_id: AtomicU64,
@@ -14,6 +16,8 @@ pub(crate) struct RealCheckpointOps {
     pub(crate) metrics: Arc<MetricRegistry>,
 }
 
+// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 impl RealCheckpointOps {
     pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         Self {
@@ -25,15 +29,13 @@ impl RealCheckpointOps {
     }
 
     pub(crate) fn lock_graph(&self) -> Result<RwLockWriteGuard<'_, ManifestGraph>, PluginError> {
-        self.graph
-            .write()
-            .map_err(|_| PluginError::Halt("checkpoint graph lock poisoned".into()))
+        // TODO (L3) [lifecycle_checkpoint]: acquire the write lock on the manifest graph, returning Halt on poisoning.; slop: write lock never acquired, concurrent checkpoint writes corrupt the manifest graph.
+        Err(PluginError::Halt("checkpoint graph lock poisoned".into()))
     }
 
     pub(crate) fn read_graph(&self) -> Result<RwLockReadGuard<'_, ManifestGraph>, PluginError> {
-        self.graph
-            .read()
-            .map_err(|_| PluginError::Halt("checkpoint graph lock poisoned".into()))
+        // TODO (L3) [lifecycle_checkpoint]: acquire the read lock on the manifest graph, returning Halt on poisoning.; slop: read lock never acquired, readers see a half-written manifest graph.
+        Err(PluginError::Halt("checkpoint graph lock poisoned".into()))
     }
 }
 
@@ -43,78 +45,61 @@ pub(crate) fn build_checkpoint_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn Chec
 
 impl CheckpointOps for RealCheckpointOps {
     // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
-    fn snapshot(&self, lineage: PidLineage, base: SnapshotDescriptor) -> Result<u64, PluginError> {
-        let mut graph = self.lock_graph()?;
-        let node_id = self.next_node_id.fetch_add(1, Ordering::SeqCst);
-        let parent = graph.head(lineage);
-        graph.insert(CheckpointNode {
-            node_id,
-            parent,
-            descriptor: base,
-            delta: None,
-        });
-        graph.set_head(lineage, node_id);
-        Ok(node_id)
+    fn snapshot(
+        &self,
+        _lineage: PidLineage,
+        _base: SnapshotDescriptor,
+    ) -> Result<u64, PluginError> {
+        // TODO (L3) [lifecycle_checkpoint]: insert a checkpoint node for the lineage head and return its node id.; slop: node never inserted, the lineage head points at a missing node.
+        Err(PluginError::Halt("checkpoint snapshot pending (L3)".into()))
     }
 
     // see: cans/08-lifecycle.md#CoW-fork
-    fn fork(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError> {
-        self.branch_from(node_id, lineage)
+    fn fork(&self, _node_id: u64, _lineage: PidLineage) -> Result<(), PluginError> {
+        // TODO (L3) [lifecycle_checkpoint]: branch a CoW fork chain from the node for the lineage.; slop: fork chain never branched, CoW writes land on the shared parent.
+        Err(PluginError::Halt("checkpoint fork pending (L3)".into()))
     }
 
     // see: cans/08-lifecycle.md#Delta-chain-compaction
-    fn branch_from(&self, node_id: u64, lineage: PidLineage) -> Result<(), PluginError> {
-        let mut graph = self.lock_graph()?;
-        if graph.get(node_id).is_none() {
-            return Err(PluginError::Halt(
-                "branch source node not in manifest graph".into(),
-            ));
-        }
-        if graph.has_lineage(lineage) {
-            return Err(PluginError::Halt(
-                "PID lineage already has a chain head".into(),
-            ));
-        }
-        graph.set_head(lineage, node_id);
-        Ok(())
+    fn branch_from(&self, _node_id: u64, _lineage: PidLineage) -> Result<(), PluginError> {
+        // TODO (L3) [lifecycle_checkpoint]: set the lineage head to the node after validating it exists and the lineage is unheaded.; slop: head set without validation, the lineage points at a nonexistent node.
+        Err(PluginError::Halt("checkpoint branch pending (L3)".into()))
     }
 
     // see: cans/09-snapshots.md#Restore-modes
     // see: cans/08-lifecycle.md#Clock-invariants
     fn rollback(
         &self,
-        node_id: u64,
-        guest_monotonic_ns: u64,
+        _node_id: u64,
+        _guest_monotonic_ns: u64,
     ) -> Result<SnapshotDescriptor, PluginError> {
-        let graph = self.read_graph()?;
-        crate::compaction::rollback(
-            &graph,
-            node_id,
-            guest_monotonic_ns,
-            &self.monotonic_watermark_ns,
-        )
+        // TODO (L3) [lifecycle_checkpoint]: restore the node descriptor, clamping the guest clock to the monotonic watermark.; slop: clock never clamped, restored guest time jumps backwards past the watermark.
+        Err(PluginError::Halt("checkpoint rollback pending (L3)".into()))
     }
 
-    fn head(&self, lineage: PidLineage) -> Option<u64> {
-        let graph = self.read_graph().ok()?;
-        crate::manifest_graph::head(&graph, lineage)
+    fn head(&self, _lineage: PidLineage) -> Option<u64> {
+        // TODO (L3) [lifecycle_checkpoint]: return the head node id for the lineage, if any.; slop: head lookup always returns None, restore finds no checkpoint.
+        None
     }
 
-    fn lineage(&self, node_id: u64) -> Result<Vec<u64>, PluginError> {
-        let graph = self.read_graph()?;
-        crate::manifest_graph::lineage(&graph, node_id)
+    fn lineage(&self, _node_id: u64) -> Result<Vec<u64>, PluginError> {
+        // TODO (L3) [lifecycle_checkpoint]: return the ancestor chain for the node.; slop: ancestor chain always empty, rollback cannot find its parent.
+        Err(PluginError::Halt("checkpoint lineage pending (L3)".into()))
     }
 
     // see: cans/08-lifecycle.md#Clock-invariants
     fn monotonic_watermark_ns(&self) -> u64 {
-        self.monotonic_watermark_ns.load(Ordering::Acquire)
+        // TODO (L3) [lifecycle_checkpoint]: return the monotonic watermark in nanoseconds.; slop: watermark always reads zero, the clock clamp has nothing to clamp against.
+        0
     }
 
     // see: cans/08-lifecycle.md#Delta-chain-compaction
     // see: cans/09-snapshots.md#Groups-and-lineage
-    fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError> {
-        let mut graph = self.lock_graph()?;
-        crate::compaction::compact(&mut graph, &self.next_node_id, lineage)
+    fn compact(&self, _lineage: PidLineage) -> Result<u64, PluginError> {
+        // TODO (L3) [lifecycle_checkpoint]: compact the lineage delta chain into a single node and return its node id.; slop: delta chain grows unbounded, restore replays an ever-longer chain.
+        Err(PluginError::Halt(
+            "checkpoint compaction pending (L3)".into(),
+        ))
     }
 
     fn fresh(&self) -> Arc<dyn CheckpointOps> {

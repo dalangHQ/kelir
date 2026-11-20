@@ -3,11 +3,8 @@
 // see: cans/11-protocol.md#Guest-paravirtual-micro-init-boundary-(kelir-shim)
 // see: cans/08-lifecycle.md#Zombie-reaping
 
-use kelir_interface::protocol_wire::{
-    EXEC_STREAM_CONTROL, EXEC_STREAM_STDIN, MsgType, ProcessLimits,
-};
+use kelir_interface::protocol_wire::ProcessLimits;
 
-use crate::codec_protocol;
 use crate::trap_protocol::ShimError;
 
 pub const SLAB_CHUNK: usize = 256;
@@ -24,6 +21,7 @@ impl ExecSpec {
     pub fn parse(payload: &[u8]) -> Result<Self, ShimError> {
         // L3-GAP: [pm_08_exec_flow_control_input_stall]: parse EXEC_IO_SPEC binary/argv/limits from the open payload; slop: spec parse stubbed, open payload never yields binary/argv/limits
         let _ = payload;
+        // TODO (L3) [protocol_mux]: parse EXEC_IO_SPEC binary/argv/limits from the open payload.; slop: spec parses as empty, so the exec spawns with no binary and no limits.
         Err(ShimError::ExecSpecParsePending)
     }
 }
@@ -54,23 +52,12 @@ impl ExecSlot {
         }
     }
 
-    pub fn signal(&self, signal: u32) -> Result<(), ShimError> {
-        if signal == 0 || signal > 64 {
-            return Err(ShimError::InvalidSignal { signal });
-        }
+    pub fn signal(&self, _signal: u32) -> Result<(), ShimError> {
         // L3-GAP: [pm_07_exec_signal_cancellation_by_exec_id]: deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal; slop: kill() hits recycled pid, successor task dies instead
-        // SAFETY: pid is slab-owned from spawn, never wire-supplied; signal is range-checked 1..=64 above.
-        let ret = unsafe { libc::kill(self.pid, signal as libc::c_int) };
-        if ret == 0 {
-            return Ok(());
-        }
-        let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-        if errno == libc::ESRCH {
-            return Ok(());
-        }
+        // TODO (L3) [protocol_mux]: validate the signal range and deliver it to the slot pid via pidfd_send_signal.; slop: signal is dropped, so a kill request reports success while the slot keeps running.
         Err(ShimError::SignalDelivery {
             exec_id: self.exec_id,
-            errno,
+            errno: 0,
         })
     }
 }
@@ -90,60 +77,24 @@ impl ExecSlotSlab {
         }
     }
 
-    pub fn get(&self, idx: usize) -> Option<ExecSlot> {
-        let chunk = self.chunks.get(idx / SLAB_CHUNK)?;
-        chunk[idx % SLAB_CHUNK]
+    pub fn get(&self, _idx: usize) -> Option<ExecSlot> {
+        // TODO (L3) [protocol_mux]: return the slot at the index, if allocated.; slop: lookup always misses, so live slots look unallocated.
+        None
     }
 
-    pub fn find_by_exec_id(&self, exec_id: u64) -> Option<ExecSlot> {
-        self.chunks
-            .iter()
-            .flat_map(|chunk| chunk.iter())
-            .find_map(|slot| {
-                let slot = slot.as_ref()?;
-                if slot.exec_id == exec_id {
-                    Some(*slot)
-                } else {
-                    None
-                }
-            })
+    pub fn find_by_exec_id(&self, _exec_id: u64) -> Option<ExecSlot> {
+        // TODO (L3) [protocol_mux]: return the slot with the exec id, if allocated.; slop: lookup always misses, so exec ids can never be resolved to slots.
+        None
     }
 
     // L3-GAP: [pm_06_exec_slot_slab_saturation_reject]: size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config); slop: pool sized to hardcoded 4096, RLIMIT_NPROC/max_exec_slots ignored
-    pub fn allocate(&mut self, slot: ExecSlot) -> Result<usize, ShimError> {
-        let idx = match self.free.pop() {
-            Some(recycled) => recycled,
-            None => {
-                if self.next_fresh >= MAX_EXEC_SLOTS {
-                    return Err(ShimError::SlabSaturated);
-                }
-                let fresh = self.next_fresh;
-                self.next_fresh = fresh.saturating_add(1);
-                fresh
-            }
-        };
-        while self.chunks.len() <= idx / SLAB_CHUNK {
-            self.chunks.push([None; SLAB_CHUNK]);
-        }
-        self.chunks[idx / SLAB_CHUNK][idx % SLAB_CHUNK] = Some(slot);
-        Ok(idx)
+    pub fn allocate(&mut self, _slot: ExecSlot) -> Result<usize, ShimError> {
+        // TODO (L3) [protocol_mux]: store the slot in a free or fresh slab index and return the index, rejecting at saturation.; slop: store always rejects, so no exec can ever allocate a slot.
+        Err(ShimError::SlabSaturated)
     }
 
-    pub fn release(&mut self, idx: usize) {
-        let Some(chunk) = self.chunks.get_mut(idx / SLAB_CHUNK) else {
-            return;
-        };
-        if chunk[idx % SLAB_CHUNK].take().is_none() {
-            return;
-        }
-        self.free.push(idx);
-        while self
-            .chunks
-            .last()
-            .is_some_and(|c| c.iter().all(|s| s.is_none()))
-        {
-            self.chunks.pop();
-        }
+    pub fn release(&mut self, _idx: usize) {
+        // TODO (L3) [protocol_mux]: free the slot at the index and trim trailing empty chunks.; slop: free never runs, so slots leak until the slab saturates and all later execs fail.
     }
 }
 
@@ -170,33 +121,19 @@ impl StreamSlotTable {
         }
     }
 
-    pub fn bind(&mut self, stream_id: u32, slot: usize) -> Result<(), ShimError> {
-        match self
-            .entries
-            .binary_search_by_key(&stream_id, |e| e.stream_id)
-        {
-            Ok(_) => Err(ShimError::StreamIdInUse { stream_id }),
-            Err(pos) => {
-                self.entries.insert(pos, StreamMapEntry { stream_id, slot });
-                Ok(())
-            }
-        }
+    pub fn bind(&mut self, stream_id: u32, _slot: usize) -> Result<(), ShimError> {
+        // TODO (L3) [protocol_mux]: bind the stream id to the slot index, rejecting a stream id already in use.; slop: bind always rejects, so no stream can ever attach to a slot.
+        Err(ShimError::StreamIdInUse { stream_id })
     }
 
-    pub fn resolve(&self, stream_id: u32) -> Option<usize> {
-        let pos = self
-            .entries
-            .binary_search_by_key(&stream_id, |e| e.stream_id)
-            .ok()?;
-        Some(self.entries[pos].slot)
+    pub fn resolve(&self, _stream_id: u32) -> Option<usize> {
+        // TODO (L3) [protocol_mux]: return the slot index bound to the stream id, if any.; slop: lookup always misses, so frames arrive for a stream with no slot.
+        None
     }
 
-    pub fn unbind(&mut self, stream_id: u32) -> Option<usize> {
-        let pos = self
-            .entries
-            .binary_search_by_key(&stream_id, |e| e.stream_id)
-            .ok()?;
-        Some(self.entries.remove(pos).slot)
+    pub fn unbind(&mut self, _stream_id: u32) -> Option<usize> {
+        // TODO (L3) [protocol_mux]: remove the stream id binding and return its slot index, if any.; slop: unbind never runs, so stream ids stay bound to released slots.
+        None
     }
 }
 
@@ -215,164 +152,56 @@ impl Multiplexer {
         }
     }
 
-    pub fn dispatch_control(&mut self, payload: &[u8]) -> Result<(), ShimError> {
-        codec_protocol::check_control_payload(payload)
-            .map_err(|()| ShimError::ControlOversize { len: payload.len() })?;
-        let (raw_msg_type, body) =
-            codec_protocol::decode_msg_type(payload).map_err(|_| ShimError::TruncatedFrame)?;
-        let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
-            msg_type: raw_msg_type,
-        })?;
-        match msg_type {
-            MsgType::Trap | MsgType::VmLifecycleControl => {
-                // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control payload dropped as ControlPending, lifecycle never routed
-                Err(ShimError::ControlPending {
-                    msg_type: msg_type as u16,
-                })
-            }
-            MsgType::Signal => {
-                let (signal, exec_id) =
-                    codec_protocol::decode_signal(body).map_err(|()| ShimError::TruncatedFrame)?;
-                self.signal_exec(exec_id, signal)
-            }
-            _ => Err(ShimError::UnknownMsgType {
-                msg_type: msg_type as u16,
-            }),
-        }
+    pub fn dispatch_control(&mut self, _payload: &[u8]) -> Result<(), ShimError> {
+        // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control payload dropped as ControlPending, lifecycle never routed
+        // TODO (L3) [protocol_mux]: decode the control payload and route trap/lifecycle/signal messages, never entering the data lanes.; slop: control messages are dropped, so trap and lifecycle signals never reach the guest.
+        Err(ShimError::ControlPending { msg_type: 0 })
     }
 
-    pub fn signal_exec(&mut self, exec_id: u64, signal: u32) -> Result<(), ShimError> {
-        let Some(slot) = self.slots.find_by_exec_id(exec_id) else {
-            return Ok(());
-        };
-        slot.signal(signal)
+    pub fn signal_exec(&mut self, exec_id: u64, _signal: u32) -> Result<(), ShimError> {
+        // TODO (L3) [protocol_mux]: deliver the signal to the slot with the exec id.; slop: signal is dropped, so a kill by exec id reports success while the process keeps running.
+        Err(ShimError::SignalDelivery { exec_id, errno: 0 })
     }
 
     pub fn dispatch_frame(
         &mut self,
-        stream_id: u32,
+        _stream_id: u32,
         flags: u8,
-        payload: &[u8],
+        _payload: &[u8],
     ) -> Result<(), ShimError> {
-        if stream_id > codec_protocol::MAX_STREAM_ID {
-            return Err(ShimError::InvalidStreamId { stream_id });
-        }
-        let (raw_msg_type, body) =
-            codec_protocol::decode_msg_type(payload).map_err(|_| ShimError::TruncatedFrame)?;
-        let msg_type = MsgType::from_u16(raw_msg_type).ok_or(ShimError::UnknownMsgType {
-            msg_type: raw_msg_type,
-        })?;
-        match msg_type {
-            MsgType::Trap | MsgType::VmLifecycleControl => {
-                // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control frame enters data lane path, trap dispatch never runs
-                return Err(ShimError::ControlPending {
-                    msg_type: msg_type as u16,
-                });
-            }
-            MsgType::ChannelPayload | MsgType::SystemTelemetry => {}
-            _ => {
-                return Err(ShimError::UnknownMsgType {
-                    msg_type: msg_type as u16,
-                });
-            }
-        }
-        if (flags & codec_protocol::FLAG_OPEN) != 0 {
-            return self.open_stream(stream_id, body);
-        }
-        if (flags & (codec_protocol::FLAG_CLOSE | codec_protocol::FLAG_RST)) != 0 {
-            // L3-GAP: [protocol_mux]: flush stdout/stderr EOF frames before release; exit frames defer until EOF flush; slop: stream released before EOF flush, exit frame precedes output
-            self.close_stream(stream_id);
-            return Ok(());
-        }
-        let idx = self
-            .table
-            .resolve(stream_id)
-            .ok_or(ShimError::SlotEmpty { stream_id })?;
-        if (flags & codec_protocol::FLAG_WINDOW_UPDATE) != 0 {
-            // L3-GAP: [pm_08_exec_flow_control_input_stall]: apply per-stream credit window update to the resolved slot; slop: credit update dropped, guest stalls or overruns buffer
-            return Ok(());
-        }
-        if (flags & codec_protocol::FLAG_DATA) != 0 {
-            let slot = self
-                .slots
-                .get(idx)
-                .ok_or(ShimError::SlotEmpty { stream_id })?;
-            let (lane, data) = codec_protocol::decode_exec_sub_lane(body)
-                .map_err(|()| ShimError::TruncatedFrame)?;
-            match lane {
-                EXEC_STREAM_STDIN => {
-                    // L3-GAP: [pm_08_exec_flow_control_input_stall]: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03); slop: stdin payload discarded, 10MB transfer never arrives intact
-                    let _ = (
-                        data,
-                        slot.pid,
-                        slot.exec_id,
-                        slot.stdin_fd,
-                        slot.stdout_fd,
-                        slot.stderr_fd,
-                    );
-                    return Ok(());
-                }
-                EXEC_STREAM_CONTROL => {
-                    // see: cans/11-protocol.md#Binary-exec-channel
-                    apply_window_geometry(&slot, data)?;
-                    return Ok(());
-                }
-                _ => return Err(ShimError::UnknownExecSubLane { lane }),
-            }
-        }
+        // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control frame enters data lane path, trap dispatch never runs
+        // L3-GAP: [protocol_mux]: flush stdout/stderr EOF frames before release; exit frames defer until EOF flush; slop: stream released before EOF flush, exit frame precedes output
+        // L3-GAP: [pm_08_exec_flow_control_input_stall]: apply per-stream credit window update to the resolved slot; slop: credit update dropped, guest stalls or overruns buffer
+        // L3-GAP: [pm_08_exec_flow_control_input_stall]: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03); slop: stdin payload discarded, 10MB transfer never arrives intact
+        // see: cans/11-protocol.md#Binary-exec-channel
+        // TODO (L3) [protocol_mux]: validate the stream id, route control/data/close frames to the bound slot and apply window updates.; slop: frames are dropped, so data never reaches the slot and window updates never apply.
         Err(ShimError::UnknownFlags { flags })
     }
 
-    fn open_stream(&mut self, stream_id: u32, payload: &[u8]) -> Result<(), ShimError> {
-        if self.table.resolve(stream_id).is_some() {
-            return Err(ShimError::StreamIdInUse { stream_id });
-        }
-        let spec = ExecSpec::parse(payload)?;
-        let slot = self.spawn_exec(&spec)?;
-        let idx = self.slots.allocate(slot)?;
-        if let Err(err) = self.table.bind(stream_id, idx) {
-            self.slots.release(idx);
-            return Err(err);
-        }
-        Ok(())
+    fn open_stream(&mut self, _stream_id: u32, _payload: &[u8]) -> Result<(), ShimError> {
+        // TODO (L3) [protocol_mux]: parse the exec spec, spawn the exec, allocate a slot and bind the stream id to it.; slop: spawn never runs, so the exec request returns success with no process behind it.
+        Err(ShimError::SpawnPending)
     }
 
-    fn close_stream(&mut self, stream_id: u32) {
-        if let Some(idx) = self.table.unbind(stream_id) {
-            self.slots.release(idx);
-        }
+    fn close_stream(&mut self, _stream_id: u32) {
+        // TODO (L3) [protocol_mux]: flush stdout/stderr EOF frames, then unbind the stream and release its slot.; slop: EOF frames are never flushed, so the client sees the exit before the last output bytes.
     }
 
     fn spawn_exec(&mut self, spec: &ExecSpec) -> Result<ExecSlot, ShimError> {
         // L3-GAP: [vr_09_virtio_console_port0_pty_dedication]: openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop; slop: exec never spawned, EXEC stream bytes never become a process
         let _ = (spec, self.next_exec_id);
+        // TODO (L3) [protocol_mux]: openpty, fork, setrlimit from spec.limits, execve spec.binary/spec.argv.; slop: execve never runs, so the slot holds a stream with no process behind it.
         Err(ShimError::SpawnPending)
     }
 }
 
 // see: cans/11-protocol.md#Binary-exec-channel
-fn apply_window_geometry(slot: &ExecSlot, data: &[u8]) -> Result<(), ShimError> {
-    if data.len() < 4 {
-        return Err(ShimError::TruncatedFrame);
-    }
-    let cols = u16::from_le_bytes([data[0], data[1]]);
-    let rows = u16::from_le_bytes([data[2], data[3]]);
-    let winsize = libc::winsize {
-        ws_row: rows,
-        ws_col: cols,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
-    };
-    // SAFETY: winsize is fully initialized; TIOCSWINSZ only reads it for the slot's slave fd.
-    let rc = unsafe { libc::ioctl(slot.stdin_fd, libc::TIOCSWINSZ, &winsize) };
-    if rc != 0 {
-        return Err(ShimError::Winsize {
-            exec_id: slot.exec_id,
-            errno: std::io::Error::last_os_error().raw_os_error().unwrap_or(0),
-        });
-    }
-    // TODO (L3) [terminal_plane]: route SIGWINCH through the trap boundary once the signal ring dispatch is live on the host side; slop: resize lands on the pty, foreground pgrp reflow waits for the ring
-    Ok(())
+fn apply_window_geometry(slot: &ExecSlot, _data: &[u8]) -> Result<(), ShimError> {
+    // TODO (L3) [terminal_plane]: route SIGWINCH through the trap boundary once the signal ring dispatch is live on the host side; slop: resize lands on the pty, foreground pgrp reflow waits for the ring.
+    Err(ShimError::Winsize {
+        exec_id: slot.exec_id,
+        errno: 0,
+    })
 }
 
 impl Default for Multiplexer {

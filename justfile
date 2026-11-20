@@ -126,6 +126,11 @@ check-examples-thin:
 check-builder-parity:
     ./scripts/check-builder-parity.sh
 
+# --builder-verbs-sync: the spec-side verb mirror agrees with the machine SSOT.
+# see: cans/artifacts/config/builder-verbs.yaml
+check-builder-verbs-sync:
+    python3 scripts/check-builder-verbs-sync.py
+
 # --builder-chain: the unbroken single-expression chain holds in every
 # example under cans/artifacts/examples/: no builder rebinding, no
 # statement-level verb calls, no flat verb outside a scope, no BasePlugin,
@@ -154,7 +159,7 @@ check-budgets:
     cargo run -p kelir-plugin-cli -- check --budgets perf/budgets.toml
 
 # --maturity: filename level ∈ crate allowed_levels, forbid/structural
-# rules S1-S5 gated by [policy] forbid_mode, placement always hard.
+# rules S1-S6 gated by [policy] forbid_mode (error), placement always hard.
 # see: cans/15-operations.md#Maturity-check
 check-maturity:
     cargo run -p kelir-maturity -- check --strict
@@ -163,6 +168,10 @@ check-maturity:
 # base ref. CI PRs pass the PR base; local default is origin/main.
 check-maturity-base base="origin/main":
     cargo run -p kelir-maturity -- check --strict --base {{base}}
+
+# --packages-maturity: contract/wiring/meat split in packages/ts + packages/py.
+check-packages-maturity:
+    python3 scripts/check-packages-maturity.py
 
 panic-hunt:
     cargo nextest run -p kelir-engine --test panic_hunt
@@ -423,4 +432,4 @@ check-types:
 check-gates: check-manifest check-tests
 
 # Full local gate: every check above, in dependency order. Excludes test-integration (hypervisor), test-drivers-windows/macos (platform jobs), build-shim cross-compile, check-spec-touched (PR-only).
-check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-examples-thin check-builder-parity check-hygiene check-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon
+check-all: check-coherence check-spec check-plugin-coverage check-examples-canonical check-examples check-examples-thin check-builder-parity check-builder-verbs-sync check-hygiene check-maturity check-packages-maturity lint typecheck check-tiered check-cli check-budgets check-plugin-all check-drivers check-gates check-fast-boot check-dax test-red parity panic-hunt check-canon

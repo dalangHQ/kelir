@@ -3,7 +3,7 @@
     - Pipeline exposes ConsoleInterposer::on_console_output to plugins
     - Plugin chain order is plugin-owned; core carries no fixed stages
     - Core stages: raw VT100 grid, byte-stream ring, index.bin replay only
-    - Crate topology: kelir-terminal owns RealTerminalOps (vt100.run.rs, token_shield.run.rs, log_segment.run.rs); kelir-engine/src/planes/terminal/mod.rs is the thin L2 TerminalPlane façade holding Arc<dyn TerminalOps>
+    - Crate topology: kelir-terminal owns RealTerminalOps (vt100.flow.rs, log_segment.flow.rs); kelir-engine/src/planes/terminal/mod.rs is the thin L2 TerminalPlane façade holding Arc<dyn TerminalOps>
     - Trait seam: kelir-interface::terminal::TerminalOps (resize, feed, export_screen_matrix, read_from, append_stream_chunk, record_output, output_filters, token_shield, prompts)
     - Console filter pipeline: see: artifacts/diagrams/terminal-pipeline.txt
     - Terminal plane attributes

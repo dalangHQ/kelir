@@ -1,8 +1,10 @@
 // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
 use std::collections::VecDeque;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-use kelir_interface::plugin_model::EventBus;
+use kelir_interface::plugin_model::{EventBus, KelirPlugin};
+
+use crate::{AnomalyConfig, AnomalyCtx, AnomalyPlugin};
 
 // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
 pub const TELEMETRY_RING_DEPTH: usize = 300;
@@ -284,5 +286,88 @@ impl AnomalyDetectionService {
                 feature_vector: outcome.feature_vector,
             });
         }
+    }
+}
+
+impl Default for AnomalyConfig {
+    fn default() -> Self {
+        Self {
+            sliding_window_depth: TELEMETRY_RING_DEPTH,
+            export_feature_vector: true,
+            feature_extraction: true,
+            surprisal_threshold: 1.0,
+        }
+    }
+}
+
+impl AnomalyConfig {
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub fn ring_config(&self) -> TelemetryRingConfig {
+        TelemetryRingConfig {
+            feature_extraction: self.feature_extraction,
+            sliding_window_depth: self.sliding_window_depth,
+            export_feature_vector: self.export_feature_vector,
+        }
+    }
+}
+
+impl AnomalyCtx {
+    // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
+    pub fn service(&self) -> &Arc<AnomalyDetectionService> {
+        &self.service
+    }
+
+    // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
+    pub fn observe(
+        &self,
+        sample: TelemetrySample,
+        scales: [f32; FEATURE_VECTOR_DIMS],
+    ) -> Result<AnomalyOutcome, AnomalyError> {
+        self.service.observe(sample, scales)
+    }
+}
+
+impl AnomalyPlugin {
+    // see: cans/plugins/anomaly.md#Plugin-anomaly
+    pub fn new(config: AnomalyConfig) -> Self {
+        let threshold = config.surprisal_threshold;
+        let service = Arc::new(AnomalyDetectionService::new(
+            config.ring_config(),
+            threshold,
+        ));
+        Self { config, service }
+    }
+
+    // see: cans/plugins/anomaly.md#Plugin-anomaly
+    pub fn with_config(mut self, config: AnomalyConfig) -> Self {
+        self.service = Arc::new(AnomalyDetectionService::new(
+            config.ring_config(),
+            config.surprisal_threshold,
+        ));
+        self.config = config;
+        self
+    }
+
+    // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
+    pub fn service(&self) -> &Arc<AnomalyDetectionService> {
+        &self.service
+    }
+}
+
+impl Default for AnomalyPlugin {
+    fn default() -> Self {
+        Self::new(AnomalyConfig::default())
+    }
+}
+
+impl KelirPlugin for AnomalyPlugin {
+    type Context = AnomalyCtx;
+    fn context(&self) -> AnomalyCtx {
+        AnomalyCtx {
+            service: Arc::clone(&self.service),
+        }
+    }
+    fn name(&self) -> &'static str {
+        "anomaly"
     }
 }

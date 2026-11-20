@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "bound_fuse_ops_dispatches_synthetic_lookup"
+title: "Bound FuseOps dispatches a synthetic-file lookup"
+domain: "storage_plane"
+target_tier: "integration"
+target_crate: "crates/kelir"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/05-storage-plane.md#Synthetic-FUSE-inodes"
+  statement: "A session booted with bound FuseOps dispatches a Lookup for a synthetic .env file through the FUSE pipeline and returns the synthetic inode instead of halting."
+  blast_radius_if_breached: "Synthetic files are unreachable through the FUSE plane, so vault-injected env files never resolve in the guest."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts the boot binds FuseOps without dispatching a lookup through it."
+  anti_slop_mitigation: "AS-02 asserts the dispatched Lookup returns the synthetic inode for the registered .env file."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "engine.storage"
+    agent_id: "agt_bound_fuse_ops"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "Session::boot_with_plugins with fuse_ops bound; dispatch_fuse(Lookup, guest_inode 7, path .env)"
+  input_params:
+    synthetic_file: ".env"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "engine.storage"
+    culprit: "none — synthetic lookup dispatched"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "fuse.lookup_dispatched"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(dispatched_inode_is_synthetic('.env'));"

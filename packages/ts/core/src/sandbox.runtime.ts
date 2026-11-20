@@ -14,8 +14,7 @@ import {
   serializeProfile,
   type ProfileSpec,
 } from "./profile.schema.js";
-
-import { writeFile } from "node:fs/promises";
+import { writeProfileText } from "./profile.schema.run.js";
 
 export interface SandboxOptions {
   readonly config?: KelirConfig;
@@ -136,7 +135,10 @@ export class Sandbox {
   async exportSpec(path: string): Promise<void> {
     // L3-GAP: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
     // TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
-    await writeFile(path, serializeProfile(this.profile, profileFormatForPath(path)));
+    await writeProfileText(
+      path,
+      serializeProfile(this.profile, profileFormatForPath(path)),
+    );
   }
 
   async stop(): Promise<void> {

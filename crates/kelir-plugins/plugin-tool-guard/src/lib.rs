@@ -8,6 +8,8 @@ pub mod guard;
 pub mod service_tool_guard;
 #[path = "tool_guard_state.flow.rs"]
 pub mod tool_guard_state;
+#[path = "tool_guard_state.run.rs"]
+pub mod tool_guard_state_run;
 
 pub use tool_guard_state::{ToolGuardCtx, ToolGuardPlugin};
 

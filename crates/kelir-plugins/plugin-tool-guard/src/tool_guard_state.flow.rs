@@ -7,8 +7,8 @@ use kelir_interface::driver_interface::{ExternalSuspendKind, SuspendReason};
 use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope,
-    PipelineBinder, PluginDeps, VirtioDevice,
+    ConsoleInterposer, HCons, HNil, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder,
+    PluginDeps, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{StreamKind, SuspendUntil, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
@@ -32,9 +32,6 @@ impl Default for ToolGuardConfig {
         }
     }
 }
-
-// see: cans/plugins/tool-guard.md#Immutable-schema-locking
-const TOOLS_LIST_QUERY: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"tools/list\"}";
 
 // see: cans/plugins/tool-guard.md#Call-quota
 struct TraceQuota {
@@ -285,33 +282,6 @@ impl KelirPlugin for ToolGuardPlugin {
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 impl PluginDeps for ToolGuardPlugin {
     type Deps = HCons<McpCtx, HNil>;
-}
-
-// see: cans/plugins/tool-guard.md#Immutable-schema-locking
-#[async_trait]
-impl LifecycleParticipant for ToolGuardPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        // see: cans/plugins/tool-guard.md#Immutable-schema-locking
-        // L3-GAP: [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
-        let response = self.mcp.route_request(TOOLS_LIST_QUERY).await?;
-        let mut advertisement = decode_tools_list(&response)?;
-        // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-        for spec in &self.host_specs {
-            advertisement.tools.push(ToolSchema {
-                name: spec.name.clone(),
-                description: spec.description.clone(),
-                input_schema: spec.input_schema.clone(),
-                signature: Vec::new(),
-            });
-        }
-        let advertised: Vec<String> = advertisement
-            .tools
-            .iter()
-            .map(|schema| schema.name.clone())
-            .collect();
-        self.ingest_advertisement(&advertisement).await?;
-        self.mcp.advertise_tools(advertised)
-    }
 }
 
 #[async_trait]

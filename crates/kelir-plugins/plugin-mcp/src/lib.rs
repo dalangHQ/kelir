@@ -8,6 +8,8 @@ pub mod ast;
 
 #[path = "mcp_service.flow.rs"]
 pub mod mcp_service;
+#[path = "mcp_service.run.rs"]
+pub mod mcp_service_run;
 
 #[path = "schema.flow.rs"]
 pub mod schema;

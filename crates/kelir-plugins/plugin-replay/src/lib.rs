@@ -3,6 +3,8 @@
 
 #[path = "replay_state.flow.rs"]
 pub mod replay_state;
+#[path = "replay_state.run.rs"]
+pub mod replay_state_run;
 
 pub use replay_state::{ReplayCtx, ReplayPlugin};
 

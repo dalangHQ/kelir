@@ -65,6 +65,8 @@ jobs:
         run: just check-builder-parity
       - name: Builder chain AST gate (--builder-chain)
         run: just check-builder-chain
+      - name: Builder verbs sync (--builder-verbs-sync)
+        run: just check-builder-verbs-sync
       - name: Touched files within write budget
         if: github.event_name == 'pull_request'
         run: |
@@ -651,6 +653,8 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Check Body Maturity (strict)
         run: just check-maturity
+      - name: Check packages maturity (contract/wiring/meat split)
+        run: just check-packages-maturity
       # L2 delta budget (net-new .flow.rs files per PR) vs the PR base.
       # Push events have no base_ref; the strict step above still gates them.
       - name: L2 delta budget vs PR base

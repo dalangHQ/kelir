@@ -3,8 +3,9 @@
 // the per-ring scope structs live in
 // cans/artifacts/code/rust-plugin-builder-scopes.rs and the normative
 // contract is cans/02-plugin-model.md#Nested-scopes. This file pins the
-// scopes-only surface: every scope gains config / requires / fork_with /
-// timeout / priority / rules, and the five orphan-verb scopes
+// scopes-only surface: requires / timeout / priority on every scope,
+// config / fork_with / rules on FsScope only (method-home table:
+// cans/02-plugin-model.md#Nested-scopes), and the five orphan-verb scopes
 // (actions, streams, vsock, params, deny) that give the host-only
 // register verbs a scope home. Scopes are the only way to reach a ring
 // verb: a flat chain exists only as a group() fold that delegates to
@@ -33,11 +34,12 @@ use crate::planes::storage_plane::{LockBrokerConfig, ReadMaskEngine};
 use crate::builder_sdk::{KelirBuilder, ScopeRules, SnoopRule, MaskRule};
 
 // see: cans/02-plugin-model.md#Nested-scopes
-// FsScope sub-nodes: the shape every ring scope shares. Each returns the
-// scope, so the chain continues inside the closure; .end() (pinned in
-// rust-plugin-builder-scopes.rs) returns the builder and is a
-// type-system artifact only — the Rust closure must return the builder,
-// and .end() is how it does it, not a semantic close.
+// FsScope sub-nodes: the full six; other ring scopes share requires /
+// timeout / priority only, config / fork_with / rules are FsScope only.
+// Each returns the scope, so the chain continues inside the closure;
+// .end() (pinned in rust-plugin-builder-scopes.rs) returns the builder
+// and is a type-system artifact only — the Rust closure must return the
+// builder, and .end() is how it does it, not a semantic close.
 impl FsScope {
     // see: cans/02-plugin-model.md#Nested-scopes
     // Scope-level config: fs carries lock_broker, carryover_bytes,
@@ -211,6 +213,26 @@ impl ActionsScope {
         self
     }
 
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // Scope sub-nodes, every scope: requires / timeout / priority.
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout(d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority(i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder {
         self.builder
     }
@@ -234,6 +256,26 @@ impl StreamsScope {
         self
     }
 
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // Scope sub-nodes, every scope: requires / timeout / priority.
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout(d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority(i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder {
         self.builder
     }
@@ -254,6 +296,26 @@ impl VsockScope {
         self
     }
 
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // Scope sub-nodes, every scope: requires / timeout / priority.
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout(d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority(i);
+        self
+    }
+
     pub fn end(self) -> KelirBuilder {
         self.builder
     }
@@ -271,6 +333,26 @@ impl ParamsScope {
         T: Default + Send + Sync + 'static,
     {
         self.builder = self.builder.params::<T>();
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // Scope sub-nodes, every scope: requires / timeout / priority.
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout(d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority(i);
         self
     }
 
@@ -296,6 +378,26 @@ impl DenyScope {
         Fut: Future<Output = Result<(), PluginError>> + Send + 'static,
     {
         self.builder = self.builder.on_trap_deny(f);
+        self
+    }
+
+    // see: cans/02-plugin-model.md#Nested-scopes
+    // Scope sub-nodes, every scope: requires / timeout / priority.
+    pub fn requires<P>(mut self) -> Self
+    where
+        P: KelirPlugin,
+    {
+        self.builder = self.builder.require::<P>();
+        self
+    }
+
+    pub fn timeout(mut self, d: Duration) -> Self {
+        self.builder = self.builder.scope_timeout(d);
+        self
+    }
+
+    pub fn priority(mut self, i: i32) -> Self {
+        self.builder = self.builder.scope_priority(i);
         self
     }
 

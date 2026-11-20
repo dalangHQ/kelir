@@ -7,8 +7,7 @@ use kelir_interface::errno_types::Errno;
 use kelir_interface::handles_lifecycle::VmHandle;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    KelirPlugin, LifecycleParticipant, MountScope, ParkedConnectionReset, PipelineBinder,
-    PluginDeps, VirtioDevice,
+    KelirPlugin, MountScope, ParkedConnectionReset, PipelineBinder, PluginDeps, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{Channel, FilterAction, SuspendUntil};
 
@@ -424,7 +423,5 @@ impl KelirPlugin for WireIngressPlugin {
         pipeline.bind_parked_connection_reset(Arc::new(self.router.clone()));
     }
 }
-
-impl LifecycleParticipant for WireIngressPlugin {}
 
 // see: cans/02-plugin-model.md#KelirPlugin-trait

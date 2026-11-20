@@ -27,6 +27,8 @@ pub mod profile_validate;
 #[path = "profile_validate.flow.rs"]
 mod profile_validate_flow;
 pub mod protocol_wire;
+#[path = "runtime.flow.rs"]
+pub mod runtime;
 #[path = "sandbox_runtime.flow.rs"]
 pub mod sandbox_runtime;
 #[path = "session_lifecycle.flow.rs"]
@@ -57,6 +59,7 @@ pub use async_trait::async_trait;
 pub use builder_sdk::ToolGuardExt;
 pub use ciborium::value::Value as CborValue;
 pub use profile_schema::EffectiveConfig;
+pub use runtime::{JoinSet, block_on, fs, time};
 pub use sandbox_runtime::{Sandbox, SandboxOptions, SandboxProfile};
 pub use serde;
 pub use serde::{Deserialize, Serialize};
@@ -65,17 +68,6 @@ pub use session_lifecycle::{
     ClockHandle, FsHandle, IngressChannel, IngressStream, Session, ShmMapping, SpawnOpts,
     SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel, VsockHandle,
 };
-pub use tokio::fs;
-pub use tokio::task::JoinSet;
-pub use tokio::time;
-
-// see: cans/03-sdk-architecture.md#Full-surface-examples
-pub fn block_on<F: Future<Output = T>, T>(future: F) -> std::io::Result<T> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    Ok(runtime.block_on(future))
-}
 
 // see: cans/plugins/anomaly.md#Plugin-anomaly
 #[cfg(feature = "plugin-anomaly")]

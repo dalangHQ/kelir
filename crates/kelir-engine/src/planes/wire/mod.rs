@@ -5,7 +5,5 @@
 pub(crate) mod layout_wire;
 #[path = "plane.flow.rs"]
 mod plane;
-#[path = "unbound_ops.flow.rs"]
-mod unbound_ops;
 
 pub use plane::{WireError, WireOps, WirePlane};

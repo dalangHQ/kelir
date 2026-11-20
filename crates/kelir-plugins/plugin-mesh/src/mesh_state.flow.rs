@@ -8,15 +8,14 @@ use async_trait::async_trait;
 use kelir_interface::driver_interface::{SharedMemoryHandle, Stream};
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    AnyPlugin, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant, PipelineBinder,
-    PluginDeps,
+    AnyPlugin, HandlerCtx, KelirPlugin, PipelineBinder, PluginDeps,
 };
 use kelir_interface::vsock_mesh::{
     PeerSessionHandshake, SpiffeId, SpiffeSvid, VsockPeer, VsockServiceHandler, VsockServiceSpec,
 };
 
 use crate::handshake::HandshakeDriver;
-use crate::{MeshConfig, PeerIdentity, PeerRejection};
+use crate::{MeshConfig, PeerIdentity, PeerRejection, TraceParentPropagation};
 
 // see: cans/02-plugin-model.md#Latency-ceiling
 const MAX_CONCURRENT_HANDSHAKES: usize = 64;
@@ -61,6 +60,8 @@ impl VectorClock {
 }
 
 // see: cans/plugins/mesh.md#Peer-identity
+// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean.
+#[allow(dead_code)]
 pub(crate) struct MeshState {
     svid: Mutex<Option<SpiffeSvid>>,
     peers: Mutex<Vec<PeerRecord>>,
@@ -71,6 +72,8 @@ pub(crate) struct MeshState {
     vector_clock: Mutex<VectorClock>,
 }
 
+// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean.
+#[allow(dead_code)]
 impl MeshState {
     fn new() -> Self {
         Self {
@@ -187,12 +190,6 @@ impl MeshState {
             Err(_) => Vec::new(),
         }
     }
-
-    // see: cans/plugins/mesh.md#Peer-identity
-    fn set_svid(&self, svid: SpiffeSvid) -> Result<(), PluginError> {
-        *self.lock_svid()? = Some(svid);
-        Ok(())
-    }
 }
 
 // see: cans/plugins/mesh.md#Plugin-mesh
@@ -207,26 +204,6 @@ impl MeshPlugin {
         Self {
             config,
             state: Arc::new(MeshState::new()),
-        }
-    }
-
-    // see: cans/plugins/mesh.md#Peer-identity
-    fn issue_session_svid(&self) -> Result<SpiffeSvid, PluginError> {
-        match &self.config.peer_identity {
-            PeerIdentity::Spiffe {
-                trust_domain,
-                workload_prefix,
-            } => {
-                // L3-GAP: [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
-                Ok(SpiffeSvid {
-                    spiffe_id: SpiffeId {
-                        trust_domain: trust_domain.clone(),
-                        workload_prefix: workload_prefix.clone(),
-                    },
-                    credential: Vec::new(),
-                    expires_at_ns: 0,
-                })
-            }
         }
     }
 
@@ -347,15 +324,6 @@ impl KelirPlugin for MeshPlugin {
     }
 }
 
-// see: cans/plugins/mesh.md#Peer-identity
-#[async_trait]
-impl LifecycleParticipant for MeshPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        let svid = self.issue_session_svid()?;
-        self.state.set_svid(svid)
-    }
-}
-
 // see: cans/02-plugin-model.md#KelirPlugin-trait
 
 // see: cans/plugins/mesh.md#Invariants-and-policy-(mesh)
@@ -441,5 +409,20 @@ impl MeshCtx {
             "mesh winner election pending (L3): {} peers connected",
             peers.len()
         )))
+    }
+}
+
+// see: cans/artifacts/examples/multi-vm-swarm.rs#MeshConfig
+impl Default for MeshConfig {
+    fn default() -> Self {
+        Self {
+            peer_identity: PeerIdentity::Spiffe {
+                trust_domain: String::new(),
+                workload_prefix: String::new(),
+            },
+            mtls: false,
+            traceparent: TraceParentPropagation::InjectAndValidate,
+            listeners: Vec::new(),
+        }
     }
 }

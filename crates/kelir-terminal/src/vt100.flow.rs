@@ -3,20 +3,28 @@
 use kelir_interface::plugin_model::PluginError;
 
 #[derive(Debug, Clone, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct Cell {
     pub(crate) glyph: char,
 }
 
 #[derive(Debug, Clone, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct Row {
     pub(crate) cells: Vec<Cell>,
 }
 
 #[derive(Debug, Clone, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct ScreenMatrix {
     pub(crate) rows: Vec<Row>,
 }
 
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 impl ScreenMatrix {
     pub(crate) fn new(cols: u16, rows: u16) -> Self {
         Self {
@@ -42,12 +50,16 @@ impl ScreenMatrix {
 }
 
 #[derive(Debug, Clone, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct Vt100StateMachine {
     pub(crate) matrix: ScreenMatrix,
     pub(crate) cursor_row: u16,
     pub(crate) cursor_col: u16,
 }
 
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 impl Vt100StateMachine {
     pub(crate) fn new() -> Self {
         Self {
@@ -73,6 +85,8 @@ impl Vt100StateMachine {
     }
 }
 
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
     // L3-GAP: [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged
     buf.to_vec()

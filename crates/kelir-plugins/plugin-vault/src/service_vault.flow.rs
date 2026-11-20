@@ -363,18 +363,7 @@ impl Drop for MtlsMaterial {
 
 // see: cans/plugins/vault.md#In-ring-carrier-secret-injection
 pub fn load_mtls_material(cert_path: &Path, key_path: &Path) -> Result<MtlsMaterial, VaultError> {
-    let cert_pem = std::fs::read(cert_path).map_err(|err| {
-        VaultError::Enodata(format!(
-            "mTLS cert {} is not readable: {err}",
-            cert_path.display()
-        ))
-    })?;
-    let key_pem = std::fs::read(key_path).map_err(|err| {
-        VaultError::Enodata(format!(
-            "mTLS key {} is not readable: {err}",
-            key_path.display()
-        ))
-    })?;
+    let (cert_pem, key_pem) = crate::service_vault_run::read_mtls_files(cert_path, key_path)?;
     if !cert_pem.starts_with(b"-----BEGIN CERTIFICATE-----") {
         return Err(VaultError::Einval(
             "mTLS cert is not a PEM certificate".into(),

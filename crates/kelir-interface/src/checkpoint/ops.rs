@@ -1,8 +1,7 @@
 // see: cans/08-lifecycle.md#Native-checkpoint-plane-(kelir-engine::checkpoint)
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
 
+use super::ops_flow::CheckpointOpsArc;
 use crate::checkpoint::graph::PidLineage;
 use crate::driver_interface::SnapshotDescriptor;
 use crate::plugin_model::PluginError;
@@ -21,7 +20,7 @@ pub trait CheckpointOps: Send + Sync {
     fn lineage(&self, node_id: u64) -> Result<Vec<u64>, PluginError>;
     fn monotonic_watermark_ns(&self) -> u64;
     fn compact(&self, lineage: PidLineage) -> Result<u64, PluginError>;
-    fn fresh(&self) -> Arc<dyn CheckpointOps>;
+    fn fresh(&self) -> CheckpointOpsArc;
 }
 
 // see: cans/09-snapshots.md#Groups-and-lineage

@@ -1,35 +1,68 @@
 # perf/maturity-policy.toml
 # L2 os-reach carve-out (converge decision, rename wave): the L2 os-reach forbid
-# is about host side effects, not plumbing. L2 tolerates pure libc constants,
-# std::net types with no IO, reads of a tool's own inputs (codegen, lockfile
-# probe), and session-directory lifecycle. Guest-affecting IO and domain-trait
-# impls are L3. The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3
+# is about host side effects, not plumbing. L2 tolerates pure libc constants
+# and types (a libc:: name with no call), std::net pure types (Ipv4Addr,
+# Ipv6Addr, IpAddr, SocketAddr*), import-only lines, reads of a named
+# lockfile/path constant (lockfile probe), std::process::id(), and
+# session-directory lifecycle (create_dir_all/remove_dir_all/remove_dir).
+# L1 tolerates the same pure-type position (an os token with no call, e.g. a
+# libc::pid_t field or a std::os::unix::io::OwnedFd field); L1 still forbids
+# every os call. A read-only stat of a stored path (std::fs::metadata(&self.…))
+# is a probe in the same class as the lockfile read. One named exemption:
+# KelirBuilder::from_config reads a caller-supplied profile path
+# (builder_sdk.flow.rs) — host-side SDK entry, spec-pinned (cans/03) and used
+# by the canonical profile example; the same read anywhere else still fails. Comment mentions carry no IO. Os-reach is scoped to guest crates:
+# developer-tooling crates (kelir-plugin-cli, kelir-testkit,
+# kelir-plugin-testkit, kelir-maturity) and binary entry points (src/bin/ and
+# crate-root src/main.rs) are host-side, not guest code, so os-reach and the
+# S3/S4 runtime-and-IO structure rules do not apply to them. A pure re-export line
+# (use / pub use) performs no IO in any crate. S3 exempts a runtime built only
+# inside fn block_on: block_on builds a runtime by definition, the build is
+# one-line wiring, and widening the contract crates to L3 (or moving a live
+# runtime build into a stub-only .run.rs file) was rejected at converge; a
+# runtime spawned anywhere outside block_on still fails S3. Guest-affecting IO and domain-trait
+# impls are L3. LifecycleParticipant and TrapInterposer are NOT in the
+# L2 domain-trait-impl list (converge decision): they are the pipeline-dispatch
+# hooks, so an impl that dispatches to in-crate policy/service fns with no IO
+# and no L3-deferred content is L2 wiring — the container plugin's
+# on_vm_ready/on_trap dispatch to implemented pure policy (id-map range
+# checks, mount policy) and stubbing them would delete that policy. The
+# data-plane interposers (FsInterposer, NetInterposer) stay L3: a permissive
+# default there manufactures unsafe behaviour (a guard passing a mutating
+# call). The composition root (builder_sdk.flow.rs finish_boot, napi/pyo3
 # bindings) calls the plane seams; it constructs no Real* type directly. Each
-# plane .run.rs file holds a pub(crate) build_* fn returning Arc<dyn Trait>;
+# Real* .run.rs file holds a pub(crate) build_* fn returning Arc<dyn Trait>;
 # the crate .flow.rs seam delegates to it. No .flow.rs file and no lib.rs
 # names a Real* type.
+# L3 stub shape (S6): every fn in a .run.rs file is a stub — its body holds
+# a // TODO (L3) marker, or is a single-expression return, or is a build_*/new
+# constructor doing field init only. Any other body fails as S6. Levels never
+# leak concern into one another: L1 holds no runtime or IO concern, L2 holds
+# no L3 bodies, L3 holds no contract or wiring beyond signatures.
 # L2_max_delta_per_pr governs incremental PRs; the repo-wide rename wave
 # exceeded it once by design (66 new L2 files), it still bounds later PRs.
 # Concern-leak C1 (kelir-maturity check_tree): a crate with >=3 lib .run.rs
 # files and zero .flow.rs files has no L2 seam in-crate; its Real* types stay
 # pub-reachable past the composition root. src/bin/ entry points do not count.
-# It follows forbid_mode like the S-rules: warns while this file says "warn",
-# fails CI once forbid_mode flips to "error". Fixed by the seam wave
-# (2026-11-13): one .flow.rs seam per plane crate; current hits are zero.
+# It follows forbid_mode like the S-rules: it fails now that forbid_mode is
+# "error". Fixed by the seam wave (2026-11-13): one .flow.rs seam per plane
+# crate; current hits are zero.
 # The L3 virtqueue worker (FuseWorker, vr_10) and the RealFuseOps with_quota /
 # with_lock_broker setters were deleted as dead code in the same wave; the
-# worker returns when the L3 binding lands. Synthetic files already inject
-# through kelir_storage::fuse_ops_with_synthetic_files.
+# worker returns when the L3 binding lands. Synthetic files inject through
+# the plugin FsInterposer (with_synthetic_files), not through kelir_storage:
+# no kelir_storage::fuse_ops_with_synthetic_files seam exists. The live seam
+# is kelir_storage::fuse_ops (storage.flow.rs) delegating to build_fuse_ops
+# (fuse.run.rs).
 [budget]
 # was 20 until the maturity wave; it adds ~53 .flow.rs by design, mirroring
 # the rename-wave precedent above; step back down once the wave lands.
 L2_max_delta_per_pr = 60        # net new L2 files per PR, not net lines
 
-# Rollout: content forbid rules and structural S1-S5 warn instead of failing
-# while pre-wave leaks in the driver/transport/shim/testkit enclaves are
-# cleaned up; absent means "error" (fail-closed default).
+# Rollout: content forbid rules and structural S1-S6 fail the job now that
+# forbid_mode is "error"; absent means "error" (fail-closed default).
 [policy]
-forbid_mode = "warn"
+forbid_mode = "error"
 
 [[level.L1.forbid]]
 id = "impl-block"
@@ -47,7 +80,7 @@ hint  = "trait objects are wiring (L2), not contract (L1)"
 
 [[level.L2.forbid]]
 id = "domain-trait-impl"
-pattern = '^\s*impl\s+(FuseOps|StorageIo|TerminalOps|NetOps|DnsOps|UdpNatOps|TrapInterposer|FsInterposer|NetInterposer|LifecycleParticipant|SystemTelemetryParticipant)\s+for\b'
+pattern = '^\s*impl\s+(FuseOps|StorageIo|TerminalOps|NetOps|DnsOps|UdpNatOps|FsInterposer|NetInterposer|SystemTelemetryParticipant)\s+for\b'
 hint  = "domain trait impls are bodies (L3)"
 
 [[level.L2.forbid]]

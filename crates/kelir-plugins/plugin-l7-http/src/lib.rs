@@ -7,6 +7,8 @@ pub mod l7_parser;
 pub mod l7_tls;
 #[path = "service_l7_http.flow.rs"]
 pub mod service_l7_http;
+#[path = "service_l7_http.run.rs"]
+pub mod service_l7_http_run;
 
 pub use l7_parser::{
     HttpRequest, HttpResponse, JsonRpcEnvelope, L7Message, L7ParseError, L7Parser,

@@ -25,9 +25,11 @@ Deliberate non-findings, per the work order: let mut session =
 ...seal()?.boot() binds the post-boot session, not a builder; .await?
 is post-boot async suspension (Chain-decisions (h) puts post-boot
 operations out of scope); KelirBuilder::from_config(...)? is the
-documented profile entry form. The deleted-verb sets come from
-scripts/builder-parity-verbs.yaml (scoped placement) plus
-fluent-chain.work-order.md Part 1 section 3 (verbs the yaml omits).
+documented profile entry form. The deleted-verb sets and the
+scope-entry lists are derived from scripts/builder-parity-verbs.yaml
+at runtime (scoped placement); there is no second list to drift.
+The yaml is the only verb list: if it cannot be read, or parses to
+no verbs, the scanner fails closed instead of scanning vacuous.
 
 Usage: python3 scripts/check-builder-chain-ast.py [examples-dir]
 Exit 0 when no finding, else exit 1 with one line per finding.
@@ -39,55 +41,65 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# see: scripts/builder-parity-verbs.yaml
+VERBS_YAML = ROOT / "scripts" / "builder-parity-verbs.yaml"
 
-# Ring verbs and orphan verbs: scope-only in every SDK. Snake_case is the
-# Rust/Python spelling; camelCase is the TypeScript spelling.
-RING_RS = [
-    "on_trap", "on_process_exit", "on_signal", "on_fork",
-    "on_fs_lookup", "on_fs_read", "on_fs_write", "on_fs_lock",
-    "on_fs_unlink", "on_fs_rename", "on_fs_setattr", "on_fs_symlink",
-    "on_fs_mkdir", "on_fs_readdir", "on_fs_readlink",
-    "on_net_outbound", "on_net_inbound", "on_dns_query",
-    "on_console_input", "on_console_output",
-    "on_exec_stdout", "on_exec_stderr", "on_exec_stdin",
-    "on_host_lsm_exec", "on_host_pressure", "on_host_keyring_access",
-    "on_host_preempt", "on_host_containment_breach",
-    "on_vm_init", "on_vm_ready", "on_vm_shutdown",
-    "on_pre_commit", "on_post_commit",
-    "on_memory_pressure", "on_heartbeat", "on_watchdog",
-]
-ORPHAN_RS = [
-    "on_trap_deny", "register_custom_action", "register_stream_kind",
-    "vsock_service", "lock_broker",
-]
-ORPHAN_PY = ORPHAN_RS + ["wire_config"]
-RING_TS = [
-    "onTrap", "onProcessExit", "onSignal", "onFork",
-    "onFsLookup", "onFsRead", "onFsWrite", "onFsLock",
-    "onFsUnlink", "onFsRename", "onFsSetattr", "onFsSymlink",
-    "onFsMkdir", "onFsReaddir", "onFsReadlink",
-    "onNetOutbound", "onNetInbound", "onDnsQuery",
-    "onConsoleInput", "onConsoleOutput",
-    "onExecStdout", "onExecStderr", "onExecStdin",
-    "onHostLsmExec", "onHostPressure", "onHostKeyringAccess",
-    "onHostPreempt", "onHostContainmentBreach",
-    "onVmInit", "onVmReady", "onVmShutdown",
-    "onPreCommit", "onPostCommit",
-    "onMemoryPressure", "onHeartbeat", "onWatchdog",
-]
-ORPHAN_TS = [
-    "onTrapDeny", "registerCustomAction", "registerStreamKind",
-    "vsockService", "lockBroker",
-]
-# Scope-entry verbs: they open a region, never a finding themselves.
-SCOPE_RS = [
-    "fs", "net", "console", "exec", "host", "lifecycle", "telemetry",
-    "trap_scope", "actions", "streams", "vsock", "params", "deny",
-]
-SCOPE_TS = [
-    "fs", "net", "console", "exec", "host", "lifecycle", "telemetry",
-    "trap", "actions", "streams", "vsock", "params", "deny",
-]
+
+def snake_to_camel(name):
+    parts = name.split("_")
+    return parts[0] + "".join(p[:1].upper() + p[1:] for p in parts[1:])
+
+
+def ts_name(name):
+    if name == "require":
+        return "requires"
+    return snake_to_camel(name)
+
+
+def load_verbs():
+    """(deleted_rs, deleted_ts, deleted_py, scope_rs, scope_ts) from the yaml."""
+    if not VERBS_YAML.is_file():
+        raise ValueError(f"missing input file: {VERBS_YAML}")
+    verbs, cur, section = {}, None, None
+    for line in VERBS_YAML.read_text().splitlines():
+        if line == "verbs:":
+            section = "verbs"
+            continue
+        if line == "behavior:":
+            section = "behavior"
+            continue
+        if re.match(r"^[a-z_]+:", line):
+            section = None
+        if section != "verbs":
+            continue
+        m = re.match(r"^  ([A-Za-z_][A-Za-z0-9_]*):\s*$", line)
+        if m:
+            cur = m.group(1)
+            verbs[cur] = {}
+            continue
+        m = re.match(r"^    (placement|scope):\s*(.*)$", line)
+        if m and cur:
+            verbs[cur][m.group(1)] = m.group(2).strip()
+    if not verbs:
+        raise ValueError(f"no verbs parsed from {VERBS_YAML}")
+    scoped = [n for n, f in verbs.items() if f.get("placement") == "scoped"]
+    # params is a scope entry, not a deleted verb: the .params check below
+    # tells the closure form from the deleted direct-model form, and this
+    # set would flag every legitimate .params(|p| ...) entry. fork_with
+    # keeps a legitimate flat plugin-only form on the builder in all
+    # three SDKs, so a flat call is not a deleted verb either.
+    # register_veto is also a LifecycleCtx method (policy-matrix calls
+    # ctx.register_veto in its on_vm_init handler), and this regex
+    # scanner cannot tell receivers apart; the parity gate still checks
+    # its LifecycleScope presence, which is the real gate for it.
+    excluded = {"params", "fork_with", "register_veto"}
+    deleted = [n for n in scoped if n not in excluded]
+    if not deleted:
+        raise ValueError(f"no scoped verbs parsed from {VERBS_YAML}")
+    flat_scopes = [(n, f["scope"]) for n, f in verbs.items() if f.get("placement") == "flat" and f.get("scope")]
+    scope_rs = sorted({"trap_scope" if n == "trap" else s for n, s in flat_scopes} | {"params"})
+    scope_ts = sorted({s for _, s in flat_scopes} | {"params"})
+    return (deleted, [ts_name(n) for n in deleted], deleted, scope_rs, scope_ts)
 
 
 def line_of(starts, offset):
@@ -180,12 +192,12 @@ def in_region(regions, offset):
     return any(start < offset < end for start, end in regions)
 
 
-def check_rs_ts(path, text, findings):
+def check_rs_ts(path, text, findings, deleted_rs, deleted_ts, scope_rs, scope_ts):
     starts = [i for i, c in enumerate(text) if c == "\n"]
     starts = [0] + [s + 1 for s in starts]
     cleaned = strip_rs_ts(text)
     is_rs = path.suffix == ".rs"
-    entries = SCOPE_RS if is_rs else SCOPE_TS
+    entries = scope_rs if is_rs else scope_ts
     closer = ("pipe", 80) if is_rs else ("arrow", 120)
     regions = scope_regions(cleaned, entries, closer)
 
@@ -203,7 +215,7 @@ def check_rs_ts(path, text, findings):
         for m in re.finditer(r"\.(\w+)\?", cleaned):
             if m.group(1) not in ("seal", "await"):
                 add(m.start(), "fallible chain verb: .%s?" % m.group(1))
-        deleted = RING_RS + ORPHAN_RS
+        deleted = deleted_rs
         for m in re.finditer(r"\.(" + "|".join(deleted) + r")\s*\(", cleaned):
             if not in_region(regions, m.start()):
                 add(m.start(), "deleted flat verb outside a scope: .%s()" % m.group(1))
@@ -220,7 +232,7 @@ def check_rs_ts(path, text, findings):
             add(m.start(), "@ts-expect-error in a .ts example")
         for m in re.finditer(r"\bon\s*\(", cleaned):
             add(m.start(), "deleted flat .on() verb")
-        deleted = RING_TS + ORPHAN_TS
+        deleted = deleted_ts
         for m in re.finditer(r"\.(" + "|".join(deleted) + r")\s*\(", cleaned):
             if not in_region(regions, m.start()):
                 add(m.start(), "deleted flat verb outside a scope: .%s()" % m.group(1))
@@ -232,9 +244,10 @@ def check_rs_ts(path, text, findings):
 
 
 class PyChecker(ast.NodeVisitor):
-    def __init__(self, path, tree):
+    def __init__(self, path, tree, deleted):
         self.path = str(path)
         self.findings = []
+        self.deleted = set(deleted)
         self.parents = {}
         for node in ast.walk(tree):
             for child in ast.iter_child_nodes(node):
@@ -336,7 +349,7 @@ class PyChecker(ast.NodeVisitor):
                     self.add_attr(value, "statement-level verb call: %s.%s()" % (func.value.id, func.attr))
 
     def check_deleted_verbs(self):
-        deleted = set(RING_RS + ORPHAN_PY)
+        deleted = self.deleted
         for node in ast.walk(self.tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -395,13 +408,13 @@ class PyChecker(ast.NodeVisitor):
         return self.findings
 
 
-def check_py(path, text, findings):
+def check_py(path, text, findings, deleted):
     try:
         tree = ast.parse(text, filename=str(path))
     except SyntaxError as exc:
         findings.append((str(path), exc.lineno or 1, "unparsable: %s" % exc.msg))
         return
-    findings.extend(PyChecker(path, tree).run())
+    findings.extend(PyChecker(path, tree, deleted).run())
 
 
 def main(argv):
@@ -409,14 +422,19 @@ def main(argv):
     if not exdir.is_dir():
         print("FAIL: examples dir missing: %s" % exdir)
         return 1
+    try:
+        deleted_rs, deleted_ts, deleted_py, scope_rs, scope_ts = load_verbs()
+    except ValueError as exc:
+        print(f"FAIL: {exc}")
+        return 1
     findings = []
     files = sorted(p for p in exdir.iterdir() if p.is_file() and p.suffix in (".rs", ".ts", ".py"))
     for path in files:
         text = path.read_text(encoding="utf-8")
         if path.suffix == ".py":
-            check_py(path, text, findings)
+            check_py(path, text, findings, deleted_py)
         else:
-            check_rs_ts(path, text, findings)
+            check_rs_ts(path, text, findings, deleted_rs, deleted_ts, scope_rs, scope_ts)
     findings.sort(key=lambda f: (f[0], f[1], f[2]))
     for path, lineno, msg in findings:
         print("%s:%s: %s" % (path, lineno, msg))

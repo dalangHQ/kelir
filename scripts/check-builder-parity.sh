@@ -67,6 +67,17 @@ scope_method() {
     esac
 }
 
+# see: cans/02-plugin-model.md#Nested-scopes
+ALL_SCOPES="trap fs net console exec host lifecycle telemetry actions streams vsock params deny"
+
+# see: cans/02-plugin-model.md#Nested-scopes
+rust_scope_method() {
+    case "$1" in
+        require) printf '%s' "requires" ;;
+        *) scope_method "$1" ;;
+    esac
+}
+
 # see: scripts/builder-parity-verbs.yaml
 declare -A PLACEMENT SCOPE RET SDKS STATUS
 VERBS=()
@@ -102,6 +113,10 @@ for verb in "${VERBS[@]}"; do
     fi
     case "${PLACEMENT[$verb]:-}" in flat|both|scoped|registry) ;; *) fail "yaml: verb $verb has bad placement ${PLACEMENT[$verb]:-}" ;; esac
     case "${RET[$verb]:-}" in builder|sealed|terminal|scope|registry) ;; *) fail "yaml: verb $verb has bad return ${RET[$verb]:-}" ;; esac
+    case "${SCOPE[$verb]:-}" in ""|all|trap|fs|net|console|exec|host|lifecycle|telemetry|actions|streams|vsock|params|deny) ;; *) fail "yaml: verb $verb has bad scope ${SCOPE[$verb]:-}" ;; esac
+    if [ "${PLACEMENT[$verb]:-}" = "both" ] || [ "${PLACEMENT[$verb]:-}" = "scoped" ]; then
+        if [ -z "${SCOPE[$verb]:-}" ]; then fail "yaml: verb $verb has placement ${PLACEMENT[$verb]:-} without a scope"; fi
+    fi
 done
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -163,6 +178,18 @@ py_scoped_present() {
             ;;
         *) return 1 ;;
     esac
+}
+
+# see: cans/02-plugin-model.md#Nested-scopes
+py_protocol_present() {
+    local stype
+    stype="$(scope_type "$2")Protocol"
+    [ "$(awk -v scope="$stype" -v verb="$1" '
+        $0 ~ "^class " scope "\\(Protocol\\):" { in_block=1; next }
+        in_block && /^class / { in_block=0 }
+        in_block && $0 ~ "^    def " verb "\\(" && $0 ~ "-> " scope ":" { found=1 }
+        END { print found+0 }
+    ' "$PY_SCOPE_FILE")" = "1" ]
 }
 
 # see: cans/02-plugin-model.md#Unified-builder
@@ -328,11 +355,24 @@ for verb in "${VERBS[@]}"; do
                     fi
                 fi
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
-                    check
-                    if rust_scoped_present "$(scope_method "$verb")" "$stype"; then
-                        check_rust_return "$(scope_method "$verb")" "scope" "$RS_SCOPES" "scoped in $stype"
+                    if [ "$scope" = "all" ]; then
+                        for s in $ALL_SCOPES; do
+                            st="$(scope_type "$s")"
+                            check
+                            if rust_scoped_present "$(rust_scope_method "$verb")" "$st"; then
+                                :
+                            else
+                                fail "rust: .$verb missing from $st (scoped)"
+                            fi
+                        done
+                        check_rust_return "$(rust_scope_method "$verb")" "scope" "$RS_SCOPES" "scoped in all scopes"
                     else
-                        fail "rust: .$verb missing from $stype (scoped)"
+                        check
+                        if rust_scoped_present "$(rust_scope_method "$verb")" "$stype"; then
+                            check_rust_return "$(rust_scope_method "$verb")" "scope" "$RS_SCOPES" "scoped in $stype"
+                        else
+                            fail "rust: .$verb missing from $stype (scoped)"
+                        fi
                     fi
                 fi
             fi
@@ -358,11 +398,23 @@ for verb in "${VERBS[@]}"; do
                     fi
                 fi
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
-                    check
-                    if ts_scoped_present "$(ts_name "$(scope_method "$verb")")" "$stype"; then
-                        check_ts_scoped_return "$verb" "$(ts_name "$(scope_method "$verb")")" "$stype"
+                    if [ "$scope" = "all" ]; then
+                        for s in $ALL_SCOPES; do
+                            st="$(scope_type "$s")"
+                            check
+                            if ts_scoped_present "$(ts_name "$(scope_method "$verb")")" "$st"; then
+                                check_ts_scoped_return "$verb" "$(ts_name "$(scope_method "$verb")")" "$st"
+                            else
+                                fail "ts: .$verb missing from $st interface (scoped)"
+                            fi
+                        done
                     else
-                        fail "ts: .$verb missing from $stype interface (scoped)"
+                        check
+                        if ts_scoped_present "$(ts_name "$(scope_method "$verb")")" "$stype"; then
+                            check_ts_scoped_return "$verb" "$(ts_name "$(scope_method "$verb")")" "$stype"
+                        else
+                            fail "ts: .$verb missing from $stype interface (scoped)"
+                        fi
                     fi
                 fi
             fi
@@ -384,11 +436,28 @@ for verb in "${VERBS[@]}"; do
                     fi
                 fi
                 if [ "$placement" = "both" ] || [ "$placement" = "scoped" ]; then
-                    check
-                    if py_scoped_present "$verb" "$scope"; then
-                        check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END" "$PY_SCOPE_FILE"
+                    if [ "$scope" = "all" ]; then
+                        for s in $ALL_SCOPES; do
+                            check
+                            if py_protocol_present "$verb" "$s"; then
+                                :
+                            else
+                                fail "py: .$verb missing from $(scope_type "$s")Protocol (scoped)"
+                            fi
+                        done
+                        check
+                        if py_scoped_present "$verb" "all"; then
+                            check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END" "$PY_SCOPE_FILE"
+                        else
+                            fail "py: .$verb missing from _Scope (runtime)"
+                        fi
                     else
-                        fail "py: .$verb missing from _SCOPE_VERBS[$scope] (scoped)"
+                        check
+                        if py_scoped_present "$verb" "$scope"; then
+                            check_py_return "$(scope_method "$verb")" "scope" "$PY_SCOPE_START" "$PY_SCOPE_END" "$PY_SCOPE_FILE"
+                        else
+                            fail "py: .$verb missing from _SCOPE_VERBS[$scope] (scoped)"
+                        fi
                     fi
                 fi
             fi

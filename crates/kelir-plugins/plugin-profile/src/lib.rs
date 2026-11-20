@@ -11,9 +11,13 @@ pub mod patch;
 
 #[path = "profile_state.flow.rs"]
 pub mod profile_state;
+#[path = "profile_state.run.rs"]
+pub mod profile_state_run;
 
 #[path = "synthetic_identity.flow.rs"]
 pub mod synthetic_identity;
+#[path = "synthetic_identity.run.rs"]
+pub mod synthetic_identity_run;
 
 pub use profile_state::{NamespaceRouter, ProfileCtx, ProfilePlugin};
 pub use synthetic_identity::{ProfileSyntheticFiles, SyntheticIdentityFile};

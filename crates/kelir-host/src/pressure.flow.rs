@@ -4,6 +4,8 @@ use std::sync::Mutex;
 use kelir_interface::host::{PressureEvent, PressureSubscription};
 use kelir_interface::plugin_model::PluginError;
 
+// TODO (L3) [hypervisor_driver]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) fn subscribe_pressure(
     watcher: &Mutex<Option<PressureSubscription>>,
 ) -> Result<PressureSubscription, PluginError> {
@@ -14,6 +16,8 @@ pub(crate) fn subscribe_pressure(
     ))
 }
 
+// TODO (L3) [hypervisor_driver]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) fn poll_pressure_events(
     watcher: &Mutex<Option<PressureSubscription>>,
 ) -> Result<Vec<PressureEvent>, PluginError> {

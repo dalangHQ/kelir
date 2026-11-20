@@ -3,8 +3,12 @@
 // see: cans/artifacts/diagrams/wire-plane.txt#USERSPACE-SMOLTCP-INGRESS-RING
 #[path = "fallback_transport.flow.rs"]
 pub mod fallback_transport;
-#[path = "host_bind.run.rs"]
+#[path = "host_bind.flow.rs"]
 pub mod host_bind;
+#[path = "host_bind.run.rs"]
+pub mod host_bind_run;
+#[path = "memory_handoff.flow.rs"]
+pub mod memory_handoff;
 #[path = "spsc_ring.flow.rs"]
 pub mod spsc_ring;
 
@@ -21,24 +25,6 @@ pub use Transport as StreamTransport;
 pub struct MemoryHandoff {
     fd: std::os::unix::io::OwnedFd,
     len: u64,
-}
-
-impl MemoryHandoff {
-    pub fn new(fd: std::os::unix::io::OwnedFd, len: u64) -> Self {
-        Self { fd, len }
-    }
-
-    pub fn fd(&self) -> &std::os::unix::io::OwnedFd {
-        &self.fd
-    }
-
-    pub fn len(&self) -> u64 {
-        self.len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
 }
 
 pub(crate) fn unsupported(op: &str) -> std::io::Error {
