@@ -1,7 +1,7 @@
 // see: cans/plugins/terminal-guard.md#Plugin-terminal-guard
 #![forbid(unsafe_code)]
 
-#[path = "notice_box.run.rs"]
+#[path = "notice_box.flow.rs"]
 pub mod notice_box;
 #[path = "service_terminal_guard.flow.rs"]
 pub mod service_terminal_guard;

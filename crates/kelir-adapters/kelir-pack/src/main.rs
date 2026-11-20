@@ -62,56 +62,9 @@ pub struct PackArgs {
     pub auth: Option<String>,
 }
 
-impl PackArgs {
-    pub fn is_remote(&self) -> bool {
-        self.registry.is_some()
-    }
-
-    pub fn from_argv(argv: &[String]) -> Result<Self, PackError> {
-        let mut args = Self::default();
-        let mut positionals: Vec<String> = Vec::new();
-        let mut i = 1;
-        while i < argv.len() {
-            match argv[i].as_str() {
-                "--registry" | "--namespace" | "--tag" | "--auth" => {
-                    i += 1;
-                    let value = argv.get(i).ok_or(PackError::Usage)?.clone();
-                    match argv[i - 1].as_str() {
-                        "--registry" => args.registry = Some(value),
-                        "--namespace" => args.namespace = Some(value),
-                        "--tag" => args.tag = Some(value),
-                        _ => args.auth = Some(value),
-                    }
-                }
-                _ => positionals.push(argv[i].clone()),
-            }
-            i += 1;
-        }
-        if args.is_remote() {
-            if args.tag.is_none() || positionals.len() != 1 {
-                return Err(PackError::Usage);
-            }
-            args.output = PathBuf::from(&positionals[0]);
-        } else {
-            if positionals.len() != 2 {
-                return Err(PackError::Usage);
-            }
-            args.manifest = Some(PathBuf::from(&positionals[0]));
-            args.output = PathBuf::from(&positionals[1]);
-        }
-        Ok(args)
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct RadixTree {
     pub inode_count: u32,
-}
-
-impl RadixTree {
-    pub fn new() -> Self {
-        Self::default()
-    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

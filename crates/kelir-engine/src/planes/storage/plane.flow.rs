@@ -7,7 +7,6 @@ use kelir_interface::storage::{CommitStats, FsReconcileRequest, ReconcilerOps, S
 
 use super::config::StorageConfig;
 use super::storage_quota::StorageQuota;
-use super::unbound_io::UnboundStorageIo;
 
 pub struct StoragePlane {
     workspace_root: PathBuf,
@@ -26,13 +25,14 @@ impl StoragePlane {
         sparse_upper: PathBuf,
         max_bytes: u64,
         max_inodes: u64,
+        io: Arc<dyn StorageIo>,
     ) -> Self {
         Self {
             workspace_root,
             sparse_upper_path: sparse_upper,
             tombstones: Arc::new(RwLock::new(HashSet::new())),
             quota: Arc::new(StorageQuota::new(max_bytes, max_inodes)),
-            io: Arc::new(UnboundStorageIo),
+            io,
             reconciler: OnceLock::new(),
             wiring: StorageConfig::default(),
             metrics: Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
@@ -61,11 +61,6 @@ impl StoragePlane {
 
     pub fn metrics(&self) -> &Arc<kelir_interface::telemetry::MetricRegistry> {
         &self.metrics
-    }
-
-    pub fn with_io(mut self, storage_io: Arc<dyn StorageIo>) -> Self {
-        self.io = storage_io;
-        self
     }
 
     pub fn storage_io(&self) -> Arc<dyn StorageIo> {
@@ -167,12 +162,5 @@ impl StoragePlane {
     #[cfg(not(unix))]
     pub fn sparse_upper_blocks(&self) -> u64 {
         0
-    }
-
-    // see: cans/05-storage-plane.md#Host-CoW-broker
-    pub fn sparse_upper_len(&self) -> u64 {
-        std::fs::metadata(&self.sparse_upper_path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0)
     }
 }

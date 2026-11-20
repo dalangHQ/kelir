@@ -1,8 +1,4 @@
 // see: cans/plugins/profile.md#Synthetic-inode-ownership-(profile)
-use std::path::Path;
-
-use kelir_interface::plugin_model::{FsInterposer, PluginError};
-use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 
 // see: cans/plugins/profile.md#Synthetic-inode-ownership-(profile)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -48,22 +44,5 @@ impl ProfileSyntheticFiles {
 
     pub fn files(&self) -> &[SyntheticIdentityFile] {
         &self.files
-    }
-}
-
-impl FsInterposer for ProfileSyntheticFiles {
-    fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
-        for file in &self.files {
-            if Path::new(&file.path) == path {
-                return Ok(Verdict::Patch(PatchPayload::FsInode {
-                    mode: file.mode,
-                    uid: 0,
-                    gid: 0,
-                    size: file.content.len() as u64,
-                    content: file.content.clone().into_bytes(),
-                }));
-            }
-        }
-        Ok(Verdict::Pass)
     }
 }

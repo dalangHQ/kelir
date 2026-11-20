@@ -1,0 +1,68 @@
+$schema: "test-plan/case/v1"
+case_id: "bp_05_python_from_config_loads_toml"
+title: "Python Sandbox.from_config loads a TOML profile from disk"
+domain: "bindings_py"
+target_tier: "unit"
+target_crate: "packages/py"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/profile.md#Inversion-of-Control-configuration-router"
+  statement: "Sandbox.from_config reads a TOML profile file from disk and exposes its session id and source path: the declarative profile feeds the identical types used by the SDK builders."
+  blast_radius_if_breached: "A Python program cannot boot from a declarative profile file, so TOML profiles are dead configuration."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts from_config returns a sandbox without reading the file (in-memory default)."
+  anti_slop_mitigation: "AS-01 asserts the session id comes from the file on disk (sess-toml), not from a default."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "sdk.python"
+    agent_id: "agt_bp_05"
+    trust: "reviewed"
+  initial_state:
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "sdk"
+  command: "Sandbox.from_config(str(profile_toml))"
+  input_params:
+    profile: "[session] id = 'sess-toml'"
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "sdk.python"
+    culprit: "none — profile loaded from disk"
+    remedy: "none required"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "profile.loaded"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: null
+
+anti_slop_assertions:
+  - rule: "AS-01"
+    verification: "assert sandbox.session_id() == 'sess-toml'; assert sandbox.source_path == str(profile);"

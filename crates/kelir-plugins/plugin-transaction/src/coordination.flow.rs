@@ -1,14 +1,11 @@
 // see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
 
-use async_trait::async_trait;
 use kelir_interface::plugin_model::LockBrokerCoordination;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    HCons, HNil, KelirPlugin, LifecycleCtx, LifecycleParticipant, MountScope, PipelineBinder,
-    PluginDeps,
+    HCons, HNil, KelirPlugin, LifecycleParticipant, MountScope, PipelineBinder, PluginDeps,
 };
 use plugin_db_proxy::{SqlProxyCtx, SqlProxyService};
 
@@ -457,44 +454,6 @@ impl KelirPlugin for TransactionPlugin {
     ) -> Box<dyn kelir_interface::plugin_model::AnyPlugin> {
         // see: cans/08-lifecycle.md#CoW-fork
         Box::new(Self::new(self.config.clone()))
-    }
-}
-
-// see: cans/plugins/transaction.md#Invariants-and-policy-(transaction)
-#[async_trait]
-impl LifecycleParticipant for TransactionPlugin {
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn on_pre_commit(&self, ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-        if !self.config.flush_fuse_before_commit {
-            return Err(PluginError::Halt("ESecurityViolation: flush_fuse_before_commit is required; disabling the pre-commit FUSE drain forfeits 2PC atomicity".to_string()));
-        }
-        // see: cans/08-lifecycle.md#Hypervisor-primitives
-        ctx.freeze_vcpus().await?;
-        ctx.drain_fuse(Duration::from_millis(self.config.timeout_ms))
-            .await?;
-        self.coordination.prepare_participants().await?;
-        Ok(())
-    }
-
-    // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
-    async fn on_post_commit(
-        &self,
-        ctx: &mut LifecycleCtx<'_>,
-        committed: bool,
-    ) -> Result<(), PluginError> {
-        if committed {
-            ctx.commit_broker_upper().await?;
-            self.coordination.issue_sql_commit().await?;
-            self.coordination.clear_active()?;
-        } else {
-            ctx.discard_broker_upper().await?;
-            self.coordination.abort_active().await?;
-        }
-        if self.config.flush_fuse_before_commit {
-            ctx.unfreeze_vcpus().await?;
-        }
-        Ok(())
     }
 }
 

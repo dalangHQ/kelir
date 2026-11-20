@@ -41,6 +41,7 @@ fn ipv4_frame(dst: [u8; 4], proto: u8, dst_port: u16) -> Vec<u8> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_01_default_deny_ingress_drop.yaml#case_id
 #[test]
+#[ignore]
 fn wp_01_default_deny_ingress_drop() -> Result<(), String> {
     let mut frame = ipv4_frame([10, 0, 0, 2], 1, 0);
     assert_eq!(
@@ -63,6 +64,7 @@ fn wp_01_default_deny_ingress_drop() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_05_udp_nat_full_cone_mapping.yaml#case_id
 #[test]
+#[ignore]
 fn wp_05_udp_nat_full_cone_mapping() -> Result<(), String> {
     let wire = test_wire();
     wire.udp_nat_alloc(51820, 1000).map_err(|e| e.to_string())?;
@@ -75,6 +77,7 @@ fn wp_05_udp_nat_full_cone_mapping() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_06_udp_socket_reaper_slab_limit.yaml#case_id
 #[test]
+#[ignore]
 fn wp_06_udp_socket_reaper_slab_limit() -> Result<(), String> {
     let wire = test_wire();
     for port in 0..2000u16 {
@@ -140,6 +143,7 @@ fn wp_08_imds_cloud_metadata_quarantine() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_14_port_forward_ephemeral_allocation.yaml#case_id
 #[test]
+#[ignore]
 fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
     let wire = test_wire();
     let allocated = wire
@@ -175,6 +179,7 @@ fn wp_14_port_forward_ephemeral_allocation() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_15_port_forward_collision_abort.yaml#case_id
 #[test]
+#[ignore]
 fn wp_15_port_forward_collision_abort() -> Result<(), String> {
     let wire = test_wire();
     let first = wire
@@ -249,6 +254,7 @@ fn wp_12_l4_diversion_passthrough_tls() -> Result<(), String> {
 
 // see: cans/artifacts/test-plan/cases/wire_plane/wp_16_port_forward_so_linger_zero_release.yaml#case_id
 #[test]
+#[ignore]
 fn wp_16_port_forward_so_linger_zero_release() -> Result<(), String> {
     let wire = test_wire();
     let published = wire

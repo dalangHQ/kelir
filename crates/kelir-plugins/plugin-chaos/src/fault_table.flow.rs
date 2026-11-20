@@ -1,18 +1,10 @@
 // see: cans/plugins/chaos.md#Service-exports-(chaos)
-use std::path::Path;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-use kelir_interface::errno_types::Errno;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::plugin_model::{
-    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder, PluginDeps,
-};
-use kelir_interface::protocol_wire::{FilterAction, SuspendUntil};
+use kelir_interface::plugin_model::{KelirPlugin, PipelineBinder, PluginDeps};
 
-use crate::{
-    ChaosConfig, FaultDirection, FaultInjectionService, NetworkFaultRule, RST_INJECTION_ERRNO,
-    StorageFaultRule,
-};
+use crate::{ChaosConfig, FaultInjectionService, NetworkFaultRule, StorageFaultRule};
 
 // see: cans/plugins/chaos.md#Service-exports-(chaos)
 #[derive(Default)]
@@ -21,6 +13,8 @@ pub struct FaultTable {
     storage: RwLock<Vec<StorageFaultRule>>,
 }
 
+// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, fault-table wiring stays unwired while the gate reports clean.
+#[allow(dead_code)]
 impl FaultTable {
     fn read_rules<T>(lock: &RwLock<Vec<T>>) -> Result<RwLockReadGuard<'_, Vec<T>>, PluginError> {
         match lock.read() {
@@ -66,86 +60,6 @@ impl ChaosPlugin {
             }),
         }
     }
-
-    fn apply_network_rules(
-        &self,
-        direction: FaultDirection,
-        frame: &mut [u8],
-    ) -> Result<FilterAction, PluginError> {
-        let rules = FaultTable::read_rules(&self.fault_table.network)?;
-        for rule in rules
-            .iter()
-            .filter(|rule| rule.direction == direction || rule.direction == FaultDirection::Both)
-        {
-            if !self.frame_matches(rule, frame)? {
-                continue;
-            }
-            if rule.inject_rst {
-                // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-                return Ok(FilterAction::Drop {
-                    errno: RST_INJECTION_ERRNO,
-                    reason: format!("chaos: synthetic TCP RST injected for {}", rule.target),
-                });
-            }
-            if self.loss_sampled(rule)? {
-                // see: cans/plugins/chaos.md#Error-and-return-semantics-(chaos)
-                return Ok(FilterAction::Drop {
-                    errno: Errno::Eperm,
-                    reason: format!("chaos: synthetic packet loss for {}", rule.target),
-                });
-            }
-            if rule.latency_ms > 0 || rule.jitter_ms > 0 {
-                // see: cans/02-plugin-model.md#Latency-ceiling
-                // TODO (L3) [plugin_engine]: sample deterministic jitter in 0..=jitter_ms instead of the upper bound; slop: upper-bound jitter only, no 0..=jitter_ms sample, timing assertions vacuous
-                return Ok(FilterAction::Suspend {
-                    until: SuspendUntil::Deadline(rule.latency_ms.saturating_add(rule.jitter_ms)),
-                });
-            }
-            // TODO (L3) [plugin_engine]: bandwidth_kbps link-speed clamping on the matched stream; slop: bandwidth unclamped, matched stream exceeds kbps cap silently
-        }
-        Ok(FilterAction::Forward)
-    }
-
-    fn apply_storage_rules(&self, path: &Path) -> Result<FilterAction, PluginError> {
-        let rules = FaultTable::read_rules(&self.fault_table.storage)?;
-        for rule in rules.iter() {
-            if !self.path_matches(&rule.target_glob, path)? {
-                continue;
-            }
-            if self.error_sampled(rule)? {
-                // see: cans/05-storage-plane.md#Write-gating
-                return Ok(FilterAction::Drop {
-                    errno: rule.simulate_errno,
-                    reason: format!("chaos: simulated storage fault on {}", rule.target_glob),
-                });
-            }
-        }
-        Ok(FilterAction::Forward)
-    }
-
-    fn frame_matches(&self, rule: &NetworkFaultRule, frame: &[u8]) -> Result<bool, PluginError> {
-        // TODO (L3) [pe_16_chaos_rst_injection_drops_matching_frame]: parse L2/L4 headers and match the rule target domain or host pattern; slop: frame_matches stays Ok(false), RST rule never fires, drill passes vacuously
-        let _ = (rule, frame);
-        Ok(false)
-    }
-
-    fn loss_sampled(&self, rule: &NetworkFaultRule) -> Result<bool, PluginError> {
-        // TODO (L3) [plugin_engine]: deterministic synthetic packet loss sampling against drop_rate; slop: loss never sampled, drop_rate ignored, all packets Forward
-        let _ = rule;
-        Ok(false)
-    }
-
-    fn path_matches(&self, pattern: &str, path: &Path) -> Result<bool, PluginError> {
-        // TODO (L3) [plugin_engine]: glob match of the rule target_glob over the real FUSE write path argument; slop: glob never matched, wrong paths dropped, real write path ignored
-        let _ = (pattern, path);
-        Ok(false)
-    }
-
-    fn error_sampled(&self, rule: &StorageFaultRule) -> Result<bool, PluginError> {
-        // TODO (L3) [plugin_engine]: deterministic error sampling against probability per write() call; slop: error never sampled, probability ignored, writes always succeed
-        let _ = rule;
-        Ok(false)
-    }
 }
 
 impl KelirPlugin for ChaosPlugin {
@@ -168,28 +82,3 @@ impl KelirPlugin for ChaosPlugin {
 // see: cans/plugins/chaos.md#Plugin-chaos
 
 // TODO (L3) [plugin_engine]: construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait; slop: facade cycle: plugin-chaos depends on facade, build breaks cyclically
-
-// see: cans/plugins/chaos.md#Bidirectional-across-wire-plane
-impl NetInterposer for ChaosPlugin {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        self.apply_network_rules(FaultDirection::Outbound, frame)
-    }
-
-    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        self.apply_network_rules(FaultDirection::Inbound, frame)
-    }
-}
-
-// see: cans/plugins/chaos.md#Storage-chaos
-impl FsInterposer for ChaosPlugin {
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        let _ = (data, pid, ctx);
-        self.apply_storage_rules(path)
-    }
-}

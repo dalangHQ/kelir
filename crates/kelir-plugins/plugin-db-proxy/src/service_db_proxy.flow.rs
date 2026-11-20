@@ -4,7 +4,23 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use kelir_interface::plugin_model::PluginError;
+use std::sync::Arc;
+
+use kelir_interface::errno_types::Errno;
+use kelir_interface::plugin_model::{
+    KelirPlugin, MountScope, NetInterposer, PipelineBinder, PluginError, StreamFrameSink,
+    VirtioDevice,
+};
+use kelir_interface::protocol_wire::{FilterAction, StreamKind, Verdict};
+
+use crate::pgwire_db_proxy::PgFrameDescriptor;
+use crate::reassembler_wire::{
+    FlowKey, NetDirection, NetPlaneState, SegmentOutcome, TCP_FLAG_RST, parse_tcp_segment,
+};
+use crate::sqlite_db_proxy::SqliteBridge;
+use crate::{
+    DbProxyConfig, DbProxyPlugin, EphemeralCredentials, PgWireRewrite, SqlProxyCtx, SqliteOverVsock,
+};
 
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,5 +148,205 @@ impl SqlProxyService for SqlProxy {
         let _ = marker;
         // TODO (L3) [relational_transaction]: inject a transparent SQL SAVEPOINT marker into active pgwire connections per cans/plugins/transaction.md; slop: SAVEPOINT never injected, ROLLBACK TO has no marker to restore
         Ok(())
+    }
+}
+
+impl Default for PgWireRewrite {
+    fn default() -> Self {
+        Self {
+            listen_port: 5432,
+            upstream: String::new(),
+            schema_rewrites: Vec::new(),
+            max_rewrites_per_conn: 3,
+        }
+    }
+}
+
+impl Default for SqliteOverVsock {
+    fn default() -> Self {
+        Self {
+            guest_socket: "/run/kelir/db.sock".into(),
+            host_path: String::new(),
+        }
+    }
+}
+
+impl Default for EphemeralCredentials {
+    fn default() -> Self {
+        Self {
+            placeholder: String::new(),
+            ttl_seconds: 60,
+        }
+    }
+}
+
+impl DbProxyPlugin {
+    pub fn new() -> Self {
+        Self {
+            config: DbProxyConfig::default(),
+            proxy: Arc::new(SqlProxy::new(SqlDialect::Postgres)),
+            net: Arc::new(NetPlaneState::new()),
+        }
+    }
+
+    pub fn with_config(mut self, config: DbProxyConfig) -> Self {
+        if let Some(rule) = config.postgres.schema_rewrites.first() {
+            self.proxy.set_rewrite_target(&rule.to_schema);
+        }
+        self.config = config;
+        self
+    }
+
+    // see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
+    pub fn sqlite_bridge(&self) -> SqliteBridge {
+        SqliteBridge::new(Arc::clone(&self.proxy))
+    }
+
+    fn handle_pgwire_frame(
+        &self,
+        descriptor: PgFrameDescriptor,
+    ) -> Result<FilterAction, PluginError> {
+        let _ = descriptor;
+        // TODO (L3) [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against schema_rewrites, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
+        Ok(FilterAction::Forward)
+    }
+
+    // see: cans/07-wire-plane.md#Wire-architecture
+    pub(crate) fn intercept_ethernet_frame(
+        &self,
+        direction: NetDirection,
+        frame: &mut [u8],
+    ) -> Result<FilterAction, PluginError> {
+        let Some(segment) = parse_tcp_segment(frame) else {
+            return Ok(FilterAction::Forward);
+        };
+        // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+        let (client, server, diverted) = match direction {
+            NetDirection::GuestToUpstream => (
+                segment.src,
+                segment.dst,
+                segment.dst.port() == self.config.postgres.listen_port,
+            ),
+            NetDirection::UpstreamToGuest => (
+                segment.dst,
+                segment.src,
+                segment.src.port() == self.config.postgres.listen_port,
+            ),
+        };
+        if !diverted {
+            return Ok(FilterAction::Forward);
+        }
+        let key = FlowKey { client, server };
+        let mut flows = self.net.lock_flows()?;
+        if segment.flags & TCP_FLAG_RST != 0 {
+            // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
+            flows.remove(&key);
+            return Ok(FilterAction::Forward);
+        }
+        // TODO (L3) [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
+        let state = flows.entry(key).or_default();
+        match state.reassembly.push_segment(&segment)? {
+            SegmentOutcome::Dropped => Ok(FilterAction::Drop {
+                errno: Errno::Eperm,
+                reason:
+                    "db-proxy: reassembly carryover saturated; silent discard awaits retransmit"
+                        .into(),
+            }),
+            SegmentOutcome::Forwarded => Ok(FilterAction::Forward),
+            SegmentOutcome::Stream(bytes) => match direction {
+                NetDirection::GuestToUpstream => {
+                    let mut action = FilterAction::Forward;
+                    for descriptor in state.decoder.push(&bytes)? {
+                        action = self.handle_pgwire_frame(descriptor)?;
+                        if action != FilterAction::Forward {
+                            break;
+                        }
+                    }
+                    Ok(action)
+                }
+                // TODO (L3) [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
+                NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
+            },
+        }
+    }
+}
+
+impl Default for DbProxyPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SqlProxyCtx {
+    // see: cans/02-plugin-model.md#KelirPlugin-trait
+    pub fn service(&self) -> &Arc<SqlProxy> {
+        &self.proxy
+    }
+
+    // see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
+    pub async fn rewrite_target(&self) -> String {
+        self.proxy.rewrite_target()
+    }
+}
+
+// see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
+// see: cans/11-protocol.md#Kind-registration
+struct DbSqliteStreamSink {
+    bridge: SqliteBridge,
+}
+
+// see: cans/11-protocol.md#Kind-registration
+impl StreamFrameSink for DbSqliteStreamSink {
+    fn on_stream_frame(
+        &self,
+        stream_id: u32,
+        kind: u16,
+        _flags: u8,
+        payload: &[u8],
+    ) -> Result<(), PluginError> {
+        if kind != StreamKind::DbSqlite as u16 {
+            return Ok(());
+        }
+        let mut frame = payload.to_vec();
+        match self.bridge.on_client_bytes(stream_id, &mut frame)? {
+            Verdict::Pass => Ok(()),
+            Verdict::Drop { errno, reason } => {
+                Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
+            }
+            Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
+            _ => Err(PluginError::Halt(
+                "db-proxy stream suspend/patch verdict pending (L3)".into(),
+            )),
+        }
+    }
+}
+
+impl KelirPlugin for DbProxyPlugin {
+    type Context = SqlProxyCtx;
+    fn context(&self) -> Self::Context {
+        SqlProxyCtx {
+            proxy: Arc::clone(&self.proxy),
+        }
+    }
+    fn name(&self) -> &'static str {
+        "db-proxy"
+    }
+    fn default_scope(&self) -> MountScope {
+        // see: cans/plugins/db-proxy.md#Crate-dependencies-(db-proxy)
+        MountScope::default().with_devices([VirtioDevice::Vsock, VirtioDevice::Net])
+    }
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    // see: cans/11-protocol.md#Kind-registration
+    fn register_interceptors(&self, pipeline: &mut dyn PipelineBinder) {
+        let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
+        pipeline.bind_net_scoped(net_stage, self.default_scope());
+        let sink: Arc<dyn StreamFrameSink> = Arc::new(DbSqliteStreamSink {
+            bridge: self.sqlite_bridge(),
+        });
+        pipeline.bind_stream_kind_scoped(
+            StreamKind::DbSqlite as u16,
+            sink,
+            MountScope::default().with_stream_kinds([StreamKind::DbSqlite]),
+        );
     }
 }

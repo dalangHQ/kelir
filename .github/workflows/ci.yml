@@ -651,6 +651,8 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.5
       - name: Check Body Maturity (strict)
         run: just check-maturity
+      - name: Check packages maturity (contract/wiring/meat split)
+        run: just check-packages-maturity
       # L2 delta budget (net-new .flow.rs files per PR) vs the PR base.
       # Push events have no base_ref; the strict step above still gates them.
       - name: L2 delta budget vs PR base

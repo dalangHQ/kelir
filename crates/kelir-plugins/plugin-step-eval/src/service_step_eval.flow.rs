@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use kelir_interface::checkpoint::{CheckpointOps, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
-use kelir_interface::plugin_model::{HandlerCtx, PluginError};
+use kelir_interface::plugin_model::{HandlerCtx, KelirPlugin, MountScope, PluginError};
 use kelir_interface::protocol_wire::TrapEvent;
 use kelir_interface::telemetry::CausalDelta;
 
+use crate::StepEvalPlugin;
 use crate::step_dag::{StepAttribution, StepDag, StepDagConfig, StepDagError, StepDagStorage};
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
@@ -393,4 +394,39 @@ impl StepEvaluationCtx {
 // see: cans/plugins/step-eval.md#Error-and-return-semantics-(step-eval)
 pub fn dag_error_to_halt(error: StepDagError) -> PluginError {
     PluginError::Halt(error.to_string())
+}
+
+impl StepEvalPlugin {
+    // see: cans/plugins/step-eval.md#Plugin-step-eval
+    pub fn new(
+        ops: Arc<dyn kelir_interface::checkpoint::CheckpointOps>,
+        config: StepEvalConfig,
+    ) -> Self {
+        Self {
+            evaluator: Arc::new(StepEvaluator::new(ops, config, Vec::new())),
+        }
+    }
+
+    // see: cans/plugins/step-eval.md#Plugin-step-eval
+    pub fn evaluator(&self) -> &Arc<StepEvaluator> {
+        &self.evaluator
+    }
+}
+
+impl KelirPlugin for StepEvalPlugin {
+    type Context = StepEvaluationCtx;
+
+    fn context(&self) -> Self::Context {
+        StepEvaluationCtx {
+            evaluator: Arc::clone(&self.evaluator),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "step-eval"
+    }
+
+    fn default_scope(&self) -> MountScope {
+        MountScope::default()
+    }
 }

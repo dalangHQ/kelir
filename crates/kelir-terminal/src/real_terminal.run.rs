@@ -1,7 +1,5 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use kelir_interface::plugin_model::PluginError;
@@ -12,6 +10,8 @@ use crate::vt100::Vt100StateMachine;
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 #[derive(Debug, Clone, Copy, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct TerminalSanitizerConfig {
     pub(crate) drop_osc52: bool,
     pub(crate) strip_title: bool,
@@ -19,10 +19,14 @@ pub(crate) struct TerminalSanitizerConfig {
 
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 #[derive(Debug, Clone, Default)]
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct TerminalConfig {
     pub(crate) sanitizer: TerminalSanitizerConfig,
 }
 
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 pub(crate) struct RealTerminalOps {
     pub(crate) session_id: Mutex<Option<[u8; 16]>>,
     pub(crate) state: Mutex<Vt100StateMachine>,
@@ -31,6 +35,8 @@ pub(crate) struct RealTerminalOps {
     pub(crate) config: Mutex<TerminalConfig>,
 }
 
+// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+#[allow(dead_code)]
 impl RealTerminalOps {
     pub(crate) fn new(metrics: Arc<MetricRegistry>) -> Self {
         Self {
@@ -63,17 +69,15 @@ impl RealTerminalOps {
     }
 
     pub(crate) fn config(&self) -> TerminalConfig {
-        self.config
-            .lock()
-            .map(|guard| guard.clone())
-            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+        // TODO (L3) [terminal_plane]: return a clone of the live terminal config.; slop: config clone returns defaults, so a live config change never reaches the terminal.
+        TerminalConfig::default()
     }
 
     pub(crate) fn bound_session_id(&self) -> Result<[u8; 16], PluginError> {
-        self.session_id
-            .lock()
-            .map_err(|_| PluginError::Halt("terminal session lock poisoned".into()))?
-            .ok_or_else(|| PluginError::Halt("terminal ops not bound to a session".into()))
+        // TODO (L3) [terminal_plane]: return the session id bound by bind_session.; slop: session id defaults to zeros, so output is attributed to the wrong session.
+        Err(PluginError::Halt(
+            "TODO (L3): RealTerminalOps::bound_session_id needs the bound session id".into(),
+        ))
     }
 }
 
@@ -82,94 +86,67 @@ pub(crate) fn build_terminal_ops(metrics: Arc<MetricRegistry>) -> Arc<dyn Termin
 }
 
 impl TerminalOps for RealTerminalOps {
-    fn bind_session(&self, session_id: [u8; 16]) {
-        if let Ok(mut bound) = self.session_id.lock() {
-            *bound = Some(session_id);
-        }
+    fn bind_session(&self, _session_id: [u8; 16]) {
+        // TODO (L3) [terminal_plane]: bind the terminal ops to session_id.; slop: bind never records the id, so every later call acts on an unbound terminal.
     }
 
-    fn resize(&self, cols: u16, rows: u16) -> Result<(), PluginError> {
-        let mut state = self.lock_state()?;
-        state.resize(cols, rows);
-        Ok(())
+    fn resize(&self, _cols: u16, _rows: u16) -> Result<(), PluginError> {
+        // TODO (L3) [terminal_plane]: resize the VT100 state machine to cols by rows.; slop: resize is a no-op, so the VT100 matrix keeps the old size while the client believes it resized.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::resize needs the VT100 resize".into(),
+        ))
     }
 
-    fn feed(&self, bytes: &[u8]) -> Result<(), PluginError> {
-        let mut state = self.lock_state()?;
-        state.feed(bytes).inspect_err(|_| {
-            self.metrics.record_drop();
-        })
+    fn feed(&self, _bytes: &[u8]) -> Result<(), PluginError> {
+        // TODO (L3) [terminal_plane]: feed bytes into the VT100 state machine.; slop: feed drops the bytes, so typed input never reaches the state machine.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::feed needs the VT100 feed".into(),
+        ))
     }
 
     fn export_screen_matrix(&self) -> Result<Vec<u8>, PluginError> {
-        let state = self.lock_state()?;
-        Ok(crate::vt100::filter_ansi_shadow(&state.export()))
+        // TODO (L3) [terminal_plane]: export the VT100 screen matrix with the ANSI shadow stripped.; slop: export returns an empty matrix, so the screen looks blank while the guest keeps running.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::export_screen_matrix needs the screen export".into(),
+        ))
     }
 
     // L3-GAP: [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
-    fn read_from(&self, port: u32, cursor: u64) -> Result<(Vec<u8>, u64), PluginError> {
-        let segments = self.lock_segments()?;
-        let segment = segments
-            .get(&LogStream::Port(port))
-            .ok_or_else(|| PluginError::Halt("no log segment for port".into()))?;
-        if cursor > segment.head.0 {
-            return Err(PluginError::Halt("cursor beyond log head".into()));
-        }
-        let offset = usize::try_from(cursor)
-            .map_err(|_| PluginError::Halt("log cursor too large".into()))?;
-        Ok((segment.bytes[offset..].to_vec(), segment.head.0))
+    fn read_from(&self, _port: u32, _cursor: u64) -> Result<(Vec<u8>, u64), PluginError> {
+        // TODO (L3) [terminal_plane]: read the log segment for port from cursor and return the bytes with the new head.; slop: read returns empty bytes with an unchanged head, so replay replays nothing and the cursor never advances.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::read_from needs the log segment read".into(),
+        ))
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
     // see: cans/04-terminal-plane.md#Stream-replay
-    fn record_output(&self, stream: LogStream, bytes: &[u8]) -> Result<(), PluginError> {
-        self.append_stream_chunk(stream, bytes)?;
-        self.feed(bytes)
+    fn record_output(&self, _stream: LogStream, _bytes: &[u8]) -> Result<(), PluginError> {
+        // TODO (L3) [terminal_plane]: append bytes to the stream chunk and feed them to the VT100 state machine.; slop: output is never recorded, so the stream log stays empty while the screen shows output.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::record_output needs the stream append and feed".into(),
+        ))
     }
 
     // see: cans/04-terminal-plane.md#Stream-replay
-    fn append_stream_chunk(&self, stream: LogStream, chunk: &[u8]) -> Result<u64, PluginError> {
-        let session_id = self.bound_session_id()?;
-        let mut segments = self.lock_segments()?;
-        if let std::collections::hash_map::Entry::Vacant(entry) = segments.entry(stream) {
-            entry.insert(LogSegment::new(
-                stream,
-                crate::log_segment::session_log_path(&session_id, stream)?,
-            ));
-        }
-        let segment = segments
-            .get_mut(&stream)
-            .ok_or_else(|| PluginError::Halt("log segment missing after insert".into()))?;
-        let len = u64::try_from(chunk.len())
-            .map_err(|_| PluginError::Halt("log chunk too large".into()))?;
-        let new_head = segment.head.advance(len)?;
-        if let Some(parent) = segment.log_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| PluginError::Halt(format!("create session log dir: {e}")))?;
-        }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&segment.log_path)
-            .map_err(|e| PluginError::Halt(format!("open stream log: {e}")))?;
-        file.write_all(chunk)
-            .map_err(|e| PluginError::Halt(format!("append stream log: {e}")))?;
-        segment.head = new_head;
-        segment.bytes.extend_from_slice(chunk);
-        Ok(segment.head.0)
+    fn append_stream_chunk(&self, _stream: LogStream, _chunk: &[u8]) -> Result<u64, PluginError> {
+        // TODO (L3) [terminal_plane]: append chunk to the durable log segment for stream and return the new head.; slop: append returns a stale head, so the next replay starts from the wrong cursor.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::append_stream_chunk needs the durable log append".into(),
+        ))
     }
 
     fn output_filters(&self) -> (bool, bool) {
-        let config = self.config();
-        (config.sanitizer.drop_osc52, config.sanitizer.strip_title)
+        // TODO (L3) [terminal_plane]: return the configured OSC52-drop and title-strip sanitizer flags.; slop: flags always report false, so OSC52 and title sanitizing claim to be off while the config says on.
+        (false, false)
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: real-time VT100 escape sequence parsing and ANSI shadow stripping during feed; sanitizer flags are stored but not applied in place.; slop: OSC 52 payload bytes stay in buffer, sanitizing claimed from flags alone
-    fn apply_wiring(&self, wiring: &TerminalWiring) -> Result<(), PluginError> {
-        let mut config = self.lock_config()?;
-        config.sanitizer.drop_osc52 = wiring.drop_osc52;
-        config.sanitizer.strip_title = wiring.strip_title;
-        Ok(())
+    // TODO (L3) [tp_03_ansi_sanitizer_osc52_clipboard_drop]: real-time VT100 escape sequence parsing and ANSI shadow stripping during feed; sanitizer flags are stored but not applied in place.; slop: OSC 52 payload bytes stay in buffer, sanitizing claimed from flags alone.
+    fn apply_wiring(&self, _wiring: &TerminalWiring) -> Result<(), PluginError> {
+        // TODO (L3) [terminal_plane]: store the sanitizer flags from wiring in the terminal config.; slop: flags are never stored, so apply_wiring reports success while sanitizing stays off.
+        Err(PluginError::Halt(
+            "TODO (L3): TerminalOps::apply_wiring needs the sanitizer flag store".into(),
+        ))
     }
 }

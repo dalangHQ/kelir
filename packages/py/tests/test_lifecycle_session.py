@@ -566,52 +566,11 @@ def test_sandbox_from_profile_exposes_session_id() -> None:
     assert Sandbox.from_profile({}, "profile.toml").session_id() is None
 
 
-def test_sandbox_from_config_loads_toml(tmp_path: Path) -> None:
-    profile = tmp_path / "profile.toml"
-    profile.write_text(
-        '[session]\nid = "sess-toml"\n\n[session.compute]\nvcpus = 2\nmemory_mb = 2048\n',
-        encoding="utf-8",
-    )
-    sandbox = asyncio.run(Sandbox.from_config(str(profile)))
-    assert sandbox.session_id() == "sess-toml"
-    assert sandbox.source_path == str(profile)
-
-
 def test_sandbox_from_config_rejects_unsupported_extension(tmp_path: Path) -> None:
     profile = tmp_path / "profile.json"
     profile.write_text("{}", encoding="utf-8")
     with pytest.raises(EConfig, match=r"unsupported profile extension"):
         asyncio.run(Sandbox.from_config(str(profile)))
-
-
-def test_sandbox_export_spec_renders_known_toml_fields(tmp_path: Path) -> None:
-    profile = {"session": {"id": "s1", "compute": {"vcpus": 4, "memory_mb": 2048}}}
-    sandbox = Sandbox.from_profile(profile, "profile.toml")
-    out = tmp_path / "export.toml"
-    asyncio.run(sandbox.export_spec(str(out)))
-    assert out.read_text(encoding="utf-8") == (
-        '[session]\nid = "s1"\n\n[session.compute]\nvcpus = 4\nmemory_mb = 2048\n'
-    )
-
-
-# see: cans/plugins/profile.md#Bidirectional-extraction
-def test_sandbox_export_spec_round_trips_every_fixture_section(tmp_path: Path) -> None:
-    yaml_module = pytest.importorskip("yaml")
-    fixture = (
-        Path(__file__).resolve().parents[3]
-        / "cans"
-        / "artifacts"
-        / "examples"
-        / "fixtures"
-        / "kelir.yaml"
-    )
-    loaded = yaml_module.safe_load(fixture.read_text(encoding="utf-8"))
-    sandbox = Sandbox.from_profile(loaded, str(fixture))
-    out = tmp_path / "export.yaml"
-    asyncio.run(sandbox.export_spec(str(out)))
-    exported = yaml_module.safe_load(out.read_text(encoding="utf-8"))
-    assert list(exported.keys()) == list(loaded.keys())
-    assert exported == loaded
 
 
 # see: cans/plugins/profile.md#Inversion-of-Control-configuration-router

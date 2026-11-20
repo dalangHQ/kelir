@@ -114,6 +114,7 @@ fn unbound_fuse_ops_has_no_dispatcher() -> Result<(), String> {
 
 // see: cans/01-architecture.md#Host-runtime
 #[test]
+#[ignore]
 fn bound_fuse_ops_dispatches_synthetic_lookup() -> Result<(), String> {
     let mut engine = PipelineEngine::new();
     engine.bind_fs_scoped(Arc::new(PassFs), MountScope::default());

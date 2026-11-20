@@ -7,6 +7,8 @@ use kelir_interface::errno_types::Errno;
 pub mod interpreter;
 #[path = "state.flow.rs"]
 pub mod state;
+#[path = "state.run.rs"]
+pub mod state_run;
 #[path = "wx_token.flow.rs"]
 pub mod wx_token;
 

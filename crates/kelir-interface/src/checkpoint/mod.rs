@@ -3,6 +3,8 @@
 pub mod graph;
 #[path = "ops.rs"]
 pub mod ops;
+#[path = "ops.flow.rs"]
+pub mod ops_flow;
 
 pub use graph::{CheckpointNode, ManifestGraph, PidLineage};
 pub use ops::CheckpointOps;

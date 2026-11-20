@@ -1,13 +1,10 @@
 // see: cans/plugins/taint.md#Plugin-taint
-use std::path::Path;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use kelir_interface::plugin_model::{
-    FsInterposer, HandlerCtx, KelirPlugin, NetInterposer, PipelineBinder, PluginDeps, PluginError,
+    FsInterposer, KelirPlugin, NetInterposer, PipelineBinder, PluginDeps, PluginError,
     TrapInterposer,
 };
-use kelir_interface::protocol_wire::{FilterAction, TrapEvent, Verdict};
 
 use crate::service_taint::{ByteRange, TaintTracker, TaintTrackingService};
 
@@ -80,43 +77,5 @@ impl KelirPlugin for TaintPlugin {
         pipeline.bind_fs_scoped(fs_stage, self.default_scope());
         let net_stage: Arc<dyn NetInterposer> = Arc::new(self.clone());
         pipeline.bind_net_scoped(net_stage, self.default_scope());
-    }
-}
-
-// see: cans/02-plugin-model.md#KelirPlugin-trait
-#[async_trait]
-impl TrapInterposer for TaintPlugin {
-    async fn on_trap(&self, event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        let _ = event;
-        // TODO (L3) [governance_tools]: propagate FUSE-read taint labels into execve argv/envp spans; slop: tainted reads execute unflagged; argv/envp carry no taint labels.
-        Ok(Verdict::Pass)
-    }
-}
-
-impl FsInterposer for TaintPlugin {
-    fn on_fs_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
-        let _ = path;
-        // TODO (L3) [governance_tools]: label the read span when the source carries untrusted ingress; slop: reads from untrusted ingress run unlabeled; downstream spans miss the taint.
-        Ok(buffer.to_vec())
-    }
-
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        let _ = (path, data, pid, ctx);
-        // TODO (L3) [governance_tools]: propagate taint labels into written bytes before the verdict; slop: tainted writes reach the verdict unlabeled; the gate cannot see the taint.
-        Ok(FilterAction::Forward)
-    }
-}
-
-impl NetInterposer for TaintPlugin {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        let _ = frame;
-        // TODO (L3) [governance_tools]: hold egress spans that overlap a taint label for escalation; slop: tainted egress leaves without escalation; exfiltration spans pass unheld.
-        Ok(FilterAction::Forward)
     }
 }

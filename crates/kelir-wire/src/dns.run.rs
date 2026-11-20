@@ -5,11 +5,11 @@ use std::sync::{Arc, RwLock};
 
 use kelir_engine::dispatch_plugin::PipelineEngine;
 use kelir_interface::plugin_model::PluginError;
-use kelir_interface::wire::dns::{
-    DnsOps, DnsQuery, DnsRcode, DnsResponse, DnsVerdict, RESOLV_CONF_PATH,
-};
+use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::net::{SYNTHETIC_DNS_GATEWAY_IP, WireWiring};
 
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) struct RealDnsOps {
     engine: Arc<PipelineEngine>,
     synthetic_dns_ip: Ipv4Addr,
@@ -22,7 +22,8 @@ impl RealDnsOps {
         Self {
             engine,
             synthetic_dns_ip: SYNTHETIC_DNS_GATEWAY_IP,
-            resolver_nameservers: host_resolver_nameservers(),
+            // TODO (L3) [wire_plane]: track the host resolver nameservers from /etc/resolv.conf.; slop: nameservers never tracked, queries forward to a stale or empty upstream set.
+            resolver_nameservers: Vec::new(),
             rules: RwLock::new(Vec::new()),
         }
     }
@@ -36,111 +37,60 @@ impl DnsOps for RealDnsOps {
     // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
     // see: cans/07-wire-plane.md#DNS-policy-filter
     // see: cans/07-wire-plane.md#on-dns-query-mediates-domain-resolution-before-packet-egress
-    fn resolve_query(&self, query: &mut DnsQuery) -> Result<DnsResponse, PluginError> {
-        // TODO (L3) [wire_plane]: resolve the querying guest PID from the socket table instead of pid 0; slop: dns-query ring runs with pid 0, per-PID DNS policy blind
-        match self
-            .engine
-            .dispatch_dns_query(0, &query.name, query.qtype)?
-        {
-            DnsVerdict::Forward => {}
-            // see: cans/07-wire-plane.md#DNS-policy-filter
-            DnsVerdict::Sinkhole { rcode } => {
-                // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
-                let mut response = DnsResponse {
-                    wire_bytes: Vec::new(),
-                    rcode: DnsRcode::NxDomain,
-                    edns_downgraded: false,
-                };
-                response.downgrade_edns0();
-                let _ = rcode;
-                return Ok(response);
-            }
-        }
-        let blocked = {
-            let rules = self
-                .rules
-                .read()
-                .map_err(|_| PluginError::Halt("dns sinkhole rules lock poisoned".into()))?;
-            !sinkhole_allows(&rules, &query.name)
-        };
-        if blocked {
-            // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
-            let mut response = DnsResponse {
-                wire_bytes: Vec::new(),
-                rcode: DnsRcode::NxDomain,
-                edns_downgraded: false,
-            };
-            response.downgrade_edns0();
-            return Ok(response);
-        }
-        // see: cans/07-wire-plane.md#EDNS0-downgrade
-        query.downgrade_edns0();
-        let mut response = DnsResponse {
-            wire_bytes: Vec::new(),
-            rcode: DnsRcode::ServFail,
-            edns_downgraded: false,
-        };
-        response.downgrade_edns0();
+    fn resolve_query(&self, _query: &mut DnsQuery) -> Result<DnsResponse, PluginError> {
+        // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
+        // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: relay the query to the live upstream resolver; ServFail is the answer until the relay is wired; slop: resolv.conf change ignored, stale upstream kept
-        Ok(response)
-    }
-
-    fn resolve_synthetic_dns(&self, payload: &[u8]) -> Result<DnsResponse, PluginError> {
-        // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: parse the query, apply the sinkhole rules, forward to the tracked nameservers, EDNS0-downgrade the response; slop: resolv.conf change ignored, stale upstream kept
-        let _ = (payload, &self.rules, &self.synthetic_dns_ip);
-        if self.resolver_nameservers.is_empty() {
-            return Err(PluginError::Halt(
-                "DNS resolver pending (L3): no nameservers tracked from /etc/resolv.conf".into(),
-            ));
-        }
+        // TODO (L3) [wire_plane]: run the dns-query ring, apply the sinkhole rules, and relay to the upstream resolver.; slop: queries bypass the dns-query ring and sinkhole, blocked names resolve upstream.
         Err(PluginError::Halt(
-            "DNS resolver pending (L3): query parse and upstream forward".into(),
+            "TODO (L3): DnsOps::resolve_query needs the ring, sinkhole and upstream relay".into(),
         ))
     }
 
-    fn apply_wiring(&self, wiring: &WireWiring) {
-        if let Ok(mut rules) = self.rules.write() {
-            *rules = wiring.sinkhole.rules.clone();
-        }
+    fn resolve_synthetic_dns(&self, _payload: &[u8]) -> Result<DnsResponse, PluginError> {
+        // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: parse the query, apply the sinkhole rules, forward to the tracked nameservers, EDNS0-downgrade the response; slop: resolv.conf change ignored, stale upstream kept
+        // TODO (L3) [wire_plane]: parse the query, apply the sinkhole rules, and forward to the tracked nameservers.; slop: synthetic DNS forwards unparsed queries past the sinkhole to upstream.
+        Err(PluginError::Halt(
+            "TODO (L3): DnsOps::resolve_synthetic_dns needs the query parse and upstream forward"
+                .into(),
+        ))
+    }
+
+    fn apply_wiring(&self, _wiring: &WireWiring) {
+        // TODO (L3) [wire_plane]: replace the sinkhole rules with the rules from wiring.; slop: placeholder sinkhole rules stay live, the wired blocklist never enforced.
     }
 }
 
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
 // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: reload nameservers via inotify when /etc/resolv.conf changes; slop: resolv.conf change ignored, stale upstream kept
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 fn host_resolver_nameservers() -> Vec<IpAddr> {
-    std::fs::read_to_string(RESOLV_CONF_PATH)
-        .map(|text| parse_resolv_conf_nameservers(&text))
-        .unwrap_or_default()
+    // TODO (L3) [wire_plane]: read the nameservers from /etc/resolv.conf.; slop: resolver reads an empty nameserver list, every query fails or falls back silently.
+    Vec::new()
 }
 
 // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
-fn parse_resolv_conf_nameservers(text: &str) -> Vec<IpAddr> {
-    text.lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            match (fields.next(), fields.next()) {
-                (Some("nameserver"), Some(addr)) => addr.parse().ok(),
-                _ => None,
-            }
-        })
-        .collect()
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
+fn parse_resolv_conf_nameservers(_text: &str) -> Vec<IpAddr> {
+    // TODO (L3) [wire_plane]: parse the nameserver lines from the resolv.conf text.; slop: nameserver lines never parsed, the resolver keeps an empty upstream set.
+    Vec::new()
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
 // see: cans/07-wire-plane.md#Sinkhole-rules
-fn sinkhole_allows(rules: &[kelir_interface::wire::net::SinkholeRule], name: &str) -> bool {
-    for rule in rules {
-        if rule.host == "*" || host_matches(&rule.host, name) {
-            return rule.allow;
-        }
-    }
-    true
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
+fn sinkhole_allows(_rules: &[kelir_interface::wire::net::SinkholeRule], _name: &str) -> bool {
+    // TODO (L3) [wire_plane]: decide whether name is allowed by the first matching sinkhole rule.; slop: allow check never runs, sinkholed names resolve as allowed.
+    false
 }
 
 // see: cans/07-wire-plane.md#Sinkhole-rules
-fn host_matches(pattern: &str, name: &str) -> bool {
-    pattern == name
-        || name
-            .strip_suffix(pattern)
-            .is_some_and(|head| head.ends_with('.'))
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
+fn host_matches(_pattern: &str, _name: &str) -> bool {
+    // TODO (L3) [wire_plane]: decide whether name matches the sinkhole host pattern.; slop: pattern match never runs, sinkhole rules match nothing.
+    false
 }

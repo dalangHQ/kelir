@@ -1,14 +1,13 @@
 // see: cans/plugins/mcp.md#Service-exports-(mcp)
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
-    ConsoleInterposer, FsInterposer, HandlerCtx, KelirPlugin, LifecycleCtx, LifecycleParticipant,
-    MountScope, PipelineBinder, PluginDeps, StreamFrameSink, TrapInterposer, VirtioDevice,
+    ConsoleInterposer, FsInterposer, KelirPlugin, MountScope, PipelineBinder, PluginDeps,
+    StreamFrameSink, TrapInterposer, VirtioDevice,
 };
-use kelir_interface::protocol_wire::{FilterAction, ProcessExit, StreamKind, TrapEvent, Verdict};
+use kelir_interface::protocol_wire::StreamKind;
 use kelir_interface::runtime_block::block_on;
 
 use crate::ast::{JsonRpcId, parse_json_rpc_request};
@@ -211,16 +210,6 @@ impl KelirPlugin for McpPlugin {
     }
 }
 
-// see: cans/02-plugin-model.md#KelirPlugin-trait
-
-#[async_trait]
-impl LifecycleParticipant for McpPlugin {
-    async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        // L3-GAP: [governance_tools]: set up the JSON-RPC transport over MCP_CONSOLE and advertise capabilities per cans/plugins/mcp.md; slop: transport unbuilt, capabilities unadvertised, client cannot call tools
-        Ok(())
-    }
-}
-
 // see: cans/plugins/mcp.md#MCP-hook-wiring
 #[async_trait]
 impl ConsoleInterposer for McpPlugin {
@@ -234,46 +223,5 @@ impl ConsoleInterposer for McpPlugin {
         let _ = port;
         // L3-GAP: [governance_tools]: stream JSON-RPC frames from MCP_CONSOLE back to the MCP client per cans/plugins/mcp.md; slop: console frames never return, client hangs awaiting response
         Ok(chunk.to_vec())
-    }
-}
-
-// see: cans/plugins/mcp.md#MCP-hook-wiring
-impl FsInterposer for McpPlugin {
-    fn on_fs_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
-        let _ = path;
-        // L3-GAP: [governance_tools]: expose guest reads as the read_file tool per cans/plugins/mcp.md; slop: guest reads unexposed, read_file tool missing, reads bypass policy
-        Ok(buffer.to_vec())
-    }
-
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        let _ = (path, data, pid, ctx);
-        // L3-GAP: [governance_tools]: expose guest writes as the write_file tool per cans/plugins/mcp.md; slop: guest writes unexposed, write_file tool missing, writes bypass policy
-        Ok(FilterAction::Forward)
-    }
-}
-
-// see: cans/plugins/mcp.md#MCP-hook-wiring
-#[async_trait]
-impl TrapInterposer for McpPlugin {
-    async fn on_trap(&self, event: &TrapEvent, ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        let _ = (event, ctx);
-        // L3-GAP: [governance_tools]: correlate execute_command with the trapped execve per cans/plugins/mcp.md; slop: execute_command uncorrelated with trapped execve, command runs unobserved
-        Ok(Verdict::Pass)
-    }
-
-    async fn on_process_exit(
-        &self,
-        event: &ProcessExit,
-        ctx: &HandlerCtx,
-    ) -> Result<(), PluginError> {
-        let _ = (event, ctx);
-        // L3-GAP: [governance_tools]: emit MCP task completion events per cans/plugins/mcp.md; slop: completion events never emitted, client never learns task outcome
-        Ok(())
     }
 }

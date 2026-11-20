@@ -258,7 +258,7 @@
       - Host reclaim (madvise / hv_vm_unmap) gates on guest ack, not target set
       - Fork, snapshot, and heavy exec require prior convergence completion
   - Native checkpoint plane (kelir-engine::checkpoint)
-    - Crate topology: kelir-checkpoint owns RealCheckpointOps (manifest_graph.run.rs, step_slot.run.rs, compaction.run.rs); kelir-engine/src/planes/checkpoint/mod.rs is the thin L2 CheckpointPlane façade holding Arc<dyn CheckpointOps>
+    - Crate topology: kelir-checkpoint owns RealCheckpointOps (manifest_graph.flow.rs, compaction.flow.rs; step slots live in crates/kelir-plugins/plugin-step-eval/src/step_slot.flow.rs); kelir-engine/src/planes/checkpoint/mod.rs is the thin L2 CheckpointPlane façade holding Arc<dyn CheckpointOps>
     - Trait seam: kelir-interface::checkpoint::CheckpointOps (create_step, active_step, commit_step, rollback_step, branch_from, restore, head, lineage, monotonic_watermark_ns, compact)
     - CheckpointPlaneConfig is the canonical descriptor for checkpoint engine
     - Maps 1:1 to [checkpoint] table: boundaries, step_dag, rollback, lineage
@@ -313,7 +313,7 @@
       - Fork inherits the parent's guest clock at fork instant; children diverge
         - monotonically from that point
   - Host crash reaper
-    - Crate topology: kelir-host owns RealHostOps (reaper.run.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
+    - Crate topology: kelir-host owns RealHostOps (reaper.flow.rs); kelir-engine/src/planes/host/mod.rs is the thin L2 HostPlane façade holding Arc<dyn HostOps>
     - Trait seam: kelir-interface::host::HostOps (refresh_rss, lsm_status, pressure_level, pressure_level_typed, subscribe_pressure, poll_pressure_events, inflate_balloon, reclaim, arm_host_reaper)
     - HostPlaneConfig is the canonical descriptor for host-level subsystem
     - Maps 1:1 to [host] table: reaper, cgroups, security, catalog, telemetry

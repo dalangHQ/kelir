@@ -9,8 +9,6 @@ pub mod fuse;
 mod plane;
 #[path = "storage_quota.flow.rs"]
 pub mod storage_quota;
-#[path = "unbound_io.flow.rs"]
-mod unbound_io;
 
 pub use config::{IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation};
 pub use plane::StoragePlane;

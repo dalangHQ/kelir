@@ -122,7 +122,6 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             host_uid: 0,
         },
         shared_caches: vec![],
-        lock_broker: false,
         encapsulation: WorkspaceEncapsulation::Passthrough,
         dax_window: None,
     })

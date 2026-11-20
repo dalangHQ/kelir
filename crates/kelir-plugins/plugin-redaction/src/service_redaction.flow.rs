@@ -199,20 +199,3 @@ impl KelirPlugin for RedactionPlugin {
         pipeline.bind_fs_scoped(fs_stage, self.default_scope());
     }
 }
-
-impl FsInterposer for RedactionPlugin {
-    fn on_fs_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
-        self.service.mask_read(path, buffer)
-    }
-
-    fn on_fs_write(
-        &self,
-        path: &Path,
-        data: &mut [u8],
-        pid: u32,
-        ctx: &HandlerCtx,
-    ) -> Result<FilterAction, PluginError> {
-        let _ = (pid, ctx);
-        self.service.check_write(path, data)
-    }
-}

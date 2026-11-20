@@ -348,7 +348,6 @@ async fn build_runtime(
                 read_only: true,
             },
         ],
-        lock_broker: false,
         encapsulation: WorkspaceEncapsulation::Passthrough,
         dax_window: None,
     })

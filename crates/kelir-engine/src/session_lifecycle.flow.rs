@@ -309,9 +309,9 @@ impl Session {
             workspace_root.join("upper.img"),
             DEFAULT_WORKSPACE_QUOTA_BYTES,
             DEFAULT_WORKSPACE_QUOTA_INODES,
+            storage_io,
         )
-        .with_wiring(plane_wiring.storage)
-        .with_io(storage_io);
+        .with_wiring(plane_wiring.storage);
         if let Some(reconciler) = plane_wiring.reconciler {
             storage = storage.with_reconciler(reconciler);
         }
@@ -613,9 +613,9 @@ impl Session {
                 workspace_root.join("upper.img"),
                 DEFAULT_WORKSPACE_QUOTA_BYTES,
                 DEFAULT_WORKSPACE_QUOTA_INODES,
+                storage_io,
             )
-            .with_wiring(storage_wiring)
-            .with_io(storage_io);
+            .with_wiring(storage_wiring);
             if let Some(reconciler) = storage_reconciler {
                 storage = storage.with_reconciler(reconciler);
             }

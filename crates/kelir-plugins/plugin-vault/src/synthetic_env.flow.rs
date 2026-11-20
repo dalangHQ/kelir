@@ -1,8 +1,4 @@
 // see: cans/plugins/vault.md#Synthetic-inode-ownership-(vault)
-use std::path::Path;
-
-use kelir_interface::plugin_model::{FsInterposer, PluginError};
-use kelir_interface::protocol_wire::{PatchPayload, Verdict};
 
 // see: cans/plugins/vault.md#Synthetic-inode-ownership-(vault)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -48,22 +44,5 @@ impl VaultSyntheticFiles {
 
     pub fn files(&self) -> &[SyntheticEnvFile] {
         &self.files
-    }
-}
-
-impl FsInterposer for VaultSyntheticFiles {
-    fn on_fs_lookup(&self, path: &Path) -> Result<Verdict, PluginError> {
-        for file in &self.files {
-            if Path::new(&file.path) == path {
-                return Ok(Verdict::Patch(PatchPayload::FsInode {
-                    mode: file.mode,
-                    uid: 0,
-                    gid: 0,
-                    size: file.content.len() as u64,
-                    content: file.content.clone().into_bytes(),
-                }));
-            }
-        }
-        Ok(Verdict::Pass)
     }
 }

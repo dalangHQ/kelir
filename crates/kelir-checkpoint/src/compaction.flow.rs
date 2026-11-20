@@ -8,6 +8,8 @@ use kelir_interface::checkpoint::{CheckpointNode, ManifestGraph, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
 
+// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) fn compact(
     graph: &mut ManifestGraph,
     next_slot_id: &AtomicU64,
@@ -38,6 +40,8 @@ pub(crate) fn compact(
     Ok(compacted_id)
 }
 
+// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
 pub(crate) fn rollback(
     graph: &ManifestGraph,
     node_id: u64,

@@ -9,6 +9,8 @@ pub mod handshake;
 
 #[path = "mesh_state.flow.rs"]
 pub mod mesh_state;
+#[path = "mesh_state.run.rs"]
+pub mod mesh_state_run;
 
 pub use mesh_state::{MeshCtx, MeshHandle, MeshPlugin, VectorClock};
 
@@ -49,19 +51,4 @@ pub struct MeshConfig {
     pub mtls: bool,
     pub traceparent: TraceParentPropagation,
     pub listeners: Vec<PeerListener>,
-}
-
-// see: cans/artifacts/examples/multi-vm-swarm.rs#MeshConfig
-impl Default for MeshConfig {
-    fn default() -> Self {
-        Self {
-            peer_identity: PeerIdentity::Spiffe {
-                trust_domain: String::new(),
-                workload_prefix: String::new(),
-            },
-            mtls: false,
-            traceparent: TraceParentPropagation::InjectAndValidate,
-            listeners: Vec::new(),
-        }
-    }
 }
