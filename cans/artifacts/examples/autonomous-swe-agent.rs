@@ -440,6 +440,8 @@ async fn build_runtime(
     // see: cans/plugins/ledger.md#Plugin-ledger
     .plugin_instance(VaultPlugin::new())
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
+        strict: true,
+        ocsf_mapping: true,
         hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,

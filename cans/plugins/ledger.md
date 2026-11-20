@@ -59,6 +59,10 @@
         - When off, receipts flow to OTLP alone; no on-disk audit is written
         - When on, WAL records carry the same receipt correlation_token used
           - by the OTLP spans for cross-reference
+        - Sidecar records key_fingerprint and sequence across log rotations
+        - Startup fails closed on key_fingerprint mismatch or missing segments
+        - Supports KMS-backed signing keys (AWS, Azure, GCP, Vault) >= 32 bytes
+        - WAL segments use CRC32C framing with persisted ACK high-watermarks
     - OpenTelemetry
       - Default exporter: OTLP over gRPC and HTTP
         - Standard OTLP endpoints via OTEL_EXPORTER_OTLP_ENDPOINT
@@ -83,6 +87,10 @@
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.endpoint
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel.service_name
       - see: artifacts/examples/fixtures/kelir.yaml#plugins.ledger.otel
+    - Strict audit and drop accounting
+      - ledger.strict = true fails FUSE and ring ops closed on sink stall
+      - Tracks explicit drop classes: overflow, crc_corruption, mapper, auth_loss
+      - Binds fleet emergency kill-switch and break-glass events to OCSF 1.x ids
   - Error and return semantics (ledger)
     - Hook signature (ledger): see: artifacts/code/plugin-trait.rs
     - Finalize pin (SSOT-A1)

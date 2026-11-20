@@ -46,11 +46,16 @@ async function main() {
     }))
 
     // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
-    .use(mcp({}))
+    .use(mcp({ denyServerSampling: true }))
 
     .use(toolGuard({
       // see: cans/plugins/tool-guard.md#Immutable-schema-locking
       pinSchemas: true,
+      detectCrossServerExfil: true,
+      detectConfusableNames: true,
+      scanToolResults: true,
+      denySelfApproval: true,
+      holdTtlSeconds: 300,
       // see: cans/plugins/tool-guard.md#Call-quota
       maxInvocationsPerTrace: 50,
     }))
@@ -58,6 +63,8 @@ async function main() {
     // see: cans/plugins/ledger.md#Merkle-WAL
     .use(ledger({
       storePath: ".kelir/webhook.merkle.db",
+      strict: true,
+      ocsfMapping: true,
       merkleChain: true,
       otel: { propagateW3cTraceparent: true, serviceName: "kelir-webhook" },
     }))

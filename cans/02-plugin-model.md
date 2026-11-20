@@ -266,8 +266,10 @@
           - TCP RST or ICMP Port Unreachable, L7 gets a synthetic 403 JSON receipt)
         - The one host-response suppression is chaos loss injection, where the
           - driver suppresses the response (plugins/chaos.md)
-      - Patch payload is registered per ring: ExecveMutation, FsInode, FsPathRedirect,
-        - Custom(schema)
+        - Opt-in steering emits Drop reasons and Patch redirects as guidance
+        - Guidance injects into EXEC stderr, HTTP 403, JSON-RPC, or SQL HINT
+      - Patch payload per ring: ExecveMutation, FsInode, FsPathRedirect
+      - Additional Patch payloads: NetRedirect, SignalMutation, Custom(schema)
       - Idempotency and density: see: 01-architecture.md#Codebase-invariants
       - Hook-return pin (SSOT-A1): one Action enum is canonical
         - Type aliases, not split enums: Verdict and FilterAction are aliases of Action
@@ -459,10 +461,12 @@
   - First-class plugins
     - Capability access for every catalog plugin: see: 03-sdk-architecture.md#Service-lookup-across-languages
     - Catalog tiering
-      - Community plugins (in-process engine): cans/plugins/
-        - mcp, mesh, tool-guard, wire-ingress, vault, container
-        - replay, ledger, profile, chaos, transaction
-        - db-proxy, supply-chain
+      - Community plugins (21 in-process engine): cans/plugins/
+        - Tier 1: mcp, mesh
+        - Tier 2: tool-guard, wire-ingress, vault, container, replay
+        - Tier 2: db-proxy, supply-chain, egress-proxy, l7-http, redaction
+        - Tier 2: step-eval, taint, terminal-guard, token-shield
+        - Tier 3: ledger, profile, chaos, transaction, anomaly
       - Commercial plugins: interface in plugins/commercial.md
         - hyper-density, cas-snapshot
         - oci-translator, openshell-coordinator
@@ -479,6 +483,8 @@
       - profile: profile.rs
       - db-proxy: db-backed-runtime.py (userland SDK policy)
       - supply-chain: multi-vm-swarm.rs (userland SDK policy)
+      - redaction, terminal-guard, token-shield: autonomous-swe-agent.{py,ts}
+      - egress-proxy, l7-http, step-eval, taint, anomaly: none yet
     - Non-plugin surface examples
       - Exercises raw traits or SDK surfaces; no catalog plugin
       - Terminal and trap interposition: see: artifacts/examples/git-gate.rs

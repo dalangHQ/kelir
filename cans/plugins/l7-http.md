@@ -15,8 +15,21 @@
     - Owns TLS interception via host keyring (plugin-scoped, not core)
     - Synthesizes policy-rejection receipts on the diverted L4 stream
       - HTTP 403 {"error":"E_POLICY_DENIED", reason, pid, binary}
+      - HTTP 403 JSON includes optional guidance field for agent recovery
     - SinkholeRule (methods, paths) is plugin-private config
     - Core wire plane stops at L4; every byte above is owned here
+    - Declared HTTP services
+      - Binds gateway URL env, path rules, and credential swap per service
+      - Rejects .. path-traversal attempts with HTTP 403 before dial
+      - Blocks direct guest egress to declared upstream hosts via L4 rules
+    - LLM dialect and SSE inspection
+      - Normalizes OpenAI and Anthropic token usage and rate limits
+      - Redacts outbound prompt PII via DLP rules before upstream dial
+      - Inspects streaming SSE chunks for tool_use blocks before guest read
+      - Configurable LLM body retention supports hash-only audit mode
+    - Threat feeds and egress guard
+      - Syncs URLhaus and phishing blocklists with atomic swap on 304 check
+      - Blocks .onion targets and Tor Onionoo relay IPs at L7/L4
   - Error and return semantics (l7-http)
     - Hook signature (l7-http): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (l7-http)

@@ -31,6 +31,12 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
       postgres: {
         listenPort: 5432,
         upstream: `${pgHost}:5432`,
+        astParser: "libpgquery",
+        requireWhereOnMutations: true,
+        denyModeInTx: "terminate",
+        blockUnsafeIo: true,
+        catalogResolution: true,
+        syntheticCancelKeys: true,
         schemaRewrites: [{ fromSchema: "public.", toSchema: "migrate_schema." }],
       },
       // see: cans/plugins/db-proxy.md#Ephemeral-credentials-injected-at-host-connection-boundary
@@ -47,6 +53,8 @@ function buildRuntime(pgHost: string, _pgSecret: string) {
     // see: cans/plugins/ledger.md#Merkle-WAL
     .use(ledger({
       storePath: ".kelir/migrate-audit.merkle.db",
+      strict: true,
+      ocsfMapping: true,
       merkleChain: true,
       otel: undefined,
       receipts: { includeSyscallCount: false },

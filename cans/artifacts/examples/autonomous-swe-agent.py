@@ -347,6 +347,7 @@ async def build_runtime(
 
         # see: cans/plugins/redaction.md#Plugin-redaction
         .use(redaction(RedactionConfig(
+            soft_delete={"enabled": True, "trash_dir": "/workspace/.kelir_trash"},
             mask_read=MaskReadConfig(
                 engine="fast-regex",
                 carryover_bytes=1024,
@@ -362,6 +363,8 @@ async def build_runtime(
             ),
         )))
         .use(VaultPlugin(VaultConfig(
+            credsub_fake_tokens=True,
+            scrub_responses=True,
             credentials=[
                 CredentialDescriptor(
                     name="STRIPE_SECRET",
@@ -430,6 +433,8 @@ async def build_runtime(
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
             store_path=".kelir/audit.merkle.db",
+            strict=True,
+            ocsf_mapping=True,
             merkle_chain=True,
             otel=OtelConfig(
                 endpoint="http://localhost:4318/v1/traces",

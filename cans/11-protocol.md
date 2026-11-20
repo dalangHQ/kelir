@@ -32,6 +32,7 @@
       - Dynamic ExecSlot slab maps guest pid to exec_id
         - Backed by a chunked allocator; frees return chunks to the pool
         - Sized by min(guest RLIMIT_NPROC, host max_exec_slots)
+      - Per-ExecSlot cgroup v2 enforces pids.max and memory.max inside guest
         - Host max_exec_slots default 4096; configurable per session
       - Slab saturation: shim returns MSG_EXEC_REJECT{ENOMEM} in-band
       - waitpid(-1, WNOHANG) updates slot exit status without blocking
@@ -82,6 +83,7 @@
       - Host consumer slow or stalled → producer fd is paused, not dropped
       - No mid-flight frame loss; no guest kernel deadlock
     - Programmatic tooling uses stream kind EXEC (0x0001) exclusively; PTY bypassed
+    - Steering frames flush onto sub-lane 0x02 before exit control frame
     - Spawn submit path
       - SpawnBuilder carries the session transport bound at spawn_builder; poll() builds SpawnRequest and calls SpawnTransport::dispatch_exec
         - see: artifacts/code/wire-protocol.rs
@@ -130,7 +132,10 @@
       - Gate latency budgets: see: 02-plugin-model.md#Latency-ceiling
       - Filter invariants: see: 02-plugin-model.md#Filter-before-FFI-gate
     - Signal and fork interception
-      - on_signal intercepts guest kill calls; blocks unauthorized SIGKILL
+      - on_signal traps kill, tkill, tgkill, rt_sigqueueinfo, rt_tgsigqueueinfo
+      - on_signal also traps pidfd_send_signal across target relationships
+      - Signal rules classify target: self, children, session, shim_pid1, peer
+      - Signal verdicts: Pass, Drop, Absorb, or Patch(SignalMutation) redirect
       - on_fork intercepts process tree mutations and stops fork bombs in-RAM
     - Host containment verification
       - on_host_containment_breach emits immediate security alerts on openat2 trap
@@ -153,7 +158,8 @@
       - binary_path is a display hint; policy never matches on it alone
       - Resolved identity: see: artifacts/code/messages.rs
     - Interpreter unwrapping
-      - Depth cap: TBD (L3 sets the bound; overflow fails closed)
+      - Depth cap is 8; overflow or cycles fail closed with Drop
+      - Opaque shell ASTs (pipes, subshells) fall back to child execve traps
       - Unreadable payload or cycle fails closed with Drop, never Pass
       - Terminal binary is the resolved identity; chain is audit only
       - Shell payload and chain: see: artifacts/code/messages.rs
@@ -329,6 +335,7 @@
     - Env injection limits
       - set_env+unset_env total ≤ 32KB CBOR-encoded
       - Key length ≤ 128 bytes
+      - set_env strips duplicate keys from envp first to prevent getenv shadowing
     - Core carries no vault:// awareness; placeholder rejection → plugins/vault.md via TrapInterposer
     - Custom dispatch timeout
       - Exceeded handler falls through to Action::Pass (c.pass_() in Python)

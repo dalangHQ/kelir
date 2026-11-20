@@ -65,9 +65,8 @@
     - HVF path: Stage-2 translation write protection via hv_vm_protect
       - Stage-2 data aborts resolve via Chunked Page Promoter
       - Eagerly promotes 2MB contiguous blocks via Mach vm_copy CoW
-      - macOS fork isolation: child sessions inherit zero CoreFoundation state
-      - SCDynamicStore and Keychain bindings isolated to pre-fork supervisor
-      - Forked children resolve DNS via POSIX structures to prevent SIGABRT
+      - Stage-2 clone executes in-process without OS fork() on multi-threaded hosts
+      - Detached child runtimes spawn clean binaries before CoreFoundation init
       - Eliminates vCPU exit storms during large heap allocations
     - Host runtime isolates plugin state per branch via fork_state() or clone
     - Plugins holding un-clonable host descriptors veto via VetoEvent::Fork
@@ -231,6 +230,8 @@
         - Awaiting out-of-band release
       - Resume executes cycle-exact upon external release signal
       - Release signal arrives on Control 0x0000
+      - Approval holds enforce a per-session slot cap and default expiry TTL
+      - Reviewer identity and RBAC gate approval holds: see: [2]
   - Elastic compute
     - Guest kernel boots with maxcpus=N; configured count online at boot
     - Scale up: hypervisor unparks host vCPU threads; shim writes
@@ -386,6 +387,8 @@
     - Interaction with lifecycle states
       - Running and Draining: available
       - Paused and Stopped: refuse with ESSHUnavailable
+    - Timed policy break-glass overrides require MFA, reason, and expiry TTL
+    - Fleet kill-switch halts active sessions and blocks new boots globally
   - Wire port forwarding
     - Details: see: 07-wire-plane.md#Port-forwarding
   - Zombie reaping
@@ -475,3 +478,4 @@
         - WatchdogAction stays closed (Reboot | Terminate)
 
 - [1]: artifacts/code/vmm-driver-trait.rs
+- [2]: plugins/tool-guard.md#Approval-authorization

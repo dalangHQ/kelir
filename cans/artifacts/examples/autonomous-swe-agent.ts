@@ -69,6 +69,8 @@ const buildRuntime = () =>
     // 1. Plugins mount first; TPlugins accumulates ledger, chaos, policy
     .use(ledger({
       storePath: ".kelir/audit.merkle.db",
+      strict: true,
+      ocsfMapping: true,
       merkleChain: true,
       otel: { propagateW3cTraceparent: true, serviceName: "kelir-swe-agent" },
       receipts: { includeDirtyBytes: true, includeBinaryBlake3: true, includeSyscallCount: true },
@@ -81,10 +83,14 @@ const buildRuntime = () =>
     .use(tokenShield({ maxBytesTotal: 128 * 1024, maxLinesTotal: 500, clampStrategy: "head-and-tail", notice: "⚠️ [SHIELD]" }))
     .use(terminalGuard({ prompts: [{ pattern: "(?i)Overwrite production schema\\? \\[y/N\\]", timeoutSeconds: 3,
                                      verifyForeground: true, action: [...Buffer.from("y\n")] }] }))
-    .use(redaction({ maskRead: { engine: "fast-regex", carryoverBytes: 1024,
+    .use(redaction({
+      softDelete: { enabled: true, trashDir: "/workspace/.kelir_trash" },
+      maskRead: { engine: "fast-regex", carryoverBytes: 1024,
       rules: [{ glob: "**/secrets/**", patterns: [["sk_live_[0-9a-zA-Z]{24}", "[STRIPE_VAULT_KEY]"],
                                                    ["AKIA[0-9A-Z]{16}", "[AWS_IAM_REDACTED]"]] }] } }))
     .use(vault({
+      credsubFakeTokens: true,
+      scrubResponses: true,
       credentials: [{
         name: "STRIPE_SECRET",
         placeholder: "vault://stripe_key",

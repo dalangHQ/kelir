@@ -12,6 +12,7 @@
   - Invariants and policy (anomaly)
     - Extracts normalized 16-dimensional feature vectors from telemetry
     - Sliding window (300 entries) over syscall rate, argv entropy, burstiness
+    - Flags raw-IP egress without DNS, denial bursts, and privilege drift
     - Surprisal threshold breach triggers policy escalation
     - Computed and policy-bearing metrics are plugin-owned, not core
     - Consumes zero-alloc metric registry and EventBus from core

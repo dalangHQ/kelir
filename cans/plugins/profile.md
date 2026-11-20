@@ -284,6 +284,8 @@
     - Enabled plugins: ledger, vault, tool-guard, db-proxy, supply-chain
     - Enabled plugins: transaction, profile, mcp, wire-ingress
     - Disabled plugins: chaos, mesh, replay, container
+    - Disabled plugins: egress-proxy, l7-http, redaction, step-eval
+    - Disabled plugins: taint, terminal-guard, token-shield, anomaly
   - Attestation schema (profile)
     - Attestation semantics (10-attestation.md): see: [1]
     - see: artifacts/examples/fixtures/kelir.yaml#attestation.hardware_facts

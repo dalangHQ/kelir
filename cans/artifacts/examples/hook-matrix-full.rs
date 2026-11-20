@@ -424,6 +424,12 @@ impl FsInterposer for HookMatrixFullPlugin {
         Ok(Verdict::Pass)
     }
     fn on_fs_symlink(&self, _target: &Path, _link: &Path) -> Result<Verdict, PluginError> {
+        if escapes_workspace(_target) || escapes_workspace(_link) {
+            return Ok(Verdict::Drop {
+                errno: Errno::PathTraversal,
+                reason: "symlink escapes /workspace".into(),
+            });
+        }
         Ok(Verdict::Pass)
     }
     fn on_fs_mkdir(&self, _path: &Path, _mode: u32) -> Result<Verdict, PluginError> {
@@ -601,7 +607,13 @@ impl TrapInterposer for HookMatrixFullPlugin {
         }
         Ok(())
     }
-async fn on_signal(&self, _sender: u32, _target: u32, _sig: i32) -> Result<Verdict, PluginError> {
+async fn on_signal(&self, sender: u32, target: u32, _sig: i32) -> Result<Verdict, PluginError> {
+    if target == 1 && sender != 1 {
+        return Ok(Verdict::Drop {
+            errno: Errno::Eperm,
+            reason: "EPOLICY: signaling kelir-shim PID 1 denied".into(),
+        });
+    }
     Ok(Verdict::Pass)
 }
 async fn on_fork(&self, _parent: u32, _child: u32) -> Result<Verdict, PluginError> {

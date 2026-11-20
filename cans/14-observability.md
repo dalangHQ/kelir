@@ -22,6 +22,7 @@
     - Core emits raw counters and event stream only
     - Feature extraction and surprisal escalation → plugins/anomaly.md
     - Zero-copy shared memory exports vector directly to host anomaly filters
+    - Audit drop counters track overflow, crc_corruption, mapper, and auth_loss
       - Metrics: counters (execs, syscalls, drops, backpressure events),
         - gauges (RSS, dirty pages, active vCPUs, in-flight execs)
       - Traces: one span per receipt phase (trap_ingress, ffi_hop, policy,
@@ -51,3 +52,7 @@
     - on_host_containment_breach publishes high-severity OCSF security event
     - Captures openat2 RESOLVE_BENEATH and symlink traversal violations in RAM
     - Dispatches immediately to EventBus subscribers without guest logging
+    - Every EventBus security event maps to an OCSF 1.x class id
+    - Strict audit mode and fleet emergency kill-switch events: see: [1]
+
+- [1]: plugins/ledger.md#Strict-audit-and-drop-accounting

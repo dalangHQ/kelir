@@ -35,7 +35,7 @@ const gitGatePlugin = createPlugin("git-gate")
           const mIndex = event.argv.indexOf("-m");
           const msg = mIndex >= 0 ? (event.argv[mIndex + 1] ?? "") : "";
           if (PROTECTED.some((p) => msg.includes(p)))
-            return c.abort("EPOLICY: commit references protected branch");
+            return c.abort("EPOLICY: commit targets protected branch; commit to feature/* instead");
           return c.pass();
         }
         default:

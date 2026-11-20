@@ -124,6 +124,10 @@ async def row_syscall_block(c: HandlerContext) -> Verdict:
     return Verdict.drop(errno=Errno.EAFNOSUPPORT, reason="EAFNOSUPPORT: socket family AF_RXRPC blocked")
 
 
+async def row_uring_block(c: HandlerContext) -> Verdict:
+    return Verdict.drop(errno=Errno.EPERM, reason="EPERM: io_uring blocked by guest BPF")
+
+
 # see: cans/02-plugin-model.md#Full-Verdict-lattice
 async def row_custom(c: HandlerContext) -> Verdict:
     return Verdict.patch(
@@ -173,6 +177,7 @@ def build_runtime() -> KelirBuilder:
         .trap(TrapFilter.binary("policy-approval"), pre=row_approval)
         .trap(TrapFilter.binary("policy-escalate"), pre=row_escalate)
         .trap(TrapFilter.binary("policy-syscall-block"), pre=row_syscall_block)
+        .trap(TrapFilter.binary("policy-uring-block"), pre=row_uring_block)
         .trap(TrapFilter.binary("policy-custom"), pre=row_custom)
         .seal()
     )
@@ -192,6 +197,7 @@ async def main() -> None:
         for binary in ["policy-allow", "policy-deny", "policy-rewrite",
                        "policy-abort", "policy-yield", "policy-approval",
                        "policy-escalate", "policy-syscall-block",
+                       "policy-uring-block",
                        "policy-custom"]:
             run = await session.spawn(binary, ["--policy-matrix"])
             print(f"[kelir] {binary} -> exit={run.exit_code}")
@@ -201,6 +207,8 @@ async def main() -> None:
                 await session.elevate_lease("signed_jws_operator_lease_token_payload")
                 elevated = await session.spawn(binary, ["--policy-matrix"])
                 assert elevated.exit_code == 0
+            elif binary in ("policy-syscall-block", "policy-uring-block"):
+                assert run.exit_code != 0
             elif binary == "policy-custom":
                 assert run.exit_code == 0
 

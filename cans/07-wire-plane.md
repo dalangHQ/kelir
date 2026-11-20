@@ -9,7 +9,8 @@
     - Hardware abstraction: virtio-net bound host-side to embedded smoltcp TCP/IP stack
     - Hook points: on_net_outbound, on_net_inbound, on_socket_connect
     - Additional net hooks: on_dns_query, on_socket_bind
-    - on_socket_connect resolves guest PID via netlink for PNACL enforcement
+    - on_socket_connect attributes PID via TrapInterposer socket-tuple correlation
+    - on_socket_connect admits Pass, Drop, or Patch(NetRedirect) steering
     - on_dns_query mediates domain resolution before packet egress
     - on_socket_bind blocks unauthorized listening ports before reservation
     - Abstract socket boundary: wire.block_abstract_unix_sockets denies \0 paths
@@ -32,6 +33,7 @@
       - Unauthorized endpoints injected via untrusted context drop at L4 ring
       - DNS queries for undeclared external targets return synthetic NXDOMAIN
       - Out-of-band exfiltration via image rendering or webhooks fails closed
+      - Unconnected UDP sendto and sendmmsg frames evaluate egress policy per target
     - UDP NAT semantics
       - Permitted UDP egress uses endpoint-independent mapping (Full Cone NAT)
       - Single host UDP socket per guest source port serves multiple remote peers
@@ -101,6 +103,11 @@
   - Synthetic DNS gateway
     - Gateway binding
       - Guest paravirtual network binds synthetic gateway 192.168.127.1:53
+    - DNS-to-IP admission
+      - Allowed queries populate a TTL-bounded synthetic or pinned IP table
+      - Direct IP dials absent from the table drop fail-closed at L4 ingress
+      - Rotating CDN answers refresh active IP pins per query TTL
+      - on_dns_query returns DnsVerdict::Redirect to steer domain answers
       - All UDP/TCP port 53 traffic to the gateway intercepted in kelir-wire::RealNetOps via kelir-engine::planes::wire
       - Traffic to non-gateway resolvers redirected at ingress ring
     - Host-state resolution
@@ -140,6 +147,8 @@
     - Diverted streams delivered raw to plugins/l7-http (see: plugins/l7-http.md)
     - Stream mutations apply in-place without breaking client keep-alive
   - Egress side-effect outbox
+    - connect_redirect rewrites target endpoint before upstream TCP dial
+    - Threat-feed IP and Tor relay blocks evaluate at L4 before dial
     - L4 stream pause / flush / drop primitives only
     - Saga + undo-webhook ownership → plugins/transaction.md
     - Vault and credential flow

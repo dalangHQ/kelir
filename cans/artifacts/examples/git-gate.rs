@@ -68,7 +68,7 @@ impl TrapInterposer for GitGatePlugin {
                     .unwrap_or("");
                 if PROTECTED.iter().any(|p| msg.contains(p)) {
                     return Ok(Verdict::Abort {
-                        reason: "EPOLICY: commit references protected branch".into(),
+                        reason: "EPOLICY: commit targets protected branch; commit to feature/* instead".into(),
                     });
                 }
                 Ok(Verdict::Pass)

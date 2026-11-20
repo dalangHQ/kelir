@@ -44,6 +44,8 @@
       - Max frame: 16 MB via streaming continuation frames and virtio-shm
       - Carrier tracks JSON-RPC transaction IDs across request and response
       - AST parser validates JSON types before dispatching to ring hooks
+      - Server-initiated sampling/createMessage requests deny by default
+      - Per-endpoint sampling allowlist overrides require explicit policy opt-in
   - Error and return semantics (mcp)
     - Hook signature (mcp): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (mcp)

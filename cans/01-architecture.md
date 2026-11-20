@@ -401,6 +401,9 @@
       - kelir-shim remounts /proc with hidepid=2 during early init
       - /proc/kallsyms, /sys/firmware, /proc/version leak signatures suppressed
       - Untrusted scripts cannot probe kernel pointers or peer processes
+      - Guest BPF blocks io_uring, add_key, request_key, and keyctl syscalls
+      - Exotic socket families denied by default: AF_ALG, AF_RXRPC, NETLINK_XFRM
+      - Syscall trap validates native AUDIT_ARCH; x32 and compat ABIs rejected
     - Workload contract: see: #Zero-workload-intrusion
   - VmmDriver trait
     - see: [6]
@@ -433,6 +436,8 @@
     - Emulated tier (Strict Opt-In, Development Only):
       - driver-bwrap: Linux user namespaces; requires allow_emulated_fallback=true
       - driver-proot: Termux ptrace emulation; requires allow_emulated_fallback=true
+      - Class 2 sandboxes inherit identical BPF syscall and socket family blocks
+      - Class 2 sandboxes run behavioral probes pre-boot: see: 13-cli.md
       - Attempting to boot emulated tier without flag throws E_NOHARDWAREVMM
 
 - [2]: 10-attestation.md#Execution-receipts

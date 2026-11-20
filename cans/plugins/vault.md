@@ -53,6 +53,9 @@
       - Parses L7, substitutes vault:// placeholders with bearer tokens in flight
       - Core wire plane delivers raw L4 streams; no L7 parse in core
       - Eliminates external sidecar daemons, preserving strict Class 1 attestation
+      - Issues format- and length-matched fake tokens for third-party APIs
+      - Swaps fake tokens for host keyring secrets on outbound L7 headers
+      - Scrubs real secrets from inbound L7 responses before guest read
     - Memory isolation and zeroization
       - Host keyring memory pinned with mlock(2); excluded from swap
       - Issued token buffers zeroized on drop; TTL expiry revokes host-side

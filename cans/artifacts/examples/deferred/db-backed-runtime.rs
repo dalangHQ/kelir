@@ -42,6 +42,12 @@ fn build_runtime(
     let mut db_config = DbProxyConfig::default();
     db_config.postgres.listen_port = 5432;
     db_config.postgres.upstream = format!("{pg_host}:5432");
+    db_config.postgres.ast_parser = "libpgquery".into();
+    db_config.postgres.require_where_on_mutations = true;
+    db_config.postgres.deny_mode_in_tx = "terminate".into();
+    db_config.postgres.block_unsafe_io = true;
+    db_config.postgres.catalog_resolution = true;
+    db_config.postgres.synthetic_cancel_keys = true;
     db_config.postgres.schema_rewrites = vec![PgSchemaRewrite {
         from_schema: "public".into(),
         to_schema: "migrate_schema".into(),
@@ -56,6 +62,8 @@ fn build_runtime(
 
     // see: cans/plugins/ledger.md#Merkle-WAL
     let ledger_plugin = LedgerPlugin::new(true).with_config(LedgerConfig {
+        strict: true,
+        ocsf_mapping: true,
         hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,

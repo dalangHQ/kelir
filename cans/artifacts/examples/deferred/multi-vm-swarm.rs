@@ -105,11 +105,17 @@ fn swarm_builder() -> KelirBuilder<Host, Unsealed, (), HNil, SwarmPlugins, NoPar
         wx_jit: WxJitConfig::default(),
         package_guard: PackageGuardConfig {
             managers: vec!["npm".into(), "pip".into(), "cargo".into()],
+            resolve_lockfiles: true,
+            advisories: vec!["osv".into(), "snyk".into(), "socket".into(), "deps_dev".into()],
+            strip_private_scopes: true,
+            vet_skills: true,
             ..PackageGuardConfig::default()
         },
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
+        strict: false,
+        ocsf_mapping: true,
         store_path: ".kelir/swarm-audit.merkle.db".into(),
         merkle_chain: true,
         suppress_local_db: false,

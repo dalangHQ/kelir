@@ -42,6 +42,8 @@ const policyPlugin = createPlugin("policy-matrix")
           return c.drop(Errno.EPERM, "ESECURITYVIOLATION: capability widening requires signed operator lease");
         case "policy-syscall-block":
           return c.drop(Errno.EAFNOSUPPORT, "EAFNOSUPPORT: socket family AF_RXRPC blocked");
+        case "policy-uring-block":
+          return c.drop(Errno.EPERM, "EPERM: io_uring blocked by guest BPF");
         // see: cans/11-protocol.md#Custom-payload:-c.patch(Custom-{-name,-cbor-})
         case "policy-custom":
           return c.patch({
@@ -121,7 +123,8 @@ async function main() {
 
   for (const binary of ["policy-allow", "policy-deny", "policy-rewrite",
                         "policy-abort", "policy-yield", "policy-approval",
-                        "policy-escalate", "policy-syscall-block", "policy-custom"]) {
+                        "policy-escalate", "policy-syscall-block",
+                        "policy-uring-block", "policy-custom"]) {
     const run = await session.spawn(binary, ["--policy-matrix"]);
     console.log(`[kelir] ${binary} -> exit=${run.exitCode}`);
     if (binary === "policy-approval") {
@@ -133,6 +136,8 @@ async function main() {
       if (elevated.exitCode !== 0) throw new Error("escalation failed post-signature");
     } else if (binary === "policy-syscall-block") {
       if (run.exitCode === 0) throw new Error("syscall block should fail execution");
+    } else if (binary === "policy-uring-block") {
+      if (run.exitCode === 0) throw new Error("io_uring block should fail execution");
     } else if (binary === "policy-custom") {
       if (run.exitCode !== 0) throw new Error("custom failed");
     }

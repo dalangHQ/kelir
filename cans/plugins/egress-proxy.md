@@ -14,6 +14,11 @@
     - Owns HTTP CONNECT and SOCKS5 negotiation end to end
     - Reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY from env
     - Core wire plane carries raw L4 splice only; no handshake parse
+    - Tor and proxy controls
+      - Denies SOCKS5 RESOLVE (0xF0) and .onion domains by default
+      - Blocks Tor bridge binaries (obfs4proxy, snowflake-client) via trap hook
+      - Rejects guest proxy-env spoofing or NO_PROXY bypasses against L4 policy
+      - Normalizes lowercase and uppercase proxy env variants uniformly
   - Error and return semantics (egress-proxy)
     - Hook signature (egress-proxy): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (egress-proxy)

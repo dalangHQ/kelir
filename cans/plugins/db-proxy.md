@@ -17,7 +17,17 @@
   - Invariants and policy (db-proxy)
     - L7 pgwire rewrite and 2PC commit: see: artifacts/examples/db-backed-runtime.py
     - Mediates relational protocol traffic
-    - PostgreSQL: intercepts port 5432, decodes Q/P frames via pgwire parser
+    - PostgreSQL AST and wire state machine
+      - Parses SQL via libpgquery AST; never relies on regex matching
+      - Tracks Extended Query state machine: Parse, Bind, Execute, Sync
+      - Evaluates multi-object SQL via collect-all any-deny-wins semantics
+      - Enforces require_where on UPDATE and DELETE mutations
+      - Blocks COPY FROM PROGRAM, pg_read_file, lo_import, and dblink_exec
+      - Denies FunctionCall subprotocol, GSSENC, and replication downgrades
+      - Synthesizes BackendKeyData and maps CancelRequest to prevent spoofing
+      - Resolves search_path and temp-table aliases against catalog state
+      - Supports read-only relation redirect and deny_mode_in_tx terminate
+      - Invalidates prepared statement cache on role or search_path change
     - SQLite UDS bridge mechanics:
       - Guest helper binds Unix Domain Socket at /run/kelir/db.sock on demand
       - Forwards client connections over DB_SQLITE mux stream
@@ -31,6 +41,7 @@
     - Verdict execution: see: 02-plugin-model.md#Unified-verdict
     - Protocol proxying
       - PostgreSQL on 5432, Redis on 6379
+      - Redis proxy gates EVAL, CONFIG, DEBUG, and FLUSH* by command policy
       - Ephemeral credentials injected at host connection boundary
       - Client mTLS certificates injected at host boundary
   - Error and return semantics (db-proxy)
@@ -41,6 +52,7 @@
         - pgwire ErrorResponse frame precedes connection close
         - SQLSTATE derived from errno (EPERM→42501, ENOENT→42P01)
         - Unmapped errno → SQLSTATE XX000 (internal_error)
+        - Populates pgwire ErrorResponse HINT ('H') with steering guidance
       - FilterAction::Forward after in-place Q/P frame rewrite
         - Server sees rewritten frame as if client sent it
         - Each connection's rewrites tallied; >3 aborts ECYCLICREWRITE

@@ -221,6 +221,11 @@ impl TrapInterposer for PolicyMatrixPlugin {
                 reason: "EAFNOSUPPORT: socket family AF_RXRPC blocked (CVE mitigation)".into(),
             }),
 
+            "policy-uring-block" => Ok(Verdict::Drop {
+                errno: Errno::Eperm,
+                reason: "EPERM: io_uring blocked by guest BPF".into(),
+            }),
+
             "policy-custom" => Ok(Verdict::Patch(PatchPayload::Custom {
                 name: "quarantine".into(),
                 cbor: CborValue::serialized(&QuarantinePayload {
@@ -472,6 +477,7 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         "policy-approval",
         "policy-escalate",
         "policy-syscall-block",
+        "policy-uring-block",
         "policy-custom",
     ] {
         let run = session.spawn(binary, &["--policy-matrix"], None).await?;
@@ -494,6 +500,9 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             "policy-syscall-block" => {
                 assert_ne!(run.exit_code, 0);
                 assert!(matches!(&run.exit_kind, ExitKind::Signal(_)));
+            }
+            "policy-uring-block" => {
+                assert_ne!(run.exit_code, 0);
             }
             "policy-custom" => assert_eq!(run.exit_code, 0),
             _ => {}

@@ -11,7 +11,7 @@ use kelir::Deserialize;
 use kelir::{
     HCons, HNil, HandlerCtx, Host, IngressChannel, IngressRoutingService, KelirBuilder,
     LedgerConfig, LedgerCtx, LedgerPlugin, LifecycleEvent, McpCtx, McpPlugin, NoParams,
-    OtelConfig, PostExecAction, ReceiptConfig, ToolGuardConfig, ToolGuardCtx,
+    McpConfig, OtelConfig, PostExecAction, ReceiptConfig, ToolGuardConfig, ToolGuardCtx,
     ToolGuardPlugin, TrapFilter, Unsealed, Verdict, VmConfig, WireIngressConfig,
     WireIngressPlugin,
     driver_interface::{DriverPolicy, WxPolicy},
@@ -111,7 +111,10 @@ fn webhook_builder() -> KelirBuilder<
     )
     .plugin_instance(WireIngressPlugin::with_config(WireIngressConfig::default()))
     // see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
-    .plugin_instance(McpPlugin::new())
+    .plugin_instance(McpPlugin::new().with_config(McpConfig {
+        deny_server_sampling: true,
+        ..McpConfig::default()
+    }))
     .plugin_instance(ToolGuardPlugin::new().with_config(ToolGuardConfig {
         max_frame_bytes: 16_777_216,
         detect_semantic_rug_pull: true,
@@ -119,12 +122,19 @@ fn webhook_builder() -> KelirBuilder<
         propagate_byte_range_taints: true,
         // see: cans/plugins/tool-guard.md#Immutable-schema-locking
         pin_schemas: true,
+        detect_cross_server_exfil: true,
+        detect_confusable_names: true,
+        scan_tool_results: true,
+        deny_self_approval: true,
+        hold_ttl_seconds: 300,
         // see: cans/plugins/tool-guard.md#Call-quota
         max_invocations_per_trace: 50,
         dial_timeout_ms: 3_000,
     }))
     // see: cans/plugins/ledger.md#Merkle-WAL
     .plugin_instance(LedgerPlugin::new(true).with_config(LedgerConfig {
+        strict: true,
+        ocsf_mapping: true,
         hashing_standard: "RFC_6962_DUAL_BLAKE3_SHA256".into(),
         record_pre_redaction_hash: false,
         include_hook_spans_in_root: false,

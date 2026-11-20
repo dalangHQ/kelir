@@ -32,6 +32,10 @@
       - Interposes dynamic tools/list updates and performs semantic AST diff
       - Description rewriting or smuggled parameters halt with ESecurityViolation
       - Schema drift events emit structured audit telemetry before VM panic
+    - Cross-server flow and name safety
+      - Classifies tool calls into read, write, send, and run capability buckets
+      - Sliding window detects cross-server read_then_send flows in same turn
+      - Levenshtein distance flags confusable and shadowed tool names on list
     - Host extensible hook pipeline
     - The `.tool()` builder sugar lives in kelir-bundle (`ToolGuardExt`) as of Law 8; see: cans/02-plugin-model.md#Facade-blindness
       - Exposes typed pre-call and post-call interception to host runtimes
@@ -65,12 +69,19 @@
       - vault:// placeholders are resolved by the workload
       - Output scrubber: scans tool execution responses on return;
         - strips host secrets before model context ingests bytes
+      - Scans tool return payloads for hidden instructions and injection patterns
+    - Approval authorization
+      - Separates agent and approver roles; denies self-approval unconditionally
+      - Verifies approver via TOTP, WebAuthn (touch + UV), or OIDC claims
+      - Caps concurrent pending holds per session and expires stale holds on TTL
+      - Surfaces human-readable refusal guidance on denied tool calls
   - Error and return semantics (tool-guard)
     - Hook signature (tool-guard): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (tool-guard)
       - Action::Drop returns JSON-RPC error object:
         - code = -32001 (EPERM) or mapped POSIX errno
         - message = user-defined reason or "Policy violation: tool execution rejected"
+        - data carries {errno, reason, guidance, redirect_tool} when steered
       - Schema drift or unpinned tool tampering returns -32601
         - (Method not found) + VM Security Panic
 - Suspend reason ownership (tool-guard)

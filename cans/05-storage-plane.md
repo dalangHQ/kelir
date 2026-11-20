@@ -26,9 +26,10 @@
       - on_fs_setattr traps FUSE_SETATTR for ftruncate, chmod, and chown ops
       - on_fs_symlink traps traversal attempts at link creation boundary
       - on_fs_mkdir enforces directory creation boundaries and quota pre-checks
-      - on_fs_readdir scrubs hidden files from guest LLM context windows
+      - on_fs_readdir filters hidden or policy-excluded entries by hook verdict
       - on_fs_readlink resolves canonical targets against MountScope root
-      - Destructive unlinks can be redirected host-side via PatchPayload::FsPathRedirect
+      - Lookup, mkdir, rename, and unlink ops redirect via PatchPayload::FsPathRedirect
+      - Redirected creates and unlinks steer into scratch or trash with notice
       - FUSE dispatch routes through pipeline engine across mounted interceptors
       - Emits physical StorageDelta events directly to host event bus on commit
     - Kernel physics invariants (storage)
@@ -39,6 +40,7 @@
       - Mandatory non-blocking host I/O: host descriptors open with O_NONBLOCK
       - Host FIFO and socket rejection: S_IFIFO and S_IFSOCK fail lookup with ENXIO
       - Host blocking prevention: zero guest syscalls may sleep host ring workers
+      - FUSE mounts enable default_permissions to avert guest clone deadlocks
     - Encapsulation invariant
       - Host workspace is locked to mode 000 on host; only the hypervisor
         - descriptor bridges access to virtio-fs lowerdir
@@ -98,9 +100,9 @@
       - Linux: renameat2; macOS: renameatx_np(RENAME_SWAP); Windows:
       - SetFileInformationByHandle(FileRenameInfoEx)
     - Deletes unlink in place; new dirs create in place
-    - Host Inode Broker pre-checks active host flock descriptors
-    - Fallback on EBUSY or EPERM: in-place write with 2000ms backoff
-    - Whole commit is idempotent: replaying after crash converges
+    - EBUSY retries atomic rename with bounded backoff up to 2000ms
+    - EPERM aborts entry commit fail-closed; never overwrites in place
+    - Atomic leaf rename guarantees crash recovery remains idempotent
   - Containment
     - Strict containment: rejects symlink hops and traversals outside host root
     - Multi-tenant root isolation partitions workspaces by tenant organization
@@ -114,6 +116,9 @@
     - Symlink traversals escaping root fail with EXDEV at host VFS layer
     - S_ISUID and S_ISGID stripped on every write, create, chmod (mode & !0o6000)
     - In-guest root cannot mint setuid host binaries
+    - Symlink CWD traversal outside workspace fails with symlink_cwd_deny
+    - Cross-mount rename between /tmp scratch and workspace returns EXDEV
+    - Case-insensitive hosts (APFS, NTFS) detect case-collision ambiguity
   - Synthetic FUSE inodes
     - Core provides virtual inode reply: on_fs_lookup -> Action::Patch(FsInode)
     - Synthetic content ownership → plugins/vault.md / plugins/profile.md
@@ -137,7 +142,8 @@
     - Intercepts FUSE SETLK and SETLKW requests on declared repository paths
     - Maps virtual guest inode to physical host inode via virtio-fs mount
     - Delegates acquisition directly to host OS advisory locks (flock)
-    - Conflicting lock returns EWOULDBLOCK without host thread latency
+    - Conflicting SETLK returns EWOULDBLOCK; SETLKW parks on bounded waiter pool
+    - Bounded SETLKW waiters time out with EDEADLK; host ring threads never block
     - `SETLK` and `SETLKW` dispatch calls `LockBroker::acquire` before the interposer
     - `LockBroker::acquire` routes the lock hook through the pipeline engine across mounted interceptors with scope filtering and one fused crossing
     - Lock denial replies `FuseReply::Errno(EWOULDBLOCK)`

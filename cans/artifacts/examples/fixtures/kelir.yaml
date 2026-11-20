@@ -142,6 +142,21 @@ session:
     task_freeze_timeout_ms: 300000    # 5m human-in-the-loop approval ceiling before auto-refusal
     rejection_mode: synthetic_refusal
     mask_proc_environ: true           # seccomp blocks /proc/[pid]/environ and process_vm_readv
+    per_exec_cgroup: true             # Leaf cgroup v2 isolates pids.max/memory.max per ExecSlot
+    deny_abi_compat: true             # Enforces native AUDIT_ARCH; rejects x32/compat syscalls
+    blocked_syscalls:
+      - "io_uring_setup"
+      - "io_uring_enter"
+      - "io_uring_register"
+      - "add_key"
+      - "request_key"
+      - "keyctl"
+    blocked_socket_families: ["AF_ALG", "AF_RXRPC", "NETLINK_XFRM"]
+
+  steering:
+    steer_on_deny: true               # Emits structured agent guidance on Drop
+    steer_on_redirect: true           # Announces Patch redirects on EXEC/L7/SQL
+    inject_exec_stderr: true          # Flushes steering lines to EXEC sub-lane 0x02
 
   # Session-scoped driver boot knobs; mirror of top-level driver.fast_boot.
   driver:
@@ -247,6 +262,7 @@ storage:
     enabled: true                     # Intercepts FUSE SETLK/SETLKW and delegates to host flock
     scope_globs: ["**/Cargo.lock", "**/package-lock.json"]
     non_blocking: true                # Conflicting writer receives EWOULDBLOCK, preventing vCPU hang
+    blocking_wait_timeout_ms: 5000    # Bounded SETLKW waiter pool ceiling before EDEADLK
 
 # ------------------------------------------------------------------------------
 # 5. WIRE PLANE (virtio-net, Userspace smoltcp, DNS Gateway & L4 Routing)
@@ -282,6 +298,7 @@ wire:
     synthetic_gateway: "192.168.127.1:53"
     track_host_resolver: true         # Watch /etc/resolv.conf (Linux) or SCDynamicStore (macOS)
     edns0_downgrade: true             # Strips DO bit and clears AD bit to stop DNSSEC aborts
+    dns_to_ip_pinning: true           # Correlates allowed domain answers to TTL-bounded L4 IPs
     socks5h_synthetic_pool: "198.18.0.0/15" # Maps remote domain dials to synthetic CIDR
 
     # Destination allowlists (wildcard domains matching egress rules).
@@ -490,6 +507,8 @@ plugins:
   # ─── PLUGIN: LEDGER (Tier 3 Cross-Cutting Audit & Compliance Aggregator) ───
   ledger:
     enabled: true
+    strict: true                      # Fails FUSE/ring ops closed on sink stall
+    ocsf_mapping: true                # Maps every EventBus security event to an OCSF 1.x class
     # Merkle Write-Ahead Log (WAL) — Tamper-evident on-disk audit trail.
     # Completely isolated on host; survives guest rollback and fork branches.
     merkle_wal:
@@ -501,6 +520,9 @@ plugins:
       record_pre_redaction_hash: true
       include_hook_spans_in_root: true
       witness_cosigning_endpoint: "https://witness.internal.net/v1/sth"
+      kms_provider: "vault"
+      min_signing_key_bytes: 32
+      verify_key_fingerprint: true
 
     # OpenTelemetry (OTLP) Native Wire Exporter.
     otel:
@@ -527,6 +549,8 @@ plugins:
       token_ttl_seconds: 60           # Ephemeral token expiration window (max 900s)
       zeroize_on_drop: true           # Memory buffers explicitly scrubbed post-dispatch
       fail_closed: true               # Unregistered credential request raises ENODATA
+      credsub_fake_tokens: true       # Issues format-matched fake tokens to guest
+      scrub_responses: true           # Scrubs real credentials from inbound L7 responses
 
     # Declarative credential descriptors. Workloads query by placeholder handle.
     credentials:
@@ -557,6 +581,8 @@ plugins:
       strict_ast_parameter_validation: true
       max_invocations_per_trace: 50   # Anti-recursion governor (rejects ECYCLICREWRITE)
       max_frame_bytes: 16777216
+      detect_cross_server_exfil: true # Sliding-window read_then_send cross-server check
+      detect_confusable_names: true   # Levenshtein check against shadowed/typosquatted tools
 
     # Context Taint Tracking & Out-of-Band Human Approvals.
     taint_governance:
@@ -568,6 +594,13 @@ plugins:
     sanitization:
       scan_arguments: true            # Aho-Corasick regex scanning over tool parameter strings
       scrub_output_secrets: true      # Redacts host credentials before model context ingestion
+      scan_tool_results: true         # Scrubs hidden instructions and prompt injection
+
+    approval_auth:
+      deny_self_approval: true
+      methods: ["webauthn", "totp", "oidc"]
+      max_pending_holds: 10
+      hold_ttl_seconds: 300
 
   # ─── PLUGIN: DB-PROXY (Tier 2 Agnostic Relational Database Proxy) ───────────
   db_proxy:
@@ -577,6 +610,12 @@ plugins:
       listen_port: 5432
       upstream: "pg.internal.net:5432"
       max_rewrites_per_conn: 3        # Exceeding 3 query rewrites aborts ECYCLICREWRITE
+      ast_parser: "libpgquery"
+      require_where_on_mutations: true
+      deny_mode_in_tx: "terminate"
+      block_unsafe_io: true
+      catalog_resolution: true
+      synthetic_cancel_keys: true
       schema_rewrites:
         - from: "public."
           to: "tenant_sandbox."
@@ -616,7 +655,10 @@ plugins:
     package_guard:
       deny_lifecycle_scripts: true    # Denies preinstall/postinstall inside node_modules/
       managers: ["npm", "pip", "cargo"]
-      shannon_entropy_threshold: 5.2  # Flags obfuscated or base64-packed command strings
+      resolve_lockfiles: true         # Dry-run resolves manifests pre-write
+      advisories: ["osv", "snyk", "socket", "deps_dev"]
+      strip_private_scopes: true      # Strips private namespaces before external lookups
+      vet_skills: true                # Scans SKILL.md and plugin files before guest ingestion
 
   # ─── PLUGIN: MESH (Tier 1 Sovereign Cross-VM Peer Transport) ────────────────
   mesh:
@@ -670,10 +712,37 @@ plugins:
     socket_path: "/run/kelir/mcp.sock"
     framing: "json_lines"             # Strict newline-delimited JSON (no Content-Length header)
     max_frame_bytes: 16777216
+    deny_server_sampling: true        # Denies server-initiated sampling/createMessage by default
 
   # ─── PLUGIN: WIRE-INGRESS (Tier 2 In-Ring L7 Ingress) ───────────────────────
   wire_ingress:
     enabled: true
+
+  # ─── PLUGIN: L7-HTTP (Tier 2 Declared Services, LLM DLP & Threat Feeds) ────
+  l7_http:
+    enabled: true
+    threat_feeds: ["urlhaus", "phishing"]
+    declared_services:
+      - name: "anthropic"
+        env_var: "ANTHROPIC_API_URL"
+        upstream: "https://api.anthropic.com"
+        block_direct_egress: true
+        llm_dialect: "anthropic"
+        dlp_redact_prompts: true
+        inspect_sse_tool_use: true
+
+  # ─── PLUGIN: EGRESS-PROXY (Tier 2 Upstream Proxy & Tor Controls) ───────────
+  egress_proxy:
+    enabled: true
+    block_tor: true
+    deny_socks5_resolve: true
+
+  # ─── PLUGIN: REDACTION (Tier 2 FS Masking & Soft-Delete Quarantine) ────────
+  redaction:
+    enabled: true
+    soft_delete:
+      enabled: true
+      trash_dir: "/workspace/.kelir_trash"
 
   # ─── PLUGIN: REPO-POLICY (Branch Protection & Diff Limits) ───────
   repo-policy:

@@ -130,7 +130,12 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
         return Verdict.Pass;
       })
       .onFsSetattr((_path, _mode, _size) => Verdict.Pass)
-      .onFsSymlink((_target, _link) => Verdict.Pass)
+      .onFsSymlink((target, link) => {
+        if (escapesWorkspace(target) || escapesWorkspace(link)) {
+          return Verdict.Drop(Errno.PATH_TRAVERSAL, "symlink escapes /workspace");
+        }
+        return Verdict.Pass;
+      })
       .onFsMkdir((_path, _mode) => Verdict.Pass)
       .onFsReaddir((_path, _entries) => FilterAction.Forward)
       .onFsReadlink((_path) => Verdict.Pass),
@@ -225,7 +230,12 @@ const hookMatrixFullPlugin = createPlugin("hook-matrix-full")
         hookState.exits += 1;
         if (event.exitCode !== 0) hookState.failures += 1;
       })
-      .onSignal((_sender, _target, _sig) => Verdict.Pass)
+      .onSignal((sender, target, _sig) => {
+        if (target === 1 && sender !== 1) {
+          return Verdict.Drop(Errno.EPERM, "EPOLICY: signaling kelir-shim PID 1 denied");
+        }
+        return Verdict.Pass;
+      })
       .onFork((_parent, _child) => Verdict.Pass),
   );
 

@@ -43,11 +43,19 @@ async function main() {
     // see: cans/plugins/supply-chain.md#Plugin-supply-chain
     .use(supplyChain({
       wxJit: {},
-      packageGuard: { managers: ["npm", "pip", "cargo"] },
+      packageGuard: {
+        managers: ["npm", "pip", "cargo"],
+        resolveLockfiles: true,
+        advisories: ["osv", "snyk", "socket", "deps_dev"],
+        stripPrivateScopes: true,
+        vetSkills: true,
+      },
     }))
     // see: cans/plugins/ledger.md#Plugin-ledger
     .use(ledger({
       storePath: ".kelir/swarm-audit.merkle.db",
+      strict: false,
+      ocsfMapping: true,
       merkleChain: true,
       suppressLocalDb: false,
       receipts: { includeSyscallCount: false },

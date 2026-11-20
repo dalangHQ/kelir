@@ -91,6 +91,8 @@ async def _on_process_exit(event: Any) -> None:
 
 
 async def _on_signal(sender: int, target: int, sig: int) -> Verdict:
+    if target == 1 and sender != 1:
+        return Verdict.drop(Errno.EPERM, "EPOLICY: signaling kelir-shim PID 1 denied")
     return Verdict.pass_()
 
 
@@ -178,6 +180,8 @@ def _on_fs_setattr(path: Path, mode: int, size: int) -> Verdict:
 
 
 def _on_fs_symlink(target: Path, link: Path) -> Verdict:
+    if escapes_workspace(str(target)) or escapes_workspace(str(link)):
+        return Verdict.drop(Errno.PATH_TRAVERSAL, "symlink escapes /workspace")
     return Verdict.pass_()
 
 

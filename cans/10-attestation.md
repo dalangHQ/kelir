@@ -6,6 +6,7 @@
     - Diagnostic metrics: PMU counters, dirty bytes, wire volume (gauges only)
     - Boundary opacity (L3/L4): interception surfaces only as physical bus errors,
       - standard POSIX errnos, or silent packet drops
+    - Opt-in EXEC/L7/TTY steering surfaces guidance without altering receipts
     - L7 wire-plane rejections are an explicit wire contract
       - (see: 11-protocol.md#Policy-rejection-receipt), not an attestation fact
   - Primitive vs derived metrics

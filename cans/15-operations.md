@@ -219,6 +219,10 @@
       - Validates downward-only crate dependencies via kelir-plugin-cli check --layers
       - Core and interface violations reject compilation before test run
       - Enforcement: just check-layers, CI layer-check job
+    - --ocsf-coverage
+      - AST test asserts every EventBus security event maps to an OCSF 1.x class
+    - --adversarial-cve-coverage
+      - kelir-integration replays CVE-class exploit demos against guest and Class 2
     - Verb and verdict coverage
       - --hook-coverage
         - Asserts every hook in the segregated traits is implemented by some
@@ -508,6 +512,9 @@
         - Asserts acyclic inheritance trees across extends pointers
         - Verifies monotonic limits across deep-merged profiles
       - `kelir spec export`: Emits canonical kelir.toml or kelir.yaml
+      - `kelir spec generate <session>`: synthesizes starter profile from audit log
+      - `kelir report <session>`: emits human-readable findings and timeline markdown
+      - `kelir emergency <kill-switch|break-glass>`: global halt or timed override
       - Granular flags: --install-shims, --attach-lsm, --quarantine-credentials
       - `kelir doctor --json`: structured for onboarding scripts
       - `kelir logs <session_id>`: see: 13-cli.md#Inspection-commands

@@ -20,10 +20,14 @@
       - Verdict flows through unified lattice; core carries no rule table
     - Pattern vocabulary and glob set are plugin-private config
     - Core storage plane delivers raw buffers; zero regex / zero glob
+    - Soft-delete quarantine (FsInterposer::on_fs_unlink)
+      - Redirects matching deletes via PatchPayload::FsPathRedirect to trash
+      - Records per-file manifest tokens for selective restore without rollback
     - see: artifacts/examples/fixtures/kelir.yaml#plugins.redaction
   - Error and return semantics (redaction)
     - Hook signature (redaction): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (redaction)
       - Mask hit → Pass with mutated byte buffer; no errno
       - Write snoop deny → Verdict::Deny(errno) from unified lattice
+      - Soft-delete hit → Patch(FsPathRedirect) with quarantine token notice
       - Engine misconfiguration → EConfig at boot

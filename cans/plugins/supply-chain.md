@@ -26,14 +26,18 @@
       - Recursive shebang and PT_INTERP resolution is plugin-private
       - Inspects -c / -e strings as code when interpreter is known
       - Consumes core raw facts: (st_dev, st_ino, binary_blake3, argv, envp, pt_interp); core resolves none of this
-    - Entropy analysis
-      - Computes Shannon entropy of argv[1:] on every TrapEvent
-      - Flags values above 5.2 bits/char as encrypted or base64-obfuscated
-      - Bypass paths are plugin-private config, outside VmConfig
-      - Default bypass runners: node, python, language toolchains
+      - Preserves multi-call argv[0] only for attested applet binaries (BusyBox)
+    - Pre-install manifest risk gate
+      - Dry-run resolves lockfiles (npm, pip, pnpm, yarn, uv, poetry) pre-write
+      - Queries OSV, Snyk, Socket, and deps.dev for CVEs, malware, and licenses
+      - Strips private package scopes before external advisory lookups
+    - Agent skill and instruction vetting
+      - Scans SKILL.md and plugin files for hidden unicode and prompt injection
+      - Enforces declared capability scope before guest ingestion
   - Error and return semantics (supply-chain)
     - Hook signature (supply-chain): see: artifacts/code/plugin-trait.rs
     - Return errno and rejection behavior (supply-chain)
       - Lifecycle-script deny → exit 126 (permission denied)
       - stderr_message names manager and blocked script
       - Nested npm→sh→node traps at the sh ancestor
+      - Advisory malware or CVE block → EACCES with package and advisory ID

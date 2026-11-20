@@ -72,11 +72,17 @@ def build_runtime() -> KelirBuilder:
             wx_jit=WxJitConfig(),
             package_guard=PackageGuardConfig(
                 managers=["npm", "pip", "cargo"],
+                resolve_lockfiles=True,
+                advisories=["osv", "snyk", "socket", "deps_dev"],
+                strip_private_scopes=True,
+                vet_skills=True,
             ),
         )))
         # see: cans/plugins/ledger.md#Plugin-ledger
         .use(LedgerPlugin(LedgerConfig(
             store_path=".kelir/swarm-audit.merkle.db",
+            strict=False,
+            ocsf_mapping=True,
             merkle_chain=True,
             suppress_local_db=False,
             otel=None,

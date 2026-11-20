@@ -74,7 +74,7 @@
     - Mobile runtime governance on Android/Termux: see: 01-architecture.md#Driver-backends
   - Spec map
     - Core foundation: see: 01-architecture.md
-    - Plugin model & catalog (20 optional domain plugins): see: 02-plugin-model.md
+    - Plugin model & catalog (21 optional domain plugins): see: 02-plugin-model.md
     - SDK architecture: see: 03-sdk-architecture.md (parity)
     - Terminal plane: see: [1] (engine native)
     - Storage plane: see: [2] (engine native)

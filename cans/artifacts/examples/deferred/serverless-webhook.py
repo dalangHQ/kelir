@@ -127,11 +127,16 @@ def build_runtime() -> KelirBuilder:
         )))
 
         # see: cans/plugins/mcp.md#Stream-kind-MCP-CONSOLE-routes-directly-to-MCP-client-without-PTY-conflict
-        .use(McpPlugin(McpConfig()))
+        .use(McpPlugin(McpConfig(deny_server_sampling=True)))
 
         .use(ToolGuardPlugin(ToolGuardConfig(
             # see: cans/plugins/tool-guard.md#Immutable-schema-locking
             pin_schemas=True,
+            detect_cross_server_exfil=True,
+            detect_confusable_names=True,
+            scan_tool_results=True,
+            deny_self_approval=True,
+            hold_ttl_seconds=300,
             # see: cans/plugins/tool-guard.md#Call-quota
             max_invocations_per_trace=50,
         )))
@@ -139,6 +144,8 @@ def build_runtime() -> KelirBuilder:
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
             store_path=".kelir/webhook.merkle.db",
+            strict=True,
+            ocsf_mapping=True,
             merkle_chain=True,
             otel=OtelConfig(
                 service_name="kelir-webhook",

@@ -46,6 +46,8 @@
   - Binary exec channel (terminal plane)
     - Carries programmatic execution streams on stream kind EXEC (mux 0x0001)
     - Sub-lane framing: see: 11-protocol.md#Binary-exec-channel
+    - Programmatic steering injects host guidance into EXEC stderr (0x02)
+    - c.exec.steer(exec_id, msg) emits guidance before exit EOF flush
     - stdout and stderr retain bitwise fidelity; zero terminal escape pollution
     - Programmatic commands bypass PTY entirely; PTY (Port 0) is reserved for human attach
     - Per-exec PTY opt-in

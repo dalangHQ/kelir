@@ -77,6 +77,12 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
             postgres=PgWireRewrite(
                 listen_port=5432,
                 upstream=f"{pg_host}:5432",
+                ast_parser="libpgquery",
+                require_where_on_mutations=True,
+                deny_mode_in_tx="terminate",
+                block_unsafe_io=True,
+                catalog_resolution=True,
+                synthetic_cancel_keys=True,
                 schema_rewrites=[
                     PgSchemaRewrite(from_schema="public.", to_schema="migrate_schema."),
                 ],
@@ -95,6 +101,8 @@ def build_runtime(pg_host: str, pg_secret: str) -> KelirBuilder:
         # see: cans/plugins/ledger.md#Merkle-WAL
         .use(LedgerPlugin(LedgerConfig(
             store_path=".kelir/migrate-audit.merkle.db",
+            strict=True,
+            ocsf_mapping=True,
             merkle_chain=True,
             otel=None,
             receipts=ReceiptConfig(

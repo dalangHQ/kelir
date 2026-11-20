@@ -13,6 +13,7 @@
     - Owns StepSlot, StepEvaluator, StepVerdict, PostExecAction
     - Verdicts: Commit | Rollback | YieldToHost dispatched here, not core
     - Ed25519 reviewer attribution and separation-of-duties enforcement
+      - Reviewer auth and RBAC: see: plugins/tool-guard.md#Approval-authorization
     - Tainted-step delta verification (binary BLAKE3, dirty-byte, duration)
     - PTY idle quiescence heuristics for step boundaries
     - Owns /dev/kelir-gate sentinel path interpretation

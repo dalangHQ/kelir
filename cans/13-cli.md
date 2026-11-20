@@ -4,9 +4,16 @@
   - Host pre-flight commands
     - doctor probes KVM/HVF entitlement, page size, and /dev/kvm permissions
     - doctor --enforce writes physical hardware lockfile /etc/kelir/hw.lock
+    - doctor runs behavioral seccomp, WAIT_KILLABLE, and userfaultfd probes
     - setup attaches eBPF/LSM workspace killswitch and sets device perms
   - Inspection commands
     - logs tails guest output with cursor based replay
       - Cursors resume a tail from an earlier point
       - History survives sandbox restarts
       - Stream guarantee: 04-terminal-plane.md#Stream-replay
+  - Policy generation commands
+    - spec generate synthesizes kelir.toml from ExecutionReceipt and EventBus logs
+    - Collapses path globs, /24 egress CIDRs, and observed MCP tool hashes
+  - Incident and emergency commands
+    - report emits a markdown session summary of blocks, anomalies, and timeline
+    - emergency break-glass and kill-switch control global runtime halt state

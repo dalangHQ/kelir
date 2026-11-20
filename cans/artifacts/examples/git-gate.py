@@ -48,7 +48,7 @@ async def _gate_git_trap(event: TrapEvent) -> Optional[Verdict]:
             msg = ""
         if any(p in msg for p in PROTECTED):
             return Verdict.abort(
-                reason="EPOLICY: commit references protected branch",
+                reason="EPOLICY: commit targets protected branch; commit to feature/* instead",
             )
         return Verdict.pass_()
     return Verdict.pass_()
