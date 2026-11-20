@@ -87,9 +87,12 @@ class Session:
             raise EConfig(
                 "Session.export_spec: session carries no ingested profile"
             )
+        from kelir.lifecycle_sandbox import _profile_text
+
         # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
-        # TODO (L3) [bp_06_python_export_spec_renders_toml_fields]: write the serialized profile to disk once the file bridge lands; slop: export_spec raises instead of writing, no TOML ever leaves the session.
-        raise EConfig("Session.export_spec: profile file write is not implemented (L3)")
+        Path(path).write_text(
+            _profile_text(self._profile, path), encoding="utf-8"
+        )
 
     async def elevate_lease(self, token: str) -> None:
         if not isinstance(token, str) or not token:

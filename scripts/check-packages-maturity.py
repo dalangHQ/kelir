@@ -64,6 +64,16 @@ PINNED_MIXED = {
     "packages/py/kelir/kelir_builder_scope.py",
 }
 
+# see: cans/02-plugin-model.md#Unified-builder (from_config hydrates declarative profiles directly)
+# see: cans/plugins/profile.md (export_spec emits active plugin topologies to TOML or YAML)
+# see: cans/01-architecture.md (named exemption: host-side profile file IO)
+# The named exemption covers the shared loader and the writers that implement it:
+# _parse_profile is the read behind KelirBuilder::from_config; export_spec is the write.
+PY_IO_EXEMPT = {
+    ("packages/py/kelir/lifecycle_sandbox.py", "_parse_profile"),
+    ("packages/py/kelir/lifecycle_sandbox.py", "export_spec"),
+    ("packages/py/kelir/lifecycle_session.py", "export_spec"),
+}
 TS_IO = [
     (r"""\b(?:readFile|writeFile|appendFile|createReadStream|createWriteStream|readdir|mkdir|rmdir|unlink|stat|open)\s*\(""", "fs call"),
     (r"""\b(?:spawn|execFile|execSync|spawnSync|fork)\s*\(""", "process spawn/exec call"),
@@ -142,6 +152,18 @@ def ts_functions(lines):
     return funcs
 
 
+def py_named_functions(path):
+    try:
+        tree = ast.parse(path.read_text(errors="replace"))
+    except SyntaxError:
+        return []
+    funcs = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funcs.append((node.name, node.lineno, node.end_lineno or node.lineno))
+    return funcs
+
+
 def py_functions(path, lines):
     try:
         tree = ast.parse(path.read_text(errors="replace"))
@@ -172,6 +194,7 @@ def check_file(path, rel, findings):
     lines = strip_ts(text) if is_ts else strip_py(text)
     raw_lines = text.splitlines()
     funcs = ts_functions(lines) if is_ts else py_functions(path, lines)
+    named_funcs = [] if is_ts else py_named_functions(path)
     todos = {i for i, line in enumerate(raw_lines, start=1) if TODO_L3.search(line)}
     patterns = TS_IO_RES if is_ts else PY_IO_RES
     raw_patterns = TS_IO_RAW_RES if is_ts else []
@@ -182,6 +205,12 @@ def check_file(path, rel, findings):
                     continue
                 if not is_ts and (PY_DEF_LINE.match(line) or PY_DELEGATE.search(line)):
                     continue
+                if not is_ts:
+                    fname = next(
+                        (n for n, s, e in named_funcs if s <= i <= e), None
+                    )
+                    if fname and (rel, fname) in PY_IO_EXEMPT:
+                        continue
                 if not is_run or not guarded(funcs, todos, i):
                     findings.append(f"{rel}:{i}: live IO ({label}): {raw_lines[i - 1].strip()[:100]}")
         for regex, label in raw_patterns:

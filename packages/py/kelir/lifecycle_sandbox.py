@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib
+import tomllib
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import tomli_w
@@ -51,12 +53,18 @@ def _builder_kwargs(model: ProfileConfig) -> dict[str, Any]:
 
 # see: cans/plugins/profile.md#Declarative-profile-execution
 def _parse_profile(origin: str, path: str) -> dict[str, Any]:
-    if not path.endswith((".toml", ".yaml", ".yml")):
+    text = Path(path).read_text(encoding="utf-8")
+    loaded: dict[str, Any]
+    if path.endswith(".toml"):
+        loaded = tomllib.loads(text)
+    elif path.endswith((".yaml", ".yml")):
+        yaml = importlib.import_module("yaml")
+        loaded = yaml.safe_load(text)
+    else:
         raise EConfig(
             f"{origin}: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
         )
-    # TODO (L3) [bp_05_python_from_config_loads_toml]: read the profile file from disk once the file bridge lands; slop: from_config raises instead of loading the profile, sessions cannot start from a file.
-    raise EConfig(f"{origin}: profile file read is not implemented (L3)")
+    return loaded
 
 
 # see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -191,8 +199,7 @@ class Sandbox:
     async def export_spec(self, path: str) -> None:
         # L3-GAP: [bindings_py]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
         # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
-        # TODO (L3) [bp_06_python_export_spec_renders_toml_fields]: write the serialized profile to disk once the file bridge lands; slop: export_spec raises instead of writing, no TOML ever leaves the session.
-        raise EConfig("Sandbox.export_spec: profile file write is not implemented (L3)")
+        Path(path).write_text(_profile_text(self._profile, path), encoding="utf-8")
 
     async def stop(self) -> None:
         if self._session is None:

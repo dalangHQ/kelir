@@ -253,26 +253,26 @@ cases:
   case_file: cases/bindings_py/bp_05_python_from_config_loads_toml.yaml
   target_crate: packages/py
   target_tier: unit
-  status: red
-  test_file: packages/py/tests/red/test_profile_config.py
-  test_fn: bp_05_python_from_config_loads_toml
-  reason: 'pytest red suite: Sandbox.from_config raised EConfig "Sandbox.from_config: profile file read is not implemented (L3)" instead of loading the TOML profile from disk; the file bridge is L3'
+  status: implemented
+  test_file: packages/py/tests/test_lifecycle_session.py
+  test_fn: test_sandbox_from_config_loads_toml
+
 - case_id: bp_06_python_export_spec_renders_toml_fields
   case_file: cases/bindings_py/bp_06_python_export_spec_renders_toml_fields.yaml
   target_crate: packages/py
   target_tier: unit
-  status: red
-  test_file: packages/py/tests/red/test_profile_export.py
-  test_fn: bp_06_python_export_spec_renders_toml_fields
-  reason: 'pytest red suite: Sandbox.export_spec raised EConfig "Sandbox.export_spec: profile file write is not implemented (L3)" instead of writing the rendered TOML; the file bridge is L3'
+  status: implemented
+  test_file: packages/py/tests/test_lifecycle_session.py
+  test_fn: test_sandbox_export_spec_renders_known_toml_fields
+
 - case_id: bp_07_python_export_spec_round_trips_fixture_sections
   case_file: cases/bindings_py/bp_07_python_export_spec_round_trips_fixture_sections.yaml
   target_crate: packages/py
   target_tier: unit
-  status: red
-  test_file: packages/py/tests/red/test_profile_export.py
-  test_fn: bp_07_python_export_spec_round_trips_fixture_sections
-  reason: 'pytest red suite: Sandbox.export_spec raised EConfig "Sandbox.export_spec: profile file write is not implemented (L3)" instead of writing the round-tripped fixture; the file bridge is L3'
+  status: implemented
+  test_file: packages/py/tests/test_lifecycle_session.py
+  test_fn: test_sandbox_export_spec_round_trips_every_fixture_section
+
 - case_id: bt_01_typescript_boot_econfig_missing_typebox_dependency
   case_file: cases/bindings_ts/bt_01_typescript_boot_econfig_missing_typebox_dependency.yaml
   target_crate: packages/ts
