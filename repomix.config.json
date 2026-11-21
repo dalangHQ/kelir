@@ -12,7 +12,7 @@
     "files": true,
     "removeComments": false,
     "removeEmptyLines": false,
-    "compress": true,
+    "compress": false,
     "topFilesLength": 5,
     "showLineNumbers": false,
     "truncateBase64": false,
@@ -28,14 +28,18 @@
     }
   },
   "include": [
-   //     "AGENTS.md",
+        "AGENTS.md",
     // "cans/",
     //  "cans/artifacts/examples",
-      "crates",
-        "packages",        
+    //  "crates",
+    //    "packages",        
  //         "cans/artifacts/code",
  //     "cans/artifacts/config",
  //     "cans/artifacts/diagrams",
+        
+        "crates/kelir-maturity",
+        ".git",
+        "scripts/check-packages-maturity.py"
   ],
   "ignore": {
     "useGitignore": true,
