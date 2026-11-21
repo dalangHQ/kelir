@@ -10,6 +10,9 @@ use crate::trap_protocol::ShimError;
 pub const SLAB_CHUNK: usize = 256;
 pub const MAX_EXEC_SLOTS: usize = 4096;
 
+// see: cans/11-protocol.md#Per-ExecSlot-cgroup-v2-enforces-pids.max-and-memory.max-inside-guest
+pub const EXEC_STEER_SUBLANE: u8 = 0x02;
+
 #[derive(Debug, Clone, Default)]
 pub struct ExecSpec {
     pub binary: String,
@@ -141,6 +144,8 @@ pub struct Multiplexer {
     pub slots: ExecSlotSlab,
     table: StreamSlotTable,
     pub next_exec_id: u64,
+    // see: cans/11-protocol.md#Per-ExecSlot-cgroup-v2-enforces-pids.max-and-memory.max-inside-guest
+    pub per_exec_cgroup: bool,
 }
 
 impl Multiplexer {
@@ -149,6 +154,7 @@ impl Multiplexer {
             slots: ExecSlotSlab::new(),
             table: StreamSlotTable::new(),
             next_exec_id: 1,
+            per_exec_cgroup: false,
         }
     }
 
@@ -161,6 +167,13 @@ impl Multiplexer {
     pub fn signal_exec(&mut self, exec_id: u64, _signal: u32) -> Result<(), ShimError> {
         // TODO (L3) [protocol_mux]: deliver the signal to the slot with the exec id.; slop: signal is dropped, so a kill by exec id reports success while the process keeps running.
         Err(ShimError::SignalDelivery { exec_id, errno: 0 })
+    }
+
+    // see: cans/04-terminal-plane.md#Programmatic-steering-injects-host-guidance-into-EXEC-stderr-(0x02)
+    pub fn steer_exec(&mut self, exec_id: u64, _msg: &[u8]) -> Result<(), ShimError> {
+        // L3-GAP: [protocol_mux]: flush queued steering frames onto EXEC sub-lane 0x02 for exec_id before the exit control frame at EOF; slop: steering lines flush after the exit frame, agent never reads the guidance
+        // TODO (L3) [protocol_mux]: write the steering message to the slot stderr sub-lane 0x02, flushing it before the exit EOF frame.; slop: guidance never flushes, the agent hits exit EOF without ever seeing the steering reason.
+        Err(ShimError::UnknownExecSubLane { lane: EXEC_STEER_SUBLANE })
     }
 
     pub fn dispatch_frame(
@@ -189,8 +202,8 @@ impl Multiplexer {
 
     fn spawn_exec(&mut self, spec: &ExecSpec) -> Result<ExecSlot, ShimError> {
         // L3-GAP: [vr_09_virtio_console_port0_pty_dedication]: openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop; slop: exec never spawned, EXEC stream bytes never become a process
-        let _ = (spec, self.next_exec_id);
         // TODO (L3) [protocol_mux]: openpty, fork, setrlimit from spec.limits, execve spec.binary/spec.argv.; slop: execve never runs, so the slot holds a stream with no process behind it.
+        // TODO (L3) [protocol_mux]: when per_exec_cgroup, attach the spawned slot to a per-ExecSlot cgroup v2 leaf enforcing pids.max and memory.max instead of shared-UID RLIMIT_NPROC, which is accounted per real UID and starves sibling slots.; slop: cgroup attach skipped, a runaway ExecSlot exhausts the shared UID process budget.
         Err(ShimError::SpawnPending)
     }
 }
