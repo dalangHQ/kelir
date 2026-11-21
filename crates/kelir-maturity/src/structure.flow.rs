@@ -4,15 +4,12 @@ use crate::{CheckReport, ForbidMode, Level, Policy, crate_of, level_of, read_all
 use std::fs;
 use std::path::Path;
 
-pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
-    let Ok(src) = fs::read_to_string(path) else {
-        return;
-    };
+pub fn check_file(path: &Path, policy: &Policy, src: &str, report: &mut CheckReport) {
     let level = level_of(path);
     let tooling = is_tooling_file(path);
     let lines = src.lines().count();
     let at = path.display().to_string();
-    if level == Level::L1 && has_runtime_concern(&src) {
+    if level == Level::L1 && has_runtime_concern(src) {
         record(
             report,
             policy.forbid_mode,
@@ -21,7 +18,7 @@ pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
             "L1 file carries runtime concern (async fn/.await/tokio::/spawn); move to <stem>.flow.rs",
         );
     }
-    if is_aggregator(path) && lines > 120 && has_mutating_impl(&src) {
+    if is_aggregator(path) && lines > 120 && has_mutating_impl(src) {
         record(
             report,
             policy.forbid_mode,
@@ -30,7 +27,7 @@ pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
             "lib.rs/mod.rs is not an aggregator; extract the impl to <Type>.flow.rs",
         );
     }
-    if level == Level::L2 && !tooling && spawns_runtime_outside_block_on(&src) {
+    if level == Level::L2 && !tooling && spawns_runtime_outside_block_on(src) {
         record(
             report,
             policy.forbid_mode,
@@ -42,8 +39,8 @@ pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
     if level == Level::L2
         && !tooling
         && crate_allows_l3(&crate_of(path))
-        && has_runtime_concern(&src)
-        && has_io_concern(&src)
+        && has_runtime_concern(src)
+        && has_io_concern(src)
     {
         record(
             report,
@@ -53,7 +50,7 @@ pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
             ".flow.rs carries I/O (std::fs/tokio::fs/libc/std::process) inside an L3-allowed crate; move to <stem>.run.rs",
         );
     }
-    if is_aggregator(path) && src.contains("async fn") && has_mutating_impl(&src) {
+    if is_aggregator(path) && src.contains("async fn") && has_mutating_impl(src) {
         record(
             report,
             policy.forbid_mode,
@@ -61,19 +58,6 @@ pub fn check_file(path: &Path, policy: &Policy, report: &mut CheckReport) {
             &at,
             "lib.rs/mod.rs carries async impl bodies; extract to <impl>.flow.rs",
         );
-    }
-    if level == Level::L3 {
-        for (name, line_no) in stub_shape_violations(&src) {
-            record(
-                report,
-                policy.forbid_mode,
-                "S6",
-                &format!("{at}:{line_no}"),
-                &format!(
-                    "fn {name} in .run.rs has a non-stub body; L3 files hold only signatures and L3 deferral markers"
-                ),
-            );
-        }
     }
 }
 
@@ -145,136 +129,9 @@ fn crate_allows_l3(crate_dir: &Path) -> bool {
     read_allowed_levels(&crate_dir.join("Cargo.toml")).contains(&Level::L3)
 }
 
-// see: cans/01-architecture.md#Codebase-invariants
-const S6_TODO_MARK: &str = concat!("/", "/ ", "TODO (L3)");
-
 struct FnItem<'a> {
     name: String,
-    line: usize,
     body: Option<&'a str>,
-}
-
-fn stub_shape_violations(src: &str) -> Vec<(String, usize)> {
-    let mut out = Vec::new();
-    for item in fn_items(src) {
-        let Some(body) = item.body else {
-            continue;
-        };
-        if is_stub_fn(&item.name, body) {
-            continue;
-        }
-        out.push((item.name, item.line));
-    }
-    out
-}
-
-fn is_stub_fn(name: &str, body: &str) -> bool {
-    if body.contains(S6_TODO_MARK) {
-        return true;
-    }
-    let text = scrub(body);
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return true;
-    }
-    if is_single_expression(&text) {
-        return true;
-    }
-    if is_ctor(name) && is_field_init_only(&text) {
-        return true;
-    }
-    false
-}
-
-fn is_ctor(name: &str) -> bool {
-    name == "new" || name.starts_with("build_")
-}
-
-fn is_single_expression(text: &str) -> bool {
-    !text.contains(';')
-        && !has_word(text, "let")
-        && !has_word(text, "if")
-        && !has_word(text, "match")
-        && !has_word(text, "for")
-        && !has_word(text, "while")
-        && !has_word(text, "loop")
-        && !has_word(text, "return")
-        && !has_word(text, "await")
-        && !has_word(text, "unsafe")
-        && !has_word(text, "fn")
-        && !text.contains("=>")
-}
-
-fn is_field_init_only(text: &str) -> bool {
-    if has_word(text, "if")
-        || has_word(text, "match")
-        || has_word(text, "for")
-        || has_word(text, "while")
-        || has_word(text, "loop")
-        || has_word(text, "return")
-        || has_word(text, "await")
-        || has_word(text, "unsafe")
-        || has_word(text, "fn")
-        || text.contains("=>")
-    {
-        return false;
-    }
-    let parts = split_top_level(text, b';');
-    let mut segments: Vec<&str> = parts
-        .iter()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if segments.is_empty() {
-        return true;
-    }
-    let last = segments.pop().unwrap_or("");
-    if segments.is_empty() {
-        return true;
-    }
-    segments.iter().all(|s| s.starts_with("let ")) && !last.is_empty()
-}
-
-fn has_word(text: &str, word: &str) -> bool {
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i + word.len() <= bytes.len() {
-        if text[i..].starts_with(word) {
-            let before = i == 0 || !is_ident_byte(bytes[i - 1]);
-            let after = i + word.len() >= bytes.len() || !is_ident_byte(bytes[i + word.len()]);
-            if before && after {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
-}
-
-fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-fn split_top_level(text: &str, sep: u8) -> Vec<&str> {
-    let bytes = text.as_bytes();
-    let mut out = Vec::new();
-    let mut depth: usize = 0;
-    let mut start = 0;
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'{' | b'(' | b'[' => depth += 1,
-            b'}' | b')' | b']' => depth = depth.saturating_sub(1),
-            b if b == sep && depth == 0 => {
-                out.push(&text[start..i]);
-                start = i + 1;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    out.push(&text[start..]);
-    out
 }
 
 fn fn_items(src: &str) -> Vec<FnItem<'_>> {
@@ -287,7 +144,6 @@ fn fn_items(src: &str) -> Vec<FnItem<'_>> {
             && (i == 0 || !is_ident_byte(bytes[i - 1]))
             && (i + 2 >= bytes.len() || bytes[i + 2].is_ascii_whitespace())
         {
-            let line = 1 + clean[..i].bytes().filter(|b| *b == b'\n').count();
             let mut j = i + 2;
             while j < bytes.len() && bytes[j].is_ascii_whitespace() {
                 j += 1;
@@ -332,7 +188,7 @@ fn fn_items(src: &str) -> Vec<FnItem<'_>> {
                 }
                 k += 1;
             }
-            out.push(FnItem { name, line, body });
+            out.push(FnItem { name, body });
             i = if k > i { k } else { i + 2 };
             continue;
         }
@@ -453,4 +309,8 @@ fn is_char_literal(src: &str, i: usize) -> bool {
     } else {
         bytes[i + 2] == b'\''
     }
+}
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
 }

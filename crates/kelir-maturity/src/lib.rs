@@ -7,11 +7,16 @@ use serde::Deserialize;
 pub mod levels;
 #[path = "policy.flow.rs"]
 pub mod policy;
+#[path = "comment_scan.flow.rs"]
+pub mod comment_scan;
 #[path = "structure.flow.rs"]
 pub mod structure;
 #[path = "tree.flow.rs"]
 pub mod tree;
+#[path = "ast.flow.rs"]
+pub mod ast;
 
+pub use ast::{collect_fn_names, crate_role_is_tooling, dead_code_shadowing, read_crate_metadata};
 pub use levels::{crate_of, level_of};
 pub use tree::{check_tree, read_allowed_levels, rs_files};
 
