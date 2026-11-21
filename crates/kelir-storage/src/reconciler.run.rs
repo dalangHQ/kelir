@@ -108,6 +108,7 @@ impl Reconciler {
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
         // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors; slop: in-place write, no temp+rename, inode unchanged
         // TODO (L3) [storage_plane]: commit the detected entries with per-entry temp+rename and return the commit stats.; slop: commit writes in place, a crash mid-commit leaves torn files.
+        // TODO (L3) [storage_plane]: on EBUSY retry the atomic rename with backoff up to 2000ms; on EPERM abort the entry commit fail-closed and never fall back to an in-place write, which torn-crashes into non-idempotent state.; slop: EPERM falls back to in-place overwrite, a crash mid-write leaves a torn file and breaks commit idempotency.
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::commit needs the StorageIo rename primitive; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
@@ -120,6 +121,9 @@ impl Reconciler {
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // L3-GAP: [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
         // TODO (L3) [storage_plane]: prove target stays beneath the workspace root with no parent-dir or symlink escape.; slop: containment never proven, a symlink target escapes the workspace root.
+        // TODO (L3) [storage_plane]: deny traversal that escapes the workspace root via a symlinked cwd with symlink_cwd_deny, distinguishing a cwd escape from a path-argument escape.; slop: cwd symlink escapes treated as path escapes, workspace root bypassed silently.
+        // TODO (L3) [storage_plane]: detect cross-mount rename between the /tmp virtio-blk scratch and the /workspace virtio-fs mount and fail with EXDEV instead of an atomic rename.; slop: cross-mount rename commits as one op, the host silently splits it into delete+create.
+        // TODO (L3) [storage_plane]: detect case-collision ambiguity between APFS/NTFS case-insensitive host lowerdir entries and the case-sensitive Linux guest VFS before committing.; slop: case-colliding names commit over each other, guest VFS state diverges from host disk.
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): Reconciler::contain needs the containment check beneath the workspace root"
                 .into(),
