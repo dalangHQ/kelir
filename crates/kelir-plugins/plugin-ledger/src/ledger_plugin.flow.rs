@@ -38,6 +38,8 @@ impl LedgerConfig {
         Self {
             store_path: store_path.into(),
             merkle_chain,
+            strict: false,
+            ocsf_mapping: false,
             suppress_local_db: false,
             hashing_standard: HashingStandard::Rfc6962DualBlake3Sha256,
             record_pre_redaction_hash: false,
@@ -85,6 +87,10 @@ impl Default for MerkleWalConfig {
             record_pre_redaction_hash: true,
             include_hook_spans_in_root: true,
             witness_cosigning_endpoint: None,
+            kms_provider: None,
+            // see: cans/plugins/ledger.md#Merkle-WAL-specification
+            min_signing_key_bytes: 32,
+            verify_key_fingerprint: true,
         }
     }
 }

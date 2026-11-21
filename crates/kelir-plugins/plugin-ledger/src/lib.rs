@@ -40,9 +40,10 @@ pub use otlp_exporter::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfi
 pub use otlp_records::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
 pub use otlp_span::OtlpSpan;
 pub use wal_ledger::{
-    DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, MerkleInclusionProof, OtlpLedgerSink,
-    SignedTreeHead, WalRecord, WitnessClient, WitnessCosignature, dual_merkle_leaf,
-    dual_merkle_node, dual_merkle_root, inclusion_proof,
+    AuditDropCounters, DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, MerkleInclusionProof,
+    OcsfClassId, OtlpLedgerSink, SignedTreeHead, WalRecord, WalSegmentHeader, WitnessClient,
+    WitnessCosignature, dual_merkle_leaf, dual_merkle_node, dual_merkle_root, inclusion_proof,
+    pack_segment_header, verify_segment_frame,
 };
 
 // see: cans/plugins/ledger.md#OpenTelemetry
@@ -69,6 +70,10 @@ pub struct LedgerConfig {
     // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.store_path
     pub store_path: PathBuf,
     pub merkle_chain: bool,
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub strict: bool,
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub ocsf_mapping: bool,
     pub suppress_local_db: bool,
     pub hashing_standard: HashingStandard,
     pub record_pre_redaction_hash: bool,
@@ -111,6 +116,12 @@ pub struct MerkleWalConfig {
     pub record_pre_redaction_hash: bool,
     pub include_hook_spans_in_root: bool,
     pub witness_cosigning_endpoint: Option<String>,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub kms_provider: Option<String>,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub min_signing_key_bytes: u32,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub verify_key_fingerprint: bool,
 }
 
 // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)

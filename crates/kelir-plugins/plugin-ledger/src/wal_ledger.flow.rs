@@ -10,9 +10,145 @@ use sha2::Digest;
 
 use crate::OtelConfig;
 use crate::compute_ledger::StorageDelta;
+use kelir_interface::fusion_plugin::TrampolineRing;
+use kelir_interface::telemetry::VerdictKind;
 
 pub trait LedgerSink: Send + Sync {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError>;
+}
+
+// see: cans/14-observability.md#Online-statistical-feature-extraction
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AuditDropCounters {
+    pub overflow: u64,
+    pub crc_corruption: u64,
+    pub mapper: u64,
+    pub auth_loss: u64,
+}
+
+impl AuditDropCounters {
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn record_overflow(&mut self) {
+        self.overflow = self.overflow.saturating_add(1);
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn record_crc_corruption(&mut self) {
+        self.crc_corruption = self.crc_corruption.saturating_add(1);
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn record_mapper(&mut self) {
+        self.mapper = self.mapper.saturating_add(1);
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn record_auth_loss(&mut self) {
+        self.auth_loss = self.auth_loss.saturating_add(1);
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn total(&self) -> u64 {
+        self.overflow
+            .saturating_add(self.crc_corruption)
+            .saturating_add(self.mapper)
+            .saturating_add(self.auth_loss)
+    }
+}
+
+// see: cans/14-observability.md#Security-events
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+// Every EventBus security event maps to an OCSF 1.x class id; the match below is
+// exhaustive over TrampolineRing so adding a ring forces a mapping here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OcsfClassId {
+    // System activity: process lifecycle / execution
+    ProcessActivity,
+    // File system activity: open/read/write/unlink/rename/setattr
+    FileSystemActivity,
+    // Network activity: L4/L7 flows, DNS, sockets
+    NetworkActivity,
+    // Application lifecycle / API requests: MCP, vsock services
+    ApplicationActivity,
+    // Security findings: containment breach, keyring, policy denials
+    SecurityFinding,
+    // Audit account / log collections: drops, rotations, kill-switch
+    AuditAccount,
+}
+
+impl OcsfClassId {
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn class_uid(&self) -> u64 {
+        match self {
+            Self::ProcessActivity => 100_699,
+            Self::FileSystemActivity => 100_799,
+            Self::NetworkActivity => 100_499,
+            Self::ApplicationActivity => 100_599,
+            Self::SecurityFinding => 100_499,
+            Self::AuditAccount => 100_699,
+        }
+    }
+
+    // see: cans/14-observability.md#Security-events
+    // Exhaustive enum match over event kinds (ring x verdict) per
+    // cans/plugins/ledger.md#Strict-audit-and-drop-accounting.
+    pub fn for_event(ring: TrampolineRing, verdict: VerdictKind) -> Self {
+        match ring {
+            TrampolineRing::Trap
+            | TrampolineRing::TrapDeny
+            | TrampolineRing::ProcessExit
+            | TrampolineRing::HostPreempt => Self::ProcessActivity,
+            TrampolineRing::FsLookup
+            | TrampolineRing::FsRead
+            | TrampolineRing::FsWrite
+            | TrampolineRing::FsLock
+            | TrampolineRing::FsUnlink
+            | TrampolineRing::FsRename
+            | TrampolineRing::FsSetattr
+            | TrampolineRing::FsSymlink
+            | TrampolineRing::FsMkdir
+            | TrampolineRing::FsReaddir
+            | TrampolineRing::FsReadlink => Self::FileSystemActivity,
+            TrampolineRing::NetOutbound
+            | TrampolineRing::NetInbound
+            | TrampolineRing::SocketConnect
+            | TrampolineRing::SocketBind
+            | TrampolineRing::DnsQuery => Self::NetworkActivity,
+            TrampolineRing::ConsoleInput
+            | TrampolineRing::ConsoleOutput
+            | TrampolineRing::ExecStdout
+            | TrampolineRing::ExecStderr
+            | TrampolineRing::ExecStdin
+            | TrampolineRing::VsockService
+            | TrampolineRing::CustomAction => Self::ApplicationActivity,
+            TrampolineRing::HostContainmentBreach
+            | TrampolineRing::HostLsmExec
+            | TrampolineRing::HostKeyringAccess => Self::SecurityFinding,
+            TrampolineRing::Heartbeat
+            | TrampolineRing::Lifecycle
+            | TrampolineRing::Watchdog
+            | TrampolineRing::Signal
+            | TrampolineRing::Fork
+            | TrampolineRing::HostPressure
+            | TrampolineRing::MemoryPressure => Self::ProcessActivity,
+        }
+        .for_verdict(verdict)
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    fn for_verdict(self, verdict: VerdictKind) -> Self {
+        match verdict {
+            VerdictKind::Pass
+            | VerdictKind::Forward
+            | VerdictKind::Patch
+            | VerdictKind::Suspend => self,
+            // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+            // Deny-shaped verdicts are audit accounting events when ledger.strict
+            // halts the pipeline on drop; otherwise they stay security findings.
+            VerdictKind::Drop | VerdictKind::Abort => Self::AuditAccount,
+        }
+    }
 }
 
 // see: cans/10-attestation.md#Causal-delta
@@ -32,6 +168,83 @@ pub fn compute_causal_delta(
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
 pub const WAL_RECORD_LEN: usize = 8 + 32 + 32 + 32 + 8 + 64;
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// CRC32C WAL segment framing: [magic u32][segment_seq u64][record_count u32]
+// [payload_len u32][reserved u32][crc32c over the packed header bytes].
+pub const WAL_SEGMENT_HEADER_LEN: usize = 4 + 8 + 4 + 4 + 4;
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+pub const WAL_SEGMENT_MAGIC: u32 = 0x4B4C_5243; // "KLRC"
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WalSegmentHeader {
+    pub magic: u32,
+    pub segment_seq: u64,
+    pub record_count: u32,
+    pub payload_len: u32,
+    pub reserved: u32,
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// CRC32C (Castagnoli) polynomial, reflected form 0x82F63B78.
+fn crc32c(data: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0x82F6_3B78 & mask);
+        }
+    }
+    !crc
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// Pure L2 CRC32C segment header packer: 24-byte header + 4-byte trailing checksum.
+pub fn pack_segment_header(
+    segment_seq: u64,
+    record_count: u32,
+    payload_len: u32,
+) -> [u8; WAL_SEGMENT_HEADER_LEN + 4] {
+    let header = WalSegmentHeader {
+        magic: WAL_SEGMENT_MAGIC,
+        segment_seq,
+        record_count,
+        payload_len,
+        reserved: 0,
+    };
+    let mut bytes = [0u8; WAL_SEGMENT_HEADER_LEN + 4];
+    bytes[0..4].copy_from_slice(&header.magic.to_le_bytes());
+    bytes[4..12].copy_from_slice(&header.segment_seq.to_le_bytes());
+    bytes[12..16].copy_from_slice(&header.record_count.to_le_bytes());
+    bytes[16..20].copy_from_slice(&header.payload_len.to_le_bytes());
+    bytes[20..24].copy_from_slice(&header.reserved.to_le_bytes());
+    let checksum = crc32c(&bytes[..WAL_SEGMENT_HEADER_LEN]);
+    bytes[WAL_SEGMENT_HEADER_LEN..].copy_from_slice(&checksum.to_le_bytes());
+    bytes
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// Pure L2 CRC32C segment frame verifier: false on length, magic, or CRC mismatch.
+pub fn verify_segment_frame(bytes: &[u8]) -> bool {
+    if bytes.len() != WAL_SEGMENT_HEADER_LEN + 4 {
+        return false;
+    }
+    let magic = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    if magic != WAL_SEGMENT_MAGIC {
+        return false;
+    }
+    let expected = crc32c(&bytes[..WAL_SEGMENT_HEADER_LEN]);
+    let actual = u32::from_le_bytes([
+        bytes[WAL_SEGMENT_HEADER_LEN],
+        bytes[WAL_SEGMENT_HEADER_LEN + 1],
+        bytes[WAL_SEGMENT_HEADER_LEN + 2],
+        bytes[WAL_SEGMENT_HEADER_LEN + 3],
+    ]);
+    expected == actual
+}
 
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -380,6 +593,7 @@ impl OtlpLedgerSink {
 impl LedgerSink for OtlpLedgerSink {
     fn emit_delta(&self, delta: &CausalDelta) -> Result<(), PluginError> {
         // TODO (L3) [ta_09_otlp_export_failure_non_blocking]: retry export failures locally without blocking the pipeline per cans/plugins/ledger.md#OpenTelemetry; slop: export error propagates and blocks pipeline, downed collector stalls guest
+        // TODO (L3) [telemetry_audit]: ledger.strict fail-closed accounting — on export failure with strict mode enabled, return Err (halt FUSE/ring ops) and increment AuditDropCounters.overflow; slop: drops silently uncounted, strict mode unaudited
         // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
         let exporter = match self.config.exporter_config() {
             Ok(config) => OtlpExporter::with_config(config),
