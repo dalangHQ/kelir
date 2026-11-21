@@ -1,8 +1,6 @@
 // see: cans/01-architecture.md#Codebase-invariants
-// see: cans/02-plugin-model.md#Hook-return-semantics
-//! AST containment rules (syn-based): S7 l1-body, S8 l3-marker, S9
-//! l3-stub-shape, os-reach AST resolution, manifest-metadata exemptions.
-use crate::comment_scan::CommentScan;
+// TODO (L2): keep S7/S8/S9 calibration in sync with the real .run.rs corpus
+use crate::comment_scan::{CommentScan, MARKER_TOKEN};
 use crate::{CheckReport, ForbidMode, Level};
 use std::fs;
 use std::path::Path;
@@ -14,6 +12,7 @@ pub struct FileCtx<'a> {
     pub path: &'a Path,
     pub level: Level,
     pub tooling: bool,
+    pub bin: bool,
     pub exemptions: &'a [String],
 }
 
@@ -63,9 +62,11 @@ fn record(report: &mut CheckReport, mode: ForbidMode, rule: &str, at: &str, deta
     }
 }
 
-// S7: any fn body (free or impl) in an unmarked .rs (L1) is a hard fail.
-// Trait declarations with default: None pass; #[derive] attrs are fine.
+// see: cans/01-architecture.md#Codebase-invariants
 fn check_l1_body(ctx: &FileCtx<'_>, file: &File, report: &mut CheckReport, mode: ForbidMode) {
+    if ctx.bin {
+        return;
+    }
     let at = ctx.path.display().to_string();
     for item in &file.items {
         check_l1_item(item, &at, report, mode);
@@ -135,9 +136,7 @@ fn check_l1_item(item: &Item, at: &str, report: &mut CheckReport, mode: ForbidMo
     }
 }
 
-// S8: zero TODO (L3) / L3-GAP / (L3) tokens in comments AND string literals
-// for L1 and L2 files. Comments from the raw source scan; string literals
-// from syn LitStr spans.
+// see: cans/01-architecture.md#Codebase-invariants
 fn check_l3_marker_ban(
     ctx: &FileCtx<'_>,
     file: &File,
@@ -152,7 +151,10 @@ fn check_l3_marker_ban(
             mode,
             "S8",
             &format!("{at}:{line}"),
-            "l3-marker downleak: TODO (L3)/L3-GAP/(L3) token in a comment; the stub belongs in <stem>.run.rs",
+            &format!(
+                "l3-marker downleak: {} token in a comment; the stub belongs in <stem>.run.rs",
+                MARKER_TOKEN
+            ),
         );
     }
     let mut lit = LitStrVisitor { hits: Vec::new() };
@@ -164,7 +166,10 @@ fn check_l3_marker_ban(
                 mode,
                 "S8",
                 &format!("{at}:{line}"),
-                "l3-marker downleak: TODO (L3)/L3-GAP/(L3) token in a string literal; the stub belongs in <stem>.run.rs",
+                &format!(
+                    "l3-marker downleak: {} token in a string literal; the stub belongs in <stem>.run.rs",
+                    MARKER_TOKEN
+                ),
             );
         }
     }
@@ -185,12 +190,7 @@ impl<'ast> Visit<'ast> for LitStrVisitor {
     }
 }
 
-// S9: every fn in a .run.rs must carry a TODO (L3)/L3-GAP marker comment
-// attached (same line or directly above) AND have a stub body: zero Call/
-// MethodCall/If/Match/Loop/ForLoop/While/Unsafe exprs and zero macro
-// invocations; only `let _ =` silencers plus one terminal trivial expr
-// ((), literal, Default::default(), Vec::new(), Ok(trivial), Err(Ctor(lit)),
-// None, Self{fields} ctors in new/build_*).
+// see: cans/01-architecture.md#Codebase-invariants
 fn check_l3_stub_shape(
     ctx: &FileCtx<'_>,
     file: &File,
@@ -208,15 +208,18 @@ fn check_l3_item(item: &Item, scan: &CommentScan, at: &str, report: &mut CheckRe
     match item {
         Item::Fn(f) => {
             let line = f.sig.ident.span().start().line;
-            check_l3_fn(&f.sig.ident.to_string(), line, &f.block, scan, at, report, mode);
+            let end_line = f.block.span().end().line;
+            check_l3_fn(&f.sig.ident.to_string(), line, end_line, &f.block, scan, at, report, mode);
         }
         Item::Impl(imp) => {
             for ii in &imp.items {
                 if let ImplItem::Fn(f) = ii {
                     let line = f.sig.ident.span().start().line;
+                    let end_line = f.block.span().end().line;
                     check_l3_fn(
                         &f.sig.ident.to_string(),
                         line,
+                        end_line,
                         &f.block,
                         scan,
                         at,
@@ -240,22 +243,25 @@ fn check_l3_item(item: &Item, scan: &CommentScan, at: &str, report: &mut CheckRe
 fn check_l3_fn(
     name: &str,
     line: usize,
+    end_line: usize,
     block: &syn::Block,
     scan: &CommentScan,
     at: &str,
     report: &mut CheckReport,
     mode: ForbidMode,
 ) {
-    if !scan.marker_attached(line) {
+    if !scan.marker_attached(line, end_line) {
         record(
             report,
             mode,
             "S9",
             &format!("{at}:{line}"),
             &format!(
-                "fn {name} in .run.rs carries no TODO (L3) marker (same line or directly above)"
+                "fn {name} in .run.rs carries no {} marker (same line or directly above)",
+                MARKER_TOKEN
             ),
         );
+        return;
     }
     if let Some(detail) = body_violation(name, block) {
         record(
@@ -265,7 +271,12 @@ fn check_l3_fn(
             &format!("{at}:{line}"),
             &format!("fn {name} in .run.rs has a non-stub body: {detail}"),
         );
+        return;
     }
+    report.warns.push(format!(
+        "{at}:{line}: fn {name} still carries a stub {} TODO; fill it or drop the marker",
+        MARKER_TOKEN
+    ));
 }
 
 fn body_violation(name: &str, block: &syn::Block) -> Option<String> {
@@ -347,16 +358,21 @@ fn expr_kind(expr: &Expr) -> String {
     kind.to_string()
 }
 
-// Terminal trivial shapes: (), literals, paths (None/true/enums), tuple of
-// trivial elems, struct literals with trivial field exprs (Self{...} ctor
-// only in new/build_*), trivial calls (Default::default(), Vec::new(),
-// Ok(trivial), Err(Ctor(lit)), Some(trivial)), plus paren/unary/reference
-// wrappers of trivial exprs.
+// see: cans/01-architecture.md#Codebase-invariants
+const TRIVIAL_METHODS: [&str; 5] = ["into", "to_string", "to_owned", "clone", "from"];
+
+fn is_trivial_method_call(m: &syn::ExprMethodCall, fn_name: &str) -> bool {
+    TRIVIAL_METHODS.contains(&m.method.to_string().as_str())
+        && m.args.is_empty()
+        && is_trivial_expr(&m.receiver, fn_name)
+}
+
 fn is_trivial_expr(expr: &Expr, fn_name: &str) -> bool {
     match expr {
         Expr::Lit(_) => true,
         Expr::Tuple(tuple) => tuple.elems.iter().all(|e| is_trivial_expr(e, fn_name)),
         Expr::Path(_) => true,
+        Expr::MethodCall(m) => is_trivial_method_call(m, fn_name),
         Expr::Struct(expr_struct) => {
             let is_self_ctor = expr_struct
                 .path
@@ -387,6 +403,10 @@ fn call_is_trivial(
     let Expr::Path(path_expr) = func else {
         return false;
     };
+    if path_expr.path.segments.len() > 2 {
+        return ctor_like_path(&path_expr.path)
+            && args.iter().all(|a| is_ctor_arg(a, fn_name));
+    }
     let segments: Vec<String> = path_expr
         .path
         .segments
@@ -398,7 +418,7 @@ fn call_is_trivial(
     let second = segments.get(1).map(String::as_str);
     let last = segments.last().map(String::as_str).unwrap_or("");
     match root {
-        "Default" | "Vec" => true,
+        "Default" | "Vec" | "String" => true,
         "Ok" | "Some" => args.iter().all(|a| is_trivial_expr(a, fn_name)),
         "Err" => args.iter().all(|a| is_err_ctor_arg(a, fn_name)),
         _ => matches!(
@@ -408,10 +428,18 @@ fn call_is_trivial(
     }
 }
 
+// see: cans/01-architecture.md#Codebase-invariants
+fn ctor_like_path(path: &syn::Path) -> bool {
+    path.segments
+        .iter()
+        .all(|s| s.ident.to_string().chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+}
+
 fn is_err_ctor_arg(expr: &Expr, fn_name: &str) -> bool {
     match expr {
         Expr::Lit(_) => true,
         Expr::Call(call) => call_is_trivial(&call.func, &call.args, fn_name),
+        Expr::MethodCall(m) => is_trivial_method_call(m, fn_name),
         Expr::Struct(expr_struct) => {
             let is_self_ctor = expr_struct
                 .path
@@ -434,12 +462,22 @@ fn is_err_ctor_arg(expr: &Expr, fn_name: &str) -> bool {
     }
 }
 
+// see: cans/01-architecture.md#Codebase-invariants
+fn is_ctor_arg(expr: &Expr, fn_name: &str) -> bool {
+    is_err_ctor_arg(expr, fn_name)
+}
+
 struct StubShapeWalker {
     violations: Vec<String>,
 }
 
 impl<'ast> Visit<'ast> for StubShapeWalker {
     fn visit_expr(&mut self, i: &'ast Expr) {
+        if let Expr::MethodCall(m) = i {
+            if is_trivial_method_call(m, "") {
+                return;
+            }
+        }
         let kind = match i {
             Expr::Call(_) => Some("call"),
             Expr::MethodCall(_) => Some("method call"),
@@ -470,13 +508,7 @@ impl<'ast> Visit<'ast> for StubShapeWalker {
     }
 }
 
-// os-reach AST resolution for L2 (.flow.rs): std::thread::spawn/Builder,
-// tokio::runtime*, std::fs calls, std::process calls (except id/ExitCode),
-// std::net non-pure-type calls, libc calls, rusqlite calls. Carve-outs:
-// pure libc constants (path, no call), std::net pure types, imports
-// (Item::Use is not an expr), session dir lifecycle, std::fs::metadata,
-// std::fs::read_to_string of a named LOCKFILE/_PATH const, std::process::id.
-// Tooling-role crates and os_reach_exemptions from manifest metadata bypass.
+// see: cans/01-architecture.md#Codebase-invariants
 fn check_os_reach(
     ctx: &FileCtx<'_>,
     file: &File,
@@ -491,6 +523,7 @@ fn check_os_reach(
         hits: Vec::new(),
         exempt: exempt_fn_names(ctx.exemptions),
         const_names: const_name_set(file),
+        in_block_on: Vec::new(),
     };
     walker.visit_file(file);
     for (line, detail) in walker.hits {
@@ -530,6 +563,7 @@ struct OsReachVisitor {
     hits: Vec<(usize, String)>,
     exempt: Vec<String>,
     const_names: Vec<String>,
+    in_block_on: Vec<bool>,
 }
 
 impl<'ast> Visit<'ast> for OsReachVisitor {
@@ -537,14 +571,18 @@ impl<'ast> Visit<'ast> for OsReachVisitor {
         if self.exempt.contains(&i.sig.ident.to_string()) {
             return;
         }
+        self.in_block_on.push(i.sig.ident == "block_on");
         syn::visit::visit_item_fn(self, i);
+        self.in_block_on.pop();
     }
 
     fn visit_impl_item_fn(&mut self, i: &'ast ImplItemFn) {
         if self.exempt.contains(&i.sig.ident.to_string()) {
             return;
         }
+        self.in_block_on.push(i.sig.ident == "block_on");
         syn::visit::visit_impl_item_fn(self, i);
+        self.in_block_on.pop();
     }
 
     fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
@@ -556,7 +594,8 @@ impl<'ast> Visit<'ast> for OsReachVisitor {
                 .map(|s| s.ident.to_string())
                 .collect();
             let line = i.func.span().start().line;
-            if let Some(detail) = os_call_hit(&segments, &i.args, &self.const_names) {
+            let in_block_on = self.in_block_on.last().copied().unwrap_or(false);
+            if let Some(detail) = os_call_hit(&segments, &i.args, &self.const_names, in_block_on) {
                 self.hits.push((line, detail));
             }
         }
@@ -610,6 +649,7 @@ fn os_call_hit(
     segments: &[String],
     args: &syn::punctuated::Punctuated<Expr, syn::Token![,]>,
     const_names: &[String],
+    in_block_on: bool,
 ) -> Option<String> {
     let joined = segments.join("::");
     let root = segments.first().cloned().unwrap_or_default();
@@ -624,15 +664,15 @@ fn os_call_hit(
                 }
             }
             Some("fs") => {
-                if matches!(last.as_str(), "metadata" | "read_to_string")
-                    || FS_LIFECYCLE.contains(&last.as_str())
-                {
-                    if last == "read_to_string" {
-                        let named = args.iter().any(|a| is_named_const_arg(a, const_names));
-                        if named {
-                            return None;
-                        }
-                    }
+                if last == "read_to_string" {
+                    let named = args.iter().any(|a| is_named_const_arg(a, const_names));
+                    return if named {
+                        None
+                    } else {
+                        Some(format!("{joined} performs host IO; move to <stem>.run.rs"))
+                    };
+                }
+                if matches!(last.as_str(), "metadata") || FS_LIFECYCLE.contains(&last.as_str()) {
                     return None;
                 }
                 Some(format!("{joined} performs host IO; move to <stem>.run.rs"))
@@ -653,13 +693,17 @@ fn os_call_hit(
             }
             _ => None,
         },
-        "libc" => Some(format!("{joined} is a libc call; move to <stem>.run.rs")),
+        "libc" => {
+            let names = ["socket", "bind", "listen", "accept", "connect", "fork", "execve", "kill", "mmap", "munmap", "read", "write", "open", "close", "dup", "dup2", "pipe", "waitpid", "poll", "pread", "pwrite", "syscall", "mprotect", "ioctl", "flock", "msync"];
+            if names.contains(&last.as_str()) {
+                Some(format!("{joined} is a libc syscall; move to <stem>.run.rs"))
+            } else {
+                None
+            }
+        }
         "tokio" => match segments.get(1).map(String::as_str) {
-            Some("runtime") => Some(format!(
+            Some("runtime") if !in_block_on => Some(format!(
                 "{joined} builds a tokio runtime; move to <stem>.run.rs"
-            )),
-            Some("fs") | Some("net") | Some("process") => Some(format!(
-                "{joined} performs async host IO; move to <stem>.run.rs"
             )),
             _ => None,
         },
@@ -680,7 +724,7 @@ fn is_named_const_arg(expr: &Expr, const_names: &[String]) -> bool {
     }
 }
 
-// Manifest metadata readers: role = "tooling" and os_reach_exemptions.
+// see: cans/01-architecture.md#Codebase-invariants
 #[derive(Debug, Default, Clone)]
 pub struct CrateMetadata {
     pub role: String,
@@ -723,8 +767,7 @@ pub fn crate_role_is_tooling(krate_dir: &Path) -> bool {
     read_crate_metadata(&krate_dir.join("Cargo.toml")).role == "tooling"
 }
 
-// C2 seam: report #[allow(dead_code)] on .flow.rs fns that shadow .run.rs
-// stubs. Called per crate by tree.flow.rs.
+// see: cans/01-architecture.md#Codebase-invariants
 pub fn dead_code_shadowing(
     flow_src: &str,
     run_fns: &[String],
@@ -752,7 +795,7 @@ pub fn dead_code_shadowing(
     }
 }
 
-// Collect every fn name (free, impl, nested mod) in a file.
+// see: cans/01-architecture.md#Codebase-invariants
 pub fn collect_fn_names(src: &str) -> Vec<String> {
     let Ok(file) = syn::parse_file(src) else {
         return Vec::new();

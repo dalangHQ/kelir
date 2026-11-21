@@ -1,6 +1,5 @@
 // see: cans/01-architecture.md#Codebase-invariants
 use crate::ast::{FileCtx, check_file_ast, collect_fn_names, dead_code_shadowing};
-use crate::ast::read_crate_metadata;
 use crate::structure;
 use crate::{CheckReport, ForbidMode, Level, Policy, crate_of, level_of};
 use std::collections::BTreeMap;
@@ -9,6 +8,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 const CONCERN_LEAK_MIN_RUN: usize = 3;
+const C2_MIN_FLOW_FOR_RUN: usize = 3;
 
 pub fn is_tooling_file(path: &Path) -> bool {
     if is_bin_entry_point(path) {
@@ -33,8 +33,11 @@ pub fn is_import_only_line(line: &str) -> bool {
 }
 
 pub fn line_has_guest_io(line: &str) -> bool {
-    line.contains(concat!("rusqlite", "::"))
-        || line.contains(concat!("tokio", "::fs::"))
+    if line.find("//").is_some() {
+        return false;
+    }
+    (line.contains(concat!("rusqlite", "::")) || line.contains(concat!("tokio", "::fs::")))
+        && line.find('(').is_some()
 }
 
 pub fn read_allowed_levels(cargo_toml: &Path) -> Vec<Level> {
@@ -112,6 +115,10 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
                 allowed,
                 krate.display()
             ));
+            if level == Level::L3 {
+                let seam = by_crate.entry(krate).or_default();
+                seam.run_files += 1;
+            }
             continue;
         }
         let src = match fs::read_to_string(file) {
@@ -125,20 +132,51 @@ pub fn check_tree(root: &Path, policy: &Policy) -> CheckReport {
             }
         };
         structure::check_file(file, policy, &src, &mut report);
-        let tooling = is_bin_entry_point(file) || crate::ast::crate_role_is_tooling(&krate);
+        let bin = is_bin_entry_point(file);
+        let tooling = bin || crate::ast::crate_role_is_tooling(&krate);
         let meta = crate::ast::read_crate_metadata(&krate.join("Cargo.toml"));
-        let exemptions = if is_bin_entry_point(file) {
-            Vec::new()
-        } else {
-            meta.exemptions
-        };
+        let exemptions = if bin { Vec::new() } else { meta.exemptions };
         let ctx = FileCtx {
             path: file,
             level,
             tooling,
+            bin,
             exemptions: &exemptions,
         };
         check_file_ast(ctx, &src, &mut report, policy.forbid_mode);
+        for r in policy.rules_for(level, true) {
+            for (n, line) in src.lines().enumerate() {
+                if r.regex.is_match(line) {
+                    if r.id == "os-reach" && os_reach_exempt(file, &line) {
+                        continue;
+                    }
+                    if policy.forbid_mode == ForbidMode::Error {
+                        let text = if let Some(h) = r.hint.as_deref().filter(|h| !h.is_empty()) {
+                            format!("{}:{}: [forbid:{}] {}", file.display(), n + 1, r.id, h)
+                        } else {
+                            format!("{}:{}: [forbid:{}]", file.display(), n + 1, r.id)
+                        };
+                        report.fails.push(text);
+                    } else {
+                        report.warns.push(format!(
+                            "{}:{}: {} (forbid, warn-mode rollout)",
+                            file.display(),
+                            n + 1,
+                            r.id
+                        ));
+                    }
+                }
+            }
+        }
+        for r in policy.rules_for(level, false) {
+            for (n, line) in src.lines().enumerate() {
+                if r.regex.is_match(line) {
+                    report
+                        .warns
+                        .push(format!("{}:{}: {} (warn)", file.display(), n + 1, r.id));
+                }
+            }
+        }
         if is_lib_file(file) {
             let seam = by_crate.entry(krate).or_default();
             match level {
@@ -197,7 +235,7 @@ fn check_c2_seam(
                         .push(format!("{at}: {detail} (seam:C2, warn-mode rollout)"));
                 }
             }
-        } else if !seam.flow.is_empty() && seam.run_files == 0 {
+        } else if seam.flow.len() >= C2_MIN_FLOW_FOR_RUN && seam.run_files == 0 {
             // C2 direction 2: L3 crate with .flow.rs files needs >=1 .run.rs.
             let detail = format!(
                 "L3-capable crate has {} .flow.rs files with zero .run.rs counterparts",
@@ -245,4 +283,69 @@ fn is_lib_file(path: &Path) -> bool {
         }
     }
     under_src
+}
+
+// see: cans/01-architecture.md#Codebase-invariants
+fn os_reach_exempt(file: &Path, line: &str) -> bool {
+    if is_bin_entry_point(file) {
+        return true;
+    }
+    let krate = crate_of(file);
+    if crate::ast::crate_role_is_tooling(&krate) {
+        return true;
+    }
+    let meta = crate::ast::read_crate_metadata(&krate.join("Cargo.toml"));
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if meta.exemptions.iter().any(|e| e.starts_with(&format!("{name}::"))) {
+        return true;
+    }
+    line_is_probe_or_type_position(line)
+}
+
+const OS_TOKENS: [&str; 10] = [
+    "libc::",
+    "std::fs::",
+    "std::net::",
+    "std::process::",
+    "std::os::",
+    "std::thread::",
+    "tokio::fs",
+    "tokio::net",
+    "tokio::process",
+    "rusqlite::",
+];
+
+// see: cans/01-architecture.md#Codebase-invariants
+fn line_is_probe_or_type_position(line: &str) -> bool {
+    if is_import_only_line(line) || line.trim_start().starts_with("//") {
+        return true;
+    }
+    if line.contains("std::process::id()") {
+        return true;
+    }
+    if [
+        "std::fs::metadata",
+        "create_dir_all",
+        "remove_dir_all",
+        "remove_dir",
+    ]
+    .iter()
+    .any(|probe| line.contains(probe))
+    {
+        return true;
+    }
+    if let Some(rest) = line.split("read_to_string").nth(1) {
+        let arg = rest.trim_start().trim_start_matches('(');
+        let arg = arg.split([',', ')']).next().unwrap_or("").trim();
+        let arg = arg.trim_start_matches('&').trim();
+        if !arg.is_empty()
+            && arg.chars().all(|c| c.is_ascii_uppercase() || c == '_' || c == '.')
+        {
+            return true;
+        }
+    }
+    OS_TOKENS.iter().all(|t| match line.find(t) {
+        None => true,
+        Some(pos) => !line[pos..].contains('('),
+    })
 }

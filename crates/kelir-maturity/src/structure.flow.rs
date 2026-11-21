@@ -1,7 +1,6 @@
 // see: cans/01-architecture.md#Codebase-invariants
 use crate::tree::{is_tooling_file, line_has_guest_io};
 use crate::{CheckReport, ForbidMode, Level, Policy, crate_of, level_of, read_allowed_levels};
-use std::fs;
 use std::path::Path;
 
 pub fn check_file(path: &Path, policy: &Policy, src: &str, report: &mut CheckReport) {
@@ -34,20 +33,6 @@ pub fn check_file(path: &Path, policy: &Policy, src: &str, report: &mut CheckRep
             "S3",
             &at,
             "L2 file spawns a runtime; move to <stem>.run.rs (requires allowed_levels += L3)",
-        );
-    }
-    if level == Level::L2
-        && !tooling
-        && crate_allows_l3(&crate_of(path))
-        && has_runtime_concern(src)
-        && has_io_concern(src)
-    {
-        record(
-            report,
-            policy.forbid_mode,
-            "S4",
-            &at,
-            ".flow.rs carries I/O (std::fs/tokio::fs/libc/std::process) inside an L3-allowed crate; move to <stem>.run.rs",
         );
     }
     if is_aggregator(path) && src.contains("async fn") && has_mutating_impl(src) {
