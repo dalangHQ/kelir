@@ -40,7 +40,8 @@ impl HvfDriver {
     }
 
     fn protect_fork(&self) -> Result<(), VmmError> {
-        // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: Mach copy-on-write + Stage-2 write protection via sys_driver::hv_vm_protect; slop: fork shares pages without Stage-2 write protection, child mutates parent
+        // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: Mach copy-on-write + Stage-2 write protection via sys_driver::hv_vm_protect; the Stage-2 clone executes in-process via hv_vm_protect without any OS fork(), because CoreFoundation in a multi-threaded Tokio/NAPI host would SIGABRT on an OS fork(); slop: fork shares pages without Stage-2 write protection, child mutates parent
+        // TODO (L3) [hypervisor_driver]: clone the Stage-2 translation tables in-process via hv_vm_protect CoW, never OS fork(), on multi-threaded hosts; detached child runtimes spawn clean binaries before CoreFoundation init.; slop: OS fork() executes first, CoreFoundation SIGABRTs the multi-threaded host before the CoW clone lands.
         Err(VmmError::Unsupported(
             "hvf fork: hv_vm_protect CoW fork (L3)".into(),
         ))

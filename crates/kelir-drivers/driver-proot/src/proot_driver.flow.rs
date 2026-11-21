@@ -23,6 +23,8 @@ impl ProotDriver {
 
     fn init_tracer(&mut self) -> Result<(), VmmError> {
         // L3-GAP: [hd_10_proot_ptrace_trap_conformance]: initialize proot ptrace tracing harness; slop: exec runs without ptrace trap, TrapEvent never generated
+        // TODO (L3) [hypervisor_driver]: run the pre-boot behavioral probes seccomp_install_probe and wait_killable_probe live before installing the tracer, so a restricted cloud that silently blocks or kills trapped syscalls is detected instead of trusted from static /dev and uname checks.; slop: static probe passes, live ptrace traps are silently killed after boot.
+        // TODO (L3) [hypervisor_driver]: enforce the identical BPF syscall filter and socket-family blocklist the microVM kelir-shim applies (blocked_syscalls, blocked_socket_families) through the tracer, so Class 2 inherits the same trap surface, not a weaker filter.; slop: tracer filter diverges from the shim filter, Class 2 exposes syscalls the microVM blocks.
         Err(VmmError::Unsupported(
             "proot boot: ptrace tracing harness init (L3)".into(),
         ))

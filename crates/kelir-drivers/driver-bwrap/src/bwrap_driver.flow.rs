@@ -24,6 +24,8 @@ impl BwrapDriver {
 
     fn spawn_namespace(&mut self) -> Result<(), VmmError> {
         // L3-GAP: [hd_09_bwrap_emulated_fallback_opt_in]: spawn bubblewrap/unshare user namespace via raw libc; slop: namespace spawns without opt-in check, silent emulated boot
+        // TODO (L3) [hypervisor_driver]: run the pre-boot behavioral probes seccomp_install_probe and wait_killable_probe live before spawning the namespace, so a restricted cloud that silently blocks or kills trapped syscalls is detected instead of trusted from static /dev and uname checks.; slop: static probe passes, live seccomp silently kills every trapped syscall after boot.
+        // TODO (L3) [hypervisor_driver]: install the identical BPF syscall filter and socket-family blocklist the microVM kelir-shim applies (blocked_syscalls, blocked_socket_families) inside the namespace, so Class 2 inherits the same trap surface, not a weaker filter.; slop: namespace filter diverges from the shim filter, Class 2 exposes syscalls the microVM blocks.
         Err(VmmError::Unsupported(
             "bwrap boot: bubblewrap namespace spawn (L3)".into(),
         ))
