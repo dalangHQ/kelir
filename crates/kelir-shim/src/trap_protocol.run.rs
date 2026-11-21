@@ -71,6 +71,20 @@ impl std::error::Error for ShimError {}
 pub struct DefenseFlags {
     pub mask_proc_environ: bool,
     pub block_abstract_unix_sockets: bool,
+    pub block_io_uring: bool,
+    pub block_keyrings: bool,
+    pub blocked_socket_families: SocketFamilyBlockList,
+    pub deny_abi_compat: bool,
+}
+
+// see: cans/11-protocol.md#Trap-fast-path
+// Pure data: the seccomp-blocked socket families carried by DefenseFlags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SocketFamilyBlockList {
+    None,
+    AfAlg,
+    AfRxrpc,
+    NetlinkXfrm,
 }
 
 impl Default for DefenseFlags {
@@ -78,6 +92,14 @@ impl Default for DefenseFlags {
         Self {
             mask_proc_environ: true,
             block_abstract_unix_sockets: true,
+            // see: cans/11-protocol.md#Blocked-syscalls
+            block_io_uring: true,
+            // see: cans/11-protocol.md#Blocked-syscalls (kernel keyrings, CVE-2026-46243)
+            block_keyrings: true,
+            // see: cans/11-protocol.md#Blocked-socket-families
+            blocked_socket_families: SocketFamilyBlockList::NetlinkXfrm,
+            // see: cans/11-protocol.md#deny_abi_compat (AUDIT_ARCH check rejecting x32 / int 0x80)
+            deny_abi_compat: true,
         }
     }
 }
@@ -149,6 +171,10 @@ fn trap_filter_program(_defense: &DefenseFlags) -> Vec<libc::sock_filter> {
     // L3-GAP: [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
     // see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
     // TODO (L3) [protocol_mux]: build the seccomp BPF program trapping the monitored syscalls and returning USER_NOTIF.; slop: filter is never built, so no syscall is ever trapped.
+    // TODO (L3) [protocol_mux]: trap io_uring_setup, io_uring_enter and io_uring_register when defense.block_io_uring, denying with EPERM.; slop: io_uring left untrapped, async I/O bypasses every trap inspection.
+    // TODO (L3) [protocol_mux]: trap add_key, request_key and keyctl when defense.block_keyrings, denying with EPERM (kernel keyrings, CVE-2026-46243).; slop: keyring syscalls left live, guest secrets leak into host kernel keyrings.
+    // TODO (L3) [protocol_mux]: deny socket(2) for the blocked families (AF_ALG, AF_RXRPC, NETLINK_XFRM per defense.blocked_socket_families) with EAFNOSUPPORT.; slop: exotic families left reachable, CVE-prone kernel subsystems exposed to the guest.
+    // TODO (L3) [protocol_mux]: load SECCOMP_DATA_ARCH_OFFSET and reject any arch != AUDIT_ARCH when defense.deny_abi_compat, covering __X32_SYSCALL_BIT and the int 0x80 compat entry.; slop: x32/compat traps slip past the arch check, syscall numbers decode as the wrong calls.
     Vec::new()
 }
 
