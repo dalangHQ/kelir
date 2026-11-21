@@ -351,8 +351,6 @@ fn assert_group_fold_equivalence(vectors: &[VectorCase]) -> Result<(), String> {
             continue;
         }
         let Some(nested_name) = nested_sibling_name(&vector.name) else {
-            // scope-pinned vectors outside the canonical plugin-merge- family (e.g. the
-            // bespoke plugin-builder-chaos-only case) have no nested sibling to pair with
             continue;
         };
         let Some(nested) = vectors
@@ -369,8 +367,6 @@ fn assert_group_fold_equivalence(vectors: &[VectorCase]) -> Result<(), String> {
                 "parity: nested-scope vector `{nested_name}` carries no plugin_builder case"
             ));
         };
-        // the group() fold mounts host hooks ahead of the plugin chain; strip them so
-        // both forms describe the same plugin-only chain
         let host_hooks = builder.host_rings.len() as u32;
         let folded: Vec<(TrampolineRing, u32)> = plugin_hook_chain(&builder_descriptor(builder))
             .into_iter()

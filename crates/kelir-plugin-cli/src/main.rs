@@ -49,8 +49,6 @@ pub mod vectors_cli;
 use crate::cli_error::CliError;
 
 // see: cans/15-operations.md#Local-velocity
-// KELIR_PLUGIN_CLI_ROOT overrides the baked-in workspace root so pe_01/pe_22
-// can drive `check --layers` against a mock tree from a temp dir.
 pub(crate) fn workspace_root() -> Result<std::path::PathBuf, CliError> {
     if let Some(root) = std::env::var_os("KELIR_PLUGIN_CLI_ROOT") {
         let root = std::path::PathBuf::from(root);

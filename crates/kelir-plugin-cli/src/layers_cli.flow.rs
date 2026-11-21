@@ -6,10 +6,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // see: cans/02-plugin-model.md#Facade-blindness
-// Accepted seams, same allowlist as the justfile G2 grep: plugin_model (the
-// generic KelirPlugin model lives in kelir-interface per
-// cans/02-plugin-model.md#Facade-blindness), the plugin_instance generic
-// registration method, and [plugin_engine] audit tags.
 const FACADE_ALLOWED_SEAMS: &[&str] = &["plugin_model", "plugin_instance"];
 const FACADE_ALLOWED_TAGS: &[&str] = &["plugin_engine"];
 
@@ -73,8 +69,6 @@ pub fn check() -> Result<(), CliError> {
 }
 
 // see: cans/02-plugin-model.md#Facade-blindness
-// G4 facade half: the facade src carries zero plugin_ tokens outside the
-// accepted generic seams, and the facade manifest declares zero plugin deps.
 pub(crate) fn check_facade(root: &Path) -> Result<(), CliError> {
     let mut files = Vec::new();
     collect_rs(&root.join("crates/kelir/src"), &mut files)?;
@@ -132,9 +126,6 @@ pub(crate) fn check_facade(root: &Path) -> Result<(), CliError> {
 }
 
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_01_downward_only_tier_dependency_lint.yaml#case_id
-// Per-tier plugin-to-plugin source scan: each plugin src may `use` only
-// lower-tier plugin crates from the tier roster; same-tier and upward
-// imports are rejected (cans/02-plugin-model.md#Plugin-tiering).
 pub(crate) fn check_tier_source_imports(
     root: &Path,
     roster: &[kelir_engine::plugin_registry::PluginManifest],

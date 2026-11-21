@@ -587,6 +587,6 @@ impl PySessionHandle {
     // see: cans/03-sdk-architecture.md#Session-surfaces
     #[pyo3(signature = (_options))]
     fn handle_ingress(&self, _options: &Bound<'_, PyDict>) -> PyResult<()> {
-        crate::handles_run::handle_ingress(_options, PyDict>)
+        crate::handles_run::handle_ingress(_options)
     }
 }
