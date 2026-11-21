@@ -9,7 +9,7 @@ import pytest
 
 from kelir import KelirBuilder
 from kelir.sdk_errors import EConfig
-from kelir.plugin_fusion import (
+from kelir.plugin_fusion_flow import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,
@@ -19,7 +19,7 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.generated.fusion_tables import LIFECYCLE_TAGS
-from kelir.plugin_model import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
+from kelir.plugin_model_flow import BasePlugin, WatchdogEvent, WatchdogVerdict, hook_descriptors
 
 
 async def _noop(event: Any) -> None:

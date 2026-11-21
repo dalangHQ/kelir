@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from kelir.plugin_model import BasePlugin
+from kelir.plugin_model_flow import BasePlugin
 
 __all__ = [
     "MeshConfig",

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kelir.plugin_model import BasePlugin
+from kelir.plugin_model_flow import BasePlugin
 
 __all__ = [
     "AnomalyConfig",

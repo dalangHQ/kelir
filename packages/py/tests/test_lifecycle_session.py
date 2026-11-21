@@ -32,7 +32,7 @@ from kelir import (
     relay_socket_path,
 )
 from kelir.sdk_errors import EConfig
-from kelir.plugin_fusion import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
+from kelir.plugin_fusion_flow import FusedTrampoline, HookStage, RingEvent, TrapFilterSnapshot
 from kelir.plugins import LedgerPlugin
 from kelir.storage_planes import IdmapConfig
 

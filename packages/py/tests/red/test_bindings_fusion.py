@@ -5,7 +5,7 @@ import asyncio
 from typing import Any
 
 from kelir import KelirBuilder
-from kelir.plugin_fusion import RingEvent
+from kelir.plugin_fusion_flow import RingEvent
 from kelir.sdk_errors import EConfig
 
 

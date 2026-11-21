@@ -9,13 +9,13 @@ from typing import Any, cast
 import pytest
 
 from kelir import FilterAction, HandlerContext, KelirBuilder, TrapEvent, TrapFilter, Verdict
-from kelir.plugin_model import (
+from kelir.plugin_model_flow import (
     BasePlugin,
     WatchdogEvent,
     WatchdogVerdict,
     hook_descriptors,
 )
-from kelir.plugin_fusion import FusedTrampoline, RingEvent
+from kelir.plugin_fusion_flow import FusedTrampoline, RingEvent
 from kelir.plugins.chaos import ChaosConfig, chaos_builder
 from kelir.plugins.ledger import LedgerPlugin, ledger_builder
 from kelir.sdk_errors import EConfig

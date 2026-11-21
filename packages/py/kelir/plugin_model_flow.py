@@ -21,9 +21,9 @@ from kelir import (
     VmHandle,
     WatchdogAction,
 )
-from kelir.plugin_fusion import HookDescriptor, HookStage
+from kelir.plugin_fusion_flow import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
-from kelir.lifecycle_session import Session
+from kelir.lifecycle_session_flow import Session
 
 if TYPE_CHECKING:
     from kelir import KelirBuilder
@@ -206,7 +206,7 @@ class BasePlugin(Generic[CtxT, ParamsT]):
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     def to_builder(self) -> KelirBuilder:
         from kelir import KelirBuilder
-        from kelir.kelir_builder_scope import _SCOPE_VERBS
+        from kelir.kelir_builder_scope_flow import _SCOPE_VERBS
 
         builder = KelirBuilder.plugin(self.name or type(self).__name__)
         for required in self.requires:

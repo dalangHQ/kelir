@@ -21,9 +21,9 @@ from kelir import (
     Session,
     Verdict,
 )
-from kelir.kelir_builder_scope import _Scope
-from kelir.service_caps import materialize_cap
-from kelir.plugin_model import (
+from kelir.kelir_builder_scope_flow import _Scope
+from kelir.service_caps_flow import materialize_cap
+from kelir.plugin_model_flow import (
     PluginError,
     plugin_error_to_filter_action,
     plugin_error_to_verdict,

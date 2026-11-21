@@ -12,8 +12,8 @@ import pytest
 import kelir
 from kelir import Approval, Deadline, HandlerContext, KelirBuilder, TrapFilter, Verdict
 from kelir.sdk_errors import EConfig
-from kelir.plugin_fusion import HookStage, RingEvent
-from kelir.plugin_model import (
+from kelir.plugin_fusion_flow import HookStage, RingEvent
+from kelir.plugin_model_flow import (
     BasePlugin,
     VetoEvent,
     WatchdogEvent,

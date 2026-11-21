@@ -97,7 +97,7 @@ class Session:
             raise EConfig(
                 "Session.export_spec: session carries no ingested profile"
             )
-        from kelir.lifecycle_sandbox import _profile_text
+        from kelir.lifecycle_sandbox_flow import _profile_text
 
         # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
         Path(path).write_text(

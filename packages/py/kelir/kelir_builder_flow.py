@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, Literal, No
 
 from kelir.builder_scopes import _VERB_ARITY, _VERB_RINGS
 from kelir.wire_planes import WireConfig
-from kelir.service_caps import materialize_cap
-from kelir.plugin_fusion import (
+from kelir.service_caps_flow import materialize_cap
+from kelir.plugin_fusion_flow import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,
@@ -20,7 +20,7 @@ from kelir.plugin_fusion import (
     TrapFilterSnapshot,
 )
 from kelir.sdk_errors import EConfig
-from kelir.kelir_builder_scope import (
+from kelir.kelir_builder_scope_flow import (
     Handler,
     VsockServiceEntry,
     _SCOPE_VERBS,
@@ -30,7 +30,7 @@ from kelir.kelir_builder_scope import (
 from kelir.profile_config import ProfileConfig
 
 if TYPE_CHECKING:
-    from kelir.kelir_builder_scope import (
+    from kelir.kelir_builder_scope_flow import (
         ActionsScopeProtocol,
         ConsoleScopeProtocol,
         DenyScopeProtocol,
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
         TrapScopeProtocol,
         VsockScopeProtocol,
     )
-    from kelir.plugin_model import BasePlugin
+    from kelir.plugin_model_flow import BasePlugin
 
 from kelir import Session, TrapFilter
 
@@ -246,7 +246,7 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
     # see: cans/plugins/profile.md#Inversion-of-Control-configuration-router
     @classmethod
     def from_config(cls, path: str) -> KelirBuilder[Literal["host"], Literal["unsealed"]]:
-        from kelir.lifecycle_sandbox import _builder_kwargs, _parse_profile, _profile_model
+        from kelir.lifecycle_sandbox_flow import _builder_kwargs, _parse_profile, _profile_model
 
         model = _profile_model(
             "KelirBuilder.from_config", _parse_profile("KelirBuilder.from_config", path)
@@ -334,8 +334,8 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
         if self._mode == "plugin":
             self._raise_host_only("use")
         self._check_sealed("use")
-        from kelir.plugin_model import BasePlugin as _BasePlugin
-        from kelir.plugin_model import hook_descriptors
+        from kelir.plugin_model_flow import BasePlugin as _BasePlugin
+        from kelir.plugin_model_flow import hook_descriptors
 
         if isinstance(plugin, KelirBuilder):
             if plugin._mode != "plugin":

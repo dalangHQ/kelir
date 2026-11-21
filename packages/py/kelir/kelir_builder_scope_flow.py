@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Self
 from kelir.sdk_errors import EConfig
 
 if TYPE_CHECKING:
-    from kelir.kelir_builder import KelirBuilder
+    from kelir.kelir_builder_flow import KelirBuilder
 
 
 Handler = Callable[..., Any]

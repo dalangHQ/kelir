@@ -24,8 +24,8 @@ from kelir.generated.attest_telemetry import (
     SnapshotDescriptor as SnapshotDescriptor,
 )
 from kelir.sdk_errors import EConfig as EConfig
-from kelir.lifecycle_sandbox import Sandbox as Sandbox
-from kelir.plugin_fusion import TrapFilterSnapshot
+from kelir.lifecycle_sandbox_flow import Sandbox as Sandbox
+from kelir.plugin_fusion_flow import TrapFilterSnapshot
 
 
 # see: cans/03-sdk-architecture.md#Python-SDK
@@ -649,7 +649,7 @@ class CommitStats:
 
 
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-from kelir.service_caps import (
+from kelir.service_caps_flow import (
     Caps as Caps,
     ContainerCap as ContainerCap,
     ContainerHandle as ContainerHandle,
@@ -946,14 +946,14 @@ def relay_socket_path(session_id: str) -> str:
         raise EConfig(str(exc)) from exc
 
 
-from kelir.lifecycle_session import Session as Session
-from kelir.kelir_builder import (
+from kelir.lifecycle_session_flow import Session as Session
+from kelir.kelir_builder_flow import (
     KelirBuilder as KelirBuilder,
     VsockServiceEntry as VsockServiceEntry,
     builder as builder,
     kelir as kelir,
 )
-from kelir.plugin_model import DirEntry as DirEntry, DnsVerdict as DnsVerdict
+from kelir.plugin_model_flow import DirEntry as DirEntry, DnsVerdict as DnsVerdict
 
 
 __all__ = [
