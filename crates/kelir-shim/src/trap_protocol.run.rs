@@ -154,27 +154,9 @@ fn is_unix_socket_nr(_syscall_nr: i64) -> bool {
 }
 
 // see: cans/11-protocol.md#Trap-fast-path
-fn bpf_stmt(code: u32, k: u32) -> libc::sock_filter {
-    libc::sock_filter {
-        code: code as u16,
-        jt: 0,
-        jf: 0,
-        k,
-    }
-}
-
-// see: cans/11-protocol.md#Trap-fast-path
-fn bpf_jump(code: u32, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
-    libc::sock_filter {
-        code: code as u16,
-        jt,
-        jf,
-        k,
-    }
-}
-
-// see: cans/11-protocol.md#Trap-fast-path
 fn trap_filter_program(_defense: &DefenseFlags) -> Vec<libc::sock_filter> {
+    let _ = _defense;
+    // TODO (L3) [protocol_mux]: emit the bpf_stmt/bpf_jump instruction words for the trapped syscall set.; slop: filter words never emitted, the BPF program stays empty
     // TODO (L3) [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
     // see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
     // TODO (L3) [protocol_mux]: build the seccomp BPF program trapping the monitored syscalls and returning USER_NOTIF.; slop: filter is never built, so no syscall is ever trapped.
@@ -208,8 +190,9 @@ pub struct SeccompNotify {
 
 impl SeccompNotify {
     // see: cans/11-protocol.md#Trap-fast-path
-    pub fn install(filter: &SeccompFilter) -> Result<Self, ShimError> {
-        Ok(Self { fd: filter.fd() })
+    pub fn install(_filter: &SeccompFilter) -> Result<Self, ShimError> {
+        // TODO (L3) [protocol_mux]: bind the notify handle to the installed filter's listener fd.; slop: notify fd is fabricated, trap polling never sees a pending trap.
+        Err(ShimError::SeccompInstall { errno: 0 })
     }
 
     pub fn fd(&self) -> libc::c_int {

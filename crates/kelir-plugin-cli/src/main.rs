@@ -25,10 +25,13 @@ pub mod fixtures_cli;
 pub mod graph_cli;
 #[path = "layers_cli.flow.rs"]
 pub mod layers_cli;
+#[path = "logs_cli.run.rs"]
 pub mod logs_cli;
+#[path = "manifest_cli.run.rs"]
 pub mod manifest_cli;
 #[path = "parity_cli.flow.rs"]
 pub mod parity_cli;
+#[path = "registry_cli.run.rs"]
 pub mod registry_cli;
 #[path = "report_cli.flow.rs"]
 pub mod report_cli;

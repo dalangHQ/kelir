@@ -11,6 +11,8 @@ use kelir_interface::telemetry::CausalDelta;
 use kelir_interface::telemetry::MetricRegistry;
 
 pub mod compute_ledger;
+#[path = "compute_ledger.flow.rs"]
+pub mod compute_ledger_flow;
 #[path = "ledger_plugin.flow.rs"]
 pub mod ledger_plugin;
 #[path = "ledger_plugin.run.rs"]

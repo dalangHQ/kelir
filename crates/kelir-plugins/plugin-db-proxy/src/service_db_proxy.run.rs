@@ -1,17 +1,11 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
-use kelir_interface::plugin_model::{NetInterposer, PluginError};
-use kelir_interface::protocol_wire::FilterAction;
+use kelir_interface::plugin_model::PluginError;
 
-use crate::DbProxyPlugin;
-use crate::reassembler_wire::NetDirection;
-
-// see: cans/plugins/db-proxy.md#L7-pgwire-rewrite-and-2PC-commit
-impl NetInterposer for DbProxyPlugin {
-    fn on_net_outbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        self.intercept_ethernet_frame(NetDirection::GuestToUpstream, frame)
-    }
-
-    fn on_net_inbound(&self, frame: &mut [u8]) -> Result<FilterAction, PluginError> {
-        self.intercept_ethernet_frame(NetDirection::UpstreamToGuest, frame)
-    }
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+// TODO (L3) [relational_transaction]: parse the SQL statement through the libpgquery C-FFI AST classifier; slop: SQL passes unparsed, COPY PROGRAM and search_path evasion ride the regex path.
+pub fn ast_parse_sql(sql: &str) -> Result<(), PluginError> {
+    let _ = sql;
+    Err(PluginError::Halt(
+        "deferred to L3: libpgquery AST parse pending".into(),
+    ))
 }

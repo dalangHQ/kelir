@@ -6,8 +6,6 @@
 mod balloon;
 #[path = "host.flow.rs"]
 pub mod host;
-#[path = "pressure.flow.rs"]
-mod pressure;
 #[path = "real_host.run.rs"]
 mod real_host;
 #[path = "reaper.flow.rs"]

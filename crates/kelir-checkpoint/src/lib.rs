@@ -3,8 +3,6 @@
 
 #[path = "checkpoint.flow.rs"]
 pub mod checkpoint;
-#[path = "compaction.flow.rs"]
-mod compaction;
 #[path = "manifest_graph.flow.rs"]
 mod manifest_graph;
 #[path = "real_checkpoint.run.rs"]

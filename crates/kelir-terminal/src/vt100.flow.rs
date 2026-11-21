@@ -1,6 +1,5 @@
 // see: cans/04-terminal-plane.md#Terminal-pipeline
 // see: cans/04-terminal-plane.md#Stream-replay
-use kelir_interface::plugin_model::PluginError;
 
 #[derive(Debug, Clone, Default)]
 // TODO: [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green. (deferred to L3)
@@ -75,19 +74,7 @@ impl Vt100StateMachine {
         self.cursor_col = 0;
     }
 
-    pub(crate) fn feed(&mut self, _bytes: &[u8]) -> Result<(), PluginError> {
-        // TODO: [terminal_plane]: parse VT100 escape sequences in bytes and update matrix + cursor; slop: escape sequences unparsed, matrix and cursor wrong (deferred to L3)
-        Ok(())
-    }
-
     pub(crate) fn export(&self) -> Vec<u8> {
         self.matrix.to_bytes()
     }
-}
-
-// TODO: [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green. (deferred to L3)
-#[allow(dead_code)]
-pub(crate) fn filter_ansi_shadow(buf: &[u8]) -> Vec<u8> {
-    // TODO: [tp_03_ansi_sanitizer_osc52_clipboard_drop]: strip ANSI shadow sequences from buf; slop: OSC52 payload reaches host terminal, bytes not purged (deferred to L3)
-    buf.to_vec()
 }
