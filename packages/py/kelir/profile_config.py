@@ -107,6 +107,36 @@ class ShimProfile(BaseModel):
     task_freeze_timeout_ms: ProfileInt | None = None
     rejection_mode: str | None = None
     mask_proc_environ: ProfileBool | None = None
+    # Leaf cgroup v2 isolates pids.max/memory.max per ExecSlot
+    per_exec_cgroup: ProfileBool | None = None
+    # Enforces native AUDIT_ARCH; rejects x32/compat syscalls
+    deny_abi_compat: ProfileBool | None = None
+    blocked_syscalls: list[str] | None = None
+    blocked_socket_families: list[str] | None = None
+
+
+# see: cans/artifacts/examples/fixtures/kelir.yaml#session.steering
+class SteeringProfile(BaseModel):
+    # Emits structured agent guidance on Drop
+    steer_on_deny: ProfileBool | None = None
+    # Announces Patch redirects on EXEC/L7/SQL
+    steer_on_redirect: ProfileBool | None = None
+    # Flushes steering lines to EXEC sub-lane 0x02
+    inject_exec_stderr: ProfileBool | None = None
+
+
+# see: cans/artifacts/examples/fixtures/kelir.yaml#wire.dns
+class DnsProfile(BaseModel):
+    # Correlates allowed domain answers to TTL-bounded L4 IPs
+    dns_to_ip_pinning: ProfileBool | None = None
+
+
+# see: cans/artifacts/examples/fixtures/kelir.yaml#storage.lock_broker
+class LockBrokerProfile(BaseModel):
+    enabled: ProfileBool | None = None
+    non_blocking: ProfileBool | None = None
+    # Bounded SETLKW waiter pool ceiling before EDEADLK
+    blocking_wait_timeout_ms: ProfileInt | None = None
 
 
 class DriverProfile(BaseModel):
@@ -115,6 +145,7 @@ class DriverProfile(BaseModel):
 
 class StorageProfile(BaseModel):
     dax_window: str | None = None
+    lock_broker: LockBrokerProfile | None = None
 
 
 class SessionProfile(BaseModel):
@@ -130,6 +161,7 @@ class SessionProfile(BaseModel):
     devices: DevicesProfile | None = None
     artifacts: ArtifactsProfile | None = None
     shim: ShimProfile | None = None
+    steering: SteeringProfile | None = None
     driver: DriverProfile | None = None
     storage: StorageProfile | None = None
 
