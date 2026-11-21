@@ -2,7 +2,6 @@
 // see: cans/02-plugin-model.md#Latency-ceiling
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
 use std::path::Path;
-use std::sync::Arc;
 
 use kelir_interface::plugin_model::MountScope;
 use kelir_interface::protocol_wire::{ResolvedBinary, TrapEvent, Verdict};
@@ -54,23 +53,14 @@ pub fn resolve_canonical(event: &TrapEvent) -> Result<ResolvedBinary, GateError>
 pub struct TrapGateEvaluator {
     trusted_prefixes: Vec<String>,
     bpf_program: Option<BpfProgram>,
-    entropy_hook: Option<EntropyHook>,
 }
-
-type EntropyHook = Arc<dyn Fn(f64, bool) -> Option<GateDecision> + Send + Sync>;
 
 impl TrapGateEvaluator {
     pub fn new(trusted_prefixes: Vec<String>) -> Self {
         Self {
             trusted_prefixes,
             bpf_program: None,
-            entropy_hook: None,
         }
-    }
-
-    pub fn with_entropy_hook(mut self, hook: EntropyHook) -> Self {
-        self.entropy_hook = Some(hook);
-        self
     }
 
     pub fn with_bpf_program(mut self, program: BpfProgram) -> Self {
@@ -83,18 +73,16 @@ impl TrapGateEvaluator {
         Ok(())
     }
 
-    // see: cans/plugins/supply-chain.md#Entropy-analysis
     // see: cans/11-protocol.md#Trap-fast-path
+    // Entropy gating removed per blindess.patch.md: cans/07-wire-plane.md rejects Shannon
+    // entropy as a policy primitive (an attacker who controls encoding trivially defeats a
+    // fixed threshold), so no argv-entropy veto runs ahead of gate 2.
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
         if let Some(program) = &self.bpf_program {
             // L3-GAP: [supply_chain_security]: gate-1 BPF match decides Skip here; no program is loaded until L3; slop: Skip decided without BPF program, trap passes
             if matches!(program.matches(event), Ok(true)) {
                 return GateDecision::Skip;
             }
-        }
-        let trusted = self.is_trusted(event);
-        if let Some(decision) = self.entropy_veto(event, trusted) {
-            return decision;
         }
         if self.gate_2_scope_match(event, scope) {
             if self.trusted_prefix_skip(event) {
@@ -103,19 +91,6 @@ impl TrapGateEvaluator {
             return GateDecision::FallThrough;
         }
         GateDecision::Skip
-    }
-
-    // see: cans/plugins/supply-chain.md#Entropy-analysis
-    fn entropy_veto(&self, event: &TrapEvent, trusted: bool) -> Option<GateDecision> {
-        if trusted {
-            return None;
-        }
-        let hook = self.entropy_hook.as_ref()?;
-        // see: cans/plugins/supply-chain.md#Entropy-analysis
-        let entropy = self
-            .compute_shannon_entropy(event.argv.get(1..).unwrap_or(&[]))
-            .ok()?;
-        hook(entropy, trusted)
     }
 
     // see: cans/11-protocol.md#Trap-fast-path
@@ -151,28 +126,6 @@ impl TrapGateEvaluator {
 
     pub fn eval_gate_2_native(&self, event: &TrapEvent, scope: &MountScope) -> bool {
         matches!(self.evaluate(event, scope), GateDecision::FallThrough)
-    }
-
-    pub fn compute_shannon_entropy(&self, argv: &[String]) -> Result<f64, GateError> {
-        let mut counts = [0u64; 256];
-        let mut total = 0u64;
-        for arg in argv {
-            for byte in arg.as_bytes() {
-                counts[*byte as usize] += 1;
-                total += 1;
-            }
-        }
-        if total == 0 {
-            return Ok(0.0);
-        }
-        let mut entropy = 0.0;
-        for count in counts {
-            if count > 0 {
-                let p = count as f64 / total as f64;
-                entropy -= p * p.log2();
-            }
-        }
-        Ok(entropy)
     }
 
     fn gate_2_scope_match(&self, event: &TrapEvent, scope: &MountScope) -> bool {
