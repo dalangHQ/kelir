@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_09_advisory_private_scope_strip"
+title: "Private package scopes are stripped before external advisory lookups so internal package names never leak to OSV, Snyk, Socket, or deps.dev"
+domain: "supply_chain_security"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Pre-install-manifest-risk-gate"
+  statement: "strip_private_scopes removes internal namespace names from every outbound advisory query before any external dial. Gap: no privacy filter exists in the live tree; strip_private_scopes exists only as fixture config and spec text."
+  blast_radius_if_breached: "Internal package names, which are often confidential business identifiers, leak to third-party advisory services."
+
+confusion_matrix:
+  quadrant: "true_positive"
+  slop_risk: "Agent asserts scope stripping without asserting the outbound query body contains no internal scope string."
+  anti_slop_mitigation: "AS-06 asserts the literal outbound query payload carries only public scope names while the internal dep still resolves locally."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.supply_chain"
+    agent_id: "agt_sc_09"
+    trust: "reviewed"
+  initial_state:
+    lockfile: "fixtures/package-lock.json with @internalcorp/secret-tool dep"
+    private_scopes: ["@internalcorp"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "package_guard.strip_private_scopes(&resolved_graph, &advisory_query)"
+  input_params:
+    action: "privacy_filter"
+    private_scopes: ["@internalcorp"]
+
+expected_observations:
+  exit_code: 0
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.privacy"
+    culprit: "none — internal scope stripped before external lookup"
+    remedy: "Keep private scopes out of external advisory queries; resolve internal deps against the internal registry only"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "supply_chain.scope_stripped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "None"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert!(!outbound_query_body.contains(\"@internalcorp\")); assert!(local_resolution.contains(\"@internalcorp/secret-tool\"));"

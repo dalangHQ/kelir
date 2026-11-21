@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "sc_11_skill_vetting_hidden_unicode_prompt_injection"
+title: "SKILL.md and plugin files containing hidden unicode bidi overrides or prompt-injection patterns are blocked before agents ingest them"
+domain: "supply_chain_security"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/supply-chain.md#Agent-skill-and-instruction-vetting"
+  statement: "Skill vetting scans SKILL.md and plugin files for hidden unicode and prompt injection, and enforces declared capability scope before guest ingestion. Gap: no skill vetting exists in the live tree; vet_skills exists only as fixture config and spec text."
+  blast_radius_if_breached: "A malicious skill file smuggles invisible instructions into the agent's system prompt and hijacks the session."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the block by grepping ASCII keywords only, missing bidi-override and zero-width steganography."
+  anti_slop_mitigation: "AS-06 asserts the exact hidden-unicode codepoint literal (U+202E) is flagged alongside the injection pattern match."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.supply_chain"
+    agent_id: "agt_sc_11"
+    trust: "reviewed"
+  initial_state:
+    skill_files: ["fixtures/SKILL.md with U+202E bidi override and 'ignore previous instructions'"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "supply_chain.vet_skill(&SkillFile::load('fixtures/SKILL.md'), &ctx)"
+  input_params:
+    action: "skill_vetting"
+    checks: ["hidden_unicode", "prompt_injection", "scope_mismatch"]
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "supply_chain.skills"
+    culprit: "hidden U+202E bidi override plus prompt-injection pattern in SKILL.md"
+    remedy: "Remove hidden unicode and injection text; declare the true capability scope"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "supply_chain.skill_vetting_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "SkillInjection"
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert!(flagged_codepoints.contains(&0x202E)); assert_matches!(verdict, Verdict::Drop { errno: Errno::Esecurityviolation, .. });"

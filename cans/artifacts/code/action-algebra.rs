@@ -126,7 +126,8 @@ pub enum Action {
     /// Fatal; pipeline freezes.
     Abort { reason: String },
     /// In-place mutation; payload schema per ring (ExecveMutation,
-    /// FsInode, Custom). Not accepted on filter rings: the transformed
+    /// FsInode, FsPathRedirect, NetRedirect, SignalMutation, Custom).
+    /// Not accepted on filter rings: the transformed
     /// buffer IS the payload there.
     Patch(PatchPayload),
 }

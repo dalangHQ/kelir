@@ -45,6 +45,19 @@ pub struct DriverPolicy {
 pub struct VmConfig {
     /// Masks /proc/[pid]/environ and process_vm_readv in-guest via seccomp.
     pub mask_proc_environ: bool,
+    /// Leaf cgroup v2 isolates pids.max and memory.max per ExecSlot
+    /// (11-protocol.md#Exec-slot-slab); shared-UID RLIMIT_NPROC alone
+    /// lets one ExecSlot starve siblings.
+    pub per_exec_cgroup: bool,
+    /// Syscall trap validates native AUDIT_ARCH; x32 and compat ABI
+    /// syscall numbers reject fail-closed (01-architecture.md).
+    pub deny_abi_compat: bool,
+    /// Guest BPF blocks io_uring, add_key, request_key, keyctl by default
+    /// (01-architecture.md#Guest-kernel-hardening).
+    pub blocked_syscalls: Vec<String>,
+    /// Exotic socket families denied by default: AF_ALG, AF_RXRPC,
+    /// NETLINK_XFRM (01-architecture.md#Guest-kernel-hardening).
+    pub blocked_socket_families: Vec<String>,
     pub vcpus: u8,
     pub memory_mb: u32,
     pub kernel_path: PathBuf,
@@ -133,6 +146,10 @@ pub enum TapFilter {
 pub struct WireConfig {
     /// Blocks in-guest AF_UNIX sockets with leading null bytes (abstract sockets).
     pub block_abstract_unix_sockets: bool,
+    /// Correlates allowed domain answers to TTL-bounded L4 IP pins;
+    /// direct IP dials absent from the table drop fail-closed
+    /// (07-wire-plane.md#DNS-to-IP-admission).
+    pub dns_to_ip_pinning: bool,
     pub sinkhole: SinkholeConfig,
     pub ssh_agent_bridge: bool,
     /// Interposition is plugin-vault (Part 1/7); this field declares

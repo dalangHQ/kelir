@@ -1,0 +1,72 @@
+$schema: "test-plan/case/v1"
+case_id: "wp_18_dns_to_ip_pinning_fail_closed"
+title: "Direct IP dial to an endpoint absent from the TTL-bounded DNS pin table drops fail-closed at L4 ingress even when the domain is allowlisted"
+domain: "wire_plane"
+target_tier: "integration"
+target_crate: "crates/kelir-engine"
+platform_target:
+  os: "linux"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/07-wire-plane.md#DNS-to-IP-admission"
+  statement: "Allowed DNS queries populate a TTL-bounded synthetic or pinned IP table; direct IP dials absent from the table drop fail-closed at L4 ingress, and rotating CDN answers refresh active IP pins per query TTL. Gap: no pin table exists in the live kelir-wire tree; dns_to_ip_pinning exists only as fixture config and spec text."
+  blast_radius_if_breached: "A guest bypasses domain policy by dialing a raw CDN IP directly after resolving an allowlisted name out-of-band."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the drop without proving the allowlisted domain rule was satisfied, inverting the failure into a false positive."
+  anti_slop_mitigation: "AS-02 asserts zero outbound frames for the direct IP dial while the domain-qualified dial through the pin table passes."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_2"
+  caller_identity:
+    principal: "security.network"
+    agent_id: "agt_wp_18"
+    trust: "reviewed"
+  initial_state:
+    dns_allowlist: ["api.stripe.com"]
+    pinned_table: "api.stripe.com -> 3.18.12.45 (ttl 60)"
+    dial_target: "3.18.99.99:443"
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "wire_plane.on_socket_connect(&SocketTuple { ip: '3.18.99.99', port: 443 }, &ctx)"
+  input_params:
+    action: "l4_ingress_check"
+    pin_table_ttl: 60
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "network.egress"
+    culprit: "direct IP dial absent from the DNS pin table"
+    remedy: "Resolve the allowlisted domain through the synthetic DNS gateway and dial the pinned answer"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "wire.direct_ip_dropped"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "DirectIpDrop"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_eq!(frames_outbound, 0); assert_matches!(verdict, Verdict::Drop { errno: Errno::Econnrefused, .. });"

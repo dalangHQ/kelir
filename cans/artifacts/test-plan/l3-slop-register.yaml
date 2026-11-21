@@ -1,7 +1,7 @@
 $schema: kelir-test-plan/l3-slop-register/v1
-generated: 200 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s
-total_cases: 261
-covered_red_gap: 206
+generated: 200 red/gap entries + 19 code_only groups; 623 TODO (L3)/L3-GAP markers at 29d379d; assembled from per-domain fragments, code_todos recomputed from in-code [tag]s; superseded at core-blindness artifacts pass — entropy entries sc_02/sc_09 rewritten to advisory gating, +6 gap entries (hd_25, wp_18, gt_15, gt_16, rt_13, sc_11) (hd_25, wp_18, gt_15, gt_16, rt_13, sc_11)
+total_cases: 267
+covered_red_gap: 212
 entries:
 - case_id: ad_01_radix_layer_unpack_whiteout_merge
   status: red
@@ -1006,6 +1006,21 @@ entries:
   - boot path is Cold with FastBootMode::Auto and no SDK error raised
   - cold boot elapsed is < 60ms and the cache is populated for the next boot
   code_todos: []
+- case_id: hd_25_guest_bpf_io_uring_block
+  status: gap
+  domain: hypervisor_driver
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - io_uring_setup returns ENOSYS without proving the io_uring ops never reached the host ring
+  - Only io_uring_setup blocked while io_uring_enter and io_uring_register pass, leaving an async bypass
+  - Blocked list consulted after the syscall has already dispatched to the host kernel
+  must_not:
+  - Assert ENOSYS without asserting zero host-side io_uring events
+  - Block io_uring_setup while leaving enter/register unblocked
+  acceptance:
+  - All three io_uring syscall numbers Drop with EPERM (AS-03)
+  - Zero host-side io_uring activity observed (AS-02)
+  code_todos: []
 - case_id: lc_01_cow_fork_warm_memory_sharing
   status: red
   domain: lifecycle_checkpoint
@@ -1906,6 +1921,21 @@ entries:
   - upstream_authenticated_with_secret() == true with event db_proxy.credentials_injected
   code_todos:
   - crates/kelir-plugins/plugin-db-proxy/src/lib.rs
+- case_id: rt_13_pgwire_cancel_request_spoof_prevention
+  status: gap
+  domain: relational_transaction
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - CancelRequest honored because the key matched a live session, enabling cross-session cancellation DoS
+  - Spoof rejected but the victim session's query was also cancelled, hiding the DoS
+  - Assertion checks the reject verdict without checking the victim query state
+  must_not:
+  - Honor a CancelRequest whose key belongs to another session
+  - Assert rejection without asserting the victim query kept running
+  acceptance:
+  - Spoofed key Drops with EPERM while victim query stays Running (AS-02)
+  - Only synthetic per-connection keys map to cancellation (AS-06)
+  code_todos: []
 - case_id: sc_01_lifecycle_script_trap_exit126
   status: red
   domain: supply_chain_security
@@ -1922,22 +1952,21 @@ entries:
   - stderr contains 'Lifecycle script blocked' with event supply_chain.lifecycle_script_blocked
   code_todos:
   - crates/kelir-plugins/plugin-supply-chain/src/state.flow.rs
-- case_id: sc_02_argv_high_entropy_obfuscation_kill
-  status: red
+- case_id: sc_02_preinstall_advisory_cve_malware_block
+  status: gap
   domain: supply_chain_security
   target_crate: crates/kelir-plugins
   slop_risks:
-  - flags_obfuscated_argv returns Ok(false) forever, so the 112-char 5.917 bits/char payload Passes and executes
-  - Entropy computed over argv[0] only, so the base64 blob in argv[1:] is never measured
-  - Threshold hardcoded to a value other than 5.2 bits/char, so the pinned payload passes or benign commands fail
+  - Advisory feed response mocked to always return clean, so the vulnerable dependency installs
+  - Resolver consults the feed after the install has already written to node_modules, so the payload executes anyway
+  - Advisory ID string asserted by copying it from the resolver output instead of the pinned literal
   must_not:
-  - Leave flags_obfuscated_argv returning Ok(false) while asserting the Drop
-  - Measure entropy over argv[0] instead of argv[1:]
+  - Assert the block with a mocked clean advisory response
+  - Query the advisory feed after any filesystem write has occurred
   acceptance:
-  - Calculated entropy > 5.2 for the pinned payload
-  - Verdict is Drop with errno EPERM, event supply_chain.high_entropy_blocked
-  code_todos:
-  - crates/kelir-plugins/plugin-supply-chain/src/state.flow.rs
+  - Drop carries EACCES with package left-pad@0.0.3 and advisory GHSA-pjxm-v9q4-3wq9 (AS-06)
+  - Zero bytes written to node_modules for the blocked dependency (AS-02)
+  code_todos: []
 - case_id: sc_03_seccomp_unotify_wx_jit_mediation
   status: red
   domain: supply_chain_security
@@ -2028,21 +2057,21 @@ entries:
   - fexecve on memfd file descriptor halts with EWXVIOLATION (AS-03)
   code_todos:
   - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
-- case_id: sc_09_whitelisted_interpreter_entropy_bypass
-  status: red
+- case_id: sc_09_advisory_private_scope_strip
+  status: gap
   domain: supply_chain_security
   target_crate: crates/kelir-plugins
   slop_risks:
-  - legitimate python -c 'import base64; ...' commands blocked on entropy alone
-  - on_trap returns Err(Halt) for the whitelisted interpreter, so legitimate python -c commands die
-  - on_trap returns Ok(Pass) for any high-entropy argv, so obfuscated payloads pass
+  - Internal scope string appears in the outbound advisory query body, leaking the internal package name
+  - Stripping removes the dependency from local resolution entirely, breaking legitimate internal installs
+  - Assertion checks the outbound URL only, while the scope leaks inside a JSON POST body
   must_not:
-  - reject a whitelisted /usr/bin/python invocation on entropy alone
-  - pass high-entropy argv from a non-whitelisted binary
+  - Assert only the public query body while internal deps resolve locally
+  - Drop the internal dependency from the local resolution graph while stripping its scope
   acceptance:
-  - whitelisted binary path /usr/bin/python bypasses entropy rejection (AS-06)
-  code_todos:
-  - crates/kelir-plugins/plugin-supply-chain/src/state.run.rs
+  - Outbound query body contains no @internalcorp string (AS-02)
+  - Local resolution still resolves @internalcorp/secret-tool (AS-06)
+  code_todos: []
 - case_id: sc_10_stderr_script_blocked_diagnostic
   status: gap
   domain: supply_chain_security
@@ -2057,6 +2086,21 @@ entries:
   acceptance:
   - Guest stderr contains 'blocked npm lifecycle script at node_modules/bad/install.js'
   - Exit code 126 with event supply_chain.diagnostic_emitted
+  code_todos: []
+- case_id: sc_11_skill_vetting_hidden_unicode_prompt_injection
+  status: gap
+  domain: supply_chain_security
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Scan greps ASCII keywords only, so bidi-override and zero-width steganography pass
+  - File scanned after ingestion, so the hidden instructions already reached the system prompt
+  - Injection asserted by pattern-matching the vetter's own error message
+  must_not:
+  - Assert the block with ASCII-only keyword matching
+  - Scan the skill file after the agent ingested it
+  acceptance:
+  - U+202E codepoint literal flagged (AS-06)
+  - Verdict Drop ESecurityViolation before any ingestion (AS-02)
   code_todos: []
 - case_id: bound_fuse_ops_dispatches_synthetic_lookup
   status: red
@@ -3612,3 +3656,48 @@ code_only:
   - packages/py/tests/test_wire_sinkhole.py
   - packages/ts/core/src/builder.lifecycle.ts
   - packages/ts/core/tests/sinkhole.wire.test.ts
+- case_id: gt_15_mcp_server_sampling_create_message_deny
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Sampling request forwarded because the server is in the trusted list, ignoring direction
+  - Denial asserted without checking the JSON-RPC error code, so a generic error looks like the gate
+  - Client-initiated sampling also denied, breaking legitimate LLM sampling flows
+  must_not:
+  - Forward server-initiated sampling because the server is trusted
+  - Deny client-initiated sampling requests
+  acceptance:
+  - Server-initiated createMessage returns JSON-RPC -32001 (AS-03)
+  - Client-initiated sampling still Passes (AS-06)
+  code_todos: []
+- case_id: gt_16_cross_server_read_then_send_exfil
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Block keyed on byte-range overlap with the first call's output, so paraphrased payloads pass
+  - Window spans the whole session, so unrelated turns' read/send pairs false-positive
+  - Second call Drops but the first call's read output already left via a background flush
+  must_not:
+  - Key the block on byte overlap instead of capability buckets
+  - Assert the block while the first call's output leaked through another path
+  acceptance:
+  - Second tool call Drops with EPOLICY despite zero byte overlap (AS-06)
+  - Sliding window bounded to the same turn (AS-03)
+  code_todos: []
+- case_id: wp_18_dns_to_ip_pinning_fail_closed
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - Direct IP dropped because all egress is denied, not because pin-table admission failed, inverting the cause
+  - Pin table never expires entries, so a stale CDN IP stays admitted after rotation
+  - Domain rule asserted while the raw-IP dial path silently passes
+  must_not:
+  - Assert the drop without the allowlisted domain rule in place
+  - Let pin table entries outlive their DNS TTL
+  acceptance:
+  - Direct IP dial to unpinned address Drops ECONNREFUSED with zero outbound frames (AS-02)
+  - Domain-qualified dial through the pinned address Passes (AS-06)
+  code_todos: []

@@ -5,7 +5,7 @@ plan:
   name: "kelir canonical test plan"
   structure_doc: "cans/artifacts/test-plan/test-plan-structure.md"
   matrix_doc: "cans/artifacts/test-plan/matrix.yaml"
-  total_cases: 261
+  total_cases: 267
   domains: 17
   total_scenarios: 35
   scenario_families: 8
@@ -18,8 +18,8 @@ plan:
 domains:
   hypervisor_driver:
     prefix: "hd"
-    case_count: 28
-    description: "VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms)."
+    case_count: 29
+    description: "VmmDriver abstraction, KVM/HVF/WHP/AVF hardware virtualization, register/MMU rollback, CPUID synthetic filters, cold-boot budgets (<50ms), guest BPF syscall hardening (io_uring, keyrings, exotic socket families)."
   virtio_rings:
     prefix: "vr"
     case_count: 15
@@ -34,8 +34,8 @@ domains:
     description: "VirtIO-FS host CoW broker, sparse upper file, tombstone tracking, atomic leaf commit, containment engine (openat2), synthetic FUSE inodes, quotas."
   wire_plane:
     prefix: "wp"
-    case_count: 17
-    description: "Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), UDP NAT slab reaper."
+    case_count: 18
+    description: "Embedded smoltcp netstack, default-deny ingress, L4 diversion, DNS policy filter, synthetic gateway (192.168.127.1:53), DNS-to-IP pinning fail-closed, UDP NAT slab reaper."
   lifecycle_checkpoint:
     prefix: "lc"
     case_count: 26
@@ -58,16 +58,16 @@ domains:
     description: "plugin-vault, metadata service (169.254.169.254), host keyring mlock, scoped short-lived token issuance, audience locking, zeroization on drop."
   governance_tools:
     prefix: "gt"
-    case_count: 14
-    description: "plugin-tool-guard, plugin-mcp, JSON-RPC 2.0 tool-call interposition, taint tracking, immutable schema locking, call quota token buckets."
+    case_count: 16
+    description: "plugin-tool-guard, plugin-mcp, JSON-RPC 2.0 tool-call interposition, taint tracking, immutable schema locking, call quota token buckets, server-initiated sampling denial, cross-server read_then_send exfiltration windows."
   supply_chain_security:
     prefix: "sc"
-    case_count: 10
-    description: "plugin-supply-chain, dynamic W^X JIT mediation (seccomp-unotify), lifecycle script execution traps, Shannon entropy scanning (>5.2 bits/char)."
+    case_count: 11
+    description: "plugin-supply-chain, dynamic W^X JIT mediation (seccomp-unotify), lifecycle script execution traps, pre-install manifest advisory gating (OSV/Snyk/Socket/deps.dev) with private-scope stripping, agent skill vetting."
   relational_transaction:
     prefix: "rt"
-    case_count: 12
-    description: "plugin-db-proxy, plugin-transaction, L7 pgwire parsing, SQLite UDS bridge, multi-resource 2PC commit/abort coordination."
+    case_count: 13
+    description: "plugin-db-proxy, plugin-transaction, L7 pgwire parsing (libpgquery AST, Extended Query state machine, synthetic cancel keys), SQLite UDS bridge, multi-resource 2PC commit/abort coordination."
   telemetry_audit:
     prefix: "ta"
     case_count: 12
@@ -112,7 +112,7 @@ scenario_domains:
     description: "Fast pre-PR boot gates under CI wall budgets (≤15s) composing the highest-signal case pairs."
 
 cases:
-  # ── Domain 1: hypervisor_driver (hd) [28 cases] ───────────────
+  # ── Domain 1: hypervisor_driver (hd) [29 cases] ───────────────
   - case_id: "hd_01_nohardware_vmm_fatal_abort"
     file: "cases/hypervisor_driver/hd_01_nohardware_vmm_fatal_abort.yaml"
     domain: "hypervisor_driver"
@@ -309,6 +309,13 @@ cases:
     target_crate: "crates/kelir-engine"
     quadrant: "true_positive"
     title: "Fast-boot cache miss falls through to cold boot with no error to the SDK caller"
+  - case_id: "hd_25_guest_bpf_io_uring_block"
+    file: "cases/hypervisor_driver/hd_25_guest_bpf_io_uring_block.yaml"
+    domain: "hypervisor_driver"
+    target_tier: "integration"
+    target_crate: "crates/kelir-engine"
+    quadrant: "true_negative"
+    title: "Guest BPF blocks io_uring_setup, io_uring_enter, and io_uring_register so async I/O cannot bypass syscall trap inspection"
 
   # ── Domain 2: virtio_rings (vr) [15 cases] ────────────────────
   - case_id: "vr_01_spsc_ring_lockfree_transit"
@@ -708,7 +715,7 @@ cases:
     quadrant: "true_positive"
     title: "Bound FuseOps dispatches a synthetic-file lookup"
 
-  # ── Domain 5: wire_plane (wp) [17 cases] ──────────────────────
+  # ── Domain 5: wire_plane (wp) [18 cases] ──────────────────────
   - case_id: "wp_01_default_deny_ingress_drop"
     file: "cases/wire_plane/wp_01_default_deny_ingress_drop.yaml"
     domain: "wire_plane"
@@ -828,6 +835,13 @@ cases:
     target_crate: "crates/kelir-plugins/plugin-wire-ingress"
     quadrant: "true_positive"
     title: "IngressRoutingService park_connection parks an L4 forward frame and reports Parked while the session suspends"
+  - case_id: "wp_18_dns_to_ip_pinning_fail_closed"
+    file: "cases/wire_plane/wp_18_dns_to_ip_pinning_fail_closed.yaml"
+    domain: "wire_plane"
+    target_tier: "integration"
+    target_crate: "crates/kelir-engine"
+    quadrant: "true_negative"
+    title: "Direct IP dial to an endpoint absent from the TTL-bounded DNS pin table drops fail-closed at L4 ingress even when the domain is allowlisted"
 
   # ── Domain 6: lifecycle_checkpoint (lc) [26 cases] ────────────
   - case_id: "lc_01_cow_fork_warm_memory_sharing"
@@ -1462,7 +1476,7 @@ cases:
     quadrant: "true_positive"
     title: "vault:// placeholder in an env file is rejected with ESecurityViolation"
 
-  # ── Domain 11: governance_tools (gt) [14 cases] ───────────────
+  # ── Domain 11: governance_tools (gt) [16 cases] ───────────────
   - case_id: "gt_01_jsonrpc_tool_call_interposition"
     file: "cases/governance_tools/gt_01_jsonrpc_tool_call_interposition.yaml"
     domain: "governance_tools"
@@ -1561,8 +1575,22 @@ cases:
     target_crate: "crates/kelir-plugin-cli"
     quadrant: "true_negative"
     title: "kelir-plugin-cli fixtures compare_digest returns DigestMismatch on a hash mismatch and never silently passes"
+  - case_id: "gt_15_mcp_server_sampling_create_message_deny"
+    file: "cases/governance_tools/gt_15_mcp_server_sampling_create_message_deny.yaml"
+    domain: "governance_tools"
+    target_tier: "unit"
+    target_crate: "crates/kelir-plugins"
+    quadrant: "true_negative"
+    title: "MCP server-initiated sampling/createMessage request is denied by default without an explicit per-endpoint allowlist opt-in"
+  - case_id: "gt_16_cross_server_read_then_send_exfil"
+    file: "cases/governance_tools/gt_16_cross_server_read_then_send_exfil.yaml"
+    domain: "governance_tools"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins"
+    quadrant: "true_negative"
+    title: "Cross-server read_then_send flow: tool read on MCP server A followed by a send tool on MCP server B in the same turn is blocked regardless of byte identity"
 
-  # ── Domain 12: supply_chain_security (sc) [10 cases] ──────────
+  # ── Domain 12: supply_chain_security (sc) [11 cases] ──────────
   - case_id: "sc_01_lifecycle_script_trap_exit126"
     file: "cases/supply_chain_security/sc_01_lifecycle_script_trap_exit126.yaml"
     domain: "supply_chain_security"
@@ -1570,13 +1598,14 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
     title: "Package manager executing postinstall lifecycle script in node_modules is trapped and exits 126"
-  - case_id: "sc_02_argv_high_entropy_obfuscation_kill"
-    file: "cases/supply_chain_security/sc_02_argv_high_entropy_obfuscation_kill.yaml"
+  - case_id: "sc_02_preinstall_advisory_cve_malware_block"
+    file: "cases/supply_chain_security/sc_02_preinstall_advisory_cve_malware_block.yaml"
     domain: "supply_chain_security"
-    target_tier: "unit"
+    target_tier: "integration"
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
-    title: "Command execution with argv entropy >5.2 bits/char is flagged as obfuscated payload and rejected"
+    title: "npm install resolving a lockfile package with a known CVE or malware advisory is blocked pre-write with EACCES and the advisory ID"
+
   - case_id: "sc_03_seccomp_unotify_wx_jit_mediation"
     file: "cases/supply_chain_security/sc_03_seccomp_unotify_wx_jit_mediation.yaml"
     domain: "supply_chain_security"
@@ -1619,13 +1648,14 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
     title: "In-memory ELF loading through memfd_create traps at supervisor boundary and aborts execution"
-  - case_id: "sc_09_whitelisted_interpreter_entropy_bypass"
-    file: "cases/supply_chain_security/sc_09_whitelisted_interpreter_entropy_bypass.yaml"
+  - case_id: "sc_09_advisory_private_scope_strip"
+    file: "cases/supply_chain_security/sc_09_advisory_private_scope_strip.yaml"
     domain: "supply_chain_security"
     target_tier: "unit"
     target_crate: "crates/kelir-plugins"
     quadrant: "true_positive"
-    title: "Configured toolchain binaries (python, node) bypass Shannon entropy gating for inline script arguments"
+    title: "Private package scopes are stripped before external advisory lookups so internal package names never leak to OSV, Snyk, Socket, or deps.dev"
+
   - case_id: "sc_10_stderr_script_blocked_diagnostic"
     file: "cases/supply_chain_security/sc_10_stderr_script_blocked_diagnostic.yaml"
     domain: "supply_chain_security"
@@ -1633,8 +1663,15 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
     title: "Trapped package lifecycle script emits structured diagnostic naming package manager and blocked path to stderr"
+  - case_id: "sc_11_skill_vetting_hidden_unicode_prompt_injection"
+    file: "cases/supply_chain_security/sc_11_skill_vetting_hidden_unicode_prompt_injection.yaml"
+    domain: "supply_chain_security"
+    target_tier: "unit"
+    target_crate: "crates/kelir-plugins"
+    quadrant: "true_negative"
+    title: "SKILL.md and plugin files containing hidden unicode bidi overrides or prompt-injection patterns are blocked before agents ingest them"
 
-  # ── Domain 13: relational_transaction (rt) [12 cases] ─────────
+  # ── Domain 13: relational_transaction (rt) [13 cases] ─────────
   - case_id: "rt_01_pgwire_port_5432_interposition"
     file: "cases/relational_transaction/rt_01_pgwire_port_5432_interposition.yaml"
     domain: "relational_transaction"
@@ -1719,6 +1756,13 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_positive"
     title: "Host SqlProxyService injects ephemeral database credentials at host boundary without guest exposure"
+  - case_id: "rt_13_pgwire_cancel_request_spoof_prevention"
+    file: "cases/relational_transaction/rt_13_pgwire_cancel_request_spoof_prevention.yaml"
+    domain: "relational_transaction"
+    target_tier: "integration"
+    target_crate: "crates/kelir-plugins"
+    quadrant: "true_negative"
+    title: "Spoofed pgwire CancelRequest carrying a foreign session's BackendKeyData is rejected; only synthetic per-connection cancel keys map to real cancellation"
 
   # ── Domain 14: telemetry_audit (ta) [12 cases] ────────────────
   - case_id: "ta_01_merkle_wal_rf_6962_blake3_chain"

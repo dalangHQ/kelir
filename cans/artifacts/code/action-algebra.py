@@ -117,8 +117,27 @@ class FsInode:
 
 @dataclass(frozen=True)
 class FsPathRedirect:
-    """Target redirect path for on_fs_unlink operations."""
+    """Target redirect path for path-mutating fs ops (lookup, mkdir,
+    rename, unlink); never on_fs_write (FilterAction has no Patch)."""
     target_path: str
+
+
+@dataclass(frozen=True)
+class NetRedirect:
+    """Rewritten upstream endpoint for on_socket_connect steering
+    before the upstream TCP dial (07-wire-plane.md)."""
+
+    target_host: str
+    target_port: int
+
+
+@dataclass(frozen=True)
+class SignalMutation:
+    """Replacement signal for on_signal redirect steering, e.g.
+    SIGKILL -> SIGTERM (11-protocol.md#Signal-and-fork-interception)."""
+
+    replacement_signal: int
+
 
 @dataclass(frozen=True)
 class Custom:
@@ -130,8 +149,11 @@ class Custom:
 
 
 # Patch payload is registered per ring: ExecveMutation (constructed
-# through Action.patch kwargs), FsInode, Custom.
-PatchPayload = Union[Any, FsInode, FsPathRedirect, Custom]
+# through Action.patch kwargs), FsInode, FsPathRedirect, NetRedirect,
+# SignalMutation, Custom.
+PatchPayload = Union[
+    Any, FsInode, FsPathRedirect, NetRedirect, SignalMutation, Custom
+]
 
 
 @dataclass(frozen=True)

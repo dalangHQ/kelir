@@ -106,6 +106,9 @@ pub struct ContainmentBreachEvent {
 pub enum DnsVerdict {
     Forward,
     Sinkhole { rcode: u8 },
+    /// Steering verdict: rewrites matched query names or answers before
+    /// the guest reads the reply (07-wire-plane.md#DNS-to-IP-admission).
+    Redirect { rewrite: String },
 }
 
 // ── Wire enums ───────────────────────────────────────────────────
@@ -190,8 +193,15 @@ pub enum PatchPayload {
     /// Served inode for on_fs_lookup: same fields as FsInodeAttr, carried
     /// on the wire so lookup serve is not confused with write mutation.
     FsInode { mode: u32, uid: u32, gid: u32, size: u64, content: Vec<u8> },
-    /// Redirect destination path for on_fs_unlink operations.
+    /// Redirect destination path for path-mutating fs ops (lookup, mkdir,
+    /// rename, unlink); never on_fs_write (FilterAction has no Patch).
     FsPathRedirect { target_path: String },
+    /// Rewritten upstream endpoint for on_socket_connect steering before
+    /// the upstream TCP dial (07-wire-plane.md#Egress-side-effect-outbox).
+    NetRedirect { target_host: String, target_port: u16 },
+    /// Replacement signal for on_signal redirect steering, e.g.
+    /// SIGKILL -> SIGTERM (11-protocol.md#Signal-and-fork-interception).
+    SignalMutation { replacement_signal: i32 },
     Custom { name: String, cbor: ciborium::value::Value },
 }
 

@@ -1,0 +1,70 @@
+$schema: "test-plan/case/v1"
+case_id: "rt_13_pgwire_cancel_request_spoof_prevention"
+title: "Spoofed pgwire CancelRequest carrying a foreign session's BackendKeyData is rejected; only synthetic per-connection cancel keys map to real cancellation"
+domain: "relational_transaction"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/db-proxy.md#PostgreSQL-AST-and-wire-state-machine"
+  statement: "db-proxy synthesizes BackendKeyData keys per connection and maps CancelRequest through cancelmap so a guest cannot spoof or DOS another session's query cancellation. Gap: no synthetic cancel-key map exists in the live tree; synthetic_cancel_keys exists only as fixture config and spec text."
+  blast_radius_if_breached: "One guest session cancels or exhausts another session's long-running queries by replaying observed BackendKeyData."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the rejection without proving the target session's query kept running, hiding the DoS."
+  anti_slop_mitigation: "AS-02 asserts the victim session's query state is untouched while the spoofed CancelRequest gets a typed Drop."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_2"
+  caller_identity:
+    principal: "security.database"
+    agent_id: "agt_rt_13"
+    trust: "reviewed"
+  initial_state:
+    sessions: ["sess_a#pid 1042 cancel_key 0xA1B2C3D4", "sess_b#pid 2087 cancel_key 0xE5F60718"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "db_proxy.on_pgwire_frame(&Frame::CancelRequest { key: 0xE5F60718 }, &sess_a_ctx)"
+  input_params:
+    action: "cancel_key_check"
+    direction: "guest_to_host"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "database.proxy"
+    culprit: "CancelRequest key does not match the connection's synthetic BackendKeyData"
+    remedy: "Cancel queries through the connection that issued them; foreign keys are never honored"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "db_proxy.cancel_spoof_rejected"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "CancelSpoof"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Errno::Eperm, .. }); assert_eq!(sess_b_query_state, QueryState::Running);"

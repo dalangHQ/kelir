@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_15_mcp_server_sampling_create_message_deny"
+title: "MCP server-initiated sampling/createMessage request is denied by default without an explicit per-endpoint allowlist opt-in"
+domain: "governance_tools"
+target_tier: "unit"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/mcp.md#Invariants-and-policy-(mcp)"
+  statement: "Server-initiated sampling/createMessage requests deny by default; a per-endpoint sampling allowlist overrides only with explicit policy opt-in. Gap: no sampling gate exists in the live tree; deny_server_sampling exists only as fixture config and spec text."
+  blast_radius_if_breached: "A rogue MCP server drives the client's LLM via sampling, exfiltrating context or eliciting tool calls the agent never requested."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts a denial without proving the JSON-RPC request direction was server-initiated, or silently forwards the request."
+  anti_slop_mitigation: "AS-03 asserts the typed JSON-RPC error object -32001 for the server-initiated sampling/createMessage frame."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_1"
+  caller_identity:
+    principal: "security.tools"
+    agent_id: "agt_gt_15"
+    trust: "reviewed"
+  initial_state:
+    mcp_servers: ["filesystem#trusted", "websearch#untrusted"]
+    sampling_allowlist: []
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "rust_api"
+  command: "mcp.on_request(&JsonRpcRequest { method: 'sampling/createMessage', direction: ServerToClient, .. }, &ctx)"
+  input_params:
+    action: "sampling_gate"
+    server: "websearch"
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tools.sampling"
+    culprit: "server-initiated sampling/createMessage without allowlist entry"
+    remedy: "Add the endpoint to the sampling allowlist in policy if the server is trusted"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "mcp.sampling_denied"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "SamplingDenied"
+
+anti_slop_assertions:
+  - rule: "AS-03"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Errno::Eperm, .. }); assert_eq!(jsonrpc_error_code, -32001);"

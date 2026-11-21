@@ -80,6 +80,10 @@ export type PatchPayload =
       content: Uint8Array;
     } }
   | { fsPathRedirect: { targetPath: string } }
+  /** Rewritten upstream endpoint for on_socket_connect steering. */
+  | { netRedirect: { targetHost: string; targetPort: number } }
+  /** Replacement signal for on_signal redirect steering (SIGKILL -> SIGTERM). */
+  | { signalMutation: { replacementSignal: number } }
   | { custom: { name: string; cbor: unknown } };
 
 /**

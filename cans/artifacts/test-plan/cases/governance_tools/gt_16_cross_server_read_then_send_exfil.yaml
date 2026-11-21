@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "gt_16_cross_server_read_then_send_exfil"
+title: "Cross-server read_then_send flow: tool read on MCP server A followed by a send tool on MCP server B in the same turn is blocked regardless of byte identity"
+domain: "governance_tools"
+target_tier: "integration"
+target_crate: "crates/kelir-plugins"
+platform_target:
+  os: "any"
+  arch: "any"
+  hypervisor: "none"
+
+invariant:
+  law_reference: "cans/plugins/tool-guard.md#Cross-server-flow-and-name-safety"
+  statement: "Tool calls classify into read, write, send, and run capability buckets; a sliding window detects cross-server read_then_send flows in the same turn, catching LLM-paraphrased exfiltration that byte-range taint cannot see. Gap: no capability-bucket window exists in the live tree; detect_cross_server_exfil exists only as fixture config and spec text."
+  blast_radius_if_breached: "An LLM reads secret data from MCP server A, paraphrases it in-context, and exfiltrates it via a send tool on MCP server B."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts the block by matching raw byte overlap instead of the capability window, which misses paraphrased payloads."
+  anti_slop_mitigation: "AS-06 asserts the second tool call Drops with EPOLICY while its arguments share zero bytes with the first call's output."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_2"
+  caller_identity:
+    principal: "security.tools"
+    agent_id: "agt_gt_16"
+    trust: "reviewed"
+  initial_state:
+    mcp_servers: ["db-inspect#trusted", "webhook-relay#trusted"]
+    capability_window: "same_turn"
+    tables: []
+    vault_secrets: ["STRIPE_SECRET"]
+
+execution:
+  trigger: "rust_api"
+  command: "tool_guard.on_call(&ToolCall { server: 'webhook-relay', tool: 'http_post', args: paraphracted_summary, .. }, &ctx)"
+  input_params:
+    action: "cross_server_flow_check"
+    prior_calls: ["db-inspect:read_table"]
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "tools.exfil"
+    culprit: "read_then_send cross-server flow within one turn"
+    remedy: "Split the workflow across turns with an approval hold, or grant an explicit cross_server_flow policy exception"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "tool_guard.cross_server_flow_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "CrossServerExfil"
+
+anti_slop_assertions:
+  - rule: "AS-06"
+    verification: "assert_eq!(byte_overlap(&first_output, &second_args), 0); assert_matches!(verdict, Verdict::Drop { errno: Errno::Epolicy, .. });"

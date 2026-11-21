@@ -1,0 +1,71 @@
+$schema: "test-plan/case/v1"
+case_id: "hd_25_guest_bpf_io_uring_block"
+title: "Guest BPF blocks io_uring_setup, io_uring_enter, and io_uring_register so async I/O cannot bypass syscall trap inspection"
+domain: "hypervisor_driver"
+target_tier: "integration"
+target_crate: "crates/kelir-engine"
+platform_target:
+  os: "linux"
+  arch: "any"
+  hypervisor: "kvm"
+
+invariant:
+  law_reference: "cans/01-architecture.md#Guest-kernel-hardening"
+  statement: "Guest BPF blocks io_uring, add_key, request_key, and keyctl syscalls by default, and exotic socket families (AF_ALG, AF_RXRPC, NETLINK_XFRM) are denied, so async I/O and kernel keyrings cannot bypass syscall trap inspection. Gap: no guest BPF filter set exists in the live tree; blocked_syscalls exists only as fixture config and spec text."
+  blast_radius_if_breached: "Guest code routes file and memory operations through io_uring rings that never cross the syscall trap boundary."
+
+confusion_matrix:
+  quadrant: "true_negative"
+  slop_risk: "Agent asserts ENOSYS without proving the io_uring operations never reached the host ring, leaving an un-inspected async path."
+  anti_slop_mitigation: "AS-02 asserts zero host-side io_uring activity while the trap returns a typed Drop for all three io_uring syscall numbers."
+
+setup:
+  env: "ci"
+  platform_tier: "tier_2"
+  caller_identity:
+    principal: "security.hypervisor"
+    agent_id: "agt_hd_25"
+    trust: "reviewed"
+  initial_state:
+    guest_kernel: "fixtures/vmlinux-6.6-kelir"
+    blocked_syscalls: ["io_uring_setup", "io_uring_enter", "io_uring_register"]
+    tables: []
+    vault_secrets: []
+
+execution:
+  trigger: "guest_binary"
+  command: "guest: io_uring_setup(64, &params)"
+  input_params:
+    action: "bpf_syscall_gate"
+    syscall_no: 425
+
+expected_observations:
+  exit_code: 1
+  state_modified: false
+  diagnostic:
+    domain: "hypervisor.syscall"
+    culprit: "io_uring_setup is on the default blocked syscall list"
+    remedy: "Use the trap-visible read/write syscalls; io_uring is never permitted inside the guest"
+  database:
+    row_count_delta: 0
+    tables_mutated: []
+  storage:
+    upper_bytes_dirtied: 0
+    tombstones_created: 0
+    host_blocks_allocated: 0
+  wire:
+    frames_outbound: 0
+    frames_inbound: 0
+    trapped_syscalls: []
+    synthetic_responses: []
+  audit:
+    event_emitted: "hypervisor.io_uring_blocked"
+    chain_valid: true
+    state_modified_field: false
+  receipt:
+    exit_kind: "Normal"
+    fault_reason: "IoUringBlocked"
+
+anti_slop_assertions:
+  - rule: "AS-02"
+    verification: "assert_matches!(verdict, Verdict::Drop { errno: Errno::Eperm, .. }); assert_eq!(host_io_uring_events, 0);"
