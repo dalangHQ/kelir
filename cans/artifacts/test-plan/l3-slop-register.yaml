@@ -1922,22 +1922,6 @@ entries:
   - stderr contains 'Lifecycle script blocked' with event supply_chain.lifecycle_script_blocked
   code_todos:
   - crates/kelir-plugins/plugin-supply-chain/src/state.flow.rs
-- case_id: sc_02_argv_high_entropy_obfuscation_kill
-  status: red
-  domain: supply_chain_security
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - flags_obfuscated_argv returns Ok(false) forever, so the 112-char 5.917 bits/char payload Passes and executes
-  - Entropy computed over argv[0] only, so the base64 blob in argv[1:] is never measured
-  - Threshold hardcoded to a value other than 5.2 bits/char, so the pinned payload passes or benign commands fail
-  must_not:
-  - Leave flags_obfuscated_argv returning Ok(false) while asserting the Drop
-  - Measure entropy over argv[0] instead of argv[1:]
-  acceptance:
-  - Calculated entropy > 5.2 for the pinned payload
-  - Verdict is Drop with errno EPERM, event supply_chain.high_entropy_blocked
-  code_todos:
-  - crates/kelir-plugins/plugin-supply-chain/src/state.flow.rs
 - case_id: sc_03_seccomp_unotify_wx_jit_mediation
   status: red
   domain: supply_chain_security

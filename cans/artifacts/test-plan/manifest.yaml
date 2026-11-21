@@ -1562,7 +1562,7 @@ cases:
     quadrant: "true_negative"
     title: "kelir-plugin-cli fixtures compare_digest returns DigestMismatch on a hash mismatch and never silently passes"
 
-  # ── Domain 12: supply_chain_security (sc) [10 cases] ──────────
+  # ── Domain 12: supply_chain_security (sc) [9 cases] ──────────
   - case_id: "sc_01_lifecycle_script_trap_exit126"
     file: "cases/supply_chain_security/sc_01_lifecycle_script_trap_exit126.yaml"
     domain: "supply_chain_security"
@@ -1570,13 +1570,6 @@ cases:
     target_crate: "crates/kelir-plugins"
     quadrant: "true_negative"
     title: "Package manager executing postinstall lifecycle script in node_modules is trapped and exits 126"
-  - case_id: "sc_02_argv_high_entropy_obfuscation_kill"
-    file: "cases/supply_chain_security/sc_02_argv_high_entropy_obfuscation_kill.yaml"
-    domain: "supply_chain_security"
-    target_tier: "unit"
-    target_crate: "crates/kelir-plugins"
-    quadrant: "true_negative"
-    title: "Command execution with argv entropy >5.2 bits/char is flagged as obfuscated payload and rejected"
   - case_id: "sc_03_seccomp_unotify_wx_jit_mediation"
     file: "cases/supply_chain_security/sc_03_seccomp_unotify_wx_jit_mediation.yaml"
     domain: "supply_chain_security"

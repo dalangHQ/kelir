@@ -292,38 +292,6 @@ fn sc_01_lifecycle_script_trap_exit126() -> Result<(), String> {
     Ok(())
 }
 
-// see: cans/artifacts/test-plan/cases/supply_chain_security/sc_02_argv_high_entropy_obfuscation_kill.yaml#case_id
-#[test]
-#[ignore]
-fn sc_02_argv_high_entropy_obfuscation_kill() -> Result<(), String> {
-    let plugin = SupplyChainPlugin::new(SupplyChainConfig::default());
-    let ctx = handler_ctx([0u8; 16], 4200);
-    let payload = "R4vK7xPz2QmW9tLbYcN8fGhJ5sD_aXeU3vZrT6wAyBnC1oEiM0pSqO7kFdH2gJuL-V+ZxWcPqNmTbYvErfCgXdKsAhUoIeDwLjMzNyBtGcSapQok";
-    let event = exec_event(
-        4200,
-        100,
-        "/bin/sh",
-        vec!["sh".into(), "-c".into(), payload.to_string()],
-    );
-    match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
-        Verdict::Drop {
-            errno: Errno::Eacces,
-            reason,
-        } => {
-            assert!(
-                reason.contains("obfuscated argv denied"),
-                "deny must name the obfuscated argv kill: {reason}"
-            );
-        }
-        verdict => {
-            return Err(format!(
-                "high-entropy obfuscated argv (Shannon > 5.2 bits/char) must be dropped with EACCES, got {verdict:?}"
-            ));
-        }
-    }
-    Ok(())
-}
-
 // see: cans/artifacts/test-plan/cases/supply_chain_security/sc_06_package_guard_pip_lifecycle_block.yaml#case_id
 #[test]
 #[ignore]

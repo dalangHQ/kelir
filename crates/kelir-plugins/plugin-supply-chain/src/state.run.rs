@@ -9,7 +9,9 @@ use crate::state::SupplyChainPlugin;
 #[async_trait]
 impl TrapInterposer for SupplyChainPlugin {
     async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold; slop: flag-to-verdict unimplemented, obfuscated argv Passes despite entropy
+        // TODO (L3) [supply_chain_security]: dry-run lockfile resolver (npm/pip/pnpm/yarn/uv/poetry) resolving the full dependency closure before install; slop: no lockfile is resolved, the dependency closure is never enumerated, phantom and lockfile-poisoned deps install unchallenged.
+        // TODO (L3) [supply_chain_security]: OSV/Snyk/Socket/deps.dev advisory lookups for every resolved package; slop: no advisory source is consulted, vulnerable and typosquatted packages Pass with zero lookups.
+        // TODO (L3) [supply_chain_security]: SKILL.md unicode/injection vetting of skill manifests before load; slop: skill manifests load unvetted, unicode homoglyph and injection payloads reach the model context.
         // TODO (L3) [supply_chain_security]: mediate execve and memory syscalls through the W^X JIT gate; stub passes every trap.; slop: every trap Passes unmediated, the W^X JIT gate never enforces, execve and memory syscalls run unchecked.
         Err(PluginError::Halt(
             "TODO (L3): mediate execve and memory syscalls through the W^X JIT gate".into(),
@@ -50,13 +52,6 @@ impl SupplyChainPlugin {
             "TODO (L3): mint and deliver the W^X allocation token for authorized JIT engines"
                 .into(),
         ))
-    }
-
-    fn flags_obfuscated_argv(&self, argv: &[String]) -> Result<bool, PluginError> {
-        // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: Shannon entropy of argv[1:] above shannon_entropy_threshold_bits flags encrypted or base64-obfuscated commands; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes
-        let _ = argv;
-        // TODO (L3) [sc_02_argv_high_entropy_obfuscation_kill]: flag argv[1:] above shannon_entropy_threshold_bits as obfuscated.; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes.
-        Ok(false)
     }
 
     fn blocks_lifecycle_script(&self, event: &TrapEvent) -> Result<bool, PluginError> {

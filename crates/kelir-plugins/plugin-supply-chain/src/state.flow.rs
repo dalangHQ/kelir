@@ -15,8 +15,16 @@ impl Default for PackageGuardConfig {
         Self {
             deny_lifecycle_scripts: true,
             managers: vec!["npm".into(), "pip".into(), "cargo".into()],
-            shannon_entropy_threshold_bits: 5.2,
             bypass_runners: vec!["node".into(), "python".into()],
+            resolve_lockfiles: true,
+            advisories: vec![
+                "osv".into(),
+                "snyk".into(),
+                "socket".into(),
+                "deps.dev".into(),
+            ],
+            strip_private_scopes: true,
+            vet_skills: true,
         }
     }
 }

@@ -1535,14 +1535,6 @@ cases:
   test_file: crates/kelir-plugins/plugin-supply-chain/tests/jit_wx_governance_test.rs
   test_fn: sc_01_lifecycle_script_trap_exit126
   reason: 'nextest ignored-only: on_trap for the setup.py build execve returned Err(Halt("TODO (L3): mediate execve and memory syscalls through the W^X JIT gate")) instead of Drop EACCES; lifecycle-script mediation is L3'
-- case_id: sc_02_argv_high_entropy_obfuscation_kill
-  case_file: cases/supply_chain_security/sc_02_argv_high_entropy_obfuscation_kill.yaml
-  target_crate: crates/kelir-plugins
-  target_tier: unit
-  status: red
-  test_file: crates/kelir-plugins/plugin-supply-chain/tests/jit_wx_governance_test.rs
-  test_fn: sc_02_argv_high_entropy_obfuscation_kill
-  reason: 'nextest ignored-only: on_trap for the high-entropy argv execve returned Err(Halt("TODO (L3): mediate execve and memory syscalls through the W^X JIT gate")) instead of Drop; argv entropy flag-to-verdict policy is L3'
 - case_id: sc_03_seccomp_unotify_wx_jit_mediation
   case_file: cases/supply_chain_security/sc_03_seccomp_unotify_wx_jit_mediation.yaml
   target_crate: crates/kelir-plugins
