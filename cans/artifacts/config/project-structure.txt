@@ -159,8 +159,10 @@ kelir/
 │   │   ├── Cargo.toml
 │   │   ├── src/
 │   │   │   ├── lib.rs                 # Thin aggregator: plugin re-exports
+│   │   │   ├── ledger_ext.flow.rs            # LedgerSessionExt async Session accessors (L2)
 │   │   │   ├── plugin_profile_schema.flow.rs   # *PluginProfile structs, validate_plugins, to_ledger/mcp/tool_guard converters
-│   │   │   └── plugin_profile_schema_extra.flow.rs  # db_proxy/supply_chain/vault/l7_http/egress_proxy/redaction converters
+│   │   │   ├── plugin_profile_schema_extra.flow.rs  # db_proxy/supply_chain/vault/l7_http/egress_proxy/redaction converters
+│   │   │   └── tool_guard_ext.flow.rs        # ToolGuardExt .tool() builder sugar on KelirBuilder (L2)
 │   │   └── tests/
 │   │       ├── composition_seal_test.rs
 │   │       ├── fluent_builder_plugin_test.rs
