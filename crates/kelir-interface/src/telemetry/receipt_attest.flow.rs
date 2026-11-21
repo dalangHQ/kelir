@@ -211,7 +211,7 @@ impl ReceiptStore {
     }
 }
 
-// L3-GAP: [ar_12_session_attestation_token_injection]: consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified
+// TODO: [ar_12_session_attestation_token_injection] fill in the L3 wave; consumed by cans/10-attestation.md#Attestation-provenance-classification session-token verification.; slop: token presence asserted, host-key signature never verified
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttestationToken {
     pub session_token: String,

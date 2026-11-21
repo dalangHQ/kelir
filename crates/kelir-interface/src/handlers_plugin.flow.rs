@@ -37,7 +37,7 @@ impl<P: 'static> Capability<P> for () {
 }
 
 // see: cans/03-sdk-architecture.md#Session-surfaces
-// TODO (L3) [plugin_engine]: surface real session state into SessionContext at the dispatch boundary.; slop: SessionContext carries no live session state, predicates decide blind.
+// TODO: [plugin_engine] fill in the L3 wave; surface real session state into SessionContext at the dispatch boundary.; slop: SessionContext carries no live session state, predicates decide blind.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionContext {
     pub session_id: [u8; 16],
@@ -216,7 +216,7 @@ pub struct HandlerCtx<Plugins = (), Params = ()> {
 }
 
 impl<Plugins, Params> HandlerCtx<Plugins, Params> {
-    // L3-GAP: [plugin_engine]: wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.; slop: empty dispatch view, live handles never wired
+    // TODO: [plugin_engine] fill in the L3 wave; wire the live session handles into the dispatch view per cans/03-sdk-architecture.md#Session-surfaces.; slop: empty dispatch view, live handles never wired
     pub fn new(session_id: [u8; 16], pid: u32, plugins: Plugins, params_buffer: Vec<u8>) -> Self {
         Self {
             session_id,
@@ -246,7 +246,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
         self
     }
 
-    // TODO (L3) [governance_tools]: verify the ed25519 signature on the stored operator lease token; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
+    // TODO: [governance_tools] fill in the L3 wave; verify the ed25519 signature on the stored operator lease token; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
     pub fn has_valid_operator_lease(&self) -> bool {
         self.operator_lease.is_some()
     }
@@ -516,7 +516,7 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     }
 
     // see: cans/10-attestation.md#Execution-receipts
-    // L3-GAP: [ar_01_execution_receipt_blake3_binding]: no live producer mints receipts into the store yet; dispatch hydrates once the trap/exit boundary stores one; slop: receipt() Err, stored receipt never minted.
+    // TODO: [ar_01_execution_receipt_blake3_binding] fill in the L3 wave; no live producer mints receipts into the store yet; dispatch hydrates once the trap/exit boundary stores one; slop: receipt() Err, stored receipt never minted.
     pub async fn receipt(&self) -> Result<ExecutionReceipt, PluginError> {
         match &self.receipt {
             Some(receipt) => Ok(receipt.clone()),

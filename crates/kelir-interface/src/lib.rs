@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-// L3-GAP: [protocol_mux]: tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
+// TODO: [protocol_mux] fill in the L3 wave; tests/unit_codec.rs + tests/unit_traits.rs per cans/artifacts/config/project-structure.txt.; slop: stub tests assert Ok(()), no codec wire bytes
 pub mod addon_abi;
 pub mod capability_registry;
 pub use capability_registry::CapabilityRegistry;

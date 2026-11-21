@@ -39,7 +39,7 @@ pub enum FuseOpcode {
 
 impl FuseOpcode {
     pub fn from_u32(value: u32) -> Result<Self, PluginError> {
-        // L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: validate opcode numbers against the virtio-fs queue parser; slop: FUSE reply never marshalled, virtqueue never consumed
+        // TODO: [vr_10_virtio_fs_fuse_req_channel] fill in the L3 wave; validate opcode numbers against the virtio-fs queue parser; slop: FUSE reply never marshalled, virtqueue never consumed
         match value {
             uapi_fuse::FUSE_LOOKUP => Ok(FuseOpcode::Lookup),
             uapi_fuse::FUSE_GETATTR => Ok(FuseOpcode::Getattr),
@@ -74,7 +74,7 @@ pub struct FuseRequest {
 }
 
 // see: cans/05-storage-plane.md#Synthetic-FUSE-inodes
-// L3-GAP: [vr_10_virtio_fs_fuse_req_channel]: driver marshals each reply into the fuse_out wire structs; slop: FUSE reply never marshalled, virtqueue never consumed
+// TODO: [vr_10_virtio_fs_fuse_req_channel] fill in the L3 wave; driver marshals each reply into the fuse_out wire structs; slop: FUSE reply never marshalled, virtqueue never consumed
 #[derive(Debug, Clone)]
 pub enum FuseReply {
     // see: cans/05-storage-plane.md#Interception-pipeline

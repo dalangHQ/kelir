@@ -226,7 +226,7 @@ fn vmm_error(error: VmmError) -> PluginError {
 }
 
 // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-// L3-GAP: [plugin_engine]: veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.; slop: veto callback without Send+Sync, LifecycleCtx Send unproven
+// TODO: [plugin_engine] fill in the L3 wave; veto callback boxes carry Send + Sync beyond the artifact's Box<dyn Fn() -> bool> so LifecycleCtx stays Send across async await points.; slop: veto callback without Send+Sync, LifecycleCtx Send unproven
 pub struct LifecycleCtx<'a> {
     pub config: &'a VmConfig,
     pub session_id: &'a str,
@@ -293,9 +293,9 @@ impl<'a> LifecycleCtx<'a> {
 
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub async fn exec_in_guest(&self, _args: &[&str]) -> Result<(), PluginError> {
-        // TODO (L3) [protocol_mux]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec_in_guest always Halts, no guest command path exists.
+        // TODO: [protocol_mux] fill in the L3 wave; exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec_in_guest always Halts, no guest command path exists.
         Err(PluginError::Halt(
-            "TODO (L3): LifecycleCtx::exec_in_guest needs the live EXEC stream dispatch".into(),
+            "deferred to the L3 wave LifecycleCtx::exec_in_guest needs the live EXEC stream dispatch".into(),
         ))
     }
 

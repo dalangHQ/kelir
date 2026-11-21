@@ -20,15 +20,15 @@ pub trait StorageIo: Send + Sync {
     fn advise_dontneed(&self, path: &Path) -> Result<(), PluginError>;
     fn remove_file(&self, path: &Path) -> Result<(), PluginError>;
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged
+    // TODO: [sp_08_reconciler_atomic_leaf_commit] fill in the L3 wave; StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged
     fn write(&self, path: &Path, offset: u64, data: &[u8]) -> Result<u64, PluginError>;
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk
+    // TODO: [sp_09_reconciler_tombstone_unlink_commit] fill in the L3 wave; StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk
     fn mkdir(&self, path: &Path, mode: u32) -> Result<(), PluginError>;
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk
+    // TODO: [sp_09_reconciler_tombstone_unlink_commit] fill in the L3 wave; StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk
     fn unlink(&self, path: &Path) -> Result<(), PluginError>;
     // see: cans/05-storage-plane.md#Host-CoW-broker
-    // TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged
+    // TODO: [sp_08_reconciler_atomic_leaf_commit] fill in the L3 wave; StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged
     fn rename(&self, from: &Path, to: &Path) -> Result<(), PluginError>;
 }

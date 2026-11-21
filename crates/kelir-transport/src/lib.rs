@@ -30,6 +30,6 @@ pub struct MemoryHandoff {
 pub(crate) fn unsupported(op: &str) -> std::io::Error {
     std::io::Error::new(
         std::io::ErrorKind::Unsupported,
-        format!("{op} pending (L3)"),
+        format!("{op} pending, deferred to the L3 wave"),
     )
 }

@@ -242,7 +242,7 @@ impl VectorSuite {
 }
 
 // see: cans/15-operations.md#Multi-language-parity-gate
-// L3-GAP: [protocol_mux]: canonicalize CBOR map ordering (envp HashMap iteration) so `kelir-plugin-cli vectors` regenerates byte-stable frame_hex literals.; slop: frame_hex regenerates unstable, CBOR order never canonicalized
+// TODO: [protocol_mux] fill in the L3 wave; canonicalize CBOR map ordering (envp HashMap iteration) so `kelir-plugin-cli vectors` regenerates byte-stable frame_hex literals.; slop: frame_hex regenerates unstable, CBOR order never canonicalized
 fn cbor<T: serde::Serialize>(value: &T) -> Result<Vec<u8>, VectorError> {
     let mut out = Vec::new();
     ciborium::ser::into_writer(value, &mut out).map_err(|e| VectorError::Encode(e.to_string()))?;
@@ -634,7 +634,7 @@ fn plugin_builder_chain_cases() -> Result<Vec<VectorCase>, VectorError> {
 // see: cans/02-plugin-model.md#Unified-builder
 // see: cans/15-operations.md#Unified-builder-parity-vectors
 // see: cans/artifacts/examples/fluent-builder-chaos.rs#build_chaos_host
-// L3-GAP: [pe_16_chaos_rst_injection_drops_matching_frame]: add the matching-frame vector (FilterAction::Drop, errno ECONNREFUSED) once frame_matches lands; slop: vector asserts Forward for a frame that should Drop once matching lands.
+// TODO: [pe_16_chaos_rst_injection_drops_matching_frame] fill in the L3 wave; add the matching-frame vector (FilterAction::Drop, errno ECONNREFUSED) once frame_matches lands; slop: vector asserts Forward for a frame that should Drop once matching lands.
 fn chaos_plugin_builder_case() -> Result<VectorCase, VectorError> {
     plugin_builder_case(
         "plugin-builder-chaos-only",

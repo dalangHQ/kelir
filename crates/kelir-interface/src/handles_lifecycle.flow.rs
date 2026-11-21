@@ -163,7 +163,7 @@ impl VmControl for DriverVmControl {
     }
 
     async fn set_vcpus(&self, _count: u8) -> Result<(), PluginError> {
-        // L3-GAP: [hd_15_vcpu_scale_online_offline_dynamic]: VmmDriver has no set_vcpus surface; the adapter cannot park/unpark host vCPU threads.; slop: set_vcpus Ok, host thread parking never verified
+        // TODO: [hd_15_vcpu_scale_online_offline_dynamic] fill in the L3 wave; VmmDriver has no set_vcpus surface; the adapter cannot park/unpark host vCPU threads.; slop: set_vcpus Ok, host thread parking never verified
         Err(PluginError::Halt(
             "VmmDriver has no set_vcpus surface".into(),
         ))
@@ -290,7 +290,7 @@ impl VmHandle {
     }
 
     // see: cans/08-lifecycle.md#Clock-invariants
-    // L3-GAP: [lc_11_lid_sleep_clock_resync_snap]: read the live guest CLOCK_MONOTONIC through the driver surface; zero defers the clamp to the plane watermark floor.; slop: zero clock accepted, guest time jump unverified
+    // TODO: [lc_11_lid_sleep_clock_resync_snap] fill in the L3 wave; read the live guest CLOCK_MONOTONIC through the driver surface; zero defers the clamp to the plane watermark floor.; slop: zero clock accepted, guest time jump unverified
     pub fn guest_monotonic_ns(&self) -> u64 {
         0
     }
@@ -361,9 +361,9 @@ impl VmHandle {
 pub struct FsHandle;
 
 impl FsHandle {
-    // L3-GAP: [storage_plane]: prefetch the storage catalog entries for the requested paths into the warm cache.; slop: warm cache Ok, catalog entries never prefetched
+    // TODO: [storage_plane] fill in the L3 wave; prefetch the storage catalog entries for the requested paths into the warm cache.; slop: warm cache Ok, catalog entries never prefetched
     pub async fn warm_cache(&self, _paths: &[&str]) -> Result<(), PluginError> {
-        Err(PluginError::Halt("TODO (L3): FsHandle::warm_cache".into()))
+        Err(PluginError::Halt("deferred to the L3 wave FsHandle::warm_cache".into()))
     }
 }
 
@@ -371,7 +371,7 @@ impl FsHandle {
 pub struct TerminalHandle;
 
 impl TerminalHandle {
-    // L3-GAP: [terminal_plane]: publish the TerminalNotice event to the event bus per cans/04-terminal-plane.md#Terminal-pipeline.; slop: notice swallowed, event never reaches bus
+    // TODO: [terminal_plane] fill in the L3 wave; publish the TerminalNotice event to the event bus per cans/04-terminal-plane.md#Terminal-pipeline.; slop: notice swallowed, event never reaches bus
     pub fn notice(&self, _msg: &str) {}
 }
 
@@ -386,17 +386,17 @@ impl ExecHandle {
         Self { exec_id }
     }
 
-    // TODO (L3) [terminal_plane]: flush msg onto EXEC sub-lane 0x02 before the exit EOF frame; slop: steering guidance never flushed, agent sees EOF without guidance.
+    // TODO: [terminal_plane] fill in the L3 wave; flush msg onto EXEC sub-lane 0x02 before the exit EOF frame; slop: steering guidance never flushed, agent sees EOF without guidance.
     pub fn steer(&self, exec_id: u64, msg: &str) -> Result<(), PluginError> {
         let _ = (exec_id, msg);
         Err(PluginError::Halt(
-            "EXEC steer pending (L3): sub-lane 0x02 guidance flush unbound".into(),
+            "EXEC steer pending, deferred to the L3 wave: sub-lane 0x02 guidance flush unbound".into(),
         ))
     }
 }
 
 // see: cans/08-lifecycle.md#Step-execution-stack
-// L3-GAP: [lc_base_snapshot_lifecycle]: pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.; slop: slots never popped, base digest leaks into manifest
+// TODO: [lc_base_snapshot_lifecycle] fill in the L3 wave; pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.; slop: slots never popped, base digest leaks into manifest
 #[derive(Debug, Clone, Default)]
 pub struct StepStack {
     slots: Vec<SnapshotDescriptor>,

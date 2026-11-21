@@ -219,7 +219,7 @@ pub fn emit_telemetry(model: &Model, order: &[&str]) -> Result<String, String> {
         }
         let def = model.struct_def(name)?;
         if *name == "ExecutionReceipt" {
-            out.push_str("# L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK\n");
+            out.push_str("# TODO: [attestation_receipts] fill in the L3 wave; no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK\n");
         }
         let _ = writeln!(out, "class {name}(BaseModel):");
         for field in &def.fields {

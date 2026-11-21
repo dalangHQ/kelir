@@ -159,7 +159,7 @@ pub struct WireWiring {
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.block_abstract_unix_sockets
     pub block_abstract_unix_sockets: bool,
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-    // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
+    // TODO: [wire_plane] fill in the L3 wave; dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
     // see: cans/07-wire-plane.md#DNS-to-IP-admission
     pub dns_to_ip_pinning: bool,
@@ -213,7 +213,7 @@ pub enum LinkLocalRoute {
 }
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// L3-GAP: [wire_plane]: drop non-link-local cloud IMDS endpoints at ingress; slop: cloud IMDS endpoint reaches the guest stack, quarantine bypassed
+// TODO: [wire_plane] fill in the L3 wave; drop non-link-local cloud IMDS endpoints at ingress; slop: cloud IMDS endpoint reaches the guest stack, quarantine bypassed
 pub fn link_local_route(frame: &[u8], direction: FrameDirection) -> Option<LinkLocalRoute> {
     let remote = frame_remote_ip(frame, direction)?;
     if !remote.is_link_local() {

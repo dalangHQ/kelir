@@ -362,22 +362,22 @@ impl StorageIo for EbusyThenOkIo {
     }
     fn write(&self, _path: &Path, _offset: u64, _data: &[u8]) -> Result<u64, PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+            "[sp_08_reconciler_atomic_leaf_commit] deferred to the L3 wave: StorageIo::write needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
     fn mkdir(&self, _path: &Path, _mode: u32) -> Result<(), PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+            "[sp_09_reconciler_tombstone_unlink_commit] deferred to the L3 wave: StorageIo::mkdir needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
         ))
     }
     fn unlink(&self, _path: &Path) -> Result<(), PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3) [sp_09_reconciler_tombstone_unlink_commit]: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
+            "[sp_09_reconciler_tombstone_unlink_commit] deferred to the L3 wave: StorageIo::unlink needs the driver/transport enclave; slop: commit Ok, tombstone or file still on host disk".into(),
         ))
     }
     fn rename(&self, _from: &Path, _to: &Path) -> Result<(), PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
+            "[sp_08_reconciler_atomic_leaf_commit] deferred to the L3 wave: StorageIo::rename needs the driver/transport enclave; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
     }
 }

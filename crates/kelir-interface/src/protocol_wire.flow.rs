@@ -270,7 +270,7 @@ pub struct TrapEvent {
     pub seq: u64,
     pub pid: u32,
     pub ppid: u32,
-    // TODO (L3) [plugin_engine]: fill tree_depth from the live trap path; 0 until the trap path records process depth; slop: tree_depth stays 0; trap depth never recorded.
+    // TODO: [plugin_engine] fill in the L3 wave; fill tree_depth from the live trap path; 0 until the trap path records process depth; slop: tree_depth stays 0; trap depth never recorded.
     #[serde(default)]
     pub tree_depth: u32,
     // see: cans/artifacts/code/messages.rs#TrapEvent — on-the-wire field, consumed there

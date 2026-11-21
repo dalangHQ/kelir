@@ -20,7 +20,7 @@ impl PidLineage {
             incarnation_id,
         }
     }
-    // L3-GAP: [lifecycle_checkpoint]: resolve guest pid to its lineage root by walking the trap-stream ppid chain; slop: step attribution without lineage root, wrong step blamed
+    // TODO: [lifecycle_checkpoint] fill in the L3 wave; resolve guest pid to its lineage root by walking the trap-stream ppid chain; slop: step attribution without lineage root, wrong step blamed
 
     pub const fn root_pid(self) -> u32 {
         self.root_pid

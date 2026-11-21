@@ -76,9 +76,9 @@ impl OperatorLease {
                 self.lease_id
             )));
         }
-        // TODO (L3) [plugin_engine]: verify the Ed25519 lease signature against signer_public_key over the rule fragment.; slop: unsigned lease accepted, dynamic rules unauthenticated
+        // TODO: [plugin_engine] fill in the L3 wave; verify the Ed25519 lease signature against signer_public_key over the rule fragment.; slop: unsigned lease accepted, dynamic rules unauthenticated
         Err(PolicyPlaneError::SignatureVerificationPending(format!(
-            "lease {} Ed25519 verification is TODO (L3)",
+            "lease {} Ed25519 verification is TODO (deferred to the L3 wave)",
             self.lease_id
         )))
     }

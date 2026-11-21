@@ -26,6 +26,6 @@ pub enum CatalogError {
     HomeUnset,
     #[error("catalog host state root unavailable: {0}")]
     HostRoot(#[from] std::io::Error),
-    #[error("postgres catalog boot requires a live PostgreSQL endpoint (L3)")]
+    #[error("postgres catalog boot requires a live PostgreSQL endpoint (deferred to the L3 wave)")]
     PostgresLiveBoot,
 }

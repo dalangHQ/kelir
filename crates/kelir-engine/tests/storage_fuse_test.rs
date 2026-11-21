@@ -65,7 +65,7 @@ fn sp_13_synthetic_fuse_inode_read_only_0400() -> Result<(), String> {
         }
         other => return Err(format!("synthetic lookup did not return inode: {other:?}")),
     }
-    // TODO (L3) [sp_14_in_flight_read_masking_pattern_replace]: read the patched inode content back through the broker read at offset; slop: guest read returns the raw secret because the mask runs after the VFS return.
+    // TODO: [sp_14_in_flight_read_masking_pattern_replace] fill in the L3 wave; read the patched inode content back through the broker read at offset; slop: guest read returns the raw secret because the mask runs after the VFS return.
     assert!(!workspace.join(".env").exists());
     drop_workspace(&workspace);
     Ok(())

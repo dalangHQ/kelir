@@ -24,7 +24,7 @@ impl VsockFallbackTransport {
     }
 
     pub fn connect(config: VsockConfig) -> Result<Self, std::io::Error> {
-        // L3-GAP: [pm_13_vsock_fallback_connect_fails_closed]: socket(AF_VSOCK) + connect to config.address; slop: connect Ok on dead CID, half-open transport keeps fd
+        // TODO: [pm_13_vsock_fallback_connect_fails_closed] fill in the L3 wave; socket(AF_VSOCK) + connect to config.address; slop: connect Ok on dead CID, half-open transport keeps fd
         let _ = config;
         Err(crate::unsupported("vsock fallback connect"))
     }
@@ -33,18 +33,18 @@ impl VsockFallbackTransport {
 impl Transport for VsockFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // L3-GAP: [vr_12_transport_af_vsock_fallback_parity]: AF_VSOCK read; slop: read returns ring bytes re-framed, vsock framing diverges
+        // TODO: [vr_12_transport_af_vsock_fallback_parity] fill in the L3 wave; AF_VSOCK read; slop: read returns ring bytes re-framed, vsock framing diverges
         Err(crate::unsupported("vsock fallback read"))
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // L3-GAP: [vr_12_transport_af_vsock_fallback_parity]: AF_VSOCK write; slop: write alters header for socket, SPSC/vsock bytes differ
+        // TODO: [vr_12_transport_af_vsock_fallback_parity] fill in the L3 wave; AF_VSOCK write; slop: write alters header for socket, SPSC/vsock bytes differ
         Err(crate::unsupported("vsock fallback write"))
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // L3-GAP: [vr_12_transport_af_vsock_fallback_parity]: AF_VSOCK flush; slop: flush claims sent, bytes still buffered without carrier
+        // TODO: [vr_12_transport_af_vsock_fallback_parity] fill in the L3 wave; AF_VSOCK flush; slop: flush claims sent, bytes still buffered without carrier
         Err(crate::unsupported("vsock fallback flush"))
     }
 }
@@ -64,7 +64,7 @@ impl NamedPipeFallbackTransport {
     }
 
     pub fn open(config: NamedPipeConfig) -> Result<Self, std::io::Error> {
-        // L3-GAP: [vr_13_transport_named_pipe_windows_parity]: open the Windows named pipe at config.path; slop: pipe open Ok without backpressure, frames drop when full
+        // TODO: [vr_13_transport_named_pipe_windows_parity] fill in the L3 wave; open the Windows named pipe at config.path; slop: pipe open Ok without backpressure, frames drop when full
         let _ = config;
         Err(crate::unsupported("named-pipe fallback open"))
     }
@@ -73,18 +73,18 @@ impl NamedPipeFallbackTransport {
 impl Transport for NamedPipeFallbackTransport {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // L3-GAP: [vr_13_transport_named_pipe_windows_parity]: named-pipe read; slop: read drops excess frames instead of parking sender
+        // TODO: [vr_13_transport_named_pipe_windows_parity] fill in the L3 wave; named-pipe read; slop: read drops excess frames instead of parking sender
         Err(crate::unsupported("named-pipe fallback read"))
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         let _ = buf;
-        // L3-GAP: [vr_13_transport_named_pipe_windows_parity]: named-pipe write; slop: write ignores pipe buffer full, excess frames lost
+        // TODO: [vr_13_transport_named_pipe_windows_parity] fill in the L3 wave; named-pipe write; slop: write ignores pipe buffer full, excess frames lost
         Err(crate::unsupported("named-pipe fallback write"))
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // L3-GAP: [vr_13_transport_named_pipe_windows_parity]: named-pipe flush; slop: flush claims drained, buffered frames never delivered
+        // TODO: [vr_13_transport_named_pipe_windows_parity] fill in the L3 wave; named-pipe flush; slop: flush claims drained, buffered frames never delivered
         Err(crate::unsupported("named-pipe fallback flush"))
     }
 }

@@ -3,7 +3,7 @@
 use crate::vectors_testkit::{VectorError, VectorSuite};
 
 pub fn canonical_vector_names() -> Result<Vec<String>, VectorError> {
-    // L3-GAP: [protocol_mux]: pin the vectors.json wire format beyond {"vectors":[{"name"}]} in cans/artifacts before asserting fixture bodies here.; slop: fixture bodies asserted, wire format never pinned
+    // TODO: [protocol_mux] fill in the L3 wave; pin the vectors.json wire format beyond {"vectors":[{"name"}]} in cans/artifacts before asserting fixture bodies here.; slop: fixture bodies asserted, wire format never pinned
     Ok(VectorSuite::fixtures()?
         .vectors
         .into_iter()

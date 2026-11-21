@@ -181,7 +181,7 @@ impl Transport for SpscRingTransport {
                     .copy_from_slice(std::slice::from_raw_parts(self.buffer, count - first));
             }
         }
-        // L3-GAP: [vr_02_doorbell_mmio_eventfd_coherency]: MMIO/PCI guest doorbell wakes this consumer via host eventfd instead of caller polling; slop: consumer spin-polls flags, eventfd wake never asserted
+        // TODO: [vr_02_doorbell_mmio_eventfd_coherency] fill in the L3 wave; MMIO/PCI guest doorbell wakes this consumer via host eventfd instead of caller polling; slop: consumer spin-polls flags, eventfd wake never asserted
         header
             .tail
             .store(tail.wrapping_add(count as u32), Ordering::Release);
@@ -219,7 +219,7 @@ impl Transport for SpscRingTransport {
                     .copy_from_slice(&buf[first..count]);
             }
         }
-        // L3-GAP: [vr_02_doorbell_mmio_eventfd_coherency]: host doorbell injects a paravirtual virtual interrupt into the guest vCPU on enqueue; slop: enqueue never wakes guest vCPU, doorbell interrupt missing
+        // TODO: [vr_02_doorbell_mmio_eventfd_coherency] fill in the L3 wave; host doorbell injects a paravirtual virtual interrupt into the guest vCPU on enqueue; slop: enqueue never wakes guest vCPU, doorbell interrupt missing
         header
             .head
             .store(head.wrapping_add(count as u32), Ordering::Release);
@@ -227,7 +227,7 @@ impl Transport for SpscRingTransport {
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        // L3-GAP: [vr_06_virtio_shm_doorbell_fence]: explicit host memory fence + doorbell notification under the virtio-shm device model; slop: flush Ok without fence, guest reads stale SHM payload
+        // TODO: [vr_06_virtio_shm_doorbell_fence] fill in the L3 wave; explicit host memory fence + doorbell notification under the virtio-shm device model; slop: flush Ok without fence, guest reads stale SHM payload
         Ok(())
     }
 }

@@ -886,7 +886,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         };
                         for (index, line) in text.lines().enumerate() {
-                            let Some(todo_at) = line.find("TODO (L3)") else {
+                            let Some(todo_at) = line.find("TODO (deferred to the L3 wave)") else {
                                 continue;
                             };
                             let trimmed = line.trim_start();
@@ -896,7 +896,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let after_todo = &line[todo_at..];
                             let Some(bracket_at) = after_todo.find('[') else {
                                 eprintln!(
-                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    "ERROR: {rel}:{}: TODO (deferred to the L3 wave) line lacks a [tag]",
                                     index + 1
                                 );
                                 errors += 1;
@@ -905,7 +905,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let after_bracket = &after_todo[bracket_at + 1..];
                             let Some(close_at) = after_bracket.find(']') else {
                                 eprintln!(
-                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    "ERROR: {rel}:{}: TODO (deferred to the L3 wave) line lacks a [tag]",
                                     index + 1
                                 );
                                 errors += 1;
@@ -914,7 +914,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let tag = &after_bracket[..close_at];
                             if tag.is_empty() {
                                 eprintln!(
-                                    "ERROR: {rel}:{}: TODO (L3) line lacks a [tag]",
+                                    "ERROR: {rel}:{}: TODO (deferred to the L3 wave) line lacks a [tag]",
                                     index + 1
                                 );
                                 errors += 1;
@@ -922,7 +922,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             if !after_todo.contains("; slop:") {
                                 eprintln!(
-                                    "ERROR: {rel}:{}: TODO (L3) [{tag}] lacks `; slop:`",
+                                    "ERROR: {rel}:{}: TODO (deferred to the L3 wave) [{tag}] lacks `; slop:`",
                                     index + 1
                                 );
                                 errors += 1;
@@ -930,7 +930,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             if !register_ids.contains(tag) && !register_domains.contains(tag) {
                                 eprintln!(
-                                    "ERROR: {rel}:{}: TODO (L3) tag [{tag}] names no register entry or code_only domain",
+                                    "ERROR: {rel}:{}: TODO (deferred to the L3 wave) tag [{tag}] names no register entry or code_only domain",
                                     index + 1
                                 );
                                 errors += 1;

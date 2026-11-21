@@ -240,7 +240,7 @@ fn live_hw_probe(probe: &str) -> Option<bool> {
     match probe {
         "kvm" => Some(Path::new("/dev/kvm").exists()),
         "avf" => Some(Path::new("/dev/avf").exists()),
-        // L3-GAP: [hypervisor_driver]: live hvf/whp entitlement probes and page-size/pidfd verification need libc syscalls; the lockfile record is accepted until then.; slop: accepting unauthenticated lockfile as probed hardware
+        // TODO: [hypervisor_driver] fill in the L3 wave; live hvf/whp entitlement probes and page-size/pidfd verification need libc syscalls; the lockfile record is accepted until then.; slop: accepting unauthenticated lockfile as probed hardware
         _ => None,
     }
 }
@@ -250,7 +250,7 @@ pub fn attest_hw_lockfile(
     records: &[HwLockRecord],
     capabilities: &DriverCapabilities,
 ) -> Result<(), VmmError> {
-    // L3-GAP: [hypervisor_driver]: verify the lockfile Ed25519 signature and the chattr +i immutable flag; the parsed records alone are unauthenticated ASCII.; slop: unsigned ASCII lockfile trusted as attested hardware
+    // TODO: [hypervisor_driver] fill in the L3 wave; verify the lockfile Ed25519 signature and the chattr +i immutable flag; the parsed records alone are unauthenticated ASCII.; slop: unsigned ASCII lockfile trusted as attested hardware
     let Some(required) = required_hw_probes(capabilities.backend) else {
         return Err(VmmError::InvalidState(format!(
             "hardware lockfile attestation has no probe mapping for backend `{}`",
@@ -316,20 +316,20 @@ pub struct VmConfig {
     pub rootfs_erofs_path: PathBuf,
     // see: cans/03-sdk-architecture.md#Session-surfaces
     pub tenant_id: Option<String>,
-    // L3-GAP: [hypervisor_driver]: consumed by hardware-vmm drivers selecting the guest MMU leaf mapping (4/16KB) at boot.; slop: hardcoded 4K mapping on 16K host, silent boot
+    // TODO: [hypervisor_driver] fill in the L3 wave; consumed by hardware-vmm drivers selecting the guest MMU leaf mapping (4/16KB) at boot.; slop: hardcoded 4K mapping on 16K host, silent boot
     pub page_size_kb: u32,
     pub tsc_locked: bool,
-    // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: consumed by hardware-vmm replay drivers substituting a seeded ChaCha20 virtio-rng stream.; slop: unseeded RNG stream, single replay asserted complete
+    // TODO: [lc_23_replay_deterministic_seed_reproduces_step_windows] fill in the L3 wave; consumed by hardware-vmm replay drivers substituting a seeded ChaCha20 virtio-rng stream.; slop: unseeded RNG stream, single replay asserted complete
     pub entropy_seed: Option<u64>,
     pub driver_policy: DriverPolicy,
     pub enable_gpu_passthrough: bool,
     pub enable_watchdog: bool,
     pub deterministic_clock: bool,
-    // L3-GAP: [hypervisor_driver]: consumed by hardware-vmm kernel boot-arg injection (clocksource=... tsc=reliable nohpet).; slop: invented boot args, no clocksource/tsc pinning
+    // TODO: [hypervisor_driver] fill in the L3 wave; consumed by hardware-vmm kernel boot-arg injection (clocksource=... tsc=reliable nohpet).; slop: invented boot args, no clocksource/tsc pinning
     pub pinned_clocksource: Option<String>,
-    // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: consumed by replay drivers stepping the guest clock one instruction at a time.; slop: free-running clock, single replay asserted complete
+    // TODO: [lc_23_replay_deterministic_seed_reproduces_step_windows] fill in the L3 wave; consumed by replay drivers stepping the guest clock one instruction at a time.; slop: free-running clock, single replay asserted complete
     pub ns_per_instruction: Option<u32>,
-    // L3-GAP: [lc_12_host_reaper_pdeathsig_enforcement]: consumed by the kelir-engine host-crash reaper SIGTERM window (on_host_preempt hook).; slop: waitpid-only check, abrupt parent kill -9 untested
+    // TODO: [lc_12_host_reaper_pdeathsig_enforcement] fill in the L3 wave; consumed by the kelir-engine host-crash reaper SIGTERM window (on_host_preempt hook).; slop: waitpid-only check, abrupt parent kill -9 untested
     pub preemption_grace_ms: u64,
     pub network_off: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#session.balloon
@@ -386,7 +386,7 @@ pub struct VmBalloonConfig {
     pub initial_mb: u32,
     #[serde(default)]
     pub pressure_reclaim: bool,
-    // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: madvise(MADV_DONTNEED) and hypervisor frame reclamation stay unimplemented behind the reclaim strategy string.; slop: reclaim accepted from size field alone, frames stay resident
+    // TODO: [hd_16_virtio_balloon_pressure_reclaim] fill in the L3 wave; madvise(MADV_DONTNEED) and hypervisor frame reclamation stay unimplemented behind the reclaim strategy string.; slop: reclaim accepted from size field alone, frames stay resident
     #[serde(default)]
     pub reclaim_strategy: String,
 }
@@ -529,137 +529,137 @@ pub trait VmmDriver: Send + Sync {
     fn capabilities(&self) -> DriverCapabilities;
     async fn boot(&mut self, config: VmConfig) -> Result<(), VmmError>;
     // see: cans/01-architecture.md#Fallback-policy
-    // L3-GAP: [hd_09_bwrap_emulated_fallback_opt_in]: backend drivers override is_emulated with the real emulation-tier probe.; slop: silent emulated fallback without explicit opt-in
+    // TODO: [hd_09_bwrap_emulated_fallback_opt_in] fill in the L3 wave; backend drivers override is_emulated with the real emulation-tier probe.; slop: silent emulated fallback without explicit opt-in
     fn is_emulated(&self) -> Result<bool, VmmError> {
         Err(VmmError::Unsupported(
-            "is_emulated: no native backend override (L3)".into(),
+            "is_emulated: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: backend drivers override fork with the native CoW clone primitive.; slop: memcpy clone instead of CoW page tables
+    // TODO: [lc_01_cow_fork_warm_memory_sharing] fill in the L3 wave; backend drivers override fork with the native CoW clone primitive.; slop: memcpy clone instead of CoW page tables
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         Err(VmmError::Unsupported(
-            "fork: no native backend override (L3)".into(),
+            "fork: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_base_snapshot_capture]: backend drivers override checkpoint with atomic RAM + register capture.; slop: boot Ok asserted, capture ordering unchecked
+    // TODO: [lc_base_snapshot_capture] fill in the L3 wave; backend drivers override checkpoint with atomic RAM + register capture.; slop: boot Ok asserted, capture ordering unchecked
     async fn checkpoint(&mut self, _label: &str) -> Result<SnapshotDescriptor, VmmError> {
         Err(VmmError::Unsupported(
-            "checkpoint: no native backend override (L3)".into(),
+            "checkpoint: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [hypervisor_driver]: backend drivers override map_shared_region with the zero-copy guest segment map.; slop: copied guest segment instead of zero-copy map
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override map_shared_region with the zero-copy guest segment map.; slop: copied guest segment instead of zero-copy map
     async fn map_shared_region(
         &mut self,
         _tag: &str,
         _size_bytes: usize,
     ) -> Result<SharedMemoryHandle, VmmError> {
         Err(VmmError::Unsupported(
-            "map_shared_region: no native backend override (L3)".into(),
+            "map_shared_region: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_20_portable_snapshot_archive_export]: backend drivers override export_snapshot with the portable snapshot stream.; slop: export Ok, trailer digest never verified
+    // TODO: [lc_20_portable_snapshot_archive_export] fill in the L3 wave; backend drivers override export_snapshot with the portable snapshot stream.; slop: export Ok, trailer digest never verified
     async fn export_snapshot(&self) -> Result<Box<dyn AsyncRead + Send + Sync + Unpin>, VmmError> {
         Err(VmmError::Unsupported(
-            "export_snapshot: no native backend override (L3)".into(),
+            "export_snapshot: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_20_portable_snapshot_archive_export]: backend drivers override import_snapshot with the portable snapshot hydrate.; slop: hydrate Ok, manifest digest never verified
+    // TODO: [lc_20_portable_snapshot_archive_export] fill in the L3 wave; backend drivers override import_snapshot with the portable snapshot hydrate.; slop: hydrate Ok, manifest digest never verified
     async fn import_snapshot(
         &mut self,
         _reader: Box<dyn AsyncRead + Send + Sync + Unpin>,
     ) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "import_snapshot: no native backend override (L3)".into(),
+            "import_snapshot: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [hd_03_hardware_rollback_timing_bound]: backend drivers override rollback with register reset + memory revert in <8ms.; slop: rollback Ok asserted, 8ms bound never measured
+    // TODO: [hd_03_hardware_rollback_timing_bound] fill in the L3 wave; backend drivers override rollback with register reset + memory revert in <8ms.; slop: rollback Ok asserted, 8ms bound never measured
     async fn rollback(&mut self, _snapshot: &SnapshotDescriptor) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "rollback: no native backend override (L3)".into(),
+            "rollback: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_02_suspend_zero_rss_purge]: backend drivers override suspend with dirty-page flush to disk in <50ms.; slop: vCPU paused, RAM pages never unmapped
+    // TODO: [lc_02_suspend_zero_rss_purge] fill in the L3 wave; backend drivers override suspend with dirty-page flush to disk in <50ms.; slop: vCPU paused, RAM pages never unmapped
     async fn suspend(
         &mut self,
         _reason: SuspendReason,
         _output_path: &Path,
     ) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "suspend: no native backend override (L3)".into(),
+            "suspend: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lifecycle_checkpoint]: backend drivers override resume with suspended-image restore in <50ms.; slop: resume Ok asserted, 50ms restore bound never measured
+    // TODO: [lifecycle_checkpoint] fill in the L3 wave; backend drivers override resume with suspended-image restore in <50ms.; slop: resume Ok asserted, 50ms restore bound never measured
     async fn resume(&mut self, _image_path: &Path) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "resume: no native backend override (L3)".into(),
+            "resume: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [lc_11_lid_sleep_clock_resync_snap]: backend drivers override skew_clock with the KVM_SET_CLOCK / CNTVOFF_EL2 offset.; slop: offset applied, guest clock jump never verified
+    // TODO: [lc_11_lid_sleep_clock_resync_snap] fill in the L3 wave; backend drivers override skew_clock with the KVM_SET_CLOCK / CNTVOFF_EL2 offset.; slop: offset applied, guest clock jump never verified
     async fn skew_clock(&mut self, _offset: Duration) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "skew_clock: no native backend override (L3)".into(),
+            "skew_clock: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [hd_16_virtio_balloon_pressure_reclaim]: backend drivers override adjust_balloon with the virtio-balloon resize.; slop: balloon Ok, host RSS reduction never checked
+    // TODO: [hd_16_virtio_balloon_pressure_reclaim] fill in the L3 wave; backend drivers override adjust_balloon with the virtio-balloon resize.; slop: balloon Ok, host RSS reduction never checked
     async fn adjust_balloon(&mut self, _target_mb: u32) -> Result<BalloonConvergence, VmmError> {
         Err(VmmError::Unsupported(
-            "adjust_balloon: no native backend override (L3)".into(),
+            "adjust_balloon: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/10-attestation.md#Lifecycle-bridge
-    // L3-GAP: [hypervisor_driver]: backend drivers override freeze_vcpus with the cycle-boundary vCPU halt.; slop: halt Ok, cycle-boundary stop never verified
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override freeze_vcpus with the cycle-boundary vCPU halt.; slop: halt Ok, cycle-boundary stop never verified
     async fn freeze_vcpus(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "freeze_vcpus: no native backend override (L3)".into(),
+            "freeze_vcpus: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/11-protocol.md#Binary-exec-channel
-    // L3-GAP: [hypervisor_driver]: backend drivers override freeze_task with the trapped-task cgroup freeze; whole-VM freeze_vcpus stays the fallback.; slop: task freeze unimplemented, whole VM frozen instead
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override freeze_task with the trapped-task cgroup freeze; whole-VM freeze_vcpus stays the fallback.; slop: task freeze unimplemented, whole VM frozen instead
     async fn freeze_task(&mut self, _task_cgroup: &str) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "freeze_task: no native backend override (L3)".into(),
+            "freeze_task: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/10-attestation.md#Lifecycle-bridge
-    // L3-GAP: [hypervisor_driver]: backend drivers override unfreeze_vcpus with the vCPU scheduler release.; slop: release Ok, vCPU scheduler state never verified
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override unfreeze_vcpus with the vCPU scheduler release.; slop: release Ok, vCPU scheduler state never verified
     async fn unfreeze_vcpus(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "unfreeze_vcpus: no native backend override (L3)".into(),
+            "unfreeze_vcpus: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Two-phase-commit
-    // L3-GAP: [rt_03_2pc_pre_commit_vcpu_pause_drain]: backend drivers override drain_fuse with the in-flight FUSE drain.; slop: commit issued while vCPUs still executing
+    // TODO: [rt_03_2pc_pre_commit_vcpu_pause_drain] fill in the L3 wave; backend drivers override drain_fuse with the in-flight FUSE drain.; slop: commit issued while vCPUs still executing
     async fn drain_fuse(&mut self, _timeout: Duration) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "drain_fuse: no native backend override (L3)".into(),
+            "drain_fuse: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Two-phase-commit
-    // L3-GAP: [relational_transaction]: backend drivers override commit_broker_upper with the broker upper commit.; slop: commit Ok, broker upper never replayed to disk
+    // TODO: [relational_transaction] fill in the L3 wave; backend drivers override commit_broker_upper with the broker upper commit.; slop: commit Ok, broker upper never replayed to disk
     async fn commit_broker_upper(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "commit_broker_upper: no native backend override (L3)".into(),
+            "commit_broker_upper: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Two-phase-commit
-    // L3-GAP: [relational_transaction]: backend drivers override discard_broker_upper with the broker upper discard.; slop: discard Ok, broker upper file never deleted
+    // TODO: [relational_transaction] fill in the L3 wave; backend drivers override discard_broker_upper with the broker upper discard.; slop: discard Ok, broker upper file never deleted
     async fn discard_broker_upper(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "discard_broker_upper: no native backend override (L3)".into(),
+            "discard_broker_upper: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Deterministic-replay
-    // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: backend drivers override step_clock_window with the retired-instruction clock step.; slop: single replay asserted, no window-for-window comparison
+    // TODO: [lc_23_replay_deterministic_seed_reproduces_step_windows] fill in the L3 wave; backend drivers override step_clock_window with the retired-instruction clock step.; slop: single replay asserted, no window-for-window comparison
     async fn step_clock_window(&mut self, _retired_instructions: u64) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "step_clock_window: no native backend override (L3)".into(),
+            "step_clock_window: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Deterministic-replay
-    // L3-GAP: [hypervisor_driver]: backend drivers override register_pmu_sampler with the host PMU counter arming.; slop: sampler Ok, host PMU counters never armed
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override register_pmu_sampler with the host PMU counter arming.; slop: sampler Ok, host PMU counters never armed
     fn register_pmu_sampler(&mut self, _sampler: Arc<dyn PmuSampler>) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "register_pmu_sampler: no native backend override (L3)".into(),
+            "register_pmu_sampler: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
     // see: cans/05-driver-plane.md#Deterministic-replay
@@ -671,26 +671,26 @@ pub trait VmmDriver: Send + Sync {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError>;
-    // L3-GAP: [lc_18_watchdog_heartbeat_timeout_reboot]: backend drivers override set_watchdog with the hardware watchdog arm.; slop: reboot asserted, vCPU registers never reset to 0
+    // TODO: [lc_18_watchdog_heartbeat_timeout_reboot] fill in the L3 wave; backend drivers override set_watchdog with the hardware watchdog arm.; slop: reboot asserted, vCPU registers never reset to 0
     async fn set_watchdog(
         &mut self,
         _timeout: Duration,
         _action: WatchdogAction,
     ) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "set_watchdog: no native backend override (L3)".into(),
+            "set_watchdog: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [hypervisor_driver]: backend drivers override transport_connect with the raw duplex channel.; slop: channel Ok, duplex bytes never cross raw transport
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override transport_connect with the raw duplex channel.; slop: channel Ok, duplex bytes never cross raw transport
     fn transport_connect(&self, _channel_id: u32) -> Result<Box<dyn Stream>, VmmError> {
         Err(VmmError::Unsupported(
-            "transport_connect: no native backend override (L3)".into(),
+            "transport_connect: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
-    // L3-GAP: [hypervisor_driver]: backend drivers override terminate with the hypervisor teardown.; slop: teardown Ok, guest resources never released
+    // TODO: [hypervisor_driver] fill in the L3 wave; backend drivers override terminate with the hypervisor teardown.; slop: teardown Ok, guest resources never released
     async fn terminate(&mut self) -> Result<(), VmmError> {
         Err(VmmError::Unsupported(
-            "terminate: no native backend override (L3)".into(),
+            "terminate: no native backend override (deferred to the L3 wave)".into(),
         ))
     }
 }

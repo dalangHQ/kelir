@@ -122,8 +122,8 @@ async fn lifecycle_suspend_holds_for_driver_backend() -> Result<(), String> {
         .await
     {
         Err(PluginError::Halt(message)) => assert!(
-            message.contains("TODO (L3)"),
-            "suspend halt lacks the L3 marker: {message}"
+            message.contains("deferred to the L3 wave"),
+            "suspend halt lacks the deferral marker: {message}"
         ),
         Err(e) => return Err(format!("suspend gave wrong error: {e}")),
         Ok(()) => {

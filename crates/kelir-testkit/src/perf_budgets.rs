@@ -26,7 +26,7 @@ pub struct ScorecardRule {
 
 // see: cans/15-operations.md#Coverage-gates
 pub fn validate_scorecard_budgets(budgets: &Budgets) -> Result<(), String> {
-    // TODO (L3) [governance_tools]: scorecard budget validation pending; slop: scorecard rules unvalidated
+    // TODO: [governance_tools] fill in the L3 wave; scorecard budget validation pending; slop: scorecard rules unvalidated
     let _ = budgets;
-    Err("TODO (L3) [governance_tools]: scorecard budget validation pending; slop: scorecard rules unvalidated".into())
+    Err("[governance_tools] deferred to the L3 wave: scorecard budget validation pending; slop: scorecard rules unvalidated".into())
 }
