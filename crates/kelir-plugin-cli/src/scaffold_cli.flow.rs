@@ -1,6 +1,6 @@
 // see: cans/15-operations.md#Subcommands
 // see: cans/02-plugin-model.md#Plugin-ownership
-// L3-GAP: [plugin_engine]: derive the trait stubs from the KelirPlugin trait AST instead of the static skeleton below; slop: stub drifts from the trait, new trait methods never appear in scaffolds
+// TODO: [plugin_engine]: derive the trait stubs from the KelirPlugin trait AST instead of the static skeleton below; slop: stub drifts from the trait, new trait methods never appear in scaffolds (deferred to L3)
 use std::path::PathBuf;
 
 use crate::cli_error::CliError;

@@ -354,7 +354,7 @@ impl WireIngressPlugin {
     }
 
     // see: cans/plugins/wire-ingress.md#Ingress-stream-framing-on-stream-kind-L4-FORWARD-(mux-0x0001):
-    // L3-GAP: [wire_plane]: core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, L4_FORWARD never dispatched, handler dead
+    // TODO: [wire_plane]: core dispatches L4_FORWARD mux streams into this handler; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, L4_FORWARD never dispatched, handler dead (deferred to L3)
     pub fn on_l4_forward_frame(&self, payload: &mut [u8]) -> Result<FilterAction, PluginError> {
         let Some((l4, initial)) = L4ForwardFrame::decode(payload) else {
             return Ok(FilterAction::Drop {

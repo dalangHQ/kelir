@@ -175,7 +175,7 @@ fn bpf_jump(code: u32, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
 
 // see: cans/11-protocol.md#Trap-fast-path
 fn trap_filter_program(_defense: &DefenseFlags) -> Vec<libc::sock_filter> {
-    // L3-GAP: [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
+    // TODO (L3) [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
     // see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
     // TODO (L3) [protocol_mux]: build the seccomp BPF program trapping the monitored syscalls and returning USER_NOTIF.; slop: filter is never built, so no syscall is ever trapped.
     // TODO (L3) [protocol_mux]: deny io_uring_setup/io_uring_enter/io_uring_register in the filter when block_io_uring, so async I/O cannot bypass trap inspection.; slop: io_uring syscalls pass the filter, async I/O escapes trap inspection.

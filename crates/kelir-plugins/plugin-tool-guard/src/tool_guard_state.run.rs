@@ -13,7 +13,7 @@ const TOOLS_LIST_QUERY: &[u8] = b"{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"too
 #[async_trait]
 impl LifecycleParticipant for ToolGuardPlugin {
     async fn on_vm_ready(&self, _ctx: &mut LifecycleCtx<'_>) -> Result<(), PluginError> {
-        // L3-GAP: [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
+        // TODO (L3) [governance_tools]: boot-time tools/list fetch+lock halts here until route_request and decode_tools_list land; an empty-catalog boot would fake the spec-mandated lock; slop: empty-catalog boot fakes the lock, unpinned tools run
         // TODO (L3) [governance_tools]: fetch tools/list at boot and lock the tool catalog; stub skips the lock.; slop: the tool catalog is never locked, tools change under a running session, unapproved tools execute unchecked.
         Err(PluginError::Halt(
             "TODO (L3): fetch tools/list at boot and lock the tool catalog".into(),

@@ -197,7 +197,7 @@ impl RedactionService for Redactor {
     // see: cans/plugins/redaction.md#Read-masking-(FsInterposer::on_fs_read)
     fn mask_read(&self, path: &Path, buffer: &[u8]) -> Result<Vec<u8>, PluginError> {
         let _ = path;
-        // TODO (L3) [sp_14_in_flight_read_masking_pattern_replace]: apply the glob-matched ordered pattern list over the carryover-joined window and return the masked buffer; slop: guest read returns the raw secret because the mask runs after the VFS return.
+        // TODO: [sp_14_in_flight_read_masking_pattern_replace]: apply the glob-matched ordered pattern list over the carryover-joined window and return the masked buffer; slop: guest read returns the raw secret because the mask runs after the VFS return. (deferred to L3)
         let mut carryover = self.lock_carryover()?;
         carryover.extend_from_slice(buffer);
         let keep = self.config.carryover_bytes.min(carryover.len());
@@ -208,7 +208,7 @@ impl RedactionService for Redactor {
 
     // see: cans/plugins/redaction.md#Write-snoops-(FsInterposer::on_fs_write)
     fn check_write(&self, path: &Path, data: &mut [u8]) -> Result<FilterAction, PluginError> {
-        // TODO (L3) [storage_plane]: match the path against the glob-keyed snoop set and emit the matching rule verdict or mutation through the unified lattice; slop: write snoops never fire; exfiltrating writes pass without a verdict.
+        // TODO: [storage_plane]: match the path against the glob-keyed snoop set and emit the matching rule verdict or mutation through the unified lattice; slop: write snoops never fire; exfiltrating writes pass without a verdict. (deferred to L3)
         let _ = (path, data);
         Ok(FilterAction::Forward)
     }

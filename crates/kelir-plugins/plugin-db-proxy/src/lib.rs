@@ -1,7 +1,7 @@
 // see: cans/plugins/db-proxy.md#Plugin-db-proxy
 #![forbid(unsafe_code)]
 
-// TODO (L3) [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously
+// TODO: [relational_transaction]: tests/test_db_proxy.rs per cans/artifacts/config/project-structure.txt; slop: test_db_proxy.rs missing, proxy behavior untested, Forward stub passes vacuously (deferred to L3)
 #[path = "pgwire_db_proxy.flow.rs"]
 pub mod pgwire_db_proxy;
 #[path = "reassembler_wire.flow.rs"]
@@ -65,7 +65,7 @@ pub struct EphemeralCredentials {
     pub ttl_seconds: u32,
 }
 
-// TODO (L3) [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest
+// TODO: [rt_12_ephemeral_db_credentials_injection]: resolve closure injection at the host connection boundary per cans/plugins/db-proxy.md; slop: guest connection string carries password, secret enters guest (deferred to L3)
 
 // see: cans/artifacts/examples/db-backed-runtime.py#DbProxyConfig
 #[derive(Clone, Debug, Default)]

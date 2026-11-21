@@ -109,7 +109,7 @@ impl ToolGuardPlugin {
         if quota.invocations >= self.config.max_invocations_per_trace {
             return Ok(false);
         }
-        // L3-GAP: [gt_04_token_bucket_call_quota_etoolquota]: token-bucket cadence clamp per tool per cans/plugins/tool-guard.md; slop: bucket never charged, burst passes, ETOOLQUOTA never fires
+        // TODO: [gt_04_token_bucket_call_quota_etoolquota]: token-bucket cadence clamp per tool per cans/plugins/tool-guard.md; slop: bucket never charged, burst passes, ETOOLQUOTA never fires (deferred to L3)
         quota.invocations = quota.invocations.saturating_add(1);
         Ok(true)
     }
@@ -258,7 +258,7 @@ impl ToolGuardPlugin {
                 ),
             });
         }
-        // TODO (L3) [governance_tools]: secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch); slop: tainted mutation executes, secrets leak.
+        // TODO: [governance_tools]: secret-pattern sanitization (Drop with ESecurityViolation), cyclic-rewrite rejection (ECYCLICREWRITE), and ExecveMutation serialization (Patch); slop: tainted mutation executes, secrets leak. (deferred to L3)
         Ok(Verdict::Pass)
     }
 
@@ -271,7 +271,7 @@ impl ToolGuardPlugin {
 
     async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
         scan_tool_result(payload, self.config.scan_tool_results)?;
-        // L3-GAP: [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context
+        // TODO: [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context (deferred to L3)
         Ok(())
     }
 }
@@ -366,7 +366,7 @@ impl PluginDeps for ToolGuardPlugin {
 #[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
     async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
-        // L3-GAP: [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace
+        // TODO: [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace (deferred to L3)
         if !self.interposes_port(port) {
             return Ok(bytes.to_vec());
         }
@@ -375,13 +375,13 @@ impl ConsoleInterposer for ToolGuardPlugin {
             Verdict::Drop { errno, reason } => {
                 Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
             }
-            // L3-GAP: [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
+            // TODO: [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error (deferred to L3)
             Verdict::Suspend { .. } => Err(PluginError::Halt(
-                "tool-guard approval suspend pending (L3)".into(),
+ "tool-guard approval suspend pending".into(),
             )),
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
-                "tool-guard verdict mapping pending (L3)".into(),
+ "tool-guard verdict mapping pending".into(),
             )),
         }
     }

@@ -18,7 +18,7 @@ pub fn device_node(hypervisor: &str) -> Option<&'static str> {
     match hypervisor {
         "kvm" => Some("/dev/kvm"),
         "avf" => Some("/dev/avf"),
-        // L3-GAP: [hd_01_nohardware_vmm_fatal_abort]: entitlement and partition-capability nodes for the hvf and whp backends; slop: hvf/whp report no node, probe passes backends that cannot boot
+        // TODO: [hd_01_nohardware_vmm_fatal_abort]: entitlement and partition-capability nodes for the hvf and whp backends; slop: hvf/whp report no node, probe passes backends that cannot boot (deferred to L3)
         _ => None,
     }
 }
@@ -28,7 +28,7 @@ pub fn device_present(hypervisor: &str) -> bool {
     device_node(hypervisor).is_some_and(|node| Path::new(node).exists())
 }
 
-// L3-GAP: [hd_01_nohardware_vmm_fatal_abort]: gate every backend on a real capability probe; kvm is the only backend with a device-node surface; slop: unprobed backends listed available, boot falls back silently
+// TODO: [hd_01_nohardware_vmm_fatal_abort]: gate every backend on a real capability probe; kvm is the only backend with a device-node surface; slop: unprobed backends listed available, boot falls back silently (deferred to L3)
 pub fn available_hypervisors(os: &str) -> Vec<&'static str> {
     os_hypervisors(os)
         .iter()

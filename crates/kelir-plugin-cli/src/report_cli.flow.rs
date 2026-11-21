@@ -42,10 +42,10 @@ pub fn parse_request(args: &[String]) -> Result<ReportRequest, CliError> {
 
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let request = parse_request(args)?;
-    // TODO (L3) [telemetry_audit]: emit human-readable findings and timeline markdown from the session audit log.; slop: report Ok, findings never rendered from the audit log
-    // TODO (L3) [telemetry_audit]: render the session findings and timeline markdown from the ledger audit log; slop: report exits without findings, the audit log is never read
+    // TODO: [telemetry_audit]: emit human-readable findings and timeline markdown from the session audit log.; slop: report Ok, findings never rendered from the audit log (deferred to L3)
+    // TODO: [telemetry_audit]: render the session findings and timeline markdown from the ledger audit log; slop: report exits without findings, the audit log is never read (deferred to L3)
     Err(format!(
-        "report: emitting findings and timeline markdown for session `{}` (L3)",
+ "report: emitting findings and timeline markdown for session `{}`",
         request.session
     )
     .into())

@@ -28,29 +28,29 @@ impl HvfDriver {
     }
 
     fn create_vm(&mut self) -> Result<(), VmmError> {
-        // L3-GAP: [hd_04_cold_boot_budget_enforcement]: call sys_driver::hv_vm_create(0) inside an unsafe block, then sys_driver::hv_vcpu_create per vCPU; slop: boot Ok without hv_vm_create, 50ms budget never measured
+        // TODO: [hd_04_cold_boot_budget_enforcement]: call sys_driver::hv_vm_create(0) inside an unsafe block, then sys_driver::hv_vcpu_create per vCPU; slop: boot Ok without hv_vm_create, 50ms budget never measured (deferred to L3)
         Err(VmmError::Unsupported(
-            "hvf boot: hv_vm_create + hv_vcpu_create (L3)".into(),
+ "hvf boot: hv_vm_create + hv_vcpu_create".into(),
         ))
     }
 
     fn run_vcpu(&mut self) -> Result<(), VmmError> {
-        // L3-GAP: [hd_04_cold_boot_budget_enforcement]: call sys_driver::hv_vcpu_run on each vcpu handle inside an unsafe block; slop: vCPU never runs yet boot reports first exec within budget
-        Err(VmmError::Unsupported("hvf run: hv_vcpu_run (L3)".into()))
+        // TODO: [hd_04_cold_boot_budget_enforcement]: call sys_driver::hv_vcpu_run on each vcpu handle inside an unsafe block; slop: vCPU never runs yet boot reports first exec within budget (deferred to L3)
+ Err(VmmError:Unsupported("hvf run: hv_vcpu_run".into()))
     }
 
     fn protect_fork(&self) -> Result<(), VmmError> {
-        // TODO (L3) [lc_01_cow_fork_warm_memory_sharing]: in-process Stage-2 CoW fork via sys_driver::hv_vm_protect, never an OS fork() call on multi-threaded hosts; slop: OS fork() in a multi-threaded Tokio/NAPI host SIGABRTs before the child runs, and fork shares pages without Stage-2 write protection, child mutates parent
+        // TODO: [lc_01_cow_fork_warm_memory_sharing]: in-process Stage-2 CoW fork via sys_driver::hv_vm_protect, never an OS fork() call on multi-threaded hosts; slop: OS fork() in a multi-threaded Tokio/NAPI host SIGABRTs before the child runs, and fork shares pages without Stage-2 write protection, child mutates parent (deferred to L3)
         Err(VmmError::Unsupported(
-            "hvf fork: hv_vm_protect CoW fork (L3)".into(),
+ "hvf fork: hv_vm_protect CoW fork".into(),
         ))
     }
 
     fn promote_chunked_stage2_pages(&self, _ipa: u64) -> Result<(), VmmError> {
         // see: cans/08-lifecycle.md#CoW-fork
-        // L3-GAP: [hd_06_hvf_stage2_chunk_promoter]: promote 2MB contiguous blocks via Mach vm_copy CoW; slop: 4KB pages promoted as 2MB chunks, chunk size never asserted
+        // TODO: [hd_06_hvf_stage2_chunk_promoter]: promote 2MB contiguous blocks via Mach vm_copy CoW; slop: 4KB pages promoted as 2MB chunks, chunk size never asserted (deferred to L3)
         Err(VmmError::Unsupported(
-            "hvf stage-2 promotion: Mach vm_copy CoW (L3)".into(),
+ "hvf stage-2 promotion: Mach vm_copy CoW".into(),
         ))
     }
 }
@@ -77,15 +77,15 @@ impl VmmDriver for HvfDriver {
 
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         self.protect_fork()?;
-        // TODO (L3) [lc_01_cow_fork_warm_memory_sharing]: clone VM state via in-process hv_vm_protect Stage-2 CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs, never an OS fork() call; slop: OS fork() in a multi-threaded host aborts, child gets fresh state, warm parent memory not inherited
+        // TODO: [lc_01_cow_fork_warm_memory_sharing]: clone VM state via in-process hv_vm_protect Stage-2 CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs, never an OS fork() call; slop: OS fork() in a multi-threaded host aborts, child gets fresh state, warm parent memory not inherited (deferred to L3)
         Err(VmmError::Unsupported(
-            "hvf fork: CoW child driver (L3)".into(),
+ "hvf fork: CoW child driver".into(),
         ))
     }
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: swap the virtio-rng device model for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: swap the virtio-rng device model for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy (deferred to L3)
         self.entropy_backend = Some(backend);
         self.entropy_offset = 0;
         Ok(())
@@ -93,13 +93,13 @@ impl VmmDriver for HvfDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently (deferred to L3)
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
                 offset_bytes: self.entropy_offset,
             }),
             _ => Err(VmmError::Unsupported(
-                "hvf entropy_position: host entropy stream is not position-trackable (L3)".into(),
+ "hvf entropy_position: host entropy stream is not position-trackable".into(),
             )),
         }
     }
@@ -109,14 +109,14 @@ impl VmmDriver for HvfDriver {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position (deferred to L3)
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
                 self.entropy_offset = position.offset_bytes;
                 Ok(())
             }
             _ => Err(VmmError::Unsupported(
-                "hvf restore_entropy_position: host entropy stream is not position-trackable (L3)"
+ "hvf restore_entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }

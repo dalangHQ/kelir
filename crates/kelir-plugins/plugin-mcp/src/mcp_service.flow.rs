@@ -91,9 +91,9 @@ impl McpEndpointService {
             ));
         }
         let _ = request;
-        // L3-GAP: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed
+        // TODO: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed (deferred to L3)
         Err(PluginError::Halt(format!(
-            "MCP_CONSOLE transport routing pending (L3): {} bytes",
+ "MCP_CONSOLE transport routing pending: {} bytes",
             payload.len()
         )))
     }
@@ -251,13 +251,13 @@ impl KelirPlugin for McpPlugin {
 impl ConsoleInterposer for McpPlugin {
     async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
         let _ = port;
-        // L3-GAP: [governance_tools]: stream JSON-RPC frames from the MCP client into MCP_CONSOLE per cans/plugins/mcp.md; slop: client frames never reach MCP_CONSOLE, interposition bypassed
+        // TODO: [governance_tools]: stream JSON-RPC frames from the MCP client into MCP_CONSOLE per cans/plugins/mcp.md; slop: client frames never reach MCP_CONSOLE, interposition bypassed (deferred to L3)
         Ok(bytes.to_vec())
     }
 
     async fn on_console_output(&self, port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
         let _ = port;
-        // L3-GAP: [governance_tools]: stream JSON-RPC frames from MCP_CONSOLE back to the MCP client per cans/plugins/mcp.md; slop: console frames never return, client hangs awaiting response
+        // TODO: [governance_tools]: stream JSON-RPC frames from MCP_CONSOLE back to the MCP client per cans/plugins/mcp.md; slop: console frames never return, client hangs awaiting response (deferred to L3)
         Ok(chunk.to_vec())
     }
 }

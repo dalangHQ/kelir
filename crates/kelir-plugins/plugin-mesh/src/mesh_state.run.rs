@@ -20,7 +20,7 @@ impl MeshState {
 impl MeshPlugin {
     fn issue_session_svid(&self) -> Result<SpiffeSvid, PluginError> {
         let _ = self;
-        // L3-GAP: [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
+        // TODO (L3) [protocol_mux]: obtain the host-issued SVID credential bytes and the session-bounded expiry; slop: SVID self-minted locally, host issuance bypassed, expiry self-asserted
         // TODO (L3) [plugin_engine]: obtain the host-issued SVID credential bytes and the session-bounded expiry.; slop: no SVID credential is ever obtained, the session runs without attested identity, peers trust an unauthenticated session.
         Err(PluginError::Halt(
             "TODO (L3): mesh session SVID issuance pending".into(),

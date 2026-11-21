@@ -25,18 +25,18 @@ impl RustVmmDriver {
     }
 
     fn init_backend(&mut self) -> Result<(), VmmError> {
-        // L3-GAP: [hd_04_cold_boot_budget_enforcement]: initialize KVM, VM, memory slots, and vCPUs via KVM_CREATE_VM; slop: boot Ok without KVM_CREATE_VM, 50ms budget never measured
+        // TODO: [hd_04_cold_boot_budget_enforcement]: initialize KVM, VM, memory slots, and vCPUs via KVM_CREATE_VM; slop: boot Ok without KVM_CREATE_VM, 50ms budget never measured (deferred to L3)
         Err(VmmError::Unsupported(
-            "rustvmm boot: KVM_CREATE_VM init (L3)".into(),
+ "rustvmm boot: KVM_CREATE_VM init".into(),
         ))
     }
 
     #[cfg(target_os = "linux")]
     fn filter_synthetic_cpuid(&self, _vcpu: &kvm_ioctls::VcpuFd) -> Result<(), VmmError> {
         // see: cans/01-architecture.md#Driver-backends
-        // L3-GAP: [hd_11_cpuid_tsc_deadline_normalization]: enforce invariant TSC and Leaf 0x1 TSC-deadline; slop: guest CPUID passes host leaves through, TSC-deadline bit unset
+        // TODO: [hd_11_cpuid_tsc_deadline_normalization]: enforce invariant TSC and Leaf 0x1 TSC-deadline; slop: guest CPUID passes host leaves through, TSC-deadline bit unset (deferred to L3)
         Err(VmmError::Unsupported(
-            "rustvmm cpuid filter: synthetic CPUID enforcement (L3)".into(),
+ "rustvmm cpuid filter: synthetic CPUID enforcement".into(),
         ))
     }
 }
@@ -63,7 +63,7 @@ impl VmmDriver for RustVmmDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn set_entropy_backend(&mut self, backend: EntropyBackend) -> Result<(), VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: swap the virtio-rng device model for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: swap the virtio-rng device model for the seeded ChaCha20 stream and advance the offset as getrandom() bytes are drawn; slop: seeded stream never wired, host getrandom passed off as guest entropy (deferred to L3)
         self.entropy_backend = Some(backend);
         self.entropy_offset = 0;
         Ok(())
@@ -71,13 +71,13 @@ impl VmmDriver for RustVmmDriver {
 
     // see: cans/plugins/replay.md#Deterministic-RNG
     async fn entropy_position(&self) -> Result<EntropyStreamPosition, VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: report the live seeded-stream offset; host entropy is not position-trackable; slop: offset 0 reported while draws advance, replay diverges silently (deferred to L3)
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => Ok(EntropyStreamPosition {
                 offset_bytes: self.entropy_offset,
             }),
             _ => Err(VmmError::Unsupported(
-                "rustvmm entropy_position: host entropy stream is not position-trackable (L3)"
+ "rustvmm entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }
@@ -88,14 +88,14 @@ impl VmmDriver for RustVmmDriver {
         &mut self,
         position: EntropyStreamPosition,
     ) -> Result<(), VmmError> {
-        // L3-GAP: [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position
+        // TODO: [vr_03_virtio_rng_mandatory_entropy]: rewind the seeded stream to the restored offset before the next draw; slop: rewind sets offset field only, stream continues from live position (deferred to L3)
         match self.entropy_backend {
             Some(EntropyBackend::SeededChaCha20 { .. }) => {
                 self.entropy_offset = position.offset_bytes;
                 Ok(())
             }
             _ => Err(VmmError::Unsupported(
-                "rustvmm restore_entropy_position: host entropy stream is not position-trackable (L3)"
+ "rustvmm restore_entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }

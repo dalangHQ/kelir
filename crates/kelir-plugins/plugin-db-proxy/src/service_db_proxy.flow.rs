@@ -266,9 +266,9 @@ pub fn pg_error_response(severity: &str, code: &str, message: &str, hint: Option
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 pub fn ast_parse_sql(sql: &str) -> Result<(), PluginError> {
     let _ = sql;
-    // TODO (L3) [relational_transaction]: parse the SQL statement through the libpgquery C-FFI AST classifier; slop: SQL passes unparsed, COPY PROGRAM and search_path evasion ride the regex path.
+    // TODO: [relational_transaction]: parse the SQL statement through the libpgquery C-FFI AST classifier; slop: SQL passes unparsed, COPY PROGRAM and search_path evasion ride the regex path. (deferred to L3)
     Err(PluginError::Halt(
-        "TODO (L3): libpgquery AST parse pending (L3)".into(),
+ "deferred to L3: libpgquery AST parse pending".into(),
     ))
 }
 
@@ -378,18 +378,18 @@ impl SqlProxyService for SqlProxy {
     }
 
     async fn issue_commit(&self) -> Result<(), PluginError> {
-        // TODO (L3) [relational_transaction]: issue SQL COMMIT across every active proxy connection per cans/plugins/transaction.md; slop: COMMIT returns Ok(()) touching no connection, 2PC commits on one leg
+        // TODO: [relational_transaction]: issue SQL COMMIT across every active proxy connection per cans/plugins/transaction.md; slop: COMMIT returns Ok(()) touching no connection, 2PC commits on one leg (deferred to L3)
         Ok(())
     }
 
     async fn issue_rollback(&self) -> Result<(), PluginError> {
-        // TODO (L3) [relational_transaction]: issue SQL ROLLBACK across every active proxy connection per cans/plugins/transaction.md; slop: ROLLBACK returns Ok(()) touching no connection, locks held after abort
+        // TODO: [relational_transaction]: issue SQL ROLLBACK across every active proxy connection per cans/plugins/transaction.md; slop: ROLLBACK returns Ok(()) touching no connection, locks held after abort (deferred to L3)
         Ok(())
     }
 
     async fn inject_savepoint(&self, marker: &str) -> Result<(), PluginError> {
         let _ = marker;
-        // TODO (L3) [relational_transaction]: inject a transparent SQL SAVEPOINT marker into active pgwire connections per cans/plugins/transaction.md; slop: SAVEPOINT never injected, ROLLBACK TO has no marker to restore
+        // TODO: [relational_transaction]: inject a transparent SQL SAVEPOINT marker into active pgwire connections per cans/plugins/transaction.md; slop: SAVEPOINT never injected, ROLLBACK TO has no marker to restore (deferred to L3)
         Ok(())
     }
 }
@@ -461,7 +461,7 @@ impl DbProxyPlugin {
         descriptor: PgFrameDescriptor,
     ) -> Result<FilterAction, PluginError> {
         let _ = descriptor;
-        // TODO (L3) [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against schema_rewrites, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis
+        // TODO: [rt_10_pgwire_frame_rewrite_in_place]: in-place Q/P SQL rewrite against schema_rewrites, per-connection rewrite tally above max_rewrites_per_conn aborting ECYCLICREWRITE, and pgwire ErrorResponse synthesis (EPERM→42501, ENOENT→42P01, unmapped→XX000) per cans/plugins/db-proxy.md; slop: frame Forwarded unrewritten, 4th rewrite passes, no 42501 synthesis (deferred to L3)
         Ok(FilterAction::Forward)
     }
 
@@ -497,7 +497,7 @@ impl DbProxyPlugin {
             flows.remove(&key);
             return Ok(FilterAction::Forward);
         }
-        // TODO (L3) [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets
+        // TODO: [relational_transaction]: FIN half-close state machine per RFC 793; slop: half-close ignored, FIN state leaks, peer hangs or resets (deferred to L3)
         let state = flows.entry(key).or_default();
         match state.reassembly.push_segment(&segment)? {
             SegmentOutcome::Dropped => Ok(FilterAction::Drop {
@@ -518,7 +518,7 @@ impl DbProxyPlugin {
                     }
                     Ok(action)
                 }
-                // TODO (L3) [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through
+                // TODO: [relational_transaction]: row-data and ErrorResponse mediation on the server-to-client stream; slop: server rows unmediated, ErrorResponse unfiltered, leaks or spoofing pass through (deferred to L3)
                 NetDirection::UpstreamToGuest => Ok(FilterAction::Forward),
             },
         }
@@ -569,7 +569,7 @@ impl StreamFrameSink for DbSqliteStreamSink {
             }
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
-                "db-proxy stream suspend/patch verdict pending (L3)".into(),
+ "db-proxy stream suspend/patch verdict pending".into(),
             )),
         }
     }

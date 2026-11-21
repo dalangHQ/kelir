@@ -8,7 +8,7 @@ use kelir_interface::checkpoint::{CheckpointNode, ManifestGraph, PidLineage};
 use kelir_interface::driver_interface::SnapshotDescriptor;
 use kelir_interface::plugin_model::PluginError;
 
-// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+// TODO: [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it. (deferred to L3)
 #[allow(dead_code)]
 pub(crate) fn compact(
     graph: &mut ManifestGraph,
@@ -29,7 +29,7 @@ pub(crate) fn compact(
         .cloned()
         .ok_or_else(|| PluginError::Halt("checkpoint head missing from manifest graph".into()))?;
     let compacted_id = next_slot_id.fetch_add(1, Ordering::SeqCst);
-    // L3-GAP: [lc_20_portable_snapshot_archive_export]: single-pass block copy flattens ancestor delta pages into the base sparse extents on export; CAS/BLAKE3 manifest addressing replaces sequential node ids; slop: export Ok without trailer BLAKE3 digest, manifest unchecked
+    // TODO: [lc_20_portable_snapshot_archive_export]: single-pass block copy flattens ancestor delta pages into the base sparse extents on export; CAS/BLAKE3 manifest addressing replaces sequential node ids; slop: export Ok without trailer BLAKE3 digest, manifest unchecked (deferred to L3)
     graph.insert(CheckpointNode {
         node_id: compacted_id,
         parent: Some(base),
@@ -40,7 +40,7 @@ pub(crate) fn compact(
     Ok(compacted_id)
 }
 
-// TODO (L3) [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+// TODO: [lifecycle_checkpoint]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it. (deferred to L3)
 #[allow(dead_code)]
 pub(crate) fn rollback(
     graph: &ManifestGraph,
@@ -48,7 +48,7 @@ pub(crate) fn rollback(
     guest_monotonic_ns: u64,
     watermark_ns: &AtomicU64,
 ) -> Result<SnapshotDescriptor, PluginError> {
-    // L3-GAP: [lc_11_lid_sleep_clock_resync_snap]: read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy; slop: wake Ok without guest clock snap to host wall clock
+    // TODO: [lc_11_lid_sleep_clock_resync_snap]: read the live guest CLOCK_MONOTONIC through the driver surface; the watermark is the in-tree proxy; slop: wake Ok without guest clock snap to host wall clock (deferred to L3)
     let Some(node) = graph.get(node_id) else {
         return Err(PluginError::Halt(
             "checkpoint node not in manifest graph".into(),

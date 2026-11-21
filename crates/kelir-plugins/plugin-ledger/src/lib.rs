@@ -1,7 +1,7 @@
 // see: cans/plugins/ledger.md#Plugin-ledger
 #![forbid(unsafe_code)]
 
-// TODO (L3) [telemetry_audit]: tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt; slop: ledger tests missing, WAL/OTel paths untested, encoder-only passes vacuously
+// TODO: [telemetry_audit]: tests/test_merkle_wal.rs, test_causal_delta.rs, test_otel.rs per cans/artifacts/config/project-structure.txt; slop: ledger tests missing, WAL/OTel paths untested, encoder-only passes vacuously (deferred to L3)
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

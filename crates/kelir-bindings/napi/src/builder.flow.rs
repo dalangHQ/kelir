@@ -165,14 +165,14 @@ impl NativeKelirBuilder {
     }
 
     // see: cans/04-terminal-plane.md#Terminal-pipeline
-    // L3-GAP: [bindings_ts]: prompt rules and the token-shield clamp callback stay TypeScript-side until threadsafe-function bridging lands.; slop: callbacks stay TS-side, silently dropped
+    // TODO: [bindings_ts]: prompt rules and the token-shield clamp callback stay TypeScript-side until threadsafe-function bridging lands.; slop: callbacks stay TS-side, silently dropped (deferred to L3)
     #[napi]
     pub fn set_terminal_config(&mut self, config: NativeTerminalConfig) {
         self.terminal_cfg = Some(config);
     }
 
     // see: cans/05-storage-plane.md#Workspace-commit
-    // L3-GAP: [bindings_ts]: snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop callbacks stay TS-side, writes unobserved
+    // TODO: [bindings_ts]: snoop on_write callbacks stay TypeScript-side until threadsafe-function bridging lands.; slop: snoop callbacks stay TS-side, writes unobserved (deferred to L3)
     #[napi]
     pub fn set_storage_config(&mut self, config: NativeStorageConfig) {
         self.storage_cfg = Some(config);
@@ -265,7 +265,7 @@ impl NativeKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(Error::new(Status::InvalidArg, reason.to_string()));
         }
-        // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+        // TODO: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch (deferred to L3)
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         let plane_wiring = self.plane_wiring()?;
         let started = Instant::now();
@@ -276,7 +276,7 @@ impl NativeKelirBuilder {
             plane_wiring,
         )
         .map_err(halt)?;
-        // L3-GAP: [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
+        // TODO: [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported (deferred to L3)
         NativeSessionHandle::from_session(
             session,
             self.driver_name.clone(),
@@ -293,9 +293,9 @@ impl Default for NativeKelirBuilder {
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 impl NativeKelirBuilder {
-    // L3-GAP: [bindings_ts]: snoop callbacks and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops snoop, mtls
+    // TODO: [bindings_ts]: snoop callbacks and mtls injection ride threadsafe functions into the planes.; slop: plane wiring drops snoop, mtls (deferred to L3)
     fn plane_wiring(&self) -> Result<kelir_engine::session_lifecycle::PlaneWiring> {
-        // TODO (L3) [bindings_ts]: forward wireframe_grid flags and stream_engine into TerminalWiring once it carries them; slop: grid tracking and engine selection never reach the terminal plane.
+        // TODO: [bindings_ts]: forward wireframe_grid flags and stream_engine into TerminalWiring once it carries them; slop: grid tracking and engine selection never reach the terminal plane. (deferred to L3)
         let terminal =
             self.terminal_cfg
                 .as_ref()
@@ -373,14 +373,14 @@ impl NativeKelirBuilder {
             Some(cfg) => storage_config(cfg)?,
             None => kelir_engine::planes::storage::StorageConfig::default(),
         };
-        // TODO (L3) [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim
+        // TODO: [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim (deferred to L3)
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(
             std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
         );
-        // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
-        // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        // TODO: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests (deferred to L3)
+        // TODO: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits (deferred to L3)
         Ok(kelir_engine::session_lifecycle::PlaneWiring {
             terminal,
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),

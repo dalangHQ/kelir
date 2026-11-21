@@ -40,9 +40,9 @@ pub fn strip_private_scope(pkg: &str) -> String {
 // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
 pub fn attest_busybox_applet(argv0: &str) -> Result<(), PluginError> {
     let _ = argv0;
-    // TODO (L3) [supply_chain_security]: attest the BusyBox multi-call argv[0] applet binary before preserving it; slop: an unattested applet binary keeps its argv[0], a swapped BusyBox runs an untrusted applet.
+    // TODO: [supply_chain_security]: attest the BusyBox multi-call argv[0] applet binary before preserving it; slop: an unattested applet binary keeps its argv[0], a swapped BusyBox runs an untrusted applet. (deferred to L3)
     Err(PluginError::Halt(
-        "TODO (L3): BusyBox applet argv[0] attestation pending (L3)".into(),
+ "deferred to L3: BusyBox applet argv[0] attestation pending".into(),
     ))
 }
 
@@ -133,7 +133,7 @@ pub fn unwrap_interpreter_checked(event: &TrapEvent) -> Result<UnwrappedExec, Pl
 }
 
 // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
-// L3-GAP: [pe_17_shell_c_command_unwrap_drops_git_push_force]: flag/value-aware argv parse (-c/-m payloads, relative script resolution against event.cwd); slop: shell -c payload never unwrapped, git push passes
+// TODO: [pe_17_shell_c_command_unwrap_drops_git_push_force]: flag/value-aware argv parse (-c/-m payloads, relative script resolution against event.cwd); slop: shell -c payload never unwrapped, git push passes (deferred to L3)
 pub fn unwrap_interpreter(event: &TrapEvent) -> UnwrappedExec {
     if let Some(terminal) = event.interpreter_chain.last() {
         return UnwrappedExec {
@@ -168,8 +168,8 @@ pub fn unwrap_interpreter(event: &TrapEvent) -> UnwrappedExec {
 
 // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
 pub fn resolve_shebang(path: &str) -> Result<String, PluginError> {
-    // TODO (L3) [pe_17_shell_c_command_unwrap_drops_git_push_force]: read the script shebang and resolve the interpreter path; slop: script interpreters never resolve from the shebang; wrapped execs pass without matching the policy row.
+    // TODO: [pe_17_shell_c_command_unwrap_drops_git_push_force]: read the script shebang and resolve the interpreter path; slop: script interpreters never resolve from the shebang; wrapped execs pass without matching the policy row. (deferred to L3)
     Err(PluginError::Halt(format!(
-        "shebang resolution pending (L3): {path}"
+ "shebang resolution pending: {path}"
     )))
 }

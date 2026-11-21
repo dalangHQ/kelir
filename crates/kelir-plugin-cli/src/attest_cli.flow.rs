@@ -66,6 +66,6 @@ pub fn parse_attest_args(args: &[String]) -> Result<AttestPlan, AttestError> {
 
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let _plan = parse_attest_args(args)?;
-    // L3-GAP: [attestation_receipts]: attest --sign signs attestation.json for the plugin repo at the parsed path.; slop: unsigned attestation.json accepted, signature never verified
-    Err("attest: signing subcommand (L3)".into())
+    // TODO: [attestation_receipts]: attest --sign signs attestation.json for the plugin repo at the parsed path.; slop: unsigned attestation.json accepted, signature never verified (deferred to L3)
+ Err("attest: signing subcommand".into())
 }

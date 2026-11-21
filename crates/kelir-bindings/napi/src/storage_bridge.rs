@@ -48,7 +48,7 @@ pub fn blocking_wait_timeout_ms(cfg: &NativeStorageConfig) -> Option<u64> {
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
-// L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: NAPI lock-broker scope globs ride a dedicated native lock-broker config surface.; slop: globs accepted without flock bridge, lock unenforced
+// TODO: [sp_15_host_inode_lock_broker_flock_bridge]: NAPI lock-broker scope globs ride a dedicated native lock-broker config surface.; slop: globs accepted without flock bridge, lock unenforced (deferred to L3)
 pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
     let encapsulation = match cfg.encapsulation.as_deref() {
         None => WorkspaceEncapsulation::default(),

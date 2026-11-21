@@ -37,9 +37,9 @@ impl WithParamsPredicate {
         if unconstrained(&schema) {
             return Ok(true);
         }
-        // TODO (L3) [governance_tools]: validate arguments against the compiled JSON schema; slop: tool calls run with unvalidated arguments; schema drift passes through.
+        // TODO: [governance_tools]: validate arguments against the compiled JSON schema; slop: tool calls run with unvalidated arguments; schema drift passes through. (deferred to L3)
         Err(PluginError::Halt(format!(
-            "with_params schema validation pending (L3): tool {}",
+ "with_params schema validation pending: tool {}",
             self.tool
         )))
     }

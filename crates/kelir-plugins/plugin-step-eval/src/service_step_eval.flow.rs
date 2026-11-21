@@ -254,13 +254,13 @@ impl StepEvaluator {
         path == self.config.sentinel_path
     }
 
-    // TODO (L3) [lifecycle_checkpoint]: detect PTY idle quiescence for step boundaries; no case id pins the heuristic yet; slop: step boundaries never detect PTY idle; steps commit on timer instead of quiescence.
+    // TODO: [lifecycle_checkpoint]: detect PTY idle quiescence for step boundaries; no case id pins the heuristic yet; slop: step boundaries never detect PTY idle; steps commit on timer instead of quiescence. (deferred to L3)
     pub fn pty_quiescent(&self) -> Result<bool, PluginError> {
         let _ = self.config.pty_quiescence;
         Ok(false)
     }
 
-    // TODO (L3) [lc_03_step_evaluation_taint_rollback]: verify the tainted-step delta (binary BLAKE3, dirty-byte, duration) before commit; slop: tainted step reports failure while the upper file and RAM keep the writes.
+    // TODO: [lc_03_step_evaluation_taint_rollback]: verify the tainted-step delta (binary BLAKE3, dirty-byte, duration) before commit; slop: tainted step reports failure while the upper file and RAM keep the writes. (deferred to L3)
     pub fn verify_tainted_delta(
         &self,
         base: &SnapshotDescriptor,
@@ -281,7 +281,7 @@ impl StepEvaluator {
         Ok(self.lock_dag()?.config().clone())
     }
 
-    // TODO (L3) [lifecycle_checkpoint]: verify reviewer attribution against ApprovalAuth (WebAuthn/TOTP/OIDC method proof, role separation, non-empty reviewer/TTL) per cans/plugins/tool-guard.md#Approval-authorization; slop: reviewer accepted without auth-method proof, self-approval passes
+    // TODO: [lifecycle_checkpoint]: verify reviewer attribution against ApprovalAuth (WebAuthn/TOTP/OIDC method proof, role separation, non-empty reviewer/TTL) per cans/plugins/tool-guard.md#Approval-authorization; slop: reviewer accepted without auth-method proof, self-approval passes (deferred to L3)
     pub fn align_reviewer_with_approval_auth(
         &self,
         attribution: &StepAttribution,
@@ -294,14 +294,14 @@ impl StepEvaluator {
         )
         .map_err(|error| PluginError::Halt(error.to_string()))?;
         Err(PluginError::Halt(
-            "reviewer ApprovalAuth verification is TODO (L3)".into(),
+ "reviewer ApprovalAuth verification is deferred to L3".into(),
         ))
     }
 }
 
 #[async_trait]
 impl StepEvaluationService for StepEvaluator {
-    // L3-GAP: [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked
+    // TODO: [lc_03_step_evaluation_taint_rollback]: the step-evaluation loop calls this per committed step per cans/10-attestation.md#Step-evaluation-loop; slop: step loop runs without per-step evaluation, taint unrevoked (deferred to L3)
     async fn evaluate(
         &self,
         event: &TrapEvent,

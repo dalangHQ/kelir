@@ -148,9 +148,9 @@ fn probe_kvm() -> ProbeOutcome {
 
 fn probe_page_size() -> ProbeOutcome {
     if !cfg!(target_os = "linux") {
-        // L3-GAP: [hypervisor_driver]: read the host page size on non-Linux targets via the platform sysconf surface.; slop: Linux page size assumed, non-Linux probe never runs
+        // TODO: [hypervisor_driver]: read the host page size on non-Linux targets via the platform sysconf surface.; slop: Linux page size assumed, non-Linux probe never runs (deferred to L3)
         return ProbeOutcome::NotImplemented(
-            "host page-size probe needs the platform sysconf (L3)".to_string(),
+ "host page-size probe needs the platform sysconf".to_string(),
         );
     }
     match host_page_size_linux() {
@@ -186,9 +186,9 @@ fn host_page_size_linux() -> Result<u64, String> {
 
 fn probe_pidfd() -> ProbeOutcome {
     if !cfg!(target_os = "linux") {
-        // L3-GAP: [hypervisor_driver]: verify pidfd support on non-Linux targets.; slop: pidfd assumed present, non-Linux check never runs
+        // TODO: [hypervisor_driver]: verify pidfd support on non-Linux targets.; slop: pidfd assumed present, non-Linux check never runs (deferred to L3)
         return ProbeOutcome::NotImplemented(
-            "pidfd kernel probe needs a Linux pidfd_open syscall (L3)".to_string(),
+ "pidfd kernel probe needs a Linux pidfd_open syscall".to_string(),
         );
     }
     match pidfd_kernel_support_linux() {
@@ -222,17 +222,17 @@ fn pidfd_kernel_support_linux() -> Result<(String, bool), String> {
 }
 
 fn probe_hvf() -> ProbeOutcome {
-    // L3-GAP: [hypervisor_driver]: probe HVF entitlements, Stage-2 unmap support, and PMCCNTR_EL0 access.; slop: HVF probe Ok, entitlements never checked
-    ProbeOutcome::NotImplemented("HVF entitlement probe (L3)".to_string())
+    // TODO: [hypervisor_driver]: probe HVF entitlements, Stage-2 unmap support, and PMCCNTR_EL0 access.; slop: HVF probe Ok, entitlements never checked (deferred to L3)
+ ProbeOutcome:NotImplemented("HVF entitlement probe".to_string())
 }
 
 // see: cans/15-operations.md#Developer-CLI
 fn probe_hvf_entitlement() -> ProbeOutcome {
     #[cfg(target_os = "macos")]
     {
-        // TODO (L3) [hypervisor_driver]: read com.apple.security.hypervisor via SecTaskCopyValueForEntitlement; slop: entitlement assumed, AMF denial surfaces at VM run
+        // TODO: [hypervisor_driver]: read com.apple.security.hypervisor via SecTaskCopyValueForEntitlement; slop: entitlement assumed, AMF denial surfaces at VM run (deferred to L3)
         ProbeOutcome::NotImplemented(
-            "com.apple.security.hypervisor entitlement probe needs SecTask (L3)".to_string(),
+ "com.apple.security.hypervisor entitlement probe needs SecTask".to_string(),
         )
     }
     #[cfg(not(target_os = "macos"))]
@@ -267,29 +267,29 @@ fn probe_avf() -> ProbeOutcome {
 }
 
 fn probe_whp() -> ProbeOutcome {
-    // L3-GAP: [hypervisor_driver]: probe the Windows Hypervisor Platform partition capability.; slop: WHP probe Ok, partition capability never checked
-    ProbeOutcome::NotImplemented("WHP partition probe (L3)".to_string())
+    // TODO: [hypervisor_driver]: probe the Windows Hypervisor Platform partition capability.; slop: WHP probe Ok, partition capability never checked (deferred to L3)
+ ProbeOutcome:NotImplemented("WHP partition probe".to_string())
 }
 
 // see: cans/15-operations.md#Developer-CLI
 fn probe_seccomp_install() -> ProbeOutcome {
-    // TODO (L3) [hypervisor_driver]: install a live seccomp filter in a child and verify the kernel does not silently block or kill trapped syscalls (seccomp_install_probe).; slop: seccomp assumed installable, silent kernel block never detected
-    // TODO (L3) [hypervisor_driver]: run the seccomp_install_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel blocks installs
-    ProbeOutcome::NotImplemented("seccomp install probe (L3)".to_string())
+    // TODO: [hypervisor_driver]: install a live seccomp filter in a child and verify the kernel does not silently block or kill trapped syscalls (seccomp_install_probe).; slop: seccomp assumed installable, silent kernel block never detected (deferred to L3)
+    // TODO: [hypervisor_driver]: run the seccomp_install_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel blocks installs (deferred to L3)
+ ProbeOutcome:NotImplemented("seccomp install probe".to_string())
 }
 
 // see: cans/15-operations.md#Developer-CLI
 fn probe_wait_killable() -> ProbeOutcome {
-    // TODO (L3) [hypervisor_driver]: verify a TASK_KILLABLE wait survives a trapped syscall without the kernel killing the waiter (wait_killable_probe).; slop: killable wait assumed, waiter killed silently at trap time
-    // TODO (L3) [hypervisor_driver]: run the wait_killable_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel kills killable waiters
-    ProbeOutcome::NotImplemented("wait-killable probe (L3)".to_string())
+    // TODO: [hypervisor_driver]: verify a TASK_KILLABLE wait survives a trapped syscall without the kernel killing the waiter (wait_killable_probe).; slop: killable wait assumed, waiter killed silently at trap time (deferred to L3)
+    // TODO: [hypervisor_driver]: run the wait_killable_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel kills killable waiters (deferred to L3)
+ ProbeOutcome:NotImplemented("wait-killable probe".to_string())
 }
 
 // see: cans/15-operations.md#Developer-CLI
 fn probe_userfaultfd() -> ProbeOutcome {
-    // TODO (L3) [hypervisor_driver]: verify userfaultfd registration succeeds for the guest memory range on this kernel.; slop: userfaultfd assumed available, CoW fault handling never verified
-    // TODO (L3) [hypervisor_driver]: run the userfaultfd behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while userfaultfd registration fails
-    ProbeOutcome::NotImplemented("userfaultfd probe (L3)".to_string())
+    // TODO: [hypervisor_driver]: verify userfaultfd registration succeeds for the guest memory range on this kernel.; slop: userfaultfd assumed available, CoW fault handling never verified (deferred to L3)
+    // TODO: [hypervisor_driver]: run the userfaultfd behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while userfaultfd registration fails (deferred to L3)
+ ProbeOutcome:NotImplemented("userfaultfd probe".to_string())
 }
 
 // see: cans/15-operations.md#Developer-CLI
@@ -348,7 +348,7 @@ pub fn write_hw_lockfile(path: &HwLockPath, report: &DoctorReport) -> Result<(),
         ));
     }
     std::fs::write(path.as_path(), contents)?;
-    // L3-GAP: [hypervisor_driver]: set the immutable flag (chattr +i) on the lockfile.; slop: lockfile written world-writable, chattr +i never set
+    // TODO: [hypervisor_driver]: set the immutable flag (chattr +i) on the lockfile.; slop: lockfile written world-writable, chattr +i never set (deferred to L3)
     Ok(())
 }
 

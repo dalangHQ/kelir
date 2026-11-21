@@ -271,9 +271,9 @@ impl crate::ApprovalAuthConfig {
     // see: cans/plugins/tool-guard.md#Plugin-tool-guard
     pub fn verify_method(&self, method: &str, _proof: &[u8]) -> Result<(), PluginError> {
         let _ = method;
-        // TODO (L3) [governance_tools]: verify the WebAuthn/TOTP/OIDC approval proof cryptographically; slop: approval binds on an unverified method claim, a forged proof approves a held tool call.
+        // TODO: [governance_tools]: verify the WebAuthn/TOTP/OIDC approval proof cryptographically; slop: approval binds on an unverified method claim, a forged proof approves a held tool call. (deferred to L3)
         Err(PluginError::Halt(
-            "TODO (L3): approval method verification pending (L3)".into(),
+ "deferred to L3: approval method verification pending".into(),
         ))
     }
 }
@@ -320,7 +320,7 @@ pub fn scan_tool_result(payload: &[u8], scan_enabled: bool) -> Result<(), Plugin
     if parse_json_rpc_response(payload).is_err() {
         return Ok(());
     }
-    // TODO (L3) [governance_tools]: scan tool results for hidden instructions and prompt injection; slop: tool results pass unexamined, an injected instruction reaches the model context.
+    // TODO: [governance_tools]: scan tool results for hidden instructions and prompt injection; slop: tool results pass unexamined, an injected instruction reaches the model context. (deferred to L3)
     Ok(())
 }
 
@@ -682,7 +682,7 @@ impl ToolRegistryService for ToolRegistry {
             .approvals
             .lock()
             .map_err(|_| PluginError::Halt("approval ledger poisoned".into()))?;
-        // L3-GAP: [governance_tools]: verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md; slop: approval binds without hash check, mutated payload rides approval
+        // TODO: [governance_tools]: verify canonical arguments and payload hash before the host approval binds per cans/plugins/tool-guard.md; slop: approval binds without hash check, mutated payload rides approval (deferred to L3)
         approvals.push(ApprovalRequest {
             tool: request.tool.clone(),
             canonical_arguments: request.canonical_arguments.clone(),

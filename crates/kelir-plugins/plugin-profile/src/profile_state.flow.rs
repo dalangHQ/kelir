@@ -249,7 +249,7 @@ impl ProfileState {
             PatchOp::Remove => {
                 remove_pointer(document, &remainder);
             }
-            // L3-GAP: [governance_vault]: Move/Copy leave the stored base stale (Test is read-only); cross-path base update needs owner-state verification; see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching; slop: stale base after Move/Copy, cross-path update without owner verification
+            // TODO: [governance_vault]: Move/Copy leave the stored base stale (Test is read-only); cross-path base update needs owner-state verification; see: cans/plugins/profile.md#RFC-6902-dynamic-policy-patching; slop: stale base after Move/Copy, cross-path update without owner verification (deferred to L3)
             PatchOp::Move | PatchOp::Copy | PatchOp::Test => {}
         }
     }

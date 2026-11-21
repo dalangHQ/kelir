@@ -41,7 +41,7 @@ pub struct TcpSegmentView<'a> {
 }
 
 // see: cans/07-wire-plane.md#Wire-architecture
-// L3-GAP: [relational_transaction]: verify Ethernet, IPv4, and TCP checksums and reject invalid frames; slop: bad checksums accepted, corrupt frames reach the proxy
+// TODO: [relational_transaction]: verify Ethernet, IPv4, and TCP checksums and reject invalid frames; slop: bad checksums accepted, corrupt frames reach the proxy (deferred to L3)
 pub fn parse_tcp_segment(frame: &[u8]) -> Option<TcpSegmentView<'_>> {
     if frame.len() < layout_wire::ETH_HEADER_BYTES + layout_wire::IPV4_MIN_HEADER_BYTES {
         return None;
@@ -109,7 +109,7 @@ pub enum SegmentOutcome {
 }
 
 // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
-// L3-GAP: [relational_transaction]: stand-in reassembler; replaced by WirePlane::divert_l4; slop: stand-in reassembler kept, WirePlane::divert_l4 never wired, streams misordered
+// TODO: [relational_transaction]: stand-in reassembler; replaced by WirePlane::divert_l4; slop: stand-in reassembler kept, WirePlane::divert_l4 never wired, streams misordered (deferred to L3)
 #[derive(Default)]
 pub struct TcpStreamReassembler {
     next_seq: Option<u32>,
@@ -131,7 +131,7 @@ impl TcpStreamReassembler {
         segment: &TcpSegmentView<'_>,
     ) -> Result<SegmentOutcome, PluginError> {
         if segment.flags & layout_wire::TCP_FLAG_SYN != 0 {
-            // L3-GAP: [relational_transaction]: full TCP handshake state machine; payload-carrying SYNs (TFO) stay L3; slop: handshake unmodeled, TFO payloads dropped or replayed
+            // TODO: [relational_transaction]: full TCP handshake state machine; payload-carrying SYNs (TFO) stay L3; slop: handshake unmodeled, TFO payloads dropped or replayed (deferred to L3)
             self.next_seq = Some(segment.seq.wrapping_add(1));
             return Ok(SegmentOutcome::Forwarded);
         }
@@ -158,7 +158,7 @@ impl TcpStreamReassembler {
             return Ok(SegmentOutcome::Stream(bytes));
         }
         if seq_after(segment.seq, expected) {
-            // L3-GAP: [relational_transaction]: bounded out-of-order window with overlap trimming per RFC 793; slop: out-of-order unbounded, overlap untrimmed, memory grows or data corrupts
+            // TODO: [relational_transaction]: bounded out-of-order window with overlap trimming per RFC 793; slop: out-of-order unbounded, overlap untrimmed, memory grows or data corrupts (deferred to L3)
             if self.carry_bytes() + payload.len() > MAX_FRAME_PAYLOAD {
                 return Ok(SegmentOutcome::Dropped);
             }
@@ -166,7 +166,7 @@ impl TcpStreamReassembler {
             self.carry.sort_by_key(|(carry_seq, _)| *carry_seq);
             return Ok(SegmentOutcome::Forwarded);
         }
-        // L3-GAP: [relational_transaction]: retransmit and partial-overlap deduplication; slop: retransmits duplicated, partial overlaps double-applied to SQL stream
+        // TODO: [relational_transaction]: retransmit and partial-overlap deduplication; slop: retransmits duplicated, partial overlaps double-applied to SQL stream (deferred to L3)
         Ok(SegmentOutcome::Forwarded)
     }
 }
@@ -183,7 +183,7 @@ impl PgStreamDecoder {
     }
 
     // see: cans/plugins/db-proxy.md#Invariants-and-policy-(db-proxy)
-    // L3-GAP: [relational_transaction]: the wire plane owns reassembly at L3; this decoder is the in-crate L2 stand-in per cans/07-wire-plane.md#Transparent-L4-stream-diversion; slop: L2 stand-in kept as the wire plane, reassembly diverges across SDKs
+    // TODO: [relational_transaction]: the wire plane owns reassembly at L3; this decoder is the in-crate L2 stand-in per cans/07-wire-plane.md#Transparent-L4-stream-diversion; slop: L2 stand-in kept as the wire plane, reassembly diverges across SDKs (deferred to L3)
     pub fn push(&mut self, bytes: &[u8]) -> Result<Vec<PgFrameDescriptor>, PluginError> {
         self.carryover.extend_from_slice(bytes);
         let mut frames = Vec::new();

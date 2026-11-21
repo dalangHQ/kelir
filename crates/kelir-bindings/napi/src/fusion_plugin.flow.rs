@@ -40,7 +40,7 @@ impl NapiFusedCallback {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile the fused chain into the single flat closure so the traversal enqueues exactly once per ring event and marshal the ring event payload into that single crossing; slop: chain still enqueues per ordinal, ring event payload stays unmarshaled
+    // TODO: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile the fused chain into the single flat closure so the traversal enqueues exactly once per ring event and marshal the ring event payload into that single crossing; slop: chain still enqueues per ordinal, ring event payload stays unmarshaled (deferred to L3)
     fn marshal_chain_event(
         &self,
         _ring: TrampolineRing,
@@ -49,7 +49,7 @@ impl NapiFusedCallback {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: copy back the mutable Uint8Array Buffer TS write hooks mutate during the traversal and rendezvous the enqueued run's Verdict into the fold; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+    // TODO: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: copy back the mutable Uint8Array Buffer TS write hooks mutate during the traversal and rendezvous the enqueued run's Verdict into the fold; slop: JS hook runs fire-and-forget, its verdict never gates dispatch (deferred to L3)
     fn copyback_chain_buffers(
         &self,
         _ring: TrampolineRing,

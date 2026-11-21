@@ -278,9 +278,9 @@ impl EgressProxy {
     // see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
     pub fn guard_no_proxy(&self, host: &str) -> Result<(), EgressProxyError> {
         let _ = host;
-        // TODO (L3) [wire_plane]: guard NO_PROXY against L4 spoofing so a spoofed bypass entry cannot route a proxied host direct; slop: a spoofed NO_PROXY entry bypasses the proxy, direct egress escapes policy.
+        // TODO: [wire_plane]: guard NO_PROXY against L4 spoofing so a spoofed bypass entry cannot route a proxied host direct; slop: a spoofed NO_PROXY entry bypasses the proxy, direct egress escapes policy. (deferred to L3)
         Err(EgressProxyError::Dial(
-            "egress proxy NO_PROXY spoof guard is TODO (L3)".into(),
+ "egress proxy NO_PROXY spoof guard is deferred to L3".into(),
         ))
     }
 }
@@ -291,10 +291,10 @@ impl EgressProxyService for EgressProxy {
     async fn dial(&self, target: &ProxyTarget) -> Result<L4Stream, EgressProxyError> {
         validate_proxy_target(&self.config, target)?;
         let _ = self.config.proxy_for(target);
-        // TODO (L3) [wp_13_upstream_dial_proxy_chain_auth]: open the raw L4 splice to the selected upstream proxy, run the CONNECT/SOCKS5 handshake over it, and return the spliced stream; no upstream dial exists yet; slop: guest performs the CONNECT handshake instead of the host netstack.
-        // TODO (L3) [wire_plane]: trap obfs4proxy/snowflake-client bridge dials before they leave the host; slop: a Tor pluggable transport dials out unexamined, Tor traffic escapes the egress proxy.
+        // TODO: [wp_13_upstream_dial_proxy_chain_auth]: open the raw L4 splice to the selected upstream proxy, run the CONNECT/SOCKS5 handshake over it, and return the spliced stream; no upstream dial exists yet; slop: guest performs the CONNECT handshake instead of the host netstack. (deferred to L3)
+        // TODO: [wire_plane]: trap obfs4proxy/snowflake-client bridge dials before they leave the host; slop: a Tor pluggable transport dials out unexamined, Tor traffic escapes the egress proxy. (deferred to L3)
         Err(EgressProxyError::Dial(
-            "egress proxy upstream dial is TODO (L3)".into(),
+ "egress proxy upstream dial is deferred to L3".into(),
         ))
     }
 }
@@ -339,7 +339,7 @@ impl KelirPlugin for EgressProxyPlugin {
         // see: cans/plugins/egress-proxy.md#Crate-dependencies-(egress-proxy)
         MountScope::default().with_devices([VirtioDevice::Net])
     }
-    // TODO (L3) [wp_13_upstream_dial_proxy_chain_auth]: bind EgressProxyService to the wire plane L4 dialer once the plane exposes a plugin-owned dial hook; slop: egress proxy never binds to the L4 dialer; upstream dials never leave the host netstack.
+    // TODO: [wp_13_upstream_dial_proxy_chain_auth]: bind EgressProxyService to the wire plane L4 dialer once the plane exposes a plugin-owned dial hook; slop: egress proxy never binds to the L4 dialer; upstream dials never leave the host netstack. (deferred to L3)
     fn register_interceptors(
         &self,
         _pipeline: &mut dyn kelir_interface::plugin_model::PipelineBinder,

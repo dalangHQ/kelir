@@ -1,4 +1,4 @@
-// L3-GAP: [hd_04_cold_boot_budget_enforcement]: call run_vcpu/promote_chunked_stage2_pages from the live vCPU loop; slop: vCPU never runs
+// TODO: [hd_04_cold_boot_budget_enforcement]: call run_vcpu/promote_chunked_stage2_pages from the live vCPU loop; slop: vCPU never runs (deferred to L3)
 #![allow(dead_code)]
 // see: cans/01-architecture.md#Host-memory-pressure-watcher
 // see: cans/08-lifecycle.md#CoW-fork

@@ -12,7 +12,7 @@ pub enum OtlpError {
     Encode(String),
     #[error("OTLP transport error: {0}")]
     Transport(String),
-    #[error("OTLP export not implemented (L3): {0}")]
+ #[error("OTLP export not implemented: {0}")]
     NotImplemented(String),
     #[error("OTLP endpoint invalid: {0}")]
     InvalidEndpoint(String),

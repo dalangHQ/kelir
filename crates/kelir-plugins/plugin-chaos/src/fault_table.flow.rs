@@ -13,7 +13,7 @@ pub struct FaultTable {
     storage: RwLock<Vec<StorageFaultRule>>,
 }
 
-// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, fault-table wiring stays unwired while the gate reports clean.
+// TODO: [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, fault-table wiring stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 impl FaultTable {
     fn read_rules<T>(lock: &RwLock<Vec<T>>) -> Result<RwLockReadGuard<'_, Vec<T>>, PluginError> {
@@ -37,11 +37,11 @@ impl FaultTable {
 // see: cans/plugins/chaos.md#Service-exports-(chaos)
 impl FaultInjectionService for FaultTable {
     fn set_network_rules(&self, rules: Vec<NetworkFaultRule>) -> Result<(), PluginError> {
-        // TODO (L3) [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped
+        // TODO: [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped (deferred to L3)
         Self::write_rules(&self.network, rules)
     }
     fn set_storage_rules(&self, rules: Vec<StorageFaultRule>) -> Result<(), PluginError> {
-        // TODO (L3) [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped
+        // TODO: [plugin_engine]: validate dynamic rule mutations against the monotonic lattice before installation; slop: lattice check skipped, non-monotonic rule installed, later rules silently dropped (deferred to L3)
         Self::write_rules(&self.storage, rules)
     }
 }
@@ -81,4 +81,4 @@ impl KelirPlugin for ChaosPlugin {
 
 // see: cans/plugins/chaos.md#Plugin-chaos
 
-// TODO (L3) [plugin_engine]: construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait; slop: facade cycle: plugin-chaos depends on facade, build breaks cyclically
+// TODO: [plugin_engine]: construct ChaosPlugin via KelirBuilder::named in the kelir facade crate; a dependency on that crate here is a cargo cycle since the facade depends on plugin-chaos per cans/02-plugin-model.md#KelirPlugin-trait; slop: facade cycle: plugin-chaos depends on facade, build breaks cyclically (deferred to L3)

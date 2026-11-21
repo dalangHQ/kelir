@@ -32,8 +32,8 @@ pub struct TrapInspection {
 }
 
 pub fn inspect_trap(trap: &SeccompTrap, _seq: u64) -> Result<TrapInspection, ShimError> {
-    // L3-GAP: [protocol_mux]: capture argv/envp/auxv via process_vm_readv without thread attachment; slop: argv/envp read via /proc race, frozen thread mutates mid-read
-    // L3-GAP: [protocol_mux]: fill resolved_binary from interpreter unwrapping; zero identity until then; slop: interpreter path reported as binary, BLAKE3 binds wrong file
+    // TODO (L3) [protocol_mux]: capture argv/envp/auxv via process_vm_readv without thread attachment; slop: argv/envp read via /proc race, frozen thread mutates mid-read
+    // TODO (L3) [protocol_mux]: fill resolved_binary from interpreter unwrapping; zero identity until then; slop: interpreter path reported as binary, BLAKE3 binds wrong file
     // TODO (L3) [protocol_mux]: freeze the trapped pid, resolve exe/argv/envp/cwd/ppid/auxv/interp and build the TrapInspection.; slop: TrapInspection is faked from defaults, so a deny decision is made on invented identity.
     Err(ShimError::ExeUnresolved { pid: trap.pid })
 }

@@ -16,7 +16,7 @@ pub struct WxAllocToken {
 }
 
 impl WxAllocToken {
-    // L3-GAP: [supply_chain_security]: cross-impl wire sync if a canonical token layout is pinned; see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation; slop: token layout unpinned, cross-impl wire sync diverges silently
+    // TODO: [supply_chain_security]: cross-impl wire sync if a canonical token layout is pinned; see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation; slop: token layout unpinned, cross-impl wire sync diverges silently (deferred to L3)
     pub const WIRE_LEN: usize = 16 + 8 + 32;
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
@@ -30,14 +30,14 @@ impl WxAllocToken {
 }
 
 // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
-// TODO (L3) [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean.
+// TODO: [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 pub(crate) struct WxTokenLedger {
     next_nonce: AtomicU64,
     minted: Mutex<Vec<WxAllocToken>>,
 }
 
-// TODO (L3) [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean.
+// TODO: [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 impl WxTokenLedger {
     pub(crate) fn new() -> Self {
@@ -55,7 +55,7 @@ impl WxTokenLedger {
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
     pub(crate) fn mint(&self, binary_blake3: &[u8; 32]) -> Result<WxAllocToken, PluginError> {
-        // L3-GAP: [supply_chain_security]: mint the nonce from the host CSPRNG and sign the token before vsock delivery; slop: nonce zeroed or unsigned, unverified binary presents valid-looking token
+        // TODO: [supply_chain_security]: mint the nonce from the host CSPRNG and sign the token before vsock delivery; slop: nonce zeroed or unsigned, unverified binary presents valid-looking token (deferred to L3)
         let nonce = u128::from(self.next_nonce.fetch_add(1, Ordering::AcqRel));
         let issued_at_ns = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -94,7 +94,7 @@ pub(crate) struct WxTokenChannel {
     pending: Mutex<Vec<WxAllocToken>>,
 }
 
-// TODO (L3) [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean.
+// TODO: [supply_chain_security]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead token item forever, the stubbed callers never land, the W^X token path stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 impl WxTokenChannel {
     pub(crate) fn new() -> Self {
@@ -136,7 +136,7 @@ impl WxTokenChannel {
         let Some(stream) = stream.as_mut() else {
             return Ok(());
         };
-        // L3-GAP: [supply_chain_security]: correlate the channel with the trapped task and move token delivery onto the async transport loop; slop: token delivered off async loop, channel uncorrelated with trapped task
+        // TODO: [supply_chain_security]: correlate the channel with the trapped task and move token delivery onto the async transport loop; slop: token delivered off async loop, channel uncorrelated with trapped task (deferred to L3)
         for token in pending.iter() {
             let written = stream.write(&token.wire_bytes())?;
             if written != WxAllocToken::WIRE_LEN {

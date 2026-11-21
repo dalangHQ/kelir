@@ -55,7 +55,7 @@ impl std::error::Error for ShmRingError {}
 // see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
 pub struct ShmRing {
     pub region: VirtioShmRegion,
-    // TODO (L3) [protocol_mux]: back the ring with the virtio_shm memfd mapping instead of heap bytes.; slop: heap ring shared only in-process, no cross-VM zero-copy
+    // TODO: [protocol_mux]: back the ring with the virtio_shm memfd mapping instead of heap bytes.; slop: heap ring shared only in-process, no cross-VM zero-copy (deferred to L3)
     buf: Mutex<Vec<u8>>,
     head: Mutex<usize>,
     tail: Mutex<usize>,

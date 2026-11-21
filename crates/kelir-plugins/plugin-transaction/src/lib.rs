@@ -1,7 +1,7 @@
 // see: cans/plugins/transaction.md#Plugin-transaction
 #![forbid(unsafe_code)]
 
-// L3-GAP: [relational_transaction]: tests/test_transaction.rs per cans/artifacts/config/project-structure.txt; slop: test_transaction.rs missing, 2PC paths untested, Ok(()) stubs pass vacuously
+// TODO: [relational_transaction]: tests/test_transaction.rs per cans/artifacts/config/project-structure.txt; slop: test_transaction.rs missing, 2PC paths untested, Ok(()) stubs pass vacuously (deferred to L3)
 #[path = "coordination.flow.rs"]
 pub mod coordination;
 #[path = "coordination.run.rs"]

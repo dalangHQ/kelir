@@ -264,9 +264,9 @@ impl StepAttribution {
                 self.reviewer
             )));
         }
-        // TODO (L3) [lifecycle_checkpoint]: verify the Ed25519 reviewer signature against public_key over the step id.; slop: unsigned reviewer attribution accepted, SoD unenforced
+        // TODO: [lifecycle_checkpoint]: verify the Ed25519 reviewer signature against public_key over the step id.; slop: unsigned reviewer attribution accepted, SoD unenforced (deferred to L3)
         Err(StepDagError::SignatureVerificationPending(format!(
-            "reviewer {} Ed25519 verification is TODO (L3)",
+ "reviewer {} Ed25519 verification is deferred to L3",
             self.reviewer
         )))
     }

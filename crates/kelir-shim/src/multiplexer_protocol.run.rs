@@ -19,7 +19,7 @@ pub struct ExecSpec {
 
 impl ExecSpec {
     pub fn parse(payload: &[u8]) -> Result<Self, ShimError> {
-        // L3-GAP: [pm_08_exec_flow_control_input_stall]: parse EXEC_IO_SPEC binary/argv/limits from the open payload; slop: spec parse stubbed, open payload never yields binary/argv/limits
+        // TODO (L3) [pm_08_exec_flow_control_input_stall]: parse EXEC_IO_SPEC binary/argv/limits from the open payload; slop: spec parse stubbed, open payload never yields binary/argv/limits
         let _ = payload;
         // TODO (L3) [protocol_mux]: parse EXEC_IO_SPEC binary/argv/limits from the open payload.; slop: spec parses as empty, so the exec spawns with no binary and no limits.
         Err(ShimError::ExecSpecParsePending)
@@ -53,7 +53,7 @@ impl ExecSlot {
     }
 
     pub fn signal(&self, _signal: u32) -> Result<(), ShimError> {
-        // L3-GAP: [pm_07_exec_signal_cancellation_by_exec_id]: deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal; slop: kill() hits recycled pid, successor task dies instead
+        // TODO (L3) [pm_07_exec_signal_cancellation_by_exec_id]: deliver via pidfd_open/pidfd_send_signal so a recycled pid cannot receive a stale signal; slop: kill() hits recycled pid, successor task dies instead
         // TODO (L3) [protocol_mux]: validate the signal range and deliver it to the slot pid via pidfd_send_signal.; slop: signal is dropped, so a kill request reports success while the slot keeps running.
         Err(ShimError::SignalDelivery {
             exec_id: self.exec_id,
@@ -87,7 +87,7 @@ impl ExecSlotSlab {
         None
     }
 
-    // L3-GAP: [pm_06_exec_slot_slab_saturation_reject]: size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config); slop: pool sized to hardcoded 4096, RLIMIT_NPROC/max_exec_slots ignored
+    // TODO (L3) [pm_06_exec_slot_slab_saturation_reject]: size the pool by min(guest RLIMIT_NPROC, host max_exec_slots from session config); slop: pool sized to hardcoded 4096, RLIMIT_NPROC/max_exec_slots ignored
     pub fn allocate(&mut self, _slot: ExecSlot) -> Result<usize, ShimError> {
         // TODO (L3) [protocol_mux]: store the slot in a free or fresh slab index and return the index, rejecting at saturation.; slop: store always rejects, so no exec can ever allocate a slot.
         Err(ShimError::SlabSaturated)
@@ -167,7 +167,7 @@ impl Multiplexer {
     }
 
     pub fn dispatch_control(&mut self, _payload: &[u8]) -> Result<(), ShimError> {
-        // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control payload dropped as ControlPending, lifecycle never routed
+        // TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control payload dropped as ControlPending, lifecycle never routed
         // TODO (L3) [protocol_mux]: decode the control payload and route trap/lifecycle/signal messages, never entering the data lanes.; slop: control messages are dropped, so trap and lifecycle signals never reach the guest.
         Err(ShimError::ControlPending { msg_type: 0 })
     }
@@ -183,10 +183,10 @@ impl Multiplexer {
         flags: u8,
         _payload: &[u8],
     ) -> Result<(), ShimError> {
-        // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control frame enters data lane path, trap dispatch never runs
-        // L3-GAP: [protocol_mux]: flush stdout/stderr EOF frames before release; exit frames defer until EOF flush; slop: stream released before EOF flush, exit frame precedes output
-        // L3-GAP: [pm_08_exec_flow_control_input_stall]: apply per-stream credit window update to the resolved slot; slop: credit update dropped, guest stalls or overruns buffer
-        // L3-GAP: [pm_08_exec_flow_control_input_stall]: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03); slop: stdin payload discarded, 10MB transfer never arrives intact
+        // TODO (L3) [pm_01_control_channel_0_lifecycle_priority]: route control payloads to the trap dispatcher (MSG_TRAP) and lifecycle controller (MSG_VM_LIFECYCLE_CONTROL); control frames never enter the data lanes; slop: control frame enters data lane path, trap dispatch never runs
+        // TODO (L3) [protocol_mux]: flush stdout/stderr EOF frames before release; exit frames defer until EOF flush; slop: stream released before EOF flush, exit frame precedes output
+        // TODO (L3) [pm_08_exec_flow_control_input_stall]: apply per-stream credit window update to the resolved slot; slop: credit update dropped, guest stalls or overruns buffer
+        // TODO (L3) [pm_08_exec_flow_control_input_stall]: route payload to slot.stdin_fd (exec sub-lanes 0x00/0x03); slop: stdin payload discarded, 10MB transfer never arrives intact
         // see: cans/11-protocol.md#Binary-exec-channel
         // TODO (L3) [protocol_mux]: validate the stream id, route control/data/close frames to the bound slot and apply window updates.; slop: frames are dropped, so data never reaches the slot and window updates never apply.
         Err(ShimError::UnknownFlags { flags })
@@ -202,7 +202,7 @@ impl Multiplexer {
     }
 
     fn spawn_exec(&mut self, spec: &ExecSpec) -> Result<ExecSlot, ShimError> {
-        // L3-GAP: [vr_09_virtio_console_port0_pty_dedication]: openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop; slop: exec never spawned, EXEC stream bytes never become a process
+        // TODO (L3) [vr_09_virtio_console_port0_pty_dedication]: openpty via crate::pty_terminal::open_pty_slave, fork, setrlimit from spec.limits between fork and execve, execve spec.binary/spec.argv; the child is reaped by the main.rs waitpid loop; slop: exec never spawned, EXEC stream bytes never become a process
         let _ = (spec, self.next_exec_id);
         // TODO (L3) [protocol_mux]: openpty, fork, setrlimit from spec.limits, execve spec.binary/spec.argv.; slop: execve never runs, so the slot holds a stream with no process behind it.
         Err(ShimError::SpawnPending)

@@ -111,7 +111,7 @@ impl TerminalOps for RealTerminalOps {
         ))
     }
 
-    // L3-GAP: [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
+    // TODO (L3) [terminal_plane]: replay from the durable chunk files and index.bin so cursors survive process restarts; the in-memory segment map starts empty each boot; slop: replay reads memory only, durable chunks ignored
     fn read_from(&self, _port: u32, _cursor: u64) -> Result<(Vec<u8>, u64), PluginError> {
         // TODO (L3) [terminal_plane]: read the log segment for port from cursor and return the bytes with the new head.; slop: read returns empty bytes with an unchanged head, so replay replays nothing and the cursor never advances.
         Err(PluginError::Halt(

@@ -1,7 +1,7 @@
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
 #![forbid(unsafe_code)]
 
-// L3-GAP: [governance_tools]: tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt; slop: test_tool_guard.rs missing, guard verdicts untested, Pass stub passes vacuously
+// TODO: [governance_tools]: tests/test_tool_guard.rs per cans/artifacts/config/project-structure.txt; slop: test_tool_guard.rs missing, guard verdicts untested, Pass stub passes vacuously (deferred to L3)
 #[path = "guard.run.rs"]
 pub mod guard;
 #[path = "service_tool_guard.flow.rs"]

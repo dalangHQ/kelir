@@ -199,7 +199,7 @@ impl PeerCoordination {
         let handle = TransactionScopeHandle {
             id: self.next_handle.fetch_add(1, Ordering::AcqRel),
         };
-        // L3-GAP: [relational_transaction]: mint the transaction UUID namespace from the session's seeded entropy source; slop: UUID namespace hardcoded, ids collide across sessions
+        // TODO: [relational_transaction]: mint the transaction UUID namespace from the session's seeded entropy source; slop: UUID namespace hardcoded, ids collide across sessions (deferred to L3)
         let namespace = u128::from(self.next_nonce.fetch_add(1, Ordering::AcqRel)).to_le_bytes();
         Self::store_slot(
             &self.active,
@@ -209,7 +209,7 @@ impl PeerCoordination {
                 scope,
             },
         )?;
-        // L3-GAP: [rt_06_spatial_blast_radius_schema_scope]: open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation; slop: scope never opened, out-of-scope mutations pass, private schemas queried
+        // TODO: [rt_06_spatial_blast_radius_schema_scope]: open the scope over the declared blast radius; out-of-scope mutations reject with EACCES or EAmbiguousMutation; slop: scope never opened, out-of-scope mutations pass, private schemas queried (deferred to L3)
         Ok(handle)
     }
 
@@ -218,9 +218,9 @@ impl PeerCoordination {
         if self.active()?.is_none() {
             return Ok(());
         }
-        // L3-GAP: [rt_03_2pc_pre_commit_vcpu_pause_drain]: issue SQL pre-commit on the coordinated SqlProxy connections; participant failure here triggers global rollback with EPOLICY; slop: pre-commit without vCPU pause, writes land mid-2PC, split-brain
+        // TODO: [rt_03_2pc_pre_commit_vcpu_pause_drain]: issue SQL pre-commit on the coordinated SqlProxy connections; participant failure here triggers global rollback with EPOLICY; slop: pre-commit without vCPU pause, writes land mid-2PC, split-brain (deferred to L3)
         let _ = self.require_sql_peer()?;
-        // L3-GAP: [relational_transaction]: pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker; slop: locks unpinned to host inodes, broker lock floats across files
+        // TODO: [relational_transaction]: pin advisory-lock acquisition to the declared physical host inodes via the coordinated lock broker; slop: locks unpinned to host inodes, broker lock floats across files (deferred to L3)
         let _ = self.lock_broker()?;
         Ok(())
     }
@@ -258,7 +258,7 @@ impl PeerCoordination {
         savepoint: Savepoint,
         transaction: TransactionScopeHandle,
     ) -> Result<(), PluginError> {
-        // L3-GAP: [relational_transaction]: snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints; slop: savepoint blob empty, rollback restores nothing, state lost
+        // TODO: [relational_transaction]: snapshot the broker upper and tombstone state as the opaque savepoint blob per cans/plugins/transaction.md#Temporal-savepoints; slop: savepoint blob empty, rollback restores nothing, state lost (deferred to L3)
         match self.savepoints.write() {
             Ok(mut guard) => {
                 guard.push(RecordedSavepoint {
@@ -277,7 +277,7 @@ impl PeerCoordination {
         transaction: &TransactionScopeHandle,
         savepoint: Savepoint,
     ) -> Result<(), PluginError> {
-        // L3-GAP: [relational_transaction]: restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet; slop: restore unimplemented, ROLLBACK TO never issued, savepoint useless
+        // TODO: [relational_transaction]: restore the snapshotted broker upper and tombstone state and issue SQL ROLLBACK TO savepoint_marker(savepoint); plugin-db-proxy exposes no rollback-to-savepoint surface yet; slop: restore unimplemented, ROLLBACK TO never issued, savepoint useless (deferred to L3)
         let mut savepoints = match self.savepoints.write() {
             Ok(guard) => guard,
             Err(_) => return Err(PluginError::Halt("savepoint ledger poisoned".into())),
@@ -351,7 +351,7 @@ impl PeerCoordination {
 
     // see: cans/plugins/transaction.md#Multi-resource-2PC-coordination
     pub(crate) async fn abort_active(&self) -> Result<(), PluginError> {
-        // L3-GAP: [relational_transaction]: discard the broker upper file and tombstones through the driver-side session path; slop: upper file and tombstones never discarded, storage leaks after commit
+        // TODO: [relational_transaction]: discard the broker upper file and tombstones through the driver-side session path; slop: upper file and tombstones never discarded, storage leaks after commit (deferred to L3)
         self.issue_sql_rollback().await?;
         self.release_transaction_locks_scoped().await?;
         self.discard_outbox()?;

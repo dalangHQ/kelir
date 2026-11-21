@@ -1,7 +1,7 @@
 // see: cans/plugins/profile.md#Plugin-profile
 #![forbid(unsafe_code)]
 
-// L3-GAP: [governance_vault]: tests/test_profile.rs per cans/artifacts/config/project-structure.txt; slop: test_profile.rs missing, profile hydration untested, placeholders unresolved silently
+// TODO: [governance_vault]: tests/test_profile.rs per cans/artifacts/config/project-structure.txt; slop: test_profile.rs missing, profile hydration untested, placeholders unresolved silently (deferred to L3)
 use kelir_interface::plugin_model::PluginError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

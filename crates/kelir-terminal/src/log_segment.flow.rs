@@ -6,7 +6,7 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::terminal::LogStream;
 
 // see: cans/01-architecture.md#Host-state-root
-// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+// TODO: [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green. (deferred to L3)
 #[allow(dead_code)]
 fn log_file_name(stream: LogStream) -> String {
     match stream {
@@ -16,8 +16,8 @@ fn log_file_name(stream: LogStream) -> String {
 }
 
 // see: cans/01-architecture.md#Host-state-root
-// L3-GAP: [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written
-// TODO (L3) [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green.
+// TODO: [terminal_plane]: write the append-only index.bin chunk index beside the per-stream logs so cursors survive restarts; slop: cursors lost on restart, index never written (deferred to L3)
+// TODO: [terminal_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow masks the unused item, so the stubbed caller can stay unwired while the build stays green. (deferred to L3)
 #[allow(dead_code)]
 pub(crate) fn session_log_path(
     session_id: &[u8; 16],

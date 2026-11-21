@@ -36,7 +36,7 @@ pub use synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 pub const METADATA_CREDENTIALS_PREFIX: &str = "/kelir/credentials/";
 
 // see: cans/07-wire-plane.md#Pre-policy-drop-zones
-// L3-GAP: [governance_vault]: pin this constant against the kelir-engine vsock transport host-bridge identity; slop: CID constant unpinned, bridge identity drifts, wrong peer served
+// TODO: [governance_vault]: pin this constant against the kelir-engine vsock transport host-bridge identity; slop: CID constant unpinned, bridge identity drifts, wrong peer served (deferred to L3)
 pub const WIRE_PLANE_BRIDGE_CID: u32 = 2;
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.vault.metadata_service

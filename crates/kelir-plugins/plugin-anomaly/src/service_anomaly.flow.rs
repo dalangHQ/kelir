@@ -303,7 +303,7 @@ impl AnomalyDetectionService {
         })
     }
 
-    // TODO (L3) [telemetry_audit]: replace max-component scoring with the statistical surprisal model; slop: scoring stays max-component; subtle anomalies pass as normal.
+    // TODO: [telemetry_audit]: replace max-component scoring with the statistical surprisal model; slop: scoring stays max-component; subtle anomalies pass as normal. (deferred to L3)
     // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
     pub fn surprisal(&self, vector: &FeatureVector) -> f32 {
         vector

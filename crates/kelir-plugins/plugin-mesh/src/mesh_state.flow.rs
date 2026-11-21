@@ -59,7 +59,7 @@ impl VectorClock {
 }
 
 // see: cans/plugins/mesh.md#Peer-identity
-// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean.
+// TODO: [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 pub(crate) struct MeshState {
     svid: Mutex<Option<SpiffeSvid>>,
@@ -71,7 +71,7 @@ pub(crate) struct MeshState {
     vector_clock: Mutex<VectorClock>,
 }
 
-// TODO (L3) [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean.
+// TODO: [plugin_engine]: remove this allow when the stubbed L3 callers land and read this item again.; slop: the allow hides a dead item forever, the stubbed callers never land, mesh wiring stays unwired while the gate reports clean. (deferred to L3)
 #[allow(dead_code)]
 impl MeshState {
     fn new() -> Self {
@@ -167,7 +167,7 @@ impl MeshState {
             rejections.push(rejection);
         }
         // see: cans/10-attestation.md#Hook-trace
-        // TODO (L3) [attestation_receipts]: engine pulls the buffered rejection spans into the receipt store; no new trait method.; slop: buffered rejection spans never reach the receipt.
+        // TODO: [attestation_receipts]: engine pulls the buffered rejection spans into the receipt store; no new trait method.; slop: buffered rejection spans never reach the receipt. (deferred to L3)
         if let Ok(mut spans) = self.rejection_spans.lock() {
             if spans.len() >= MAX_PEER_REJECTIONS {
                 spans.remove(0);
@@ -232,7 +232,7 @@ impl MeshPlugin {
                 peer.cid, peer.port
             )));
         }
-        // L3-GAP: [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh
+        // TODO: [pm_14_mesh_rejects_foreign_trust_domain_peer]: verify the SVID credential signature and the workload prefix authorization; slop: signature unverified, foreign trust domain accepted into mesh (deferred to L3)
         Ok(())
     }
 
@@ -245,9 +245,9 @@ impl MeshPlugin {
         if !self.config.mtls {
             return Ok(());
         }
-        // L3-GAP: [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS
+        // TODO: [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS (deferred to L3)
         Err(PluginError::Halt(
-            "mTLS handshake validation pending (L3)".into(),
+ "mTLS handshake validation pending".into(),
         ))
     }
 
@@ -258,7 +258,7 @@ impl MeshPlugin {
         handshake: &PeerSessionHandshake,
     ) -> Result<(), PluginError> {
         let mut peers = self.state.lock_peers()?;
-        // L3-GAP: [protocol_mux]: peer federation routing tables and call-hop propagation across routines; slop: federation unrouted, call hops never propagate, peers partitioned
+        // TODO: [protocol_mux]: peer federation routing tables and call-hop propagation across routines; slop: federation unrouted, call hops never propagate, peers partitioned (deferred to L3)
         peers.push(PeerRecord {
             cid: peer.cid,
             port: peer.port,
@@ -270,7 +270,7 @@ impl MeshPlugin {
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // L3-GAP: [protocol_mux]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, worker stalls on unread stream
+    // TODO: [protocol_mux]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, worker stalls on unread stream (deferred to L3)
     fn spawn_peer_handshake(
         &self,
         peer: &VsockPeer,
@@ -365,7 +365,7 @@ impl MeshCtx {
     // see: cans/artifacts/examples/multi-vm-swarm.rs#await_winner
     pub async fn broadcast_winner(&self, shard_id: u32) -> Result<(), PluginError> {
         self.state.record_winner(shard_id)?;
-        // TODO (L3) [protocol_mux]: fan the announcement out over the virtio_shm peer rings; slop: announcement never leaves the session, sibling microVMs never converge.
+        // TODO: [protocol_mux]: fan the announcement out over the virtio_shm peer rings; slop: announcement never leaves the session, sibling microVMs never converge. (deferred to L3)
         Ok(())
     }
 
@@ -380,15 +380,15 @@ impl MeshCtx {
         _region: &SharedMemoryHandle,
         shard_id: u32,
     ) -> Result<(), PluginError> {
-        // L3-GAP: [protocol_mux]: route the shard announcement over the peer federation streams and propagate the traceparent; slop: announcement unrouted, traceparent lost, shards never converge
+        // TODO: [protocol_mux]: route the shard announcement over the peer federation streams and propagate the traceparent; slop: announcement unrouted, traceparent lost, shards never converge (deferred to L3)
         let peers = self.state.lock_peers()?;
         let Some(record) = peers.last() else {
             return Err(PluginError::Halt(format!(
-                "mesh peer publish pending (L3): shard {shard_id} has no connected peer stream"
+ "mesh peer publish pending: shard {shard_id} has no connected peer stream"
             )));
         };
         Err(PluginError::Halt(format!(
-            "mesh peer publish pending (L3): shard {shard_id} to peer {}:{} ({}, {} call hops, {})",
+ "mesh peer publish pending: shard {shard_id} to peer {}:{} ({}, {} call hops, {})",
             record.cid,
             record.port,
             match &record.spiffe_id {
@@ -405,10 +405,10 @@ impl MeshCtx {
         if let Some(winner) = self.state.recorded_winner()? {
             return Ok(winner);
         }
-        // L3-GAP: [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles
+        // TODO: [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles (deferred to L3)
         let peers = self.state.lock_peers()?;
         Err(PluginError::Halt(format!(
-            "mesh winner election pending (L3): {} peers connected",
+ "mesh winner election pending: {} peers connected",
             peers.len()
         )))
     }

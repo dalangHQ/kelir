@@ -1,9 +1,9 @@
-// L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: wire the trap/codec/introspect skeleton into live execution; slop: shim skeleton unwired, crate-wide allow until then
+// TODO: [pm_01_control_channel_0_lifecycle_priority]: wire the trap/codec/introspect skeleton into live execution; slop: shim skeleton unwired, crate-wide allow until then (deferred to L3)
 #![allow(dead_code)]
 // see: cans/01-architecture.md#Axiomatic-foundations
 // see: cans/08-lifecycle.md#Zombie-reaping
 // see: cans/artifacts/diagrams/guest-vm.txt#kelir-shim
-// L3-GAP: [lc_17_zombie_reaper_pid1_adoption]: tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim; slop: reaper tests absent, zombie adoption never exercised
+// TODO: [lc_17_zombie_reaper_pid1_adoption]: tests/test_anti_toctou.rs + tests/test_reaper.rs per cans/artifacts/config/project-structure.txt#kelir-shim; slop: reaper tests absent, zombie adoption never exercised (deferred to L3)
 
 mod codec_protocol;
 #[path = "introspect_trap.run.rs"]
@@ -25,19 +25,19 @@ const STREAM_CHANNEL: u16 = 0x0001;
 // see: cans/08-lifecycle.md#Zombie-reaping
 const POLL_INTERVAL_MS: libc::c_int = 100;
 
-// L3-GAP: [ar_01_execution_receipt_blake3_binding]: surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape); slop: exit reason dropped, receipt carries no exit_kind binding
+// TODO: [ar_01_execution_receipt_blake3_binding]: surface the exit reason to the host supervisor for attestation receipts (in-band Channel 0x0000 or early-boot UART scrape); slop: exit reason dropped, receipt carries no exit_kind binding (deferred to L3)
 fn main() -> Result<(), trap_protocol::ShimError> {
     // see: cans/08-lifecycle.md#Zombie-reaping
     // see: cans/01-architecture.md#Axiomatic-foundations
     let _ = std::fs::write("/proc/1/oom_score_adj", "-1000");
     let defense = trap_protocol::DefenseFlags::default();
     let mut mux = multiplexer_protocol::Multiplexer::new();
-    // L3-GAP: [vr_12_transport_af_vsock_fallback_parity]: The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands; slop: vsock carrier kept, framing bytes diverge from SPSC ring
+    // TODO: [vr_12_transport_af_vsock_fallback_parity]: The AF_VSOCK carrier is wired below; the SPSC ring carrier per cans/11-protocol.md#Wire-framing replaces this transport once its ring allocation lands; slop: vsock carrier kept, framing bytes diverge from SPSC ring (deferred to L3)
     let control_fd = connect_channel(trap_protocol::TRAP_CHANNEL)?;
     let data_fd = connect_channel(STREAM_CHANNEL)?;
-    // L3-GAP: [pm_12_version_negotiation_handshake_reject]: exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic; slop: frames flow before handshake, version mismatch never rejected
+    // TODO: [pm_12_version_negotiation_handshake_reject]: exchange the Control 0x0000 handshake (version 0x01 + capabilities) before frame traffic; slop: frames flow before handshake, version mismatch never rejected (deferred to L3)
     let unotify = trap_protocol::init_seccomp_unotify(&defense)?;
-    // L3-GAP: [vr_09_virtio_console_port0_pty_dedication]: forward the PTY master to the terminal plane console; the slave stays bound for main's lifetime; slop: exec bytes leak onto Port 0 console, EXEC stream stays empty
+    // TODO: [vr_09_virtio_console_port0_pty_dedication]: forward the PTY master to the terminal plane console; the slave stays bound for main's lifetime; slop: exec bytes leak onto Port 0 console, EXEC stream stays empty (deferred to L3)
     #[allow(unused_variables)]
     let (pty_master, pty_slave) = pty_terminal::open_pty_slave()?;
     let mut trap_seq: u64 = 0;
@@ -51,7 +51,7 @@ fn main() -> Result<(), trap_protocol::ShimError> {
             if pid <= 0 {
                 break;
             }
-            // L3-GAP: [lc_17_zombie_reaper_pid1_adoption]: update the reaped ExecSlot exit status; unmatched pids discard into the zero-allocation sink; slop: reaped pid never updates slot, exit status stays stale
+            // TODO: [lc_17_zombie_reaper_pid1_adoption]: update the reaped ExecSlot exit status; unmatched pids discard into the zero-allocation sink; slop: reaped pid never updates slot, exit status stays stale (deferred to L3)
         }
         let (control_ready, data_ready) = wait_channels(unotify.fd(), control_fd, data_fd)?;
         match unotify.dispatch_pending(trap_seq, &defense) {
@@ -60,16 +60,16 @@ fn main() -> Result<(), trap_protocol::ShimError> {
                 match introspect_trap::encode_trap_frame(&inspection.event) {
                     Ok(frame) => {
                         write_all(control_fd, &frame, trap_protocol::TRAP_CHANNEL)?;
-                        // L3-GAP: [gt_05_verdict_patch_execve_mutation_apply]: await the host verdict, re-freeze for ExecveMutation patch application, then SECCOMP_IOCTL_NOTIF_SEND (continue/errno/patch) releases the trapped syscall; slop: verdict awaited but patch never applied, syscall resumes unmutated
+                        // TODO: [gt_05_verdict_patch_execve_mutation_apply]: await the host verdict, re-freeze for ExecveMutation patch application, then SECCOMP_IOCTL_NOTIF_SEND (continue/errno/patch) releases the trapped syscall; slop: verdict awaited but patch never applied, syscall resumes unmutated (deferred to L3)
                     }
                     Err(_reason) => {
-                        // L3-GAP: [protocol_mux]: emit in-band trap-frame reject from the structured reason; slop: encode failure swallowed, host never learns trap was dropped
+                        // TODO: [protocol_mux]: emit in-band trap-frame reject from the structured reason; slop: encode failure swallowed, host never learns trap was dropped (deferred to L3)
                     }
                 }
             }
             Ok(None) => {}
             Err(_reason) => {
-                // L3-GAP: [protocol_mux]: emit in-band trap-dispatch reject from the structured reason; slop: dispatch error swallowed, trap vanishes without reject frame
+                // TODO: [protocol_mux]: emit in-band trap-dispatch reject from the structured reason; slop: dispatch error swallowed, trap vanishes without reject frame (deferred to L3)
             }
         }
         if control_ready {
@@ -184,7 +184,7 @@ fn dispatch_control_frame(
     payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
 ) -> Result<(), trap_protocol::ShimError> {
     if let Some((_, _, len)) = read_frame(fd, trap_protocol::TRAP_CHANNEL, header, payload)? {
-        // L3-GAP: [pm_01_control_channel_0_lifecycle_priority]: emit in-band control reject when dispatch_control returns a structured Err reason; slop: control Err ignored, lifecycle signal never reaches guest
+        // TODO: [pm_01_control_channel_0_lifecycle_priority]: emit in-band control reject when dispatch_control returns a structured Err reason; slop: control Err ignored, lifecycle signal never reaches guest (deferred to L3)
         let _ = mux.dispatch_control(&payload[..len]);
     }
     Ok(())
@@ -198,7 +198,7 @@ fn dispatch_data_frame(
     payload: &mut [u8; codec_protocol::MAX_FRAME_PAYLOAD],
 ) -> Result<(), trap_protocol::ShimError> {
     if let Some((stream_id, flags, len)) = read_frame(fd, STREAM_CHANNEL, header, payload)? {
-        // L3-GAP: [pm_06_exec_slot_slab_saturation_reject]: emit in-band reject when dispatch_frame errs (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}); slop: SlabSaturated swallowed, MSG_EXEC_REJECT{ENOMEM} never sent
+        // TODO: [pm_06_exec_slot_slab_saturation_reject]: emit in-band reject when dispatch_frame errs (SlabSaturated => MSG_EXEC_REJECT{ENOMEM}); slop: SlabSaturated swallowed, MSG_EXEC_REJECT{ENOMEM} never sent (deferred to L3)
         let _ = mux.dispatch_frame(stream_id, flags, &payload[..len]);
     }
     Ok(())
@@ -213,7 +213,7 @@ fn read_frame(
 ) -> Result<Option<(u32, u8, usize)>, trap_protocol::ShimError> {
     read_exact(fd, channel, header)?;
     let Ok(frame) = codec_protocol::decode_header(header) else {
-        // L3-GAP: [protocol_mux]: framing resync after a corrupt header; the frame boundary is unrecoverable until then; slop: corrupt header drops frame silently, stream desyncs without resync
+        // TODO: [protocol_mux]: framing resync after a corrupt header; the frame boundary is unrecoverable until then; slop: corrupt header drops frame silently, stream desyncs without resync (deferred to L3)
         return Ok(None);
     };
     let len = frame.len as usize;

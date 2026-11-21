@@ -21,7 +21,7 @@ impl SqliteBridge {
     }
 
     // see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
-    // L3-GAP: [rt_02_sqlite_uds_bridge_mux_delegation]: core dispatches DB_SQLITE mux streams into this bridge; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, DB_SQLITE stream never dispatched, bridge dead
+    // TODO: [rt_02_sqlite_uds_bridge_mux_delegation]: core dispatches DB_SQLITE mux streams into this bridge; kelir-interface exposes no mux-kind binder yet; slop: no mux-kind binder, DB_SQLITE stream never dispatched, bridge dead (deferred to L3)
     pub fn on_client_open(&self, stream_id: u32) -> Result<(), PluginError> {
         self.proxy.track_connection(stream_id)
     }
@@ -33,7 +33,7 @@ impl SqliteBridge {
         payload: &mut [u8],
     ) -> Result<Verdict, PluginError> {
         let _ = (stream_id, payload);
-        // L3-GAP: [rt_02_sqlite_uds_bridge_mux_delegation]: decode the SQLite client protocol on the DB_SQLITE channel and mediate statements through SqlProxyService (Patch rewrite, Drop deny) per cans/plugins/db-proxy.md; slop: SQLite bytes unmediated, statements bypass Patch rewrite and Drop deny
+        // TODO: [rt_02_sqlite_uds_bridge_mux_delegation]: decode the SQLite client protocol on the DB_SQLITE channel and mediate statements through SqlProxyService (Patch rewrite, Drop deny) per cans/plugins/db-proxy.md; slop: SQLite bytes unmediated, statements bypass Patch rewrite and Drop deny (deferred to L3)
         Ok(Verdict::Pass)
     }
 

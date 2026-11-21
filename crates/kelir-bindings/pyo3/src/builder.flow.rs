@@ -97,7 +97,7 @@ impl PyKelirBuilder {
                         .extract::<u16>()
                         .map_err(|_| PyValueError::new_err("terminal rows is not a u16"))?
                 }
-                // TODO (L3) [bindings_py]: forward wireframe_grid flags into TerminalWiring once it carries them; slop: grid tracking flags dropped at the wiring boundary.
+                // TODO: [bindings_py]: forward wireframe_grid flags into TerminalWiring once it carries them; slop: grid tracking flags dropped at the wiring boundary. (deferred to L3)
                 "wireframe_grid" => {
                     let grid = value.downcast::<PyDict>().map_err(|_| {
                         PyValueError::new_err("terminal wireframe_grid is not a dict")
@@ -415,16 +415,16 @@ impl PyKelirBuilder {
         if let Some(reason) = self.config.missing_boot_path() {
             return Err(PyValueError::new_err(reason));
         }
-        // L3-GAP: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+        // TODO: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: map the callable return value into a Verdict and marshal the ring event payload across the GIL boundary; slop: Python hook runs fire-and-forget, its verdict never gates dispatch (deferred to L3)
         let plugins: Vec<PluginRegistration> = self.plugins.clone();
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(
             std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new()),
         );
-        // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
-        // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
-        // TODO (L3) [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim
+        // TODO: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests (deferred to L3)
+        // TODO: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits (deferred to L3)
+        // TODO: [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim (deferred to L3)
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),
@@ -453,7 +453,7 @@ impl PyKelirBuilder {
             plane_wiring,
         )
         .map_err(halt)?;
-        // L3-GAP: [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported
+        // TODO: [hypervisor_driver]: re-source driver_name from the booted core session once it exposes the resolved driver.; slop: driver name stale, wrong backend reported (deferred to L3)
         Ok(PySessionHandle::from_session(
             session,
             self.driver_name.clone(),

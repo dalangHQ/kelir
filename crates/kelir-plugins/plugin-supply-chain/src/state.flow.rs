@@ -47,7 +47,7 @@ impl SupplyChainState {
 
     // see: cans/plugins/supply-chain.md#Dynamic-W^X-JIT-execution-mediation
     fn is_authorized(&self, binary_blake3: &[u8; 32]) -> bool {
-        // L3-GAP: [supply_chain_security]: catalog storage internals; resolve allowed_jit_binaries disk paths to BLAKE3 digests for the verified JIT engine catalog (Node, Bun, V8); slop: paths resolved by file name, swapped binary passes catalog
+        // TODO: [supply_chain_security]: catalog storage internals; resolve allowed_jit_binaries disk paths to BLAKE3 digests for the verified JIT engine catalog (Node, Bun, V8); slop: paths resolved by file name, swapped binary passes catalog (deferred to L3)
         self.config
             .wx_jit
             .allowed_jit_binaries
@@ -153,7 +153,7 @@ impl VsockServiceHandler for WxTokenVsockService {
         stream: Box<dyn Stream>,
         _ctx: &HandlerCtx,
     ) -> Result<(), PluginError> {
-        // L3-GAP: [supply_chain_security]: read the guest shim handshake on this channel without blocking the async worker; slop: shim handshake read blocks worker, async loop stalls
+        // TODO: [supply_chain_security]: read the guest shim handshake on this channel without blocking the async worker; slop: shim handshake read blocks worker, async loop stalls (deferred to L3)
         self.state.channel.register(peer.clone(), stream)
     }
 }

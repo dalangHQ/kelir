@@ -129,7 +129,7 @@ impl TransactionService for TransactionCtx {
                 "EPOLICY: 2PC prepare failed; participants rolled back: {err}"
             )));
         }
-        // L3-GAP: [relational_transaction]: broker upper replay rides the on_post_commit(true) driver hook per cans/plugins/transaction.md#Multi-resource-2PC-coordination; slop: broker replay never rides on_post_commit, post-commit diverges from DB
+        // TODO: [relational_transaction]: broker upper replay rides the on_post_commit(true) driver hook per cans/plugins/transaction.md#Multi-resource-2PC-coordination; slop: broker replay never rides on_post_commit, post-commit diverges from DB (deferred to L3)
         if let Err(err) = coordination.issue_sql_commit().await {
             coordination.abort_active().await?;
             return Err(err);
@@ -140,7 +140,7 @@ impl TransactionService for TransactionCtx {
     }
 
     async fn abort(&mut self, handle: TransactionScopeHandle) -> Result<(), PluginError> {
-        // L3-GAP: [rt_08_side_effect_egress_transaction_taint]: un-rollbackable L7 egress during the transaction aborts with E_TRANSACTION_TAINT before participant cleanup; slop: egress allowed mid-transaction, webhook fires before commit, irreversible
+        // TODO: [rt_08_side_effect_egress_transaction_taint]: un-rollbackable L7 egress during the transaction aborts with E_TRANSACTION_TAINT before participant cleanup; slop: egress allowed mid-transaction, webhook fires before commit, irreversible (deferred to L3)
         self.coordination().require_active(&handle)?;
         self.coordination().abort_active().await
     }

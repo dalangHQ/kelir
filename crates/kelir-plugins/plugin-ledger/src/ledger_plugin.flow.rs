@@ -151,7 +151,7 @@ impl LedgerCtx {
     }
 
     pub async fn flush(&self) -> Result<(), PluginError> {
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload; slop: encoder-only kept, metrics written to local disk, no gRPC frames sent
+        // TODO: [ta_04_otlp_grpc_metric_export_streaming]: ship the WAL flush and OTel export over gRPC/HTTP; the encoder below only shapes the payload; slop: encoder-only kept, metrics written to local disk, no gRPC frames sent (deferred to L3)
         let Some(metrics) = &self.metrics else {
             return Err(PluginError::Halt(
                 "ledger flush needs a bound MetricRegistry".into(),
@@ -182,7 +182,7 @@ impl LedgerCtx {
     }
 
     pub async fn blake3_of_producing_process(&self, _path: &Path) -> Result<String, PluginError> {
-        // TODO (L3) [telemetry_audit]: resolve the producing-process digest from the live per-process receipt; slop: digest from path string, receipt never consulted, wrong binary attributed
+        // TODO: [telemetry_audit]: resolve the producing-process digest from the live per-process receipt; slop: digest from path string, receipt never consulted, wrong binary attributed (deferred to L3)
         Err(PluginError::Halt(
             "ledger blake3_of_producing_process needs the live receipt".into(),
         ))
@@ -201,7 +201,7 @@ impl LedgerCtx {
         } else {
             crate::wal_ledger::merkle_root(&leaves)
         };
-        // TODO (L3) [telemetry_audit]: sign the receipt JWS with the host session Ed25519 key; slop: receipt ships with an empty JWS, unverifiable.
+        // TODO: [telemetry_audit]: sign the receipt JWS with the host session Ed25519 key; slop: receipt ships with an empty JWS, unverifiable. (deferred to L3)
         Ok(FinalReceipt {
             merkle_root: kelir_interface::hex_codec::encode_hex(&root),
             signed_jws: String::new(),
@@ -234,7 +234,7 @@ impl LedgerCtx {
     }
 
     pub async fn get_causal_delta_from_parent(&self) -> Result<CausalDelta, PluginError> {
-        // TODO (L3) [ar_09_causal_delta_aggregation_merkle]: assemble the delta from the fork StorageDelta plus the parent ExecutionReceipt via compute_ledger::compute_causal_delta.; slop: delta fabricated, merkle aggregation skipped
+        // TODO: [ar_09_causal_delta_aggregation_merkle]: assemble the delta from the fork StorageDelta plus the parent ExecutionReceipt via compute_ledger::compute_causal_delta.; slop: delta fabricated, merkle aggregation skipped (deferred to L3)
         Err(PluginError::Halt(
             "ledger get_causal_delta_from_parent needs the fork storage delta".into(),
         ))
@@ -297,7 +297,7 @@ impl LedgerPlugin {
     }
 
     pub fn export_metrics(&self) -> Result<Vec<u8>, OtlpError> {
-        // TODO (L3) [ta_04_otlp_grpc_metric_export_streaming]: ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload; slop: snapshot encoder-only, OTLP never sent, collector receives nothing
+        // TODO: [ta_04_otlp_grpc_metric_export_streaming]: ship the encoded snapshot over OTLP gRPC/HTTP; the encoder below only shapes the payload; slop: snapshot encoder-only, OTLP never sent, collector receives nothing (deferred to L3)
         let Some(snapshot) = self.snapshot_metrics() else {
             return Err(OtlpError::NotImplemented(
                 "ledger export_metrics needs a bound MetricRegistry".to_string(),

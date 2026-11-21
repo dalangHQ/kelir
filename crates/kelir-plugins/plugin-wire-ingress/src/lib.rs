@@ -3,7 +3,7 @@
 
 use kelir_interface::protocol_wire::StreamKind;
 
-// L3-GAP: [wire_plane]: tests/test_parking.rs per cans/artifacts/config/project-structure.txt; slop: test_parking.rs missing, park/suspend path untested
+// TODO: [wire_plane]: tests/test_parking.rs per cans/artifacts/config/project-structure.txt; slop: test_parking.rs missing, park/suspend path untested (deferred to L3)
 #[path = "ingress_state.flow.rs"]
 pub mod ingress_state;
 #[path = "ingress_state.run.rs"]

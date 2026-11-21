@@ -103,7 +103,7 @@ pub fn parse_request(args: &[String]) -> Result<EmergencyRequest, CliError> {
 
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let request = parse_request(args)?;
-    // TODO (L3) [governance_tools]: halt active sessions and block new boots globally (kill-switch) or open a timed, MFA-gated override (break-glass).; slop: emergency Ok, global halt never engages and the override never expires
-    // TODO (L3) [governance_tools]: bind the kill-switch / break-glass request to the runtime halt state and the OCSF audit event; slop: emergency exits without halting, sessions keep running
-    Err(format!("emergency: {} (L3)", request.action.name()).into())
+    // TODO: [governance_tools]: halt active sessions and block new boots globally (kill-switch) or open a timed, MFA-gated override (break-glass).; slop: emergency Ok, global halt never engages and the override never expires (deferred to L3)
+    // TODO: [governance_tools]: bind the kill-switch / break-glass request to the runtime halt state and the OCSF audit event; slop: emergency exits without halting, sessions keep running (deferred to L3)
+ Err(format!("emergency: {}", request.action.name()).into())
 }

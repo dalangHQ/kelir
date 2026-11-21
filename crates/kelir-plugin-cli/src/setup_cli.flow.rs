@@ -62,7 +62,7 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             let report = probe_host();
             if !report.is_ready() {
                 return Err(SetupError::NotImplemented(format!(
-                    "setup step hw-lock: host probes incomplete (L3): {}",
+ "setup step hw-lock: host probes incomplete: {}",
                     report.pending().join("; ")
                 )));
             }
@@ -71,12 +71,12 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             // see: cans/15-operations.md#Developer-CLI
             kelir_interface::driver_interface::verify_hw_lockfile()
                 .map_err(|err| SetupError::Io(format!("hw-lock: verification failed: {err}")))?;
-            // L3-GAP: [hypervisor_driver]: enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.; slop: /dev/kvm left world-accessible, 0660 never enforced
+            // TODO: [hypervisor_driver]: enforce 0660 perms on /dev/kvm (group kelir) once privileged hardening lands.; slop: /dev/kvm left world-accessible, 0660 never enforced (deferred to L3)
             Ok(())
         }
-        // L3-GAP: [hypervisor_driver]: implement the InstallShims, AttachLsm, and QuarantineCredentials steps.; slop: setup Ok, shims/LSM/credentials steps skipped
+        // TODO: [hypervisor_driver]: implement the InstallShims, AttachLsm, and QuarantineCredentials steps.; slop: setup Ok, shims/LSM/credentials steps skipped (deferred to L3)
         _ => Err(SetupError::NotImplemented(format!(
-            "setup step {} (L3)",
+ "setup step {}",
             step.name()
         ))),
     }

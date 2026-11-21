@@ -184,11 +184,11 @@ const WATCHDOG_PENDING: &str =
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const VETO_PENDING: &str =
-    "veto firing evaluation needs the lifecycle consult (L3); registration and callback executed";
+ "veto firing evaluation needs the lifecycle consult; registration and callback executed";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const HEARTBEAT_PENDING: &str =
-    "heartbeat observation evaluation needs the telemetry dispatch loop (L3)";
+ "heartbeat observation evaluation needs the telemetry dispatch loop";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const PROCESS_EXIT_PENDING: &str =
@@ -257,7 +257,7 @@ const HOOK_TRACE_RINGS: [&str; 8] = [
 ];
 
 // see: cans/15-operations.md#--hook-trace-coverage
-// TODO (L3) [attestation_receipts]: per-ring span collection exists only for Trap dispatch today; the gate asserts the vector suite covers every ring so spans can be produced for each once dispatch lands.; slop: rings without live spans pass the gate on vector coverage alone.
+// TODO: [attestation_receipts]: per-ring span collection exists only for Trap dispatch today; the gate asserts the vector suite covers every ring so spans can be produced for each once dispatch lands.; slop: rings without live spans pass the gate on vector coverage alone. (deferred to L3)
 fn coarse_ring(tag: &str) -> Option<&'static str> {
     match tag {
         "trap" | "process-exit" | "signal" | "fork" => Some("trap"),
@@ -747,7 +747,7 @@ fn assert_swarm_mesh_coverage(vectors: &[VectorCase]) -> Result<(), String> {
 }
 
 // see: cans/15-operations.md#--ocsf-coverage
-// TODO (L3) [telemetry_audit]: map every EventBus security event to an OCSF 1.x class id through the plugin-ledger OcsfClassId mapper (Track D); the gate asserts the containment vector and the spec anchor only.; slop: OCSF coverage passes on vector presence while events carry no class id.
+// TODO: [telemetry_audit]: map every EventBus security event to an OCSF 1.x class id through the plugin-ledger OcsfClassId mapper (Track D); the gate asserts the containment vector and the spec anchor only.; slop: OCSF coverage passes on vector presence while events carry no class id. (deferred to L3)
 const OCSF_CONTAINMENT_VECTOR: &str = "plugin-builder-host-containment-breach-only";
 
 // see: cans/15-operations.md#--ocsf-coverage
@@ -772,13 +772,13 @@ fn assert_ocsf_coverage(vectors: &[VectorCase]) -> Result<(), String> {
         );
     }
     println!(
-        "parity: ocsf coverage OK (containment vector + OCSF 1.x mapping anchor present; live class-id mapping pending (L3))"
+ "parity: ocsf coverage OK (containment vector + OCSF 1.x mapping anchor present; live class-id mapping pending)"
     );
     Ok(())
 }
 
 // see: cans/15-operations.md#--adversarial-cve-coverage
-// TODO (L3) [hypervisor_driver]: replay CVE-class exploit demos against the guest and Class 2 drivers from kelir-integration; the gate asserts the spec anchor and the replay crate only.; slop: CVE coverage passes on crate presence while no exploit demo ever replays.
+// TODO: [hypervisor_driver]: replay CVE-class exploit demos against the guest and Class 2 drivers from kelir-integration; the gate asserts the spec anchor and the replay crate only.; slop: CVE coverage passes on crate presence while no exploit demo ever replays. (deferred to L3)
 fn assert_adversarial_cve_coverage() -> Result<(), String> {
     let Ok(root) = crate::workspace_root() else {
         return Err(
@@ -801,7 +801,7 @@ fn assert_adversarial_cve_coverage() -> Result<(), String> {
         );
     }
     println!(
-        "parity: adversarial-cve coverage OK (spec anchor + kelir-integration present; live CVE replay pending (L3))"
+ "parity: adversarial-cve coverage OK (spec anchor + kelir-integration present; live CVE replay pending)"
     );
     Ok(())
 }

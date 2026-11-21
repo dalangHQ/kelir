@@ -82,27 +82,27 @@ impl SharedContainerService {
 
     // see: cans/artifacts/code/container-service.rs#configure_runtime
     pub(crate) async fn configure_rootless_runtime(&self) -> Result<(), PluginError> {
-        // L3-GAP: [plugin_engine]: configure the rootless Podman and crun runtime environments inside the microVM; slop: Podman/crun env unconfigured, runtime fails or runs unconfined
+        // TODO: [plugin_engine]: configure the rootless Podman and crun runtime environments inside the microVM; slop: Podman/crun env unconfigured, runtime fails or runs unconfined (deferred to L3)
         Ok(())
     }
 
     // see: cans/artifacts/code/container-service.rs#mount_scratch
     pub(crate) async fn mount_scratch_device(&self, _scratch: &Path) -> Result<(), PluginError> {
-        // L3-GAP: [plugin_engine]: mount the ephemeral scratch device at /var/lib/containers; slop: scratch device unmounted, container writes land on host disk
+        // TODO: [plugin_engine]: mount the ephemeral scratch device at /var/lib/containers; slop: scratch device unmounted, container writes land on host disk (deferred to L3)
         Ok(())
     }
 
     // see: cans/artifacts/code/container-service.rs#ingest_image
     pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
-        // L3-GAP: [plugin_engine]: delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden; slop: in-process OCI parsing, forbidden path, ingest bypasses kelir-pack
+        // TODO: [plugin_engine]: delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden; slop: in-process OCI parsing, forbidden path, ingest bypasses kelir-pack (deferred to L3)
         Err(PluginError::Halt(
-            "TODO (L3): container ingest_image delegates to kelir-pack".into(),
+ "deferred to L3: container ingest_image delegates to kelir-pack".into(),
         ))
     }
 
     // see: cans/plugins/container.md#Non-nested-OCI-container-execution
     pub(crate) async fn build_cgroup_delegation_hierarchy(&self) -> Result<(), PluginError> {
-        // L3-GAP: [plugin_engine]: construct the synthetic cgroup v2 delegation hierarchy; slop: cgroup hierarchy unbuilt, container escapes CPU/memory limits
+        // TODO: [plugin_engine]: construct the synthetic cgroup v2 delegation hierarchy; slop: cgroup hierarchy unbuilt, container escapes CPU/memory limits (deferred to L3)
         Ok(())
     }
 
@@ -198,7 +198,7 @@ impl ContainerPlugin {
         kind: IdMapKind,
         event: &TrapEvent,
     ) -> Result<Verdict, PluginError> {
-        // L3-GAP: [plugin_engine]: subuid/subgid range resolution against the guest user policy beyond the pinned containment check; slop: subuid/subgid beyond pin unchecked, guest uid escapes containment
+        // TODO: [plugin_engine]: subuid/subgid range resolution against the guest user policy beyond the pinned containment check; slop: subuid/subgid beyond pin unchecked, guest uid escapes containment (deferred to L3)
         let Ok(allocations) = parse_id_map_allocations(&event.argv) else {
             return Ok(reject_eperm(
                 "malformed newuidmap/newgidmap allocation request",
@@ -245,7 +245,7 @@ impl ContainerPlugin {
                 return reject_eperm("raw device mount request");
             }
         }
-        // L3-GAP: [plugin_engine]: mount policy table for the OCI runtime config path (capability sets, device allowlist); slop: mount policy table missing, capabilities/devices unfiltered at runtime
+        // TODO: [plugin_engine]: mount policy table for the OCI runtime config path (capability sets, device allowlist); slop: mount policy table missing, capabilities/devices unfiltered at runtime (deferred to L3)
         Verdict::Pass
     }
 }
@@ -279,7 +279,7 @@ impl LifecycleParticipant for ContainerPlugin {
             let (subuid, subgid) = resolve_unprivileged_ranges(&owner)?;
             self.service.pin_guest_id_map(subuid, subgid).await?;
         }
-        // L3-GAP: [plugin_engine]: apply the pinned ranges through the host idmap configuration in StorageConfig; slop: pinned ranges never applied to idmap, host ids leak into guest
+        // TODO: [plugin_engine]: apply the pinned ranges through the host idmap configuration in StorageConfig; slop: pinned ranges never applied to idmap, host ids leak into guest (deferred to L3)
         Ok(())
     }
 }
@@ -307,7 +307,7 @@ impl KelirPlugin for ContainerPlugin {
 
     // see: cans/plugins/container.md#UID/GID-mapping-isolation
     fn default_scope(&self) -> MountScope {
-        // L3-GAP: [pe_20_same_path_different_identity_never_matches]: gate-2 canonical (st_dev, st_ino, binary_blake3) identity per cans/11-protocol.md#Trap-fast-path; slop: path string matched, swapped (dev,ino,blake3) passes as trusted git
+        // TODO: [pe_20_same_path_different_identity_never_matches]: gate-2 canonical (st_dev, st_ino, binary_blake3) identity per cans/11-protocol.md#Trap-fast-path; slop: path string matched, swapped (dev,ino,blake3) passes as trusted git (deferred to L3)
         MountScope::default().with_binaries([
             NEWUIDMAP,
             NEWGIDMAP,

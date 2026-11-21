@@ -28,13 +28,13 @@ impl PyFusedCallback {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: marshal the ring event payload into the single GIL crossing so every callable of the chain receives the ring event object; slop: ring event payload stays unmarshaled, callables receive tag and ordinal only
+    // TODO: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: marshal the ring event payload into the single GIL crossing so every callable of the chain receives the ring event object; slop: ring event payload stays unmarshaled, callables receive tag and ordinal only (deferred to L3)
     fn marshal_chain_event(&self, _ring: TrampolineRing) -> Result<Verdict, PluginError> {
         Ok(Verdict::Pass)
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: copy back the writable bytearray Py write hooks mutate during the single GIL traversal and map the callable return value into the folded Verdict; slop: Python hook runs fire-and-forget, its verdict never gates dispatch
+    // TODO: [bp_03_python_fused_trampoline_single_crossing_chained_hooks]: copy back the writable bytearray Py write hooks mutate during the single GIL traversal and map the callable return value into the folded Verdict; slop: Python hook runs fire-and-forget, its verdict never gates dispatch (deferred to L3)
     fn copyback_chain_buffers(
         &self,
         _ring: TrampolineRing,

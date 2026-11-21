@@ -1,7 +1,7 @@
 // see: cans/plugins/mcp.md#Plugin-mcp
 #![forbid(unsafe_code)]
 
-// L3-GAP: [governance_tools]: tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt; slop: mcp tests/examples missing, console bridging untested, frames unclassified
+// TODO: [governance_tools]: tests/test_mcp_mapping.rs + examples/mcp-stdio.rs per cans/artifacts/config/project-structure.txt; slop: mcp tests/examples missing, console bridging untested, frames unclassified (deferred to L3)
 
 #[path = "ast.flow.rs"]
 pub mod ast;

@@ -64,7 +64,7 @@ impl PromptResponderService {
 
     // see: cans/plugins/terminal-guard.md#Invariants-and-policy-(terminal-guard)
     pub fn match_rule(&self, _text: &[u8]) -> Option<usize> {
-        // L3-GAP: [terminal_guard_prompt_match]: match shadow-stripped text against the plugin-private regex set and gate on verify_foreground pgid ownership; slop: ANSI escapes reach the regex, wrong process answers the prompt
+        // TODO: [terminal_guard_prompt_match]: match shadow-stripped text against the plugin-private regex set and gate on verify_foreground pgid ownership; slop: ANSI escapes reach the regex, wrong process answers the prompt (deferred to L3)
         None
     }
 
@@ -124,7 +124,7 @@ impl ConsoleInterposer for TerminalGuardPlugin {
     async fn on_console_output(&self, _port: u32, chunk: &[u8]) -> Result<Vec<u8>, PluginError> {
         // see: cans/plugins/terminal-guard.md#Invariants-and-policy-(terminal-guard)
         if self.service.match_rule(chunk).is_some() {
-            // TODO (L3) [terminal_plane]: write the matched rule action bytes to Port 0 and return the Pass verdict; slop: matched prompt rules never fire their action bytes; prompts pass through unguarded.
+            // TODO: [terminal_plane]: write the matched rule action bytes to Port 0 and return the Pass verdict; slop: matched prompt rules never fire their action bytes; prompts pass through unguarded. (deferred to L3)
             return Ok(chunk.to_vec());
         }
         Ok(chunk.to_vec())

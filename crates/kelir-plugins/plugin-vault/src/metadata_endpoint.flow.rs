@@ -104,7 +104,7 @@ impl MetadataEndpoint {
             name: name.into(),
             ttl_seconds: self.config.token_ttl_seconds,
         };
-        // L3-GAP: [gv_03_audience_locking_validation]: parse ttl_seconds and audience query parameters per cans/plugins/vault.md; slop: audience unparsed, query pollutes name, wildcard token issued
+        // TODO: [gv_03_audience_locking_validation]: parse ttl_seconds and audience query parameters per cans/plugins/vault.md; slop: audience unparsed, query pollutes name, wildcard token issued (deferred to L3)
         match self.broker.issue(&token_request).await {
             Ok(token) => ok_response(&token),
             Err(err) => error_response(err.errno().as_str(), err.reason()),
@@ -161,13 +161,13 @@ impl VaultPlugin {
         crate::boot_diversion::ImdsBootDiversion::new(self.config.metadata_vsock_port)
     }
 
-    // TODO (L3) [wire_plane]: install the boot diversion in the wire plane once a plugin-owned diversion sink exists; core carries no IMDS route; slop: guest metadata requests reach the real cloud IMDS endpoint instead of the vault diversion.
+    // TODO: [wire_plane]: install the boot diversion in the wire plane once a plugin-owned diversion sink exists; core carries no IMDS route; slop: guest metadata requests reach the real cloud IMDS endpoint instead of the vault diversion. (deferred to L3)
     pub fn register_boot_diversion(
         &self,
     ) -> Result<crate::boot_diversion::ImdsBootDiversion, PluginError> {
         let _ = self.boot_diversion();
         Err(PluginError::Halt(
-            "vault IMDS boot diversion install is TODO (L3)".into(),
+ "vault IMDS boot diversion install is deferred to L3".into(),
         ))
     }
 
@@ -178,7 +178,7 @@ impl VaultPlugin {
     }
 
     // see: cans/plugins/vault.md#Metadata-service-(vault)
-    // L3-GAP: [governance_vault]: no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands; slop: guest CID never bound, any vsock peer passes as session
+    // TODO: [governance_vault]: no L2 boot identity carries a vsock guest CID (VmConfig and LifecycleCtx lack it); core binds it once the vsock transport lands; slop: guest CID never bound, any vsock peer passes as session (deferred to L3)
     fn is_session_peer(&self, peer: &VsockPeer) -> bool {
         self.session_guest_cid.is_some_and(|cid| cid == peer.cid)
     }
@@ -187,7 +187,7 @@ impl VaultPlugin {
     fn reject_peer(&self) -> PluginError {
         match self.session_guest_cid {
             None => PluginError::Halt(
-                "metadata service: session guest CID unbound at boot; core vsock CID wiring pending (L3)"
+ "metadata service: session guest CID unbound at boot; core vsock CID wiring pending"
                     .into(),
             ),
             Some(_) => PluginError::Halt("ECONNREFUSED: metadata service: non-session vsock peer".into()),
@@ -195,7 +195,7 @@ impl VaultPlugin {
     }
 
     // see: cans/02-plugin-model.md#Latency-ceiling
-    // L3-GAP: [governance_vault]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, metadata worker stalls on unread stream
+    // TODO: [governance_vault]: replace the tracked blocking thread with pollable stream reads once the transport exposes readiness; slop: blocking thread kept, metadata worker stalls on unread stream (deferred to L3)
     fn serve_peer_off_worker(
         &self,
         peer: &VsockPeer,
@@ -410,7 +410,7 @@ fn http_response(status: &str, body: &str) -> Vec<u8> {
     .into_bytes()
 }
 
-// L3-GAP: [governance_vault]: replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only; slop: hand-rolled escaping ships, crafted value breaks JSON string
+// TODO: [governance_vault]: replace with the workspace JSON encoder once dependencies permit; minimal escaping skeleton only; slop: hand-rolled escaping ships, crafted value breaks JSON string (deferred to L3)
 fn json_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
     for ch in value.chars() {
