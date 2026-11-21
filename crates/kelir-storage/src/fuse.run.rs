@@ -71,6 +71,7 @@ impl FuseOps for RealFuseOps {
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: fill lock payload from host flock grant; conflicts reply EWOULDBLOCK; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
         // TODO (L3) [storage_plane]: dispatch the FUSE request through the pipeline engine and marshal the reply per opcode.; slop: FUSE requests never dispatched, every opcode returns the stub reply.
+        // TODO (L3) [storage_plane]: mount the FUSE filesystem with the default_permissions flag so the guest kernel resolves permission checks in-kernel instead of round-tripping every lookup into the FUSE dispatch loop, averting the guest clone deadlock.; slop: default_permissions omitted, every access check re-enters the single-threaded FUSE loop and a guest clone blocks forever on it.
         Err(PluginError::Halt(
             "TODO (L3): FuseOps::dispatch needs the per-opcode pipeline dispatch and FUSE reply marshalling".into(),
         ))
