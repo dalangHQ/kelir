@@ -377,11 +377,11 @@ impl ConsoleInterposer for ToolGuardPlugin {
             }
             // TODO: [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error (deferred to L3)
             Verdict::Suspend { .. } => Err(PluginError::Halt(
- "tool-guard approval suspend pending".into(),
+                "tool-guard approval suspend pending".into(),
             )),
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
- "tool-guard verdict mapping pending".into(),
+                "tool-guard verdict mapping pending".into(),
             )),
         }
     }

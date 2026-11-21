@@ -4,7 +4,7 @@
 use crate::cli_error::CliError;
 pub fn run() -> Result<(), CliError> {
     Err(
- "manifest: not implemented: AST manifest extraction per cans/02-plugin-model.md#Auto-generated-manifest-contract"
+        "manifest: not implemented: AST manifest extraction per cans/02-plugin-model.md#Auto-generated-manifest-contract"
             .into(),
     )
 }

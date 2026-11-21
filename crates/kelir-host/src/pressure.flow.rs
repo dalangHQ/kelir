@@ -12,7 +12,7 @@ pub(crate) fn subscribe_pressure(
     // TODO: [hd_16_virtio_balloon_pressure_reclaim]: subscribe to the kernel pressure source (cgroup v2 memory.pressure via epoll/io_uring, DISPATCH_SOURCE_TYPE_MEMORYPRESSURE on macOS) and store the subscription in watcher; slop: pressure ignored, no madvise reclaim, balloon unadjusted (deferred to L3)
     let _ = watcher;
     Err(PluginError::Halt(
- "deferred to L3 [hd_16_virtio_balloon_pressure_reclaim]: HostPlane:subscribe_pressure; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
+        "deferred to L3 [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::subscribe_pressure; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
     ))
 }
 
@@ -24,6 +24,6 @@ pub(crate) fn poll_pressure_events(
     // TODO: [hd_16_virtio_balloon_pressure_reclaim]: drain kernel pressure events into PressureEvents and update pressure_level; slop: pressure ignored, no madvise reclaim, balloon unadjusted (deferred to L3)
     let _ = watcher;
     Err(PluginError::Halt(
- "deferred to L3 [hd_16_virtio_balloon_pressure_reclaim]: HostPlane:poll_pressure_events; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
+        "deferred to L3 [hd_16_virtio_balloon_pressure_reclaim]: HostPlane::poll_pressure_events; slop: pressure ignored, no madvise reclaim, balloon unadjusted".into(),
     ))
 }

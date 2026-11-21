@@ -45,7 +45,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     // TODO: [telemetry_audit]: emit human-readable findings and timeline markdown from the session audit log.; slop: report Ok, findings never rendered from the audit log (deferred to L3)
     // TODO: [telemetry_audit]: render the session findings and timeline markdown from the ledger audit log; slop: report exits without findings, the audit log is never read (deferred to L3)
     Err(format!(
- "report: emitting findings and timeline markdown for session `{}`",
+        "report: emitting findings and timeline markdown for session `{}`",
         request.session
     )
     .into())

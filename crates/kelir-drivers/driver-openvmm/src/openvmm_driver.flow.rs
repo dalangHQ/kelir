@@ -24,7 +24,7 @@ impl OpenVmmDriver {
     fn create_partition(&mut self) -> Result<(), VmmError> {
         // TODO: [hd_07_openvmm_apic_restore_sequence]: create the WHP partition via WHvCreatePartition and commit Local APIC state before the TSC deadline; slop: TSC deadline set before APIC commit, restore order never logged (deferred to L3)
         Err(VmmError::Unsupported(
- "openvmm boot: WHvCreatePartition".into(),
+            "openvmm boot: WHvCreatePartition".into(),
         ))
     }
 }
@@ -65,7 +65,7 @@ impl VmmDriver for OpenVmmDriver {
                 offset_bytes: self.entropy_offset,
             }),
             _ => Err(VmmError::Unsupported(
- "openvmm entropy_position: host entropy stream is not position-trackable"
+                "openvmm entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }
@@ -83,7 +83,7 @@ impl VmmDriver for OpenVmmDriver {
                 Ok(())
             }
             _ => Err(VmmError::Unsupported(
- "openvmm restore_entropy_position: host entropy stream is not position-trackable"
+                "openvmm restore_entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }

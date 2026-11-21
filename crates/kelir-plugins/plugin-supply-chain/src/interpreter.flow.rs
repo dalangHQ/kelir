@@ -42,7 +42,7 @@ pub fn attest_busybox_applet(argv0: &str) -> Result<(), PluginError> {
     let _ = argv0;
     // TODO: [supply_chain_security]: attest the BusyBox multi-call argv[0] applet binary before preserving it; slop: an unattested applet binary keeps its argv[0], a swapped BusyBox runs an untrusted applet. (deferred to L3)
     Err(PluginError::Halt(
- "deferred to L3: BusyBox applet argv[0] attestation pending".into(),
+        "deferred to L3: BusyBox applet argv[0] attestation pending".into(),
     ))
 }
 
@@ -170,6 +170,6 @@ pub fn unwrap_interpreter(event: &TrapEvent) -> UnwrappedExec {
 pub fn resolve_shebang(path: &str) -> Result<String, PluginError> {
     // TODO: [pe_17_shell_c_command_unwrap_drops_git_push_force]: read the script shebang and resolve the interpreter path; slop: script interpreters never resolve from the shebang; wrapped execs pass without matching the policy row. (deferred to L3)
     Err(PluginError::Halt(format!(
- "shebang resolution pending: {path}"
+        "shebang resolution pending: {path}"
     )))
 }

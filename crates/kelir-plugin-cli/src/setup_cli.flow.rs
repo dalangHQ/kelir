@@ -62,7 +62,7 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
             let report = probe_host();
             if !report.is_ready() {
                 return Err(SetupError::NotImplemented(format!(
- "setup step hw-lock: host probes incomplete: {}",
+                    "setup step hw-lock: host probes incomplete: {}",
                     report.pending().join("; ")
                 )));
             }
@@ -76,7 +76,7 @@ pub fn run_step(step: SetupStep) -> Result<(), SetupError> {
         }
         // TODO: [hypervisor_driver]: implement the InstallShims, AttachLsm, and QuarantineCredentials steps.; slop: setup Ok, shims/LSM/credentials steps skipped (deferred to L3)
         _ => Err(SetupError::NotImplemented(format!(
- "setup step {}",
+            "setup step {}",
             step.name()
         ))),
     }

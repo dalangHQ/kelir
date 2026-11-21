@@ -49,5 +49,5 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         row.runner_pid,
         relay.display()
     );
- Err("deferred to L3 [lc_15_detached_session_reconnect_relay]: kelir attach relay.sock connect; slop: attach Ok without relay.sock ping/pong round-trip".into())
+    Err("deferred to L3 [lc_15_detached_session_reconnect_relay]: kelir attach relay.sock connect; slop: attach Ok without relay.sock ping/pong round-trip".into())
 }

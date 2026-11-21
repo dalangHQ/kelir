@@ -268,7 +268,7 @@ pub fn ast_parse_sql(sql: &str) -> Result<(), PluginError> {
     let _ = sql;
     // TODO: [relational_transaction]: parse the SQL statement through the libpgquery C-FFI AST classifier; slop: SQL passes unparsed, COPY PROGRAM and search_path evasion ride the regex path. (deferred to L3)
     Err(PluginError::Halt(
- "deferred to L3: libpgquery AST parse pending".into(),
+        "deferred to L3: libpgquery AST parse pending".into(),
     ))
 }
 
@@ -569,7 +569,7 @@ impl StreamFrameSink for DbSqliteStreamSink {
             }
             Verdict::Abort { reason } => Err(PluginError::Halt(reason)),
             _ => Err(PluginError::Halt(
- "db-proxy stream suspend/patch verdict pending".into(),
+                "db-proxy stream suspend/patch verdict pending".into(),
             )),
         }
     }

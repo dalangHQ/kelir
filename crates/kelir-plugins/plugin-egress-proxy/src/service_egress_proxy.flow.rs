@@ -280,7 +280,7 @@ impl EgressProxy {
         let _ = host;
         // TODO: [wire_plane]: guard NO_PROXY against L4 spoofing so a spoofed bypass entry cannot route a proxied host direct; slop: a spoofed NO_PROXY entry bypasses the proxy, direct egress escapes policy. (deferred to L3)
         Err(EgressProxyError::Dial(
- "egress proxy NO_PROXY spoof guard is deferred to L3".into(),
+            "egress proxy NO_PROXY spoof guard is deferred to L3".into(),
         ))
     }
 }
@@ -294,7 +294,7 @@ impl EgressProxyService for EgressProxy {
         // TODO: [wp_13_upstream_dial_proxy_chain_auth]: open the raw L4 splice to the selected upstream proxy, run the CONNECT/SOCKS5 handshake over it, and return the spliced stream; no upstream dial exists yet; slop: guest performs the CONNECT handshake instead of the host netstack. (deferred to L3)
         // TODO: [wire_plane]: trap obfs4proxy/snowflake-client bridge dials before they leave the host; slop: a Tor pluggable transport dials out unexamined, Tor traffic escapes the egress proxy. (deferred to L3)
         Err(EgressProxyError::Dial(
- "egress proxy upstream dial is deferred to L3".into(),
+            "egress proxy upstream dial is deferred to L3".into(),
         ))
     }
 }

@@ -78,7 +78,7 @@ impl HandshakeDriver {
 fn decode_peer_handshake(buf: &[u8]) -> Result<PeerSessionHandshake, PluginError> {
     // TODO: [pm_14_mesh_rejects_foreign_trust_domain_peer]: decode the Channel 0 PeerSessionHandshake per cans/11-protocol.md#Wire-framing; slop: handshake decode stays Err Halt, identity never checked, foreign peer unchallenged (deferred to L3)
     Err(PluginError::Halt(format!(
- "peer handshake decode pending: {} bytes",
+        "peer handshake decode pending: {} bytes",
         buf.len()
     )))
 }

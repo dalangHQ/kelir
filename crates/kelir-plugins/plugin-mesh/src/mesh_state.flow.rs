@@ -247,7 +247,7 @@ impl MeshPlugin {
         }
         // TODO: [protocol_mux]: validate the mTLS handshake framing bytes across hypervisor boundaries; slop: framing unvalidated, malformed handshake bytes accepted as mTLS (deferred to L3)
         Err(PluginError::Halt(
- "mTLS handshake validation pending".into(),
+            "mTLS handshake validation pending".into(),
         ))
     }
 
@@ -384,11 +384,11 @@ impl MeshCtx {
         let peers = self.state.lock_peers()?;
         let Some(record) = peers.last() else {
             return Err(PluginError::Halt(format!(
- "mesh peer publish pending: shard {shard_id} has no connected peer stream"
+                "mesh peer publish pending: shard {shard_id} has no connected peer stream"
             )));
         };
         Err(PluginError::Halt(format!(
- "mesh peer publish pending: shard {shard_id} to peer {}:{} ({}, {} call hops, {})",
+            "mesh peer publish pending: shard {shard_id} to peer {}:{} ({}, {} call hops, {})",
             record.cid,
             record.port,
             match &record.spiffe_id {
@@ -408,7 +408,7 @@ impl MeshCtx {
         // TODO: [protocol_mux]: await the winning shard announcement on the mesh listener streams; slop: no listener wait, winning shard never awaited, election never settles (deferred to L3)
         let peers = self.state.lock_peers()?;
         Err(PluginError::Halt(format!(
- "mesh winner election pending: {} peers connected",
+            "mesh winner election pending: {} peers connected",
             peers.len()
         )))
     }

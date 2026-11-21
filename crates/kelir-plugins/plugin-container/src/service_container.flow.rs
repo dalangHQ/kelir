@@ -96,7 +96,7 @@ impl SharedContainerService {
     pub(crate) async fn ingest_cached_image(&self, _tarball: &Path) -> Result<String, PluginError> {
         // TODO: [plugin_engine]: delegate ingestion to the external kelir-pack binary; in-process OCI parsing is forbidden; slop: in-process OCI parsing, forbidden path, ingest bypasses kelir-pack (deferred to L3)
         Err(PluginError::Halt(
- "deferred to L3: container ingest_image delegates to kelir-pack".into(),
+            "deferred to L3: container ingest_image delegates to kelir-pack".into(),
         ))
     }
 

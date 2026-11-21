@@ -277,7 +277,7 @@ impl TlsDecryptor for HostKeyringDecryptor {
     fn decrypt(&self, _record: &[u8]) -> Result<Vec<u8>, L7ParseError> {
         // TODO: [wire_plane]: fetch the session key from the host keyring and decrypt the TLS record; no keyring read exists yet.; slop: TLS records pass through undecrypted, L7 rules blind (deferred to L3)
         Err(L7ParseError::TlsUnavailable(
- "host keyring tls decrypt is deferred to L3".into(),
+            "host keyring tls decrypt is deferred to L3".into(),
         ))
     }
 }

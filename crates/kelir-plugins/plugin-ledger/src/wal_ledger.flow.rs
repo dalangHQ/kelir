@@ -434,7 +434,7 @@ impl WitnessClient {
         let _ = head;
         // TODO: [telemetry_audit]: POST the signed tree head to the witness endpoint and verify the returned cosignature; slop: witness never contacted, STH unverified. (deferred to L3)
         Err(PluginError::Halt(
- "witness cosigning transport pending".into(),
+            "witness cosigning transport pending".into(),
         ))
     }
 }
@@ -594,7 +594,7 @@ impl LedgerSink for LocalMerkleDbSink {
         // TODO: [ta_03_merkle_wal_survives_guest_rollback]: append record.pack() to the LMDB WAL, fsync per reap, sign the leaf, then advance the chain head to record.leaf_hash(); slop: no WAL append, rollback constancy passes vacuously on empty store (deferred to L3)
         let _ = record;
         Err(PluginError::Halt(
- "LocalMerkleDbSink LMDB append".into(),
+            "LocalMerkleDbSink LMDB append".into(),
         ))
     }
 }

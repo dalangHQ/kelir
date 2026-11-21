@@ -26,6 +26,6 @@ pub(crate) fn arm_host_reaper(parent_pid: u32) -> Result<(), PluginError> {
     // TODO: [lc_12_host_reaper_pdeathsig_enforcement]: arm the platform reaper (pdeathsig / kqueue NOTE_EXIT / Job Object) on parent_pid; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL (deferred to L3)
     let _ = parent_pid;
     Err(PluginError::Halt(
- "deferred to L3 [lc_12_host_reaper_pdeathsig_enforcement]: HostPlane:arm_host_reaper; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL".into(),
+        "deferred to L3 [lc_12_host_reaper_pdeathsig_enforcement]: HostPlane::arm_host_reaper; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL".into(),
     ))
 }

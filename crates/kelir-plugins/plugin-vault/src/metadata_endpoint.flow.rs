@@ -167,7 +167,7 @@ impl VaultPlugin {
     ) -> Result<crate::boot_diversion::ImdsBootDiversion, PluginError> {
         let _ = self.boot_diversion();
         Err(PluginError::Halt(
- "vault IMDS boot diversion install is deferred to L3".into(),
+            "vault IMDS boot diversion install is deferred to L3".into(),
         ))
     }
 
@@ -187,7 +187,7 @@ impl VaultPlugin {
     fn reject_peer(&self) -> PluginError {
         match self.session_guest_cid {
             None => PluginError::Halt(
- "metadata service: session guest CID unbound at boot; core vsock CID wiring pending"
+                "metadata service: session guest CID unbound at boot; core vsock CID wiring pending"
                     .into(),
             ),
             Some(_) => PluginError::Halt("ECONNREFUSED: metadata service: non-session vsock peer".into()),

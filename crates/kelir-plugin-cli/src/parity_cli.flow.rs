@@ -184,11 +184,11 @@ const WATCHDOG_PENDING: &str =
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const VETO_PENDING: &str =
- "veto firing evaluation needs the lifecycle consult; registration and callback executed";
+    "veto firing evaluation needs the lifecycle consult; registration and callback executed";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const HEARTBEAT_PENDING: &str =
- "heartbeat observation evaluation needs the telemetry dispatch loop";
+    "heartbeat observation evaluation needs the telemetry dispatch loop";
 
 // see: cans/15-operations.md#Multi-language-parity-gate
 const PROCESS_EXIT_PENDING: &str =
@@ -772,7 +772,7 @@ fn assert_ocsf_coverage(vectors: &[VectorCase]) -> Result<(), String> {
         );
     }
     println!(
- "parity: ocsf coverage OK (containment vector + OCSF 1.x mapping anchor present; live class-id mapping pending)"
+        "parity: ocsf coverage OK (containment vector + OCSF 1.x mapping anchor present; live class-id mapping pending)"
     );
     Ok(())
 }
@@ -801,7 +801,7 @@ fn assert_adversarial_cve_coverage() -> Result<(), String> {
         );
     }
     println!(
- "parity: adversarial-cve coverage OK (spec anchor + kelir-integration present; live CVE replay pending)"
+        "parity: adversarial-cve coverage OK (spec anchor + kelir-integration present; live CVE replay pending)"
     );
     Ok(())
 }

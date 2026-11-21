@@ -273,7 +273,7 @@ impl crate::ApprovalAuthConfig {
         let _ = method;
         // TODO: [governance_tools]: verify the WebAuthn/TOTP/OIDC approval proof cryptographically; slop: approval binds on an unverified method claim, a forged proof approves a held tool call. (deferred to L3)
         Err(PluginError::Halt(
- "deferred to L3: approval method verification pending".into(),
+            "deferred to L3: approval method verification pending".into(),
         ))
     }
 }

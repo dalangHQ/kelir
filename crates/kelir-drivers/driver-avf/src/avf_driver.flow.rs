@@ -23,7 +23,7 @@ impl AvfDriver {
 
     fn open_node(&mut self) -> Result<(), VmmError> {
         // TODO: [hd_08_avf_pkvm_boundary_enforcement]: connect /dev/avf or the pKVM node; slop: un-donated memory maps without E_PKVM_NON_DONATED_MEMORY fault (deferred to L3)
- Err(VmmError:Unsupported("avf boot: /dev/avf open".into()))
+        Err(VmmError::Unsupported("avf boot: /dev/avf open".into()))
     }
 }
 
@@ -63,7 +63,7 @@ impl VmmDriver for AvfDriver {
                 offset_bytes: self.entropy_offset,
             }),
             _ => Err(VmmError::Unsupported(
- "avf entropy_position: host entropy stream is not position-trackable".into(),
+                "avf entropy_position: host entropy stream is not position-trackable".into(),
             )),
         }
     }
@@ -80,7 +80,7 @@ impl VmmDriver for AvfDriver {
                 Ok(())
             }
             _ => Err(VmmError::Unsupported(
- "avf restore_entropy_position: host entropy stream is not position-trackable"
+                "avf restore_entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }

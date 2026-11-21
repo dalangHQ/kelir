@@ -167,7 +167,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 if !Path::new(&entry.path).exists() {
                     // TODO: [supply_chain_security]: download the pinned fixture from its source registry, then verify its digest before mounting.; slop: fixture mounted unverified, digest never compared (deferred to L3)
                     return Err(FixtureError::HashUnavailable(format!(
- "fixtures fetch: `{}` is absent at {}; network fetch pending",
+                        "fixtures fetch: `{}` is absent at {}; network fetch pending",
                         entry.name, entry.path
                     ))
                     .into());

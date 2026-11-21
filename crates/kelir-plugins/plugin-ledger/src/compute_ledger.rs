@@ -21,6 +21,6 @@ pub fn compute_causal_delta(
 ) -> Result<CausalDelta, PluginError> {
     let _ = (storage, receipt);
     Err(PluginError::Halt(
- "deferred to L3 [ar_09_causal_delta_aggregation_merkle]: causal-delta assembly pending; slop: delta fabricated, merkle aggregation skipped".into(),
+        "deferred to L3 [ar_09_causal_delta_aggregation_merkle]: causal-delta assembly pending; slop: delta fabricated, merkle aggregation skipped".into(),
     ))
 }

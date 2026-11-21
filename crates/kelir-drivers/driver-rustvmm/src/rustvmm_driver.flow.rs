@@ -27,7 +27,7 @@ impl RustVmmDriver {
     fn init_backend(&mut self) -> Result<(), VmmError> {
         // TODO: [hd_04_cold_boot_budget_enforcement]: initialize KVM, VM, memory slots, and vCPUs via KVM_CREATE_VM; slop: boot Ok without KVM_CREATE_VM, 50ms budget never measured (deferred to L3)
         Err(VmmError::Unsupported(
- "rustvmm boot: KVM_CREATE_VM init".into(),
+            "rustvmm boot: KVM_CREATE_VM init".into(),
         ))
     }
 
@@ -36,7 +36,7 @@ impl RustVmmDriver {
         // see: cans/01-architecture.md#Driver-backends
         // TODO: [hd_11_cpuid_tsc_deadline_normalization]: enforce invariant TSC and Leaf 0x1 TSC-deadline; slop: guest CPUID passes host leaves through, TSC-deadline bit unset (deferred to L3)
         Err(VmmError::Unsupported(
- "rustvmm cpuid filter: synthetic CPUID enforcement".into(),
+            "rustvmm cpuid filter: synthetic CPUID enforcement".into(),
         ))
     }
 }
@@ -77,7 +77,7 @@ impl VmmDriver for RustVmmDriver {
                 offset_bytes: self.entropy_offset,
             }),
             _ => Err(VmmError::Unsupported(
- "rustvmm entropy_position: host entropy stream is not position-trackable"
+                "rustvmm entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }
@@ -95,7 +95,7 @@ impl VmmDriver for RustVmmDriver {
                 Ok(())
             }
             _ => Err(VmmError::Unsupported(
- "rustvmm restore_entropy_position: host entropy stream is not position-trackable"
+                "rustvmm restore_entropy_position: host entropy stream is not position-trackable"
                     .into(),
             )),
         }

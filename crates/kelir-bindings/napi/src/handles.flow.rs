@@ -296,7 +296,7 @@ impl NativeVmHandle {
     pub async fn map_shared_region(&self, _tag: String, _size_bytes: f64) -> Result<Buffer> {
         // TODO: [bindings_ts]: hand the SharedMemoryHandle across the bridge via SCM_RIGHTS once Session::memory_handoff lands.; slop: handle never crosses, Buffer fabricated or missing (deferred to L3)
         Err(missing(
- "map_shared_region: the shared-memory handle crosses via SCM_RIGHTS handoff",
+            "map_shared_region: the shared-memory handle crosses via SCM_RIGHTS handoff",
         ))
     }
 
@@ -324,7 +324,7 @@ impl NativeTerminalHandle {
     pub fn notice(&self, _message: String) -> Result<()> {
         // TODO: [terminal_plane]: publish the TerminalNotice event once the reactive event bus lands.; slop: notice never published, terminal state unobserved (deferred to L3)
         Err(missing(
- "terminal notice: TerminalNotice emission lands with the reactive event bus",
+            "terminal notice: TerminalNotice emission lands with the reactive event bus",
         ))
     }
 
@@ -455,7 +455,7 @@ impl NativeVsockHandle {
     pub async fn channel(&self, _kind: u32) -> Result<()> {
         // TODO: [pm_02_stream_mux_open_data_close_flags]: open the duplex channel once the mux SPSC rings carry stream frames.; slop: channel opened without open/data/close flags (deferred to L3)
         Err(missing(
- "vsock channel: duplex streams ride the mux SPSC rings",
+            "vsock channel: duplex streams ride the mux SPSC rings",
         ))
     }
 }
@@ -470,7 +470,7 @@ impl NativeStepHandle {
     pub fn last(&self) -> Result<NativeSnapshotDescriptorRecord> {
         // TODO: [lifecycle_checkpoint]: expose the active plugin-step-eval StepSlot once dispatch constructs HandlerCtx step stacks.; slop: step slot never constructed, hooks run without step (deferred to L3)
         Err(missing(
- "step last: step slots live in the dispatch HandlerCtx",
+            "step last: step slots live in the dispatch HandlerCtx",
         ))
     }
 }
@@ -621,7 +621,7 @@ impl NativeSessionHandle {
     pub async fn spawn(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
         // TODO: [tp_09_exec_stream_sublane_stdio_fidelity]: spawn writes on the EXEC stream kind via the shim wire protocol.; slop: EXEC writes bypass sublane, stdio interleaved (deferred to L3)
         Err(missing(
- "spawn: EXEC stream dispatch lands with the shim wire protocol",
+            "spawn: EXEC stream dispatch lands with the shim wire protocol",
         ))
     }
 
@@ -629,7 +629,7 @@ impl NativeSessionHandle {
     pub async fn exec_in_guest(&self, _binary: String, _argv: Vec<String>) -> Result<()> {
         // TODO: [tp_09_exec_stream_sublane_stdio_fidelity]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec rides wrong stream kind, output lost (deferred to L3)
         Err(missing(
- "exec_in_guest: EXEC stream dispatch lands with the shim wire protocol",
+            "exec_in_guest: EXEC stream dispatch lands with the shim wire protocol",
         ))
     }
 
@@ -637,7 +637,7 @@ impl NativeSessionHandle {
     pub async fn steer(&self, exec_id: f64, message: String) -> Result<()> {
         // TODO: [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame; slop: steer Ok, guidance never reaches the agent before exit (deferred to L3)
         Err(missing(&format!(
- "steer: exec {exec_id} guidance `{message}` flushes onto the EXEC sub-lane 0x02 before EOF"
+            "steer: exec {exec_id} guidance `{message}` flushes onto the EXEC sub-lane 0x02 before EOF"
         )))
     }
 
@@ -660,7 +660,7 @@ impl NativeSessionHandle {
     pub async fn rollback(&self) -> Result<()> {
         // TODO: [lc_03_step_evaluation_taint_rollback]: lineage-derived head rollback needs the dispatch PID lineage.; slop: rollback without lineage, wrong head restored (deferred to L3)
         Err(missing(
- "rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking",
+            "rollback: pass a snapshot; lineage-derived head rollback lands with PID tracking",
         ))
     }
 
@@ -680,7 +680,7 @@ impl NativeSessionHandle {
     pub async fn console(&self) -> Result<()> {
         // TODO: [terminal_plane]: attach the PTY console master once the terminal plane owns it.; slop: PTY never attached, console output lost (deferred to L3)
         Err(missing(
- "console: PTY master attach lands with the terminal plane console",
+            "console: PTY master attach lands with the terminal plane console",
         ))
     }
 
@@ -688,7 +688,7 @@ impl NativeSessionHandle {
     pub async fn get_causal_delta_from_parent(&self) -> Result<()> {
         // TODO: [ar_09_causal_delta_aggregation_merkle]: causal deltas are produced by plugin-ledger over the delta chain.; slop: deltas fabricated, no merkle aggregation (deferred to L3)
         Err(missing(
- "get_causal_delta_from_parent: causal deltas come from plugin-ledger",
+            "get_causal_delta_from_parent: causal deltas come from plugin-ledger",
         ))
     }
 
@@ -697,7 +697,7 @@ impl NativeSessionHandle {
     pub fn handle_ingress(&self, _options: Object) -> Result<()> {
         // TODO: [wire_plane]: wire-ingress parked connections surface once the wire plane owns the host listeners.; slop: parked connections never surface, listeners silent (deferred to L3)
         Err(missing(
- "handle_ingress: inbound connections park in the wire plane listeners",
+            "handle_ingress: inbound connections park in the wire plane listeners",
         ))
     }
 }

@@ -73,7 +73,7 @@ pub fn run() -> Result<(), CliError> {
     // see: cans/15-operations.md#Subcommands
     // TODO: [virtio_rings]: render the --show ring-mask report over declared_ring_mask.; slop: mask report Ok, declared_ring_mask never read (deferred to L3)
     Err(
- "rings: not implemented: --show ring-mask rendering per cans/15-operations.md#Subcommands"
+        "rings: not implemented: --show ring-mask rendering per cans/15-operations.md#Subcommands"
             .into(),
     )
 }

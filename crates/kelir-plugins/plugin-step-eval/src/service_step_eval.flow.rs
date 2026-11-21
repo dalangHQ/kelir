@@ -294,7 +294,7 @@ impl StepEvaluator {
         )
         .map_err(|error| PluginError::Halt(error.to_string()))?;
         Err(PluginError::Halt(
- "reviewer ApprovalAuth verification is deferred to L3".into(),
+            "reviewer ApprovalAuth verification is deferred to L3".into(),
         ))
     }
 }

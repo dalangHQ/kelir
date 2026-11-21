@@ -3,7 +3,7 @@
 use crate::cli_error::CliError;
 pub fn run() -> Result<(), CliError> {
     Err(
- "registry: not implemented: plugin registry index rendering per cans/15-operations.md#Plugin-registry"
+        "registry: not implemented: plugin registry index rendering per cans/15-operations.md#Plugin-registry"
             .into(),
     )
 }

@@ -93,7 +93,7 @@ impl McpEndpointService {
         let _ = request;
         // TODO: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed (deferred to L3)
         Err(PluginError::Halt(format!(
- "MCP_CONSOLE transport routing pending: {} bytes",
+            "MCP_CONSOLE transport routing pending: {} bytes",
             payload.len()
         )))
     }

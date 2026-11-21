@@ -90,7 +90,7 @@ pub fn generate_profile(session: &str) -> Result<(), CliError> {
     // TODO: [plugin_engine]: synthesize a starter kelir.toml from the session ExecutionReceipt and EventBus logs (policygen).; slop: generate Ok, starter profile never synthesized from observed behavior (deferred to L3)
     // TODO: [plugin_engine]: compile observed ExecutionReceipt + EventBus logs for the session into a starter profile; slop: hand-written profile passes, observed behavior never compiled into one (deferred to L3)
     Err(
- format!("spec generate: synthesizing a starter profile from session `{session}`")
+        format!("spec generate: synthesizing a starter profile from session `{session}`")
             .into(),
     )
 }
@@ -119,14 +119,14 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 ProfileSource::Yaml => "YAML",
             };
             println!(
- "spec: {path} {source} syntax valid; schema, acyclic extends, and monotonic limits pending"
+                "spec: {path} {source} syntax valid; schema, acyclic extends, and monotonic limits pending"
             );
             Ok(())
         }
         Some("export") => {
             let path = args.get(1).map(String::as_str).unwrap_or("kelir.toml");
             // TODO: [plugin_engine]: emit the canonical kelir.toml or kelir.yaml for the profile.; slop: hand-written toml passes, canonical profile never emitted (deferred to L3)
- Err(format!("spec export: canonical export of {path}").into())
+            Err(format!("spec export: canonical export of {path}").into())
         }
         Some(other) => Err(CliError::usage(format!(
             "spec: unknown subcommand `{other}` (expected check, export, or generate)"
