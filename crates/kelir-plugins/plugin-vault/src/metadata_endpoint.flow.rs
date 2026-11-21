@@ -32,6 +32,8 @@ impl Default for VaultConfig {
             metadata_vsock_port: VAULT_METADATA_VSOCK_PORT,
             token_ttl_seconds: DEFAULT_TOKEN_TTL_SECONDS,
             credentials: Vec::new(),
+            credsub_fake_tokens: true,
+            scrub_responses: true,
         }
     }
 }

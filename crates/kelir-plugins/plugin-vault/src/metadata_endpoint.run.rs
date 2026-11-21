@@ -12,6 +12,7 @@ use crate::metadata_endpoint::VaultPlugin;
 impl TrapInterposer for VaultPlugin {
     async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
         // TODO (L3) [gv_12_vault_placeholder_profile_resolution]: resolve the placeholder through the metadata service at exec; slop: vault:// placeholder resolves directly to the plaintext secret in the profile AST.
+        // TODO (L3) [governance_vault]: bind the CredSubTable to the live metadata/vsock stream so every credential handoff swaps the real secret for the format-preserving fake and every inbound L7 response is scrubbed; slop: the CredSubTable never binds to a live stream, real secrets flow to the guest and echoed credentials pass through responses unscrubbed.
         Err(PluginError::Halt(
             "TODO (L3): resolve the vault:// placeholder through the metadata service at exec"
                 .into(),

@@ -27,7 +27,7 @@ pub use boot_diversion::{IMDS_DESTINATION, ImdsBootDiversion};
 
 pub use metadata_endpoint::{CredentialBrokerCtx, MetadataEndpoint, VaultPlugin};
 pub use service_vault::{
-    CarrierInjector, MtlsMaterial, VAULT_PLACEHOLDER_PREFIX, load_mtls_material,
+    CarrierInjector, CredSubTable, MtlsMaterial, VAULT_PLACEHOLDER_PREFIX, load_mtls_material,
 };
 pub use synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 
@@ -45,4 +45,10 @@ pub struct VaultConfig {
     pub token_ttl_seconds: u32,
     // see: cans/plugins/vault.md#Credential-descriptors-(vault)
     pub credentials: Vec<CredentialDescriptor>,
+    // see: blindess.patch.md#B: credsub — issue format/length-matched fake tokens
+    // (e.g. ghp_/sk_live_ prefixes) instead of real secrets to the guest.
+    pub credsub_fake_tokens: bool,
+    // see: blindess.patch.md#B: scrub real credentials echoed by upstream L7
+    // responses (Authorization headers, debug echo) before they reach the guest.
+    pub scrub_responses: bool,
 }

@@ -381,3 +381,137 @@ pub fn load_mtls_material(cert_path: &Path, key_path: &Path) -> Result<MtlsMater
 fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     find_subslice(haystack, needle).is_some()
 }
+
+// ---------------------------------------------------------------------------
+// CredSubTable — format/length-preserving fake-token substitution
+// (pure L2; see blindess.patch.md#B: credsub/table.go + secrets/fakegen.go).
+// The guest never needs the real secret: it gets a format-valid fake with the
+// same prefix (ghp_/sk_live_/...) and the same length, so downstream code that
+// validates shape keeps working while the real bytes stay host-side.
+// ---------------------------------------------------------------------------
+
+// see: blindess.patch.md#B: known provider token prefixes; the prefix is copied
+// verbatim into the fake so length/format validation downstream still passes.
+pub const CREDSUB_TOKEN_PREFIXES: &[&str] = &[
+    "ghp_",   // GitHub personal access token
+    "gho_",   // GitHub OAuth token
+    "sk_live_", // Stripe live secret key
+    "sk_test_", // Stripe test secret key
+    "sk-",    // OpenAI-style secret key
+    "xoxb-",  // Slack bot token
+    "xoxp-",  // Slack user token
+    "AKIA",   // AWS access key id (SigV4)
+];
+
+// see: blindess.patch.md#B: the fake-token alphabet (agentsh fakegen base62-ish
+// set); deliberately excludes prefix glyphs so the random body never forms
+// another known prefix by accident.
+const CREDSUB_FAKE_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+// see: blindess.patch.md#B
+fn fake_token_prefix(real: &str) -> Option<&'static str> {
+    CREDSUB_TOKEN_PREFIXES
+        .iter()
+        .find(|prefix| real.starts_with(*prefix))
+        .copied()
+}
+
+// see: blindess.patch.md#B: deterministic counter-driven fake generator — no
+// RNG crate, no system entropy: the same (counter, real) pair always yields the
+// same fake, so swap/scrub round-trips stay reproducible in pure L2 tests.
+fn generate_fake_body(counter: u64, len: usize) -> String {
+    let mut body = String::with_capacity(len);
+    let mut state = counter;
+    for _ in 0..len {
+        // xorshift64* style mixing keeps successive draws well spread without
+        // any external RNG dependency.
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let index = (state % (CREDSUB_FAKE_ALPHABET.len() as u64)) as usize;
+        // The alphabet is a compile-time constant; indexing cannot panic.
+        body.push(CREDSUB_FAKE_ALPHABET[index] as char);
+    }
+    body
+}
+
+// see: blindess.patch.md#B: format/length-preserving fake for a real secret.
+/// Pure generator: preserves the provider prefix (e.g. `ghp_`, `sk_live_`)
+/// and the total length of the real secret; the body is deterministic
+/// counter-driven random-ish characters from the fixed fake alphabet.
+pub fn generate_fake_token(real: &str, counter: u64) -> String {
+    let prefix_len = fake_token_prefix(real).map(str::len).unwrap_or(0);
+    let body_len = real.len().saturating_sub(prefix_len);
+    let mut fake = String::with_capacity(real.len());
+    if let Some(prefix) = fake_token_prefix(real) {
+        fake.push_str(prefix);
+    }
+    fake.push_str(&generate_fake_body(counter, body_len));
+    fake
+}
+
+// see: blindess.patch.md#B: registry mapping real secret -> fake token.
+/// Pure L2 substitution table. The real secret bytes are stored only long
+/// enough to be matched on scrub; the fake handed to the guest is
+/// format/length-preserving and deterministic per (real, counter).
+pub struct CredSubTable {
+    entries: Vec<(String, String)>,
+    counter: u64,
+}
+
+impl CredSubTable {
+    // see: blindess.patch.md#B
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            counter: 0,
+        }
+    }
+
+    // see: blindess.patch.md#B: register a real secret and mint its fake.
+    pub fn register(&mut self, real: &str) -> String {
+        let fake = generate_fake_token(real, self.counter);
+        self.counter += 1;
+        self.entries.push((real.to_string(), fake.clone()));
+        fake
+    }
+
+    // see: blindess.patch.md#B
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    // see: blindess.patch.md#B
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    // see: blindess.patch.md#B: swap the real secret in an outbound header.
+    /// Returns the fake replacement when the header value carries a
+    /// registered real secret; `None` leaves the header untouched.
+    pub fn swap_outbound(&self, header_value: &str) -> Option<String> {
+        self.entries
+            .iter()
+            .find(|(real, _)| header_value.contains(real.as_str()))
+            .map(|(_, fake)| fake.clone())
+    }
+
+    // see: blindess.patch.md#B: scrub a real secret echoed by a response body.
+    /// Replaces every occurrence of the real secret bytes in `body` with the
+    /// registered fake (same length, so offsets downstream stay valid).
+    pub fn scrub_response(&self, body: &str, real: &str) -> String {
+        let fake = self
+            .entries
+            .iter()
+            .find(|(entry_real, _)| entry_real == real)
+            .map(|(_, fake)| fake.clone())
+            .unwrap_or_else(|| generate_fake_token(real, 0));
+        body.replace(real, &fake)
+    }
+}
+
+impl Default for CredSubTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
