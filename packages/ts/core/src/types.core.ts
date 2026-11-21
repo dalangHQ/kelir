@@ -67,14 +67,41 @@ export interface FsPathRedirect {
   readonly targetPath: string;
 }
 
-export type PatchInput = ExecveMutation | CustomActionPayload | FsInodeAttr | FsPathRedirect;
+// see: cans/11-protocol.md#Wire-messages
+export interface NetRedirect {
+  readonly host: string;
+  readonly port: number;
+  readonly guidance?: string;
+}
+
+// see: cans/11-protocol.md#Wire-messages
+export interface SignalMutation {
+  readonly newSig: number;
+  readonly guidance?: string;
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+export interface SteeringGuidance {
+  readonly guidance?: string;
+  readonly redirectTool?: string;
+}
+
+export type PatchInput = ExecveMutation | CustomActionPayload | FsInodeAttr | FsPathRedirect | NetRedirect | SignalMutation;
 
 // see: cans/02-plugin-model.md#Unified-verdict
 export const PatchPayload: {
   FsPathRedirect(attr: { readonly targetPath: string }): FsPathRedirect;
+  NetRedirect(attr: { readonly host: string; readonly port: number; readonly guidance?: string }): NetRedirect;
+  SignalMutation(attr: { readonly newSig: number; readonly guidance?: string }): SignalMutation;
 } = {
   FsPathRedirect(attr: { readonly targetPath: string }): FsPathRedirect {
     return { targetPath: attr.targetPath };
+  },
+  NetRedirect(attr: { readonly host: string; readonly port: number; readonly guidance?: string }): NetRedirect {
+    return { host: attr.host, port: attr.port, guidance: attr.guidance };
+  },
+  SignalMutation(attr: { readonly newSig: number; readonly guidance?: string }): SignalMutation {
+    return { newSig: attr.newSig, guidance: attr.guidance };
   },
 };
 

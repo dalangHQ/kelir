@@ -85,17 +85,23 @@ export const FilterAction: {
 };
 
 // see: cans/artifacts/code/messages.rs#DnsVerdict
+// see: cans/07-wire-plane.md#DNS-policy-filter
 export type DnsVerdict =
   | { readonly kind: "forward" }
-  | { readonly kind: "sinkhole"; readonly rcode: number };
+  | { readonly kind: "sinkhole"; readonly rcode: number }
+  | { readonly kind: "redirect"; readonly target: string };
 
 export const DnsVerdict: {
   readonly Forward: DnsVerdict;
   Sinkhole(rcode: number): DnsVerdict;
+  Redirect(target: string): DnsVerdict;
 } = {
   Forward: { kind: "forward" },
   Sinkhole(rcode: number): DnsVerdict {
     return { kind: "sinkhole", rcode };
+  },
+  Redirect(target: string): DnsVerdict {
+    return { kind: "redirect", target };
   },
 };
 
