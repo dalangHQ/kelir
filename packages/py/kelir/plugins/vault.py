@@ -28,6 +28,8 @@ class VaultConfig:
     metadata_vsock_port: int = 80
     token_ttl_seconds: int = 60
     credentials: list[CredentialDescriptor] = field(default_factory=list)
+    credsub_fake_tokens: bool = True
+    scrub_responses: bool = True
 
 
 class VaultPlugin(BasePlugin[None, None]):

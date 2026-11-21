@@ -556,6 +556,14 @@ impl PySessionHandle {
         ))
     }
 
+    #[pyo3(signature = (exec_id, message))]
+    fn steer(&self, exec_id: f64, message: String) -> PyResult<()> {
+        // TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame; slop: steer Ok, guidance never reaches the agent before exit
+        Err(missing(&format!(
+            "steer: exec {exec_id} guidance `{message}` flushes onto the EXEC sub-lane 0x02 before EOF (L3)"
+        )))
+    }
+
     #[pyo3(signature = (reason))]
     fn suspend(&self, reason: &Bound<'_, PyDict>) -> PyResult<()> {
         let path = suspend_image_path(&self.session)?;

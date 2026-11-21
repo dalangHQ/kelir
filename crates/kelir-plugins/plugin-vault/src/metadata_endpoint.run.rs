@@ -8,6 +8,16 @@ use kelir_interface::protocol_wire::{TrapEvent, Verdict};
 use crate::metadata_endpoint::VaultPlugin;
 
 // see: cans/plugins/vault.md#Plugin-vault
+impl VaultPlugin {
+    pub fn bind_live_credsub_stream(&self) -> Result<(), PluginError> {
+        // TODO (L3) [governance_vault]: bind the live stream so outbound headers carry fake tokens and inbound responses are scrubbed through the CredSubTable; slop: the live stream never binds, real credentials cross the guest boundary unsubstituted.
+        Err(PluginError::Halt(
+            "TODO (L3): live credsub stream binding pending (L3)".into(),
+        ))
+    }
+}
+
+// see: cans/plugins/vault.md#Plugin-vault
 #[async_trait]
 impl TrapInterposer for VaultPlugin {
     async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {

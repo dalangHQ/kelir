@@ -51,4 +51,6 @@ pub struct WireConfig {
     pub userspace_netstack: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     pub default_egress: String,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.dns_to_ip_pinning
+    pub dns_to_ip_pinning: bool,
 }

@@ -141,6 +141,7 @@ pub struct Multiplexer {
     pub slots: ExecSlotSlab,
     table: StreamSlotTable,
     pub next_exec_id: u64,
+    pub per_exec_cgroup: bool,
 }
 
 impl Multiplexer {
@@ -149,7 +150,20 @@ impl Multiplexer {
             slots: ExecSlotSlab::new(),
             table: StreamSlotTable::new(),
             next_exec_id: 1,
+            per_exec_cgroup: true,
         }
+    }
+
+    pub fn steer_exec(&mut self, _exec_id: u64, _msg: &[u8]) -> Result<(), ShimError> {
+        // TODO (L3) [protocol_mux]: flush sub-lane 0x02 guidance to the exec before its exit EOF frame.; slop: steer is dropped, the exec exits before its guidance is flushed.
+        Err(ShimError::ExecControlPending)
+    }
+
+    pub fn apply_per_exec_cgroup(&self, slot: &ExecSlot) -> Result<(), ShimError> {
+        // TODO (L3) [protocol_mux]: write pids.max and memory.max into a per-ExecSlot cgroup v2 leaf instead of the shared-UID RLIMIT_NPROC.; slop: cgroup never applied, one exec can exhaust the shared-UID process budget for all slots.
+        Err(ShimError::CgroupV2 {
+            exec_id: slot.exec_id,
+        })
     }
 
     pub fn dispatch_control(&mut self, _payload: &[u8]) -> Result<(), ShimError> {

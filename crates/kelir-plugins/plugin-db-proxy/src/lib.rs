@@ -15,7 +15,11 @@ pub mod service_db_proxy_run;
 #[path = "sqlite_db_proxy.flow.rs"]
 pub mod sqlite_db_proxy;
 pub use receipt_sql::{NET_L7_SQL_NAMESPACE, NetL7SqlExt, SqlReceiptExt};
-pub use service_db_proxy::SqlProxyService;
+pub use service_db_proxy::{
+    CancelKeyMap, PgExtendedQueryState, PgExtendedState, PreparedCache, PreparedEntry,
+    SqlPolicyDecision, SqlProxyService, ast_parse_sql, evaluate_sql_policies, pg_error_response,
+    redis_command_allowed, redis_deny_reason,
+};
 
 use std::sync::Arc;
 
@@ -39,6 +43,12 @@ pub struct PgWireRewrite {
     // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.db_proxy.postgres.schema_rewrites
     pub schema_rewrites: Vec<PgSchemaRewrite>,
     pub max_rewrites_per_conn: u32,
+    pub ast_parser: String,
+    pub require_where_on_mutations: bool,
+    pub deny_mode_in_tx: String,
+    pub block_unsafe_io: bool,
+    pub catalog_resolution: bool,
+    pub synthetic_cancel_keys: bool,
 }
 
 // see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:

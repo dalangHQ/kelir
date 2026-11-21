@@ -121,6 +121,9 @@ pub enum Action {
     /// host-response suppression is chaos loss injection, where the
     /// driver suppresses the response (plugins/chaos.md).
     Drop { errno: Errno, reason: String },
+    /// Swallow the signal: deliver nothing, report nothing to the guest.
+    /// Signal ring only (11-protocol.md#Signal-and-fork-interception).
+    Absorb,
     /// Yield or hold to the host until `until`.
     Suspend { until: SuspendUntil },
     /// Fatal; pipeline freezes.

@@ -87,15 +87,20 @@ export const FilterAction: {
 // see: cans/artifacts/code/messages.rs#DnsVerdict
 export type DnsVerdict =
   | { readonly kind: "forward" }
-  | { readonly kind: "sinkhole"; readonly rcode: number };
+  | { readonly kind: "sinkhole"; readonly rcode: number }
+  | { readonly kind: "redirect"; readonly rewrite: string };
 
 export const DnsVerdict: {
   readonly Forward: DnsVerdict;
   Sinkhole(rcode: number): DnsVerdict;
+  Redirect(rewrite: string): DnsVerdict;
 } = {
   Forward: { kind: "forward" },
   Sinkhole(rcode: number): DnsVerdict {
     return { kind: "sinkhole", rcode };
+  },
+  Redirect(rewrite: string): DnsVerdict {
+    return { kind: "redirect", rewrite };
   },
 };
 

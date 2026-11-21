@@ -23,6 +23,7 @@ import type {
   WireHandle,
 } from "./context.lifecycle.types.js";
 import type {
+  ExecHandle,
   IngressStream,
   NativeSessionHandle,
 } from "./session.lifecycle.types.js";
@@ -277,6 +278,25 @@ export class Session {
     options?: SpawnOptions,
   ): Promise<SpawnResult> {
     return this.native.execInGuest(binary, argv, options);
+  }
+
+  // see: cans/02-plugin-model.md#Unified-verdict
+  async steer(execId: number, message: string): Promise<void> {
+    const steer = this.native.steer;
+    if (steer === undefined) {
+      // TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame once the native session exposes steer; slop: steer throws, guidance never reaches the agent before exit.
+      throw new EConfig(
+        "kelir native bridge is missing the steer method on the session handle (L3)",
+      );
+    }
+    return steer.call(this.native, execId, message);
+  }
+
+  execHandle(execId: number): ExecHandle {
+    return {
+      execId,
+      steer: (message: string): Promise<void> => this.steer(execId, message),
+    };
   }
 
   // see: cans/01-architecture.md#Dynamic-policy-rules-permit-signed-operator-lease-overrides

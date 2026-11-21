@@ -1,7 +1,7 @@
 # see: cans/plugins/mcp.md#Plugin-mcp
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from kelir.plugin_model import BasePlugin
 
@@ -16,6 +16,8 @@ __all__ = [
 @dataclass
 class McpConfig:
     max_frame_bytes: int = 16_777_216
+    deny_server_sampling: bool = True
+    sampling_allowlist: list[str] = field(default_factory=list)
 
 
 class McpPlugin(BasePlugin[None, None]):

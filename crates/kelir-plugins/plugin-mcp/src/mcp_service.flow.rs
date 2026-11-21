@@ -20,15 +20,26 @@ struct McpServiceState {
     last_request_id: Mutex<Option<JsonRpcId>>,
 }
 
+// see: cans/plugins/mcp.md#MCP-contract
+pub const SAMPLING_CREATE_MESSAGE_METHOD: &str = "sampling/createMessage";
+
 // see: cans/plugins/mcp.md#Service-exports-(mcp)
 #[derive(Clone, Default)]
 pub struct McpEndpointService {
     state: Arc<McpServiceState>,
+    config: McpConfig,
 }
 
 impl McpEndpointService {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_config(config: McpConfig) -> Self {
+        Self {
+            state: Arc::new(McpServiceState::default()),
+            config,
+        }
     }
 
     fn lock_advertised(&self) -> Result<std::sync::MutexGuard<'_, Vec<String>>, PluginError> {
@@ -73,6 +84,11 @@ impl McpEndpointService {
         let request = parse_json_rpc_request(payload)?;
         if let Ok(mut last) = self.state.last_request_id.lock() {
             *last = request.id.clone();
+        }
+        if !self.config.allows_sampling(&request.method) {
+            return Err(PluginError::Halt(
+                "ESecurityViolation: sampling/createMessage denied by deny_server_sampling".into(),
+            ));
         }
         let _ = request;
         // L3-GAP: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed
@@ -124,22 +140,42 @@ impl StreamFrameSink for McpCtxStreamSink {
 }
 
 // see: cans/plugins/mcp.md#MCP-contract
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConfig {
     pub max_frame_bytes: u64,
+    pub deny_server_sampling: bool,
+    pub sampling_allowlist: Vec<String>,
 }
 
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
             max_frame_bytes: 16_777_216,
+            deny_server_sampling: true,
+            sampling_allowlist: Vec::new(),
         }
     }
 }
 
 impl McpConfig {
     pub fn new(max_frame_bytes: u64) -> Self {
-        Self { max_frame_bytes }
+        Self {
+            max_frame_bytes,
+            ..Self::default()
+        }
+    }
+
+    // see: cans/plugins/mcp.md#MCP-contract
+    pub fn allows_sampling(&self, method: &str) -> bool {
+        if method != SAMPLING_CREATE_MESSAGE_METHOD {
+            return true;
+        }
+        if !self.deny_server_sampling {
+            return true;
+        }
+        self.sampling_allowlist
+            .iter()
+            .any(|entry| entry == SAMPLING_CREATE_MESSAGE_METHOD)
     }
 }
 
@@ -160,7 +196,7 @@ impl McpPlugin {
 
     pub fn with_config(config: McpConfig) -> Self {
         Self {
-            service: McpEndpointService::new(),
+            service: McpEndpointService::with_config(config.clone()),
             config,
         }
     }

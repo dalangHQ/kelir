@@ -33,7 +33,7 @@ from kelir import KelirBuilder
 
 def transaction_builder(config: TransactionConfig | None = None) -> KelirBuilder:
     cfg = config if config is not None else TransactionConfig()
-    return KelirBuilder.plugin("transaction").context(lambda: cfg)
+    return KelirBuilder.plugin("transaction").require("db-proxy").context(lambda: cfg)
 
 
 # see: cans/02-plugin-model.md#Unified-builder

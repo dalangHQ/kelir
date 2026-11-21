@@ -10,6 +10,9 @@ mod plane;
 #[path = "storage_quota.flow.rs"]
 pub mod storage_quota;
 
-pub use config::{IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation};
+pub use config::{
+    DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, IdmapConfig, LockBrokerWiring, StorageConfig,
+    WorkspaceEncapsulation,
+};
 pub use plane::StoragePlane;
 pub use storage_quota::StorageQuota;

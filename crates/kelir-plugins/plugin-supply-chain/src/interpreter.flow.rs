@@ -9,6 +9,44 @@ pub const INTERPRETER_TABLE: &[&str] = &["python", "node", "bash", "sh", "perl",
 pub const WRAPPER_COMMANDS: &[&str] = &["env", "xargs", "find"];
 
 // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub const MAX_INTERPRETER_DEPTH: usize = 8;
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub fn check_interpreter_depth(chain_len: usize) -> Result<(), PluginError> {
+    if chain_len > MAX_INTERPRETER_DEPTH {
+        return Err(PluginError::Halt(
+            "E2BIG: interpreter chain exceeds the depth 8 recursion cap".into(),
+        ));
+    }
+    Ok(())
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub fn shell_payload_is_opaque(argv: &[String], shell_payload: &Option<String>) -> bool {
+    shell_payload.is_some() && capture_code_payload(argv).is_none()
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub fn strip_private_scope(pkg: &str) -> String {
+    match pkg.strip_prefix('@') {
+        Some(rest) => match rest.split_once('/') {
+            Some((_, name)) => name.to_string(),
+            None => pkg.to_string(),
+        },
+        None => pkg.to_string(),
+    }
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub fn attest_busybox_applet(argv0: &str) -> Result<(), PluginError> {
+    let _ = argv0;
+    // TODO (L3) [supply_chain_security]: attest the BusyBox multi-call argv[0] applet binary before preserving it; slop: an unattested applet binary keeps its argv[0], a swapped BusyBox runs an untrusted applet.
+    Err(PluginError::Halt(
+        "TODO (L3): BusyBox applet argv[0] attestation pending (L3)".into(),
+    ))
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnwrappedExec {
     pub binary_path: String,
@@ -89,6 +127,12 @@ fn capture_code_payload(argv: &[String]) -> Option<String> {
 }
 
 // see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
+pub fn unwrap_interpreter_checked(event: &TrapEvent) -> Result<UnwrappedExec, PluginError> {
+    check_interpreter_depth(event.interpreter_chain.len())?;
+    Ok(unwrap_interpreter(event))
+}
+
+// see: cans/plugins/supply-chain.md#Interpreter-unwrapping-and-payload-inspection
 // L3-GAP: [pe_17_shell_c_command_unwrap_drops_git_push_force]: flag/value-aware argv parse (-c/-m payloads, relative script resolution against event.cwd); slop: shell -c payload never unwrapped, git push passes
 pub fn unwrap_interpreter(event: &TrapEvent) -> UnwrappedExec {
     if let Some(terminal) = event.interpreter_chain.last() {
@@ -108,6 +152,13 @@ pub fn unwrap_interpreter(event: &TrapEvent) -> UnwrappedExec {
     } else {
         event.shell_payload.clone()
     };
+    if is_interpreter(&binary_path) && shell_payload_is_opaque(&argv, &event.shell_payload) {
+        return UnwrappedExec {
+            binary_path,
+            argv,
+            shell_payload: None,
+        };
+    }
     UnwrappedExec {
         binary_path,
         argv,

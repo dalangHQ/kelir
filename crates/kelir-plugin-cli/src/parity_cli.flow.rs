@@ -746,6 +746,66 @@ fn assert_swarm_mesh_coverage(vectors: &[VectorCase]) -> Result<(), String> {
     Ok(())
 }
 
+// see: cans/15-operations.md#--ocsf-coverage
+// TODO (L3) [telemetry_audit]: map every EventBus security event to an OCSF 1.x class id through the plugin-ledger OcsfClassId mapper (Track D); the gate asserts the containment vector and the spec anchor only.; slop: OCSF coverage passes on vector presence while events carry no class id.
+const OCSF_CONTAINMENT_VECTOR: &str = "plugin-builder-host-containment-breach-only";
+
+// see: cans/15-operations.md#--ocsf-coverage
+fn assert_ocsf_coverage(vectors: &[VectorCase]) -> Result<(), String> {
+    if !vectors
+        .iter()
+        .any(|vector| vector.name == OCSF_CONTAINMENT_VECTOR)
+    {
+        return Err(format!(
+            "parity: ocsf coverage missing `{OCSF_CONTAINMENT_VECTOR}` vector in vectors.json; the host-containment-breach security event has no OCSF-mapped vector"
+        ));
+    }
+    let Ok(root) = crate::workspace_root() else {
+        return Err("parity: ocsf coverage cannot locate the workspace root".to_string());
+    };
+    let text = fs::read_to_string(root.join("cans/14-observability.md"))
+        .map_err(|e| format!("parity: ocsf coverage cannot read cans/14-observability.md: {e}"))?;
+    if !text.contains("Every EventBus security event maps to an OCSF 1.x class id") {
+        return Err(
+            "parity: ocsf coverage missing the OCSF mapping anchor in cans/14-observability.md"
+                .to_string(),
+        );
+    }
+    println!(
+        "parity: ocsf coverage OK (containment vector + OCSF 1.x mapping anchor present; live class-id mapping pending (L3))"
+    );
+    Ok(())
+}
+
+// see: cans/15-operations.md#--adversarial-cve-coverage
+// TODO (L3) [hypervisor_driver]: replay CVE-class exploit demos against the guest and Class 2 drivers from kelir-integration; the gate asserts the spec anchor and the replay crate only.; slop: CVE coverage passes on crate presence while no exploit demo ever replays.
+fn assert_adversarial_cve_coverage() -> Result<(), String> {
+    let Ok(root) = crate::workspace_root() else {
+        return Err(
+            "parity: adversarial-cve coverage cannot locate the workspace root".to_string(),
+        );
+    };
+    let text = fs::read_to_string(root.join("cans/15-operations.md")).map_err(|e| {
+        format!("parity: adversarial-cve coverage cannot read cans/15-operations.md: {e}")
+    })?;
+    if !text.contains("--adversarial-cve-coverage") {
+        return Err(
+            "parity: adversarial-cve coverage missing the --adversarial-cve-coverage anchor in cans/15-operations.md"
+                .to_string(),
+        );
+    }
+    if !root.join("crates/kelir-integration").is_dir() {
+        return Err(
+            "parity: adversarial-cve coverage missing crates/kelir-integration, the CVE replay owner"
+                .to_string(),
+        );
+    }
+    println!(
+        "parity: adversarial-cve coverage OK (spec anchor + kelir-integration present; live CVE replay pending (L3))"
+    );
+    Ok(())
+}
+
 pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut path = "vectors.json".to_string();
     let mut action_coverage = false;
@@ -753,6 +813,8 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     let mut outbox_coverage = false;
     let mut step_dag_coverage = false;
     let mut swarm_mesh_coverage = false;
+    let mut ocsf_coverage = false;
+    let mut adversarial_cve_coverage = false;
     let mut rest = args;
     match args.first().map(String::as_str) {
         None => {}
@@ -761,7 +823,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         }
         Some(other) => {
             return Err(CliError::usage(format!(
-                "parity: unknown action `{other}` (expected `run [path] [--vectors <path>] [--action-coverage] [--l7-stream-coverage] [--outbox-coverage] [--step-dag-coverage] [--swarm-mesh-coverage]`)"
+                "parity: unknown action `{other}` (expected `run [path] [--vectors <path>] [--action-coverage] [--l7-stream-coverage] [--outbox-coverage] [--step-dag-coverage] [--swarm-mesh-coverage] [--ocsf-coverage] [--adversarial-cve-coverage]`)"
             )));
         }
     }
@@ -779,6 +841,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             step_dag_coverage = true;
         } else if arg == "--swarm-mesh-coverage" {
             swarm_mesh_coverage = true;
+        } else if arg == "--ocsf-coverage" {
+            ocsf_coverage = true;
+        } else if arg == "--adversarial-cve-coverage" {
+            adversarial_cve_coverage = true;
         } else if arg == "--vectors" {
             let Some(value) = rest.get(index + 1) else {
                 return Err(CliError::usage(
@@ -820,6 +886,12 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
     }
     if swarm_mesh_coverage {
         assert_swarm_mesh_coverage(vectors)?;
+    }
+    if ocsf_coverage {
+        assert_ocsf_coverage(vectors)?;
+    }
+    if adversarial_cve_coverage {
+        assert_adversarial_cve_coverage()?;
     }
     println!(
         "parity: {} vector(s) from {path}: frame-validated {}; watchdog-armed {}; veto-registered {}",

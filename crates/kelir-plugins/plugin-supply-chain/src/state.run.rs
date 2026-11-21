@@ -9,7 +9,6 @@ use crate::state::SupplyChainPlugin;
 #[async_trait]
 impl TrapInterposer for SupplyChainPlugin {
     async fn on_trap(&self, _event: &TrapEvent, _ctx: &HandlerCtx) -> Result<Verdict, PluginError> {
-        // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: flag-to-verdict policy for encrypted or base64-obfuscated argv above the entropy threshold; slop: flag-to-verdict unimplemented, obfuscated argv Passes despite entropy
         // TODO (L3) [supply_chain_security]: mediate execve and memory syscalls through the W^X JIT gate; stub passes every trap.; slop: every trap Passes unmediated, the W^X JIT gate never enforces, execve and memory syscalls run unchecked.
         Err(PluginError::Halt(
             "TODO (L3): mediate execve and memory syscalls through the W^X JIT gate".into(),
@@ -52,13 +51,6 @@ impl SupplyChainPlugin {
         ))
     }
 
-    fn flags_obfuscated_argv(&self, argv: &[String]) -> Result<bool, PluginError> {
-        // L3-GAP: [sc_02_argv_high_entropy_obfuscation_kill]: Shannon entropy of argv[1:] above shannon_entropy_threshold_bits flags encrypted or base64-obfuscated commands; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes
-        let _ = argv;
-        // TODO (L3) [sc_02_argv_high_entropy_obfuscation_kill]: flag argv[1:] above shannon_entropy_threshold_bits as obfuscated.; slop: flags_obfuscated_argv stays Ok(false), high-entropy payload Passes.
-        Ok(false)
-    }
-
     fn blocks_lifecycle_script(&self, event: &TrapEvent) -> Result<bool, PluginError> {
         // L3-GAP: [sc_01_lifecycle_script_trap_exit126]: package-manager process-tree monitoring over the declared managers; dependency-directory lifecycle-script detection; nested npm→sh→node traps at the sh ancestor; slop: blocks_lifecycle_script stays Ok(false), lifecycle scripts Pass, exit never 126
         let _ = event;
@@ -70,5 +62,19 @@ impl SupplyChainPlugin {
         // L3-GAP: [supply_chain_security]: bypass runner matching covers language toolchain layouts beyond file-name equality; slop: file-name matching only, toolchain layouts bypass the runner check
         // TODO (L3) [supply_chain_security]: match bypass runners by toolchain layout, not file name only; stub matches nothing.; slop: file-name matching only, toolchain-layout runners bypass the check, unverified interpreters run undetected.
         false
+    }
+
+    fn resolve_lockfile_dry_run(&self, _manifest: &str) -> Result<(), PluginError> {
+        // TODO (L3) [supply_chain_security]: dry-run resolve the lockfile (npm/pip/pnpm/yarn/uv/poetry) and gate the resolved tree through OSV/Snyk/Socket/deps.dev advisories; slop: installs resolve live, a transitive CVE or malware package lands before any advisory lookup runs.
+        Err(PluginError::Halt(
+            "TODO (L3): dry-run lockfile resolution pending (L3)".into(),
+        ))
+    }
+
+    fn vet_skill_file(&self, _path: &str) -> Result<(), PluginError> {
+        // TODO (L3) [supply_chain_security]: vet SKILL.md and plugin files for unicode smuggling and prompt injection before guest ingestion; slop: unvetted skill files reach the guest, a smuggled instruction executes as trusted guidance.
+        Err(PluginError::Halt(
+            "TODO (L3): SKILL.md vetting pending (L3)".into(),
+        ))
     }
 }

@@ -26,6 +26,7 @@ pub struct PyKelirBuilder {
     trampolines: TrampolineTable,
     terminal_wiring: Option<kelir_interface::terminal::TerminalWiring>,
     wire_wiring: Option<kelir_interface::wire::net::WireWiring>,
+    wire_dns_to_ip_pinning: Option<bool>,
     storage_config: storage_bridge::PyStorageProjection,
 }
 
@@ -76,6 +77,7 @@ impl PyKelirBuilder {
             trampolines: TrampolineTable::default(),
             terminal_wiring: None,
             wire_wiring: None,
+            wire_dns_to_ip_pinning: None,
             storage_config: storage_bridge::PyStorageProjection::default(),
         }
     }
@@ -172,6 +174,7 @@ impl PyKelirBuilder {
     // see: cans/07-wire-plane.md#DNS-policy-filter
     fn set_wire_config(&mut self, cfg: &Bound<'_, PyDict>) -> PyResult<()> {
         let mut wiring = kelir_interface::wire::net::WireWiring::default();
+        let mut dns_to_ip_pinning: Option<bool> = None;
         for (key, value) in cfg.iter() {
             match key.to_string().as_str() {
                 "sinkhole" => {
@@ -244,6 +247,11 @@ impl PyKelirBuilder {
                     wiring.dial_timeout_ms = value
                         .extract::<u64>()
                         .map_err(|_| PyValueError::new_err("wire dial_timeout_ms is not a u64"))?;
+                }
+                "dns_to_ip_pinning" => {
+                    dns_to_ip_pinning = Some(value.extract::<bool>().map_err(|_| {
+                        PyValueError::new_err("wire dns_to_ip_pinning is not a bool")
+                    })?);
                 }
                 "l4_proxies" => {
                     let proxies = value.downcast::<PyList>().map_err(|_| {
@@ -320,6 +328,8 @@ impl PyKelirBuilder {
                 }
             }
         }
+        wiring.dns_to_ip_pinning = dns_to_ip_pinning.unwrap_or(false);
+        self.wire_dns_to_ip_pinning = dns_to_ip_pinning;
         self.wire_wiring = Some(wiring);
         Ok(())
     }
@@ -414,6 +424,7 @@ impl PyKelirBuilder {
         );
         // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
         // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        // TODO (L3) [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             terminal: self.terminal_wiring.clone(),
             terminal_ops: Some(kelir_terminal::terminal_ops(metrics.clone())),

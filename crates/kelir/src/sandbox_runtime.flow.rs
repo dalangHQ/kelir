@@ -192,6 +192,7 @@ pub(crate) fn wire_plane_config(profile: &SandboxProfile) -> Option<WireConfig> 
         userspace_netstack: wire.userspace_netstack.unwrap_or(false),
         default_egress: wire.default_egress.clone().unwrap_or_default(),
         dial_timeout_ms: 5000,
+        dns_to_ip_pinning: wire.dns_to_ip_pinning.unwrap_or(false),
     })
 }
 

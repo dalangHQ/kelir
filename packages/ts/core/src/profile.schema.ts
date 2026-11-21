@@ -108,6 +108,17 @@ const ProfileSchema = Type.Object(
             task_freeze_timeout_ms: Type.Optional(Type.Integer()),
             rejection_mode: Type.Optional(Type.String()),
             mask_proc_environ: Type.Optional(Type.Boolean()),
+            per_exec_cgroup: Type.Optional(Type.Boolean()),
+            deny_abi_compat: Type.Optional(Type.Boolean()),
+            blocked_syscalls: Type.Optional(Type.Array(Type.String())),
+            blocked_socket_families: Type.Optional(Type.Array(Type.String())),
+          }),
+        ),
+        steering: Type.Optional(
+          Type.Object({
+            steer_on_deny: Type.Optional(Type.Boolean()),
+            steer_on_redirect: Type.Optional(Type.Boolean()),
+            inject_exec_stderr: Type.Optional(Type.Boolean()),
           }),
         ),
         driver: Type.Optional(
@@ -190,6 +201,53 @@ function asStr(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session
+export interface ShimConfig {
+  readonly perExecCgroup?: boolean;
+  readonly denyAbiCompat?: boolean;
+  readonly blockedSyscalls?: readonly string[];
+  readonly blockedSocketFamilies?: readonly string[];
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session
+export interface SteeringConfig {
+  readonly steerOnDeny?: boolean;
+  readonly steerOnRedirect?: boolean;
+  readonly injectExecStderr?: boolean;
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session
+export function shimConfigFromProfile(
+  profile: ProfileSpec,
+): ShimConfig | undefined {
+  const shim = profile.session?.shim;
+  if (shim === undefined) {
+    return undefined;
+  }
+  return {
+    perExecCgroup: shim.per_exec_cgroup,
+    denyAbiCompat: shim.deny_abi_compat,
+    blockedSyscalls: shim.blocked_syscalls,
+    blockedSocketFamilies: shim.blocked_socket_families,
+  };
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session
+// TODO (L3) [bindings_ts]: forward the steering profile into the native shim once the NAPI builder accepts a shim config; the profile values stay TypeScript-side until then.; slop: steering stays TypeScript-side, the native shim never sees it.
+export function steeringConfigFromProfile(
+  profile: ProfileSpec,
+): SteeringConfig | undefined {
+  const steering = profile.session?.steering;
+  if (steering === undefined) {
+    return undefined;
+  }
+  return {
+    steerOnDeny: steering.steer_on_deny,
+    steerOnRedirect: steering.steer_on_redirect,
+    injectExecStderr: steering.inject_exec_stderr,
+  };
+}
+
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
 export function configFromProfile(profile: ProfileSpec): KelirConfig {
   const { session } = profile;
@@ -242,14 +300,16 @@ export function terminalConfigFromProfile(
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
+// TODO (L3) [bindings_ts]: forward blockingWaitTimeoutMs into the native storage config once the builder pick-list passes it to NAPI; the profile value stays TypeScript-side until then.; slop: SETLKW timeout stays TypeScript-side, the native lock broker never sees it.
 export function storageConfigFromProfile(
   profile: ProfileSpec,
-): StorageConfig | undefined {
+): (StorageConfig & { readonly blockingWaitTimeoutMs?: number }) | undefined {
   const storage = asRecord(profile.storage);
   if (storage === undefined) {
     return undefined;
   }
   const idmap = asRecord(storage.idmap);
+  const lockBroker = asRecord(storage.lock_broker);
   const sharedCaches = Array.isArray(storage.shared_caches)
     ? storage.shared_caches.flatMap((entry) => {
         const cache = asRecord(entry);
@@ -276,6 +336,7 @@ export function storageConfigFromProfile(
     sharedCaches,
     encapsulation: asStr(storage.encapsulation),
     daxWindow: asStr(storage.dax_window),
+    blockingWaitTimeoutMs: asInt(lockBroker?.blocking_wait_timeout_ms),
   };
 }
 
@@ -302,14 +363,16 @@ function l4ProxyFromEntry(entry: unknown): L4ProxyConfig | undefined {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
+// TODO (L3) [bindings_ts]: forward dnsToIpPinning into the native wire config once the NAPI builder accepts it; the profile value stays TypeScript-side until then.; slop: DNS pinning stays TypeScript-side, the native wire plane never sees it.
 export function wireConfigFromProfile(
   profile: ProfileSpec,
-): WireConfig | undefined {
+): (WireConfig & { readonly dnsToIpPinning?: boolean }) | undefined {
   const wire = asRecord(profile.wire);
   if (wire === undefined) {
     return undefined;
   }
   const proxies = asRecord(wire.l4_diversion)?.proxies;
+  const dns = asRecord(wire.dns);
   return {
     l4Proxies: Array.isArray(proxies)
       ? proxies.flatMap((entry): L4ProxyConfig[] => {
@@ -317,6 +380,7 @@ export function wireConfigFromProfile(
           return proxy === undefined ? [] : [proxy];
         })
       : undefined,
+    dnsToIpPinning: asBool(dns?.dns_to_ip_pinning),
   };
 }
 

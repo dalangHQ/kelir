@@ -33,6 +33,167 @@ pub fn compute_causal_delta(
 // see: cans/artifacts/examples/fixtures/kelir.yaml#plugins.ledger.merkle_wal.hashing_standard
 pub const WAL_RECORD_LEN: usize = 8 + 32 + 32 + 32 + 8 + 64;
 
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+pub const WAL_SEGMENT_HEADER_LEN: usize = 32;
+
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AuditDropCounters {
+    pub overflow: u64,
+    pub crc_corruption: u64,
+    pub mapper: u64,
+    pub auth_loss: u64,
+}
+
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditDropClass {
+    Overflow,
+    CrcCorruption,
+    Mapper,
+    AuthLoss,
+}
+
+impl AuditDropCounters {
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn record(&mut self, class: AuditDropClass) {
+        match class {
+            AuditDropClass::Overflow => self.overflow += 1,
+            AuditDropClass::CrcCorruption => self.crc_corruption += 1,
+            AuditDropClass::Mapper => self.mapper += 1,
+            AuditDropClass::AuthLoss => self.auth_loss += 1,
+        }
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn total(&self) -> u64 {
+        self.overflow + self.crc_corruption + self.mapper + self.auth_loss
+    }
+}
+
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OcsfClassId(pub u16);
+
+impl OcsfClassId {
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub const SECURITY_FINDING: Self = Self(1001);
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub const AUTHENTICATION: Self = Self(3002);
+}
+
+// see: cans/14-observability.md#Security-events
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditEventKind {
+    HostContainmentBreach,
+    EmergencyKillSwitch,
+    BreakGlass,
+    ApprovalHold,
+    AuditDrop,
+    KeyFingerprintMismatch,
+    WitnessCosignFailure,
+}
+
+// see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+pub fn ocsf_class_id(kind: AuditEventKind) -> OcsfClassId {
+    match kind {
+        AuditEventKind::HostContainmentBreach => OcsfClassId::SECURITY_FINDING,
+        AuditEventKind::EmergencyKillSwitch => OcsfClassId::SECURITY_FINDING,
+        AuditEventKind::BreakGlass => OcsfClassId::AUTHENTICATION,
+        AuditEventKind::ApprovalHold => OcsfClassId::AUTHENTICATION,
+        AuditEventKind::AuditDrop => OcsfClassId::SECURITY_FINDING,
+        AuditEventKind::KeyFingerprintMismatch => OcsfClassId::SECURITY_FINDING,
+        AuditEventKind::WitnessCosignFailure => OcsfClassId::SECURITY_FINDING,
+    }
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+const fn crc32c_table() -> [u32; 256] {
+    let mut table = [0u32; 256];
+    let mut index = 0usize;
+    while index < 256 {
+        let mut crc = index as u32;
+        let mut bit = 0u32;
+        while bit < 8 {
+            crc = if crc & 1 == 1 {
+                0x82F6_3B78 ^ (crc >> 1)
+            } else {
+                crc >> 1
+            };
+            bit += 1;
+        }
+        table[index] = crc;
+        index += 1;
+    }
+    table
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+const CRC32C_TABLE: [u32; 256] = crc32c_table();
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+pub const fn crc32c(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFFu32;
+    let mut index = 0usize;
+    while index < data.len() {
+        let byte = data[index];
+        crc = CRC32C_TABLE[((crc ^ (byte as u32)) & 0xFF) as usize] ^ (crc >> 8);
+        index += 1;
+    }
+    crc ^ 0xFFFF_FFFFu32
+}
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+const _: () = assert!(crc32c(b"123456789") == 0xE306_9283);
+
+// see: cans/plugins/ledger.md#Merkle-WAL-specification
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WalSegmentHeader {
+    pub version: u16,
+    pub segment_seq: u64,
+    pub record_count: u32,
+    pub ack_high_watermark: u64,
+}
+
+impl WalSegmentHeader {
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub fn pack(&self) -> [u8; WAL_SEGMENT_HEADER_LEN] {
+        let mut bytes = [0u8; WAL_SEGMENT_HEADER_LEN];
+        bytes[0..4].copy_from_slice(b"KELW");
+        bytes[4..6].copy_from_slice(&self.version.to_le_bytes());
+        bytes[6..8].copy_from_slice(&0u16.to_le_bytes());
+        bytes[8..16].copy_from_slice(&self.segment_seq.to_le_bytes());
+        bytes[16..20].copy_from_slice(&self.record_count.to_le_bytes());
+        bytes[20..28].copy_from_slice(&self.ack_high_watermark.to_le_bytes());
+        let crc = crc32c(&bytes[..28]);
+        bytes[28..32].copy_from_slice(&crc.to_le_bytes());
+        bytes
+    }
+
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub fn unpack(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != WAL_SEGMENT_HEADER_LEN || &bytes[0..4] != b"KELW" {
+            return None;
+        }
+        let crc = u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
+        if crc32c(&bytes[..28]) != crc {
+            return None;
+        }
+        Some(Self {
+            version: u16::from_le_bytes([bytes[4], bytes[5]]),
+            segment_seq: u64::from_le_bytes([
+                bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14],
+                bytes[15],
+            ]),
+            record_count: u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
+            ack_high_watermark: u64::from_le_bytes([
+                bytes[20], bytes[21], bytes[22], bytes[23], bytes[24], bytes[25], bytes[26],
+                bytes[27],
+            ]),
+        })
+    }
+}
+
 // see: cans/plugins/ledger.md#Merkle-WAL-specification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WalRecord {

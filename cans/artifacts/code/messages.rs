@@ -303,6 +303,9 @@ pub enum Verdict {
     /// L7 HTTP gets a synthetic 403 with a JSON receipt). errno None
     /// indicates silent blackholing, for plugin-chaos loss injection only.
     Drop { errno: Option<Errno>, reason: String },
+    /// Swallow the signal: deliver nothing, report nothing to the guest.
+    /// Signal ring only (11-protocol.md#Signal-and-fork-interception).
+    Absorb,
     /// Yield or hold to host until `until`.
     Suspend { until: SuspendUntil },
     /// Fatal; pipeline freezes.

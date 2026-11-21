@@ -24,3 +24,13 @@ pub struct FsReconcileRequest {
 pub trait ReconcilerOps: Send + Sync {
     fn reconcile(&self, req: FsReconcileRequest) -> Result<CommitStats, PluginError>;
 }
+
+// see: cans/05-storage-plane.md#Workspace-commit
+pub const RECONCILE_EBUSY_MAX_BACKOFF_MS: u64 = 2000;
+
+// see: cans/05-storage-plane.md#Workspace-commit
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReconcileFailurePolicy {
+    RetryUpTo(u64),
+    Abort,
+}

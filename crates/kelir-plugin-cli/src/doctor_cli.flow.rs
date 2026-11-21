@@ -30,6 +30,9 @@ pub enum HostProbe {
     Avf,
     Whp,
     KelirPack,
+    SeccompInstall,
+    WaitKillable,
+    Userfaultfd,
 }
 
 impl HostProbe {
@@ -43,6 +46,9 @@ impl HostProbe {
             HostProbe::Avf => "avf",
             HostProbe::Whp => "whp",
             HostProbe::KelirPack => "kelir-pack",
+            HostProbe::SeccompInstall => "seccomp-install",
+            HostProbe::WaitKillable => "wait-killable",
+            HostProbe::Userfaultfd => "userfaultfd",
         }
     }
 }
@@ -266,6 +272,27 @@ fn probe_whp() -> ProbeOutcome {
 }
 
 // see: cans/15-operations.md#Developer-CLI
+fn probe_seccomp_install() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: install a live seccomp filter in a child and verify the kernel does not silently block or kill trapped syscalls (seccomp_install_probe).; slop: seccomp assumed installable, silent kernel block never detected
+    // TODO (L3) [hypervisor_driver]: run the seccomp_install_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel blocks installs
+    ProbeOutcome::NotImplemented("seccomp install probe (L3)".to_string())
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn probe_wait_killable() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: verify a TASK_KILLABLE wait survives a trapped syscall without the kernel killing the waiter (wait_killable_probe).; slop: killable wait assumed, waiter killed silently at trap time
+    // TODO (L3) [hypervisor_driver]: run the wait_killable_probe behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while the kernel kills killable waiters
+    ProbeOutcome::NotImplemented("wait-killable probe (L3)".to_string())
+}
+
+// see: cans/15-operations.md#Developer-CLI
+fn probe_userfaultfd() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: verify userfaultfd registration succeeds for the guest memory range on this kernel.; slop: userfaultfd assumed available, CoW fault handling never verified
+    // TODO (L3) [hypervisor_driver]: run the userfaultfd behavioral probe; slop: Class 2 pre-boot gating trusts the static /dev check while userfaultfd registration fails
+    ProbeOutcome::NotImplemented("userfaultfd probe (L3)".to_string())
+}
+
+// see: cans/15-operations.md#Developer-CLI
 fn hypervisor_probe(hypervisor: &str) -> Option<(HostProbe, ProbeOutcome)> {
     match hypervisor {
         "kvm" => Some((HostProbe::Kvm, probe_kvm())),
@@ -292,6 +319,9 @@ pub fn probe_host() -> DoctorReport {
     if cfg!(target_os = "linux") {
         probes.push((HostProbe::PageSize, probe_page_size()));
         probes.push((HostProbe::Pidfd, probe_pidfd()));
+        probes.push((HostProbe::SeccompInstall, probe_seccomp_install()));
+        probes.push((HostProbe::WaitKillable, probe_wait_killable()));
+        probes.push((HostProbe::Userfaultfd, probe_userfaultfd()));
     } else if cfg!(target_os = "macos") {
         probes.push((HostProbe::PageSize, probe_page_size()));
     } else if probes.is_empty() {

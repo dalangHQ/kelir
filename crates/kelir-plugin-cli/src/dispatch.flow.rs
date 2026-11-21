@@ -1,9 +1,9 @@
 // see: cans/15-operations.md#Developer-CLI
 use crate::cli_error::CliError;
 use crate::{
-    attach_cli, attest_cli, audit_cli, budgets_cli, bump_core_cli, doctor_cli, fixtures_cli,
-    graph_cli, layers_cli, logs_cli, manifest_cli, parity_cli, registry_cli, rings_cli,
-    scaffold_cli, setup_cli, spec_cli, vectors_cli,
+    attach_cli, attest_cli, audit_cli, budgets_cli, bump_core_cli, doctor_cli, emergency_cli,
+    fixtures_cli, graph_cli, layers_cli, logs_cli, manifest_cli, parity_cli, registry_cli,
+    report_cli, rings_cli, scaffold_cli, setup_cli, spec_cli, vectors_cli,
 };
 
 fn check_layers() -> Result<(), CliError> {
@@ -73,7 +73,7 @@ fn check(args: &[String]) -> Result<(), CliError> {
 pub fn dispatch(args: &[String]) -> Result<(), CliError> {
     if args.len() < 2 {
         return Err(CliError::usage(
-            "kelir-plugin-cli: missing subcommand (expected doctor|attach|attest|bump-core|check|parity|fixtures|logs|manifest|registry|rings|new|setup|spec|vectors)",
+            "kelir-plugin-cli: missing subcommand (expected doctor|attach|attest|bump-core|check|emergency|parity|fixtures|logs|manifest|registry|report|rings|new|setup|spec|vectors)",
         ));
     }
     match args[1].as_str() {
@@ -82,11 +82,13 @@ pub fn dispatch(args: &[String]) -> Result<(), CliError> {
         "attest" => attest_cli::run(&args[2..])?,
         "bump-core" => bump_core_cli::run(&args[2..])?,
         "check" => check(&args[2..])?,
+        "emergency" => emergency_cli::run(&args[2..])?,
         "parity" => parity_cli::run(&args[2..])?,
         "fixtures" => fixtures_cli::run(&args[2..])?,
         "logs" => logs_cli::run()?,
         "manifest" => manifest_cli::run()?,
         "registry" => registry_cli::run()?,
+        "report" => report_cli::run(&args[2..])?,
         "rings" => rings_cli::run()?,
         "new" | "scaffold" => scaffold_cli::run(&args[2..])?,
         "setup" => setup_cli::run(&args[2..])?,

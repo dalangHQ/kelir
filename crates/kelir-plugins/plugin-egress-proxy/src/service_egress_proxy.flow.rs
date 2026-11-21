@@ -9,22 +9,44 @@ use kelir_interface::plugin_model::{
 use kelir_interface::wire::l4::L4Stream;
 
 // see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EgressProxyConfig {
     pub http_proxy: Option<String>,
     pub https_proxy: Option<String>,
     pub all_proxy: Option<String>,
     pub no_proxy: Vec<String>,
+    pub block_tor: bool,
+    pub deny_socks5_resolve: bool,
+}
+
+impl Default for EgressProxyConfig {
+    fn default() -> Self {
+        Self {
+            http_proxy: None,
+            https_proxy: None,
+            all_proxy: None,
+            no_proxy: Vec::new(),
+            block_tor: true,
+            deny_socks5_resolve: true,
+        }
+    }
+}
+
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+fn env_var_both(lower: &str, upper: &str) -> Option<String> {
+    std::env::var(upper)
+        .ok()
+        .or_else(|| std::env::var(lower).ok())
 }
 
 // see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
 impl EgressProxyConfig {
     pub fn from_env() -> Self {
         Self {
-            http_proxy: std::env::var("HTTP_PROXY").ok(),
-            https_proxy: std::env::var("HTTPS_PROXY").ok(),
-            all_proxy: std::env::var("ALL_PROXY").ok(),
-            no_proxy: std::env::var("NO_PROXY")
+            http_proxy: env_var_both("http_proxy", "HTTP_PROXY"),
+            https_proxy: env_var_both("https_proxy", "HTTPS_PROXY"),
+            all_proxy: env_var_both("all_proxy", "ALL_PROXY"),
+            no_proxy: env_var_both("no_proxy", "NO_PROXY")
                 .map(|value| {
                     value
                         .split(',')
@@ -33,6 +55,8 @@ impl EgressProxyConfig {
                         .collect()
                 })
                 .unwrap_or_default(),
+            block_tor: true,
+            deny_socks5_resolve: true,
         }
     }
 
@@ -184,6 +208,50 @@ pub fn build_socks5_connect_request(target: &ProxyTarget) -> Vec<u8> {
     request
 }
 
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+pub const SOCKS5_CMD_RESOLVE: u8 = 0xF0;
+
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+pub fn is_onion_host(host: &str) -> bool {
+    host.to_ascii_lowercase().ends_with(".onion")
+}
+
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+pub fn validate_proxy_target(
+    config: &EgressProxyConfig,
+    target: &ProxyTarget,
+) -> Result<(), EgressProxyError> {
+    if config.block_tor && is_onion_host(&target.host) {
+        return Err(EgressProxyError::Dial(format!(
+            "egress proxy blocks Tor .onion target {}",
+            target.host
+        )));
+    }
+    Ok(())
+}
+
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+pub fn socks5_request_command(request: &[u8]) -> Option<u8> {
+    if request.len() > 1 && request[0] == 0x05 {
+        Some(request[1])
+    } else {
+        None
+    }
+}
+
+// see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+pub fn validate_socks5_request(
+    config: &EgressProxyConfig,
+    request: &[u8],
+) -> Result<(), EgressProxyError> {
+    if config.deny_socks5_resolve && socks5_request_command(request) == Some(SOCKS5_CMD_RESOLVE) {
+        return Err(EgressProxyError::SocksMethodRejected(
+            "SOCKS5 RESOLVE (0xF0) denied by deny_socks5_resolve".into(),
+        ));
+    }
+    Ok(())
+}
+
 // see: cans/plugins/egress-proxy.md#Service-exports-(egress-proxy)
 #[async_trait]
 pub trait EgressProxyService: Send + Sync {
@@ -206,14 +274,25 @@ impl EgressProxy {
     pub fn config(&self) -> &EgressProxyConfig {
         &self.config
     }
+
+    // see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
+    pub fn guard_no_proxy(&self, host: &str) -> Result<(), EgressProxyError> {
+        let _ = host;
+        // TODO (L3) [wire_plane]: guard NO_PROXY against L4 spoofing so a spoofed bypass entry cannot route a proxied host direct; slop: a spoofed NO_PROXY entry bypasses the proxy, direct egress escapes policy.
+        Err(EgressProxyError::Dial(
+            "egress proxy NO_PROXY spoof guard is TODO (L3)".into(),
+        ))
+    }
 }
 
 #[async_trait]
 impl EgressProxyService for EgressProxy {
     // see: cans/plugins/egress-proxy.md#Invariants-and-policy-(egress-proxy)
     async fn dial(&self, target: &ProxyTarget) -> Result<L4Stream, EgressProxyError> {
+        validate_proxy_target(&self.config, target)?;
         let _ = self.config.proxy_for(target);
         // TODO (L3) [wp_13_upstream_dial_proxy_chain_auth]: open the raw L4 splice to the selected upstream proxy, run the CONNECT/SOCKS5 handshake over it, and return the spliced stream; no upstream dial exists yet; slop: guest performs the CONNECT handshake instead of the host netstack.
+        // TODO (L3) [wire_plane]: trap obfs4proxy/snowflake-client bridge dials before they leave the host; slop: a Tor pluggable transport dials out unexamined, Tor traffic escapes the egress proxy.
         Err(EgressProxyError::Dial(
             "egress proxy upstream dial is TODO (L3)".into(),
         ))

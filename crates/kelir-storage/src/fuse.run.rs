@@ -24,6 +24,7 @@ pub(crate) struct RealFuseOps {
     next_virtual_inode: AtomicU64,
     quota: Arc<StorageQuota>,
     lock_broker: Arc<LockBroker>,
+    default_permissions: bool,
 }
 
 // TODO (L3) [storage_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
@@ -36,6 +37,7 @@ impl RealFuseOps {
             next_virtual_inode: AtomicU64::new(2),
             quota: Arc::new(StorageQuota::unbounded()),
             lock_broker: Arc::new(LockBroker::new(engine)),
+            default_permissions: true,
         }
     }
 
@@ -70,6 +72,7 @@ impl FuseOps for RealFuseOps {
         // L3-GAP: [sp_16_statfs_zero_crawl_constant_time]: statfs replies remaining broker quota from the plane atomics; slop: statfs crawls host tree, time grows with base
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: fill lock payload from host flock grant; conflicts reply EWOULDBLOCK; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
+        // TODO (L3) [storage_plane]: mount with the default_permissions flag so the kernel checks permissions and the guest clone cannot deadlock on the FUSE daemon.; slop: mount runs without default_permissions, a guest clone deadlocks waiting on the daemon.
         // TODO (L3) [storage_plane]: dispatch the FUSE request through the pipeline engine and marshal the reply per opcode.; slop: FUSE requests never dispatched, every opcode returns the stub reply.
         Err(PluginError::Halt(
             "TODO (L3): FuseOps::dispatch needs the per-opcode pipeline dispatch and FUSE reply marshalling".into(),

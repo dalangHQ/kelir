@@ -19,6 +19,8 @@ pub struct StepDagConfig {
     pub require_signed_attribution: bool,
     pub require_separation_of_duties: bool,
     pub storage: StepDagStorage,
+    // see: cans/plugins/tool-guard.md#Approval-authorization
+    pub reviewer_ttl_seconds: u64,
 }
 
 impl Default for StepDagConfig {
@@ -28,6 +30,7 @@ impl Default for StepDagConfig {
             require_signed_attribution: true,
             require_separation_of_duties: true,
             storage: StepDagStorage::ContentAddressed,
+            reviewer_ttl_seconds: 300,
         }
     }
 }
@@ -191,6 +194,7 @@ impl StepDag {
         }
         let id = step_content_id(&parents, &actor);
         if let Some(attribution) = &attribution {
+            check_reviewer_attribution(attribution, &actor, self.config.reviewer_ttl_seconds)?;
             if self.config.require_signed_attribution {
                 attribution.verify(&id)?;
             }
@@ -223,6 +227,31 @@ impl Default for StepDag {
     fn default() -> Self {
         Self::new(StepDagConfig::default())
     }
+}
+
+// see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
+pub fn check_reviewer_attribution(
+    attribution: &StepAttribution,
+    actor: &str,
+    ttl_seconds: u64,
+) -> Result<(), StepDagError> {
+    if attribution.reviewer.is_empty() {
+        return Err(StepDagError::MissingAttribution(
+            "reviewer attribution is empty".to_string(),
+        ));
+    }
+    if attribution.reviewer == actor {
+        return Err(StepDagError::SeparationOfDuties(format!(
+            "reviewer {} is the step actor",
+            attribution.reviewer
+        )));
+    }
+    if ttl_seconds == 0 {
+        return Err(StepDagError::MissingAttribution(
+            "reviewer attribution TTL is zero".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)

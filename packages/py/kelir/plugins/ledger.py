@@ -44,6 +44,8 @@ class LedgerConfig:
     witness_cosigning_endpoint: str | None = None
     otel: OtelConfig | None = None
     receipts: ReceiptConfig = field(default_factory=lambda: ReceiptConfig())
+    strict: bool = False
+    ocsf_mapping: bool = False
 
 
 class LedgerPlugin(BasePlugin[None, None]):

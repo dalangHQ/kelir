@@ -155,6 +155,17 @@ kelir/
 │   │       │   └── storage_bridge.rs
 │   │       └── tests/
 │   │           └── descriptor_pyo3_test.rs
+│   ├── kelir-bundle/                  # Bundle crate: plugin re-export surface + plugin profile schema converters (Law 8: kelir untouched by plugin types)
+│   │   ├── Cargo.toml
+│   │   ├── src/
+│   │   │   ├── lib.rs                 # Thin aggregator: plugin re-exports
+│   │   │   ├── plugin_profile_schema.flow.rs   # *PluginProfile structs, validate_plugins, to_ledger/mcp/tool_guard converters
+│   │   │   └── plugin_profile_schema_extra.flow.rs  # db_proxy/supply_chain/vault/l7_http/egress_proxy/redaction converters
+│   │   └── tests/
+│   │       ├── composition_seal_test.rs
+│   │       ├── fluent_builder_plugin_test.rs
+│   │       ├── plugin_profile_schema_test.rs
+│   │       └── sandbox_profile_virtio_test.rs
 │   ├── kelir-catalog/                 # Supporting crate: SQLite schema, pool, migration helpers (used by core)
 │   │   ├── Cargo.toml
 │   │   ├── src/

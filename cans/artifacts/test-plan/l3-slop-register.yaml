@@ -3217,6 +3217,51 @@ entries:
   - host port immediately re-bindable without EADDRINUSE (AS-08)
   code_todos:
   - crates/kelir-transport/src/host_bind.run.rs
+- case_id: gt_15_mcp_server_sampling_create_message_deny
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Sampling request forwarded because the server is in the trusted list, ignoring direction
+  - Denial asserted without checking the JSON-RPC error code, so a generic error looks like the gate
+  - Client-initiated sampling also denied, breaking legitimate LLM sampling flows
+  must_not:
+  - Forward server-initiated sampling because the server is trusted
+  - Deny client-initiated sampling requests
+  acceptance:
+  - Server-initiated createMessage returns JSON-RPC -32001 (AS-03)
+  - Client-initiated sampling still Passes (AS-06)
+  code_todos: []
+- case_id: gt_16_cross_server_read_then_send_exfil
+  status: gap
+  domain: governance_tools
+  target_crate: crates/kelir-plugins
+  slop_risks:
+  - Block keyed on byte-range overlap with the first call's output, so paraphrased payloads pass
+  - Window spans the whole session, so unrelated turns' read/send pairs false-positive
+  - Second call Drops but the first call's read output already left via a background flush
+  must_not:
+  - Key the block on byte overlap instead of capability buckets
+  - Assert the block while the first call's output leaked through another path
+  acceptance:
+  - Second tool call Drops with EPOLICY despite zero byte overlap (AS-06)
+  - Sliding window bounded to the same turn (AS-03)
+  code_todos: []
+- case_id: wp_18_dns_to_ip_pinning_fail_closed
+  status: gap
+  domain: wire_plane
+  target_crate: crates/kelir-engine
+  slop_risks:
+  - Direct IP dropped because all egress is denied, not because pin-table admission failed, inverting the cause
+  - Pin table never expires entries, so a stale CDN IP stays admitted after rotation
+  - Domain rule asserted while the raw-IP dial path silently passes
+  must_not:
+  - Assert the drop without the allowlisted domain rule in place
+  - Let pin table entries outlive their DNS TTL
+  acceptance:
+  - Direct IP dial to unpinned address Drops ECONNREFUSED with zero outbound frames (AS-02)
+  - Domain-qualified dial through the pinned address Passes (AS-06)
+  code_todos: []
 code_only:
 - domain: adapters_ingestion
   target_crate: crates/kelir-adapters/kelir-pack
@@ -3656,48 +3701,3 @@ code_only:
   - packages/py/tests/test_wire_sinkhole.py
   - packages/ts/core/src/builder.lifecycle.ts
   - packages/ts/core/tests/sinkhole.wire.test.ts
-- case_id: gt_15_mcp_server_sampling_create_message_deny
-  status: gap
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - Sampling request forwarded because the server is in the trusted list, ignoring direction
-  - Denial asserted without checking the JSON-RPC error code, so a generic error looks like the gate
-  - Client-initiated sampling also denied, breaking legitimate LLM sampling flows
-  must_not:
-  - Forward server-initiated sampling because the server is trusted
-  - Deny client-initiated sampling requests
-  acceptance:
-  - Server-initiated createMessage returns JSON-RPC -32001 (AS-03)
-  - Client-initiated sampling still Passes (AS-06)
-  code_todos: []
-- case_id: gt_16_cross_server_read_then_send_exfil
-  status: gap
-  domain: governance_tools
-  target_crate: crates/kelir-plugins
-  slop_risks:
-  - Block keyed on byte-range overlap with the first call's output, so paraphrased payloads pass
-  - Window spans the whole session, so unrelated turns' read/send pairs false-positive
-  - Second call Drops but the first call's read output already left via a background flush
-  must_not:
-  - Key the block on byte overlap instead of capability buckets
-  - Assert the block while the first call's output leaked through another path
-  acceptance:
-  - Second tool call Drops with EPOLICY despite zero byte overlap (AS-06)
-  - Sliding window bounded to the same turn (AS-03)
-  code_todos: []
-- case_id: wp_18_dns_to_ip_pinning_fail_closed
-  status: gap
-  domain: wire_plane
-  target_crate: crates/kelir-engine
-  slop_risks:
-  - Direct IP dropped because all egress is denied, not because pin-table admission failed, inverting the cause
-  - Pin table never expires entries, so a stale CDN IP stays admitted after rotation
-  - Domain rule asserted while the raw-IP dial path silently passes
-  must_not:
-  - Assert the drop without the allowlisted domain rule in place
-  - Let pin table entries outlive their DNS TTL
-  acceptance:
-  - Direct IP dial to unpinned address Drops ECONNREFUSED with zero outbound frames (AS-02)
-  - Domain-qualified dial through the pinned address Passes (AS-06)
-  code_todos: []

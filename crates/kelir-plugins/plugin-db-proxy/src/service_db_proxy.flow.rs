@@ -30,6 +30,249 @@ pub enum SqlDialect {
 }
 
 // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PgExtendedState {
+    #[default]
+    Idle,
+    Parse,
+    Bind,
+    Execute,
+    Sync,
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PgExtendedQueryState {
+    pub state: PgExtendedState,
+    pub statement: Option<String>,
+    pub portal: Option<String>,
+}
+
+impl PgExtendedQueryState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn transition(&mut self, tag: u8) -> Result<(), PluginError> {
+        let next = match (self.state, tag) {
+            (PgExtendedState::Idle, b'P') => PgExtendedState::Parse,
+            (PgExtendedState::Sync, b'P') => PgExtendedState::Parse,
+            (PgExtendedState::Parse, b'B') => PgExtendedState::Bind,
+            (PgExtendedState::Parse, b'D') => PgExtendedState::Parse,
+            (PgExtendedState::Bind, b'E') => PgExtendedState::Execute,
+            (PgExtendedState::Bind, b'D') => PgExtendedState::Bind,
+            (PgExtendedState::Idle, b'Q') => PgExtendedState::Execute,
+            (PgExtendedState::Sync, b'Q') => PgExtendedState::Execute,
+            (PgExtendedState::Execute, b'S') => PgExtendedState::Sync,
+            (PgExtendedState::Bind, b'S') => PgExtendedState::Sync,
+            (PgExtendedState::Parse, b'S') => PgExtendedState::Sync,
+            (_, b'X') => PgExtendedState::Idle,
+            (_, b'H') => PgExtendedState::Idle,
+            _ => {
+                return Err(PluginError::Halt(format!(
+                    "EPIPE: pgwire extended-query tag {} is invalid in state {:?}",
+                    tag as char, self.state
+                )));
+            }
+        };
+        self.state = next;
+        if tag == b'S' || tag == b'X' || tag == b'H' {
+            self.statement = None;
+            self.portal = None;
+        }
+        Ok(())
+    }
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, Default)]
+pub struct CancelKeyMap {
+    keys: Vec<(u32, u32)>,
+}
+
+impl CancelKeyMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn synthetic_key(process_id: u32) -> u32 {
+        process_id.wrapping_mul(0x9E37_79B1).rotate_left(13) ^ 0xA5A5_A5A5
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn issue(&mut self, process_id: u32) -> u32 {
+        let secret = Self::synthetic_key(process_id);
+        if let Some(entry) = self.keys.iter_mut().find(|entry| entry.0 == process_id) {
+            entry.1 = secret;
+        } else {
+            self.keys.push((process_id, secret));
+        }
+        secret
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn validate(&self, process_id: u32, secret: u32) -> bool {
+        self.keys
+            .iter()
+            .any(|entry| entry.0 == process_id && entry.1 == secret)
+    }
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreparedEntry {
+    pub name: String,
+    pub sql: String,
+    pub search_path: String,
+    pub role: String,
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, Default)]
+pub struct PreparedCache {
+    entries: Vec<PreparedEntry>,
+}
+
+impl PreparedCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn store(&mut self, name: &str, sql: &str, search_path: &str, role: &str) {
+        if let Some(entry) = self.entries.iter_mut().find(|entry| entry.name == name) {
+            entry.sql = sql.to_string();
+            entry.search_path = search_path.to_string();
+            entry.role = role.to_string();
+        } else {
+            self.entries.push(PreparedEntry {
+                name: name.to_string(),
+                sql: sql.to_string(),
+                search_path: search_path.to_string(),
+                role: role.to_string(),
+            });
+        }
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn lookup(&self, name: &str) -> Option<String> {
+        self.entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .map(|entry| entry.sql.clone())
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn invalidate_on_context_change(&mut self, search_path: &str, role: &str) -> usize {
+        let before = self.entries.len();
+        self.entries
+            .retain(|entry| entry.search_path == search_path && entry.role == role);
+        before - self.entries.len()
+    }
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlPolicyDecision {
+    Allow,
+    Deny,
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub fn evaluate_sql_policies(
+    sql: &str,
+    config: &PgWireRewrite,
+) -> (SqlPolicyDecision, Vec<String>) {
+    let mut reasons = Vec::new();
+    let lower = sql.to_ascii_lowercase();
+    let trimmed = lower.trim_start();
+    if config.require_where_on_mutations
+        && (trimmed.starts_with("update") || trimmed.starts_with("delete"))
+        && !lower.contains(" where ")
+    {
+        reasons.push("mutation without WHERE".to_string());
+    }
+    if config.block_unsafe_io {
+        if lower.contains("copy") && lower.contains("program") {
+            reasons.push("COPY PROGRAM is unsafe IO".to_string());
+        }
+        for function in ["pg_read_file", "pg_ls_dir", "dblink"] {
+            if lower.contains(function) {
+                reasons.push(format!("{function} is unsafe IO"));
+            }
+        }
+    }
+    let statements = lower
+        .split(';')
+        .filter(|part| !part.trim().is_empty())
+        .count();
+    if statements > 1 {
+        reasons.push("multi-statement query".to_string());
+    }
+    if reasons.is_empty() {
+        (SqlPolicyDecision::Allow, reasons)
+    } else {
+        (SqlPolicyDecision::Deny, reasons)
+    }
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub fn redis_command_allowed(command: &str) -> bool {
+    redis_deny_reason(command).is_none()
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub fn redis_deny_reason(command: &str) -> Option<String> {
+    let upper = command.to_ascii_uppercase();
+    let name = upper.split_ascii_whitespace().next().unwrap_or("");
+    if ["EVAL", "EVALSHA", "CONFIG", "DEBUG"].contains(&name) || name.starts_with("FLUSH") {
+        Some(format!(
+            "Redis command {name} is denied by the dangerous-command gate"
+        ))
+    } else {
+        None
+    }
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub fn pg_error_response(severity: &str, code: &str, message: &str, hint: Option<&str>) -> Vec<u8> {
+    let mut fields = Vec::new();
+    for (kind, value) in [
+        ('S', severity),
+        ('V', severity),
+        ('C', code),
+        ('M', message),
+    ] {
+        fields.push(kind as u8);
+        fields.extend_from_slice(value.as_bytes());
+        fields.push(0);
+    }
+    if let Some(hint) = hint {
+        fields.push(b'H');
+        fields.extend_from_slice(hint.as_bytes());
+        fields.push(0);
+    }
+    fields.push(0);
+    let len = (fields.len() + 4) as u32;
+    let mut out = Vec::with_capacity(1 + fields.len() + 4);
+    out.push(b'E');
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(&fields);
+    out
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+pub fn ast_parse_sql(sql: &str) -> Result<(), PluginError> {
+    let _ = sql;
+    // TODO (L3) [relational_transaction]: parse the SQL statement through the libpgquery C-FFI AST classifier; slop: SQL passes unparsed, COPY PROGRAM and search_path evasion ride the regex path.
+    Err(PluginError::Halt(
+        "TODO (L3): libpgquery AST parse pending (L3)".into(),
+    ))
+}
+
+// see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StatementHandle {
     pub id: u64,
@@ -158,6 +401,12 @@ impl Default for PgWireRewrite {
             upstream: String::new(),
             schema_rewrites: Vec::new(),
             max_rewrites_per_conn: 3,
+            ast_parser: "libpgquery".to_string(),
+            require_where_on_mutations: true,
+            deny_mode_in_tx: "terminate".to_string(),
+            block_unsafe_io: true,
+            catalog_resolution: true,
+            synthetic_cancel_keys: true,
         }
     }
 }
@@ -200,6 +449,11 @@ impl DbProxyPlugin {
     // see: cans/plugins/db-proxy.md#SQLite-UDS-bridge-mechanics:
     pub fn sqlite_bridge(&self) -> SqliteBridge {
         SqliteBridge::new(Arc::clone(&self.proxy))
+    }
+
+    // see: cans/plugins/db-proxy.md#Service-exports-(db-proxy)
+    pub fn evaluate_sql(&self, sql: &str) -> (SqlPolicyDecision, Vec<String>) {
+        evaluate_sql_policies(sql, &self.config.postgres)
     }
 
     fn handle_pgwire_frame(

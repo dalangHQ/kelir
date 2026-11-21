@@ -127,6 +127,7 @@ export interface NativeSessionHandle {
     argv: string[],
     options?: SpawnOptions,
   ): Promise<SpawnResult>;
+  steer?(execId: number, message: string): Promise<void>;
   fork(): Promise<NativeSessionHandle>;
   suspend(reason: SuspendReason): Promise<void>;
   resume(): Promise<void>;
@@ -146,6 +147,12 @@ export interface NativeSessionHandle {
     port: number,
   ): AsyncGenerator<IngressStream<Req, Resp>, void, unknown>;
   shm(region: string): Promise<ShmMapping>;
+}
+
+// see: cans/02-plugin-model.md#Unified-verdict
+export interface ExecHandle {
+  readonly execId: number;
+  steer(message: string): Promise<void>;
 }
 
 // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress

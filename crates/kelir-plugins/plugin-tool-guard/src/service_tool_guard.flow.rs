@@ -104,6 +104,226 @@ pub enum ToolsListChange {
     ToolRemoved { tool: String },
 }
 
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCapability {
+    Read,
+    Write,
+    Send,
+    Run,
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+pub fn classify_tool_capabilities(name: &str) -> Vec<ToolCapability> {
+    let lower = name.to_ascii_lowercase();
+    let mut capabilities = Vec::new();
+    if ["read", "get", "fetch", "list", "search", "query"]
+        .iter()
+        .any(|verb| lower.contains(verb))
+    {
+        capabilities.push(ToolCapability::Read);
+    }
+    if ["write", "update", "create", "delete", "remove", "set"]
+        .iter()
+        .any(|verb| lower.contains(verb))
+    {
+        capabilities.push(ToolCapability::Write);
+    }
+    if ["send", "post", "publish", "email", "notify"]
+        .iter()
+        .any(|verb| lower.contains(verb))
+    {
+        capabilities.push(ToolCapability::Send);
+    }
+    if ["run", "exec", "execute", "command", "shell"]
+        .iter()
+        .any(|verb| lower.contains(verb))
+    {
+        capabilities.push(ToolCapability::Run);
+    }
+    capabilities
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossServerEvent {
+    pub server: String,
+    pub capabilities: Vec<ToolCapability>,
+    pub seq: u64,
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+#[derive(Debug, Clone, Default)]
+pub struct CrossServerDetector {
+    window: Vec<CrossServerEvent>,
+}
+
+impl CrossServerDetector {
+    pub const WINDOW_LEN: usize = 16;
+
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn record(&mut self, server: &str, capabilities: &[ToolCapability], seq: u64) -> bool {
+        let hit = capabilities.contains(&ToolCapability::Send)
+            && self.window.iter().any(|event| {
+                event.server != server && event.capabilities.contains(&ToolCapability::Read)
+            });
+        self.window.push(CrossServerEvent {
+            server: server.to_string(),
+            capabilities: capabilities.to_vec(),
+            seq,
+        });
+        if self.window.len() > Self::WINDOW_LEN {
+            self.window.remove(0);
+        }
+        hit
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+pub fn levenshtein(first: &str, second: &str) -> usize {
+    let first: Vec<char> = first.chars().collect();
+    let second: Vec<char> = second.chars().collect();
+    let mut previous: Vec<usize> = (0..=second.len()).collect();
+    let mut current = vec![0usize; second.len() + 1];
+    for (i, first_char) in first.iter().enumerate() {
+        current[0] = i + 1;
+        for (j, second_char) in second.iter().enumerate() {
+            let cost = usize::from(first_char != second_char);
+            current[j + 1] = (previous[j + 1] + 1)
+                .min(current[j] + 1)
+                .min(previous[j] + cost);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[second.len()]
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+pub fn confusable_tool_names(candidate: &str, known: &[String]) -> Vec<String> {
+    known
+        .iter()
+        .filter(|name| (1..=2).contains(&levenshtein(candidate, name)))
+        .cloned()
+        .collect()
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalHold {
+    pub tool: String,
+    pub requester: String,
+    pub approver: String,
+    pub created_unix: u64,
+}
+
+// see: cans/plugins/tool-guard.md#Call-quota
+impl Default for crate::ApprovalAuthConfig {
+    fn default() -> Self {
+        Self {
+            deny_self_approval: true,
+            methods: vec![
+                "webauthn".to_string(),
+                "totp".to_string(),
+                "oidc".to_string(),
+            ],
+            max_pending_holds: 10,
+            hold_ttl_seconds: 300,
+        }
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+impl crate::ApprovalAuthConfig {
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn method_allowed(&self, method: &str) -> bool {
+        self.methods.iter().any(|candidate| candidate == method)
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn validate_hold(
+        &self,
+        hold: &ApprovalHold,
+        pending_holds: u32,
+        now_unix: u64,
+    ) -> Result<(), PluginError> {
+        if self.deny_self_approval && hold.requester == hold.approver {
+            return Err(PluginError::Halt(
+                "EPERM: self-approval denied by deny_self_approval".into(),
+            ));
+        }
+        if pending_holds >= self.max_pending_holds {
+            return Err(PluginError::Halt(
+                "ETOOLQUOTA: approval hold cap max_pending_holds exceeded".into(),
+            ));
+        }
+        if now_unix > hold.created_unix.saturating_add(self.hold_ttl_seconds) {
+            return Err(PluginError::Halt(
+                "EPERM: approval hold expired past hold_ttl_seconds".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn verify_method(&self, method: &str, _proof: &[u8]) -> Result<(), PluginError> {
+        let _ = method;
+        // TODO (L3) [governance_tools]: verify the WebAuthn/TOTP/OIDC approval proof cryptographically; slop: approval binds on an unverified method claim, a forged proof approves a held tool call.
+        Err(PluginError::Halt(
+            "TODO (L3): approval method verification pending (L3)".into(),
+        ))
+    }
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JsonRpcDenyError {
+    pub code: i32,
+    pub errno: String,
+    pub reason: String,
+    pub guidance: Option<String>,
+    pub redirect_tool: Option<String>,
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+pub fn render_json_rpc_error(id: Option<JsonRpcId>, error: &JsonRpcDenyError) -> Vec<u8> {
+    let id = match id {
+        Some(JsonRpcId::Number(id)) => Value::from(id),
+        Some(JsonRpcId::Text(id)) => Value::from(id),
+        None => Value::Null,
+    };
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": error.code,
+            "message": error.reason,
+            "data": {
+                "errno": error.errno,
+                "reason": error.reason,
+                "guidance": error.guidance,
+                "redirect_tool": error.redirect_tool,
+            },
+        },
+    });
+    serde_json::to_vec(&body).unwrap_or_default()
+}
+
+// see: cans/plugins/tool-guard.md#Plugin-tool-guard
+pub fn scan_tool_result(payload: &[u8], scan_enabled: bool) -> Result<(), PluginError> {
+    if !scan_enabled {
+        return Ok(());
+    }
+    if parse_json_rpc_response(payload).is_err() {
+        return Ok(());
+    }
+    // TODO (L3) [governance_tools]: scan tool results for hidden instructions and prompt injection; slop: tool results pass unexamined, an injected instruction reaches the model context.
+    Ok(())
+}
+
 // see: cans/plugins/tool-guard.md#Immutable-schema-locking
 pub fn diff_tools_list(
     locked: &BTreeMap<String, ToolSchema>,
@@ -420,6 +640,11 @@ impl ToolRegistry {
     // see: cans/plugins/tool-guard.md#Immutable-schema-locking
     pub fn locked_digest(&self) -> Result<Option<[u8; 32]>, PluginError> {
         Ok(*self.lock_digest()?)
+    }
+
+    // see: cans/plugins/tool-guard.md#Immutable-schema-locking
+    pub fn tool_names(&self) -> Result<Vec<String>, PluginError> {
+        Ok(self.lock_schemas()?.keys().cloned().collect())
     }
 }
 

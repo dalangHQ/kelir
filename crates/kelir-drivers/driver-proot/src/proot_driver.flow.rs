@@ -27,6 +27,22 @@ impl ProotDriver {
             "proot boot: ptrace tracing harness init (L3)".into(),
         ))
     }
+
+    fn seccomp_install_probe(&self) -> Result<(), VmmError> {
+        // TODO (L3) [hypervisor_driver]: live behavioral probe installing the seccomp filter and confirming the kernel traps instead of silently blocking the install; slop: static /dev checks report a working filter while the kernel silently blocks it.
+        // TODO (L3) [hypervisor_driver]: inherit the identical BPF syscall and socket-family set as kelir-shim DefenseFlags (io_uring and keyrings blocked, AF_ALG/AF_RXRPC/NETLINK_XFRM denied, deny_abi_compat).; slop: driver filter diverges from the shim filter, the same syscall is trapped in one and passed in the other.
+        Err(VmmError::Unsupported(
+            "proot pre-boot probe: seccomp_install_probe (L3)".into(),
+        ))
+    }
+
+    fn wait_killable_probe(&self) -> Result<(), VmmError> {
+        // TODO (L3) [hypervisor_driver]: live behavioral probe confirming a trapped syscall waits killably instead of hanging the guest unkillably; slop: static checks report a live trap while the guest hangs unkillably.
+        // TODO (L3) [hypervisor_driver]: inherit the identical BPF syscall and socket-family set as kelir-shim DefenseFlags (io_uring and keyrings blocked, AF_ALG/AF_RXRPC/NETLINK_XFRM denied, deny_abi_compat).; slop: driver filter diverges from the shim filter, the same syscall is trapped in one and passed in the other.
+        Err(VmmError::Unsupported(
+            "proot pre-boot probe: wait_killable_probe (L3)".into(),
+        ))
+    }
 }
 
 #[async_trait::async_trait]
@@ -53,6 +69,8 @@ impl VmmDriver for ProotDriver {
         // L3-GAP: [hypervisor_driver]: deterministic replay needs hypervisor clock control (kvm-clock/KVM_SET_CLOCK); a ptrace tracer cannot intercept VDSO clock reads; slop: VDSO clock reads unintercepted, replay timestamps diverge
         reject_emulated_deterministic_clock("proot", config.deterministic_clock)?;
         self.config = Some(config);
+        self.seccomp_install_probe()?;
+        self.wait_killable_probe()?;
         self.init_tracer()
     }
 

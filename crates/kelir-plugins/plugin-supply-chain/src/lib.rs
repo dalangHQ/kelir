@@ -13,8 +13,9 @@ pub mod state_run;
 pub mod wx_token;
 
 pub use interpreter::{
-    INTERPRETER_TABLE, UnwrappedExec, WRAPPER_COMMANDS, is_interpreter, resolve_shebang,
-    unwrap_interpreter,
+    INTERPRETER_TABLE, MAX_INTERPRETER_DEPTH, UnwrappedExec, WRAPPER_COMMANDS,
+    attest_busybox_applet, check_interpreter_depth, is_interpreter, resolve_shebang,
+    shell_payload_is_opaque, strip_private_scope, unwrap_interpreter, unwrap_interpreter_checked,
 };
 pub use state::{SupplyChainCtx, SupplyChainPlugin};
 pub use wx_token::WxAllocToken;
@@ -48,8 +49,11 @@ pub struct WxJitConfig {
 pub struct PackageGuardConfig {
     pub deny_lifecycle_scripts: bool,
     pub managers: Vec<String>,
-    pub shannon_entropy_threshold_bits: f64,
     pub bypass_runners: Vec<String>,
+    pub resolve_lockfiles: bool,
+    pub advisories: Vec<String>,
+    pub strip_private_scopes: bool,
+    pub vet_skills: bool,
 }
 
 #[derive(Clone, Debug, Default)]

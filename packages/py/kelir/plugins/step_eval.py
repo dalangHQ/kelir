@@ -23,6 +23,7 @@ class StepDagConfig:
     require_signed_attribution: bool = True
     require_separation_of_duties: bool = True
     storage: Literal["content-addressed"] = "content-addressed"
+    reviewer_ttl_seconds: int = 300
 
 
 @dataclass

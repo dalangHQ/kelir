@@ -229,34 +229,6 @@ fn sc_08_memfd_create_dynamic_elf_block() -> Result<(), String> {
     Ok(())
 }
 
-// see: cans/artifacts/test-plan/cases/supply_chain_security/sc_09_whitelisted_interpreter_entropy_bypass.yaml#case_id
-#[test]
-#[ignore]
-fn sc_09_whitelisted_interpreter_entropy_bypass() -> Result<(), String> {
-    let plugin = SupplyChainPlugin::new(SupplyChainConfig::default());
-    let ctx = handler_ctx([0u8; 16], 1234);
-    let event = trap_event(
-        1234,
-        "/usr/bin/python",
-        [0x42; 32],
-        vec![
-            "python".into(),
-            "-c".into(),
-            "aGVsbG8gd29ybGQhIGdob3N0IHNlY3JldCBpcyBub3QgaGVyZSBidXQgdGhlIGFyZ3YgaXMgbG9uZyBhbmQgaGlnaCBlbnRyb3B5".into(),
-        ],
-        None,
-    );
-    match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
-        Verdict::Pass => (),
-        verdict => {
-            return Err(format!(
-                "whitelisted interpreter with high-entropy argv must pass, got {verdict:?}"
-            ));
-        }
-    }
-    Ok(())
-}
-
 // see: cans/artifacts/test-plan/cases/supply_chain_security/sc_01_lifecycle_script_trap_exit126.yaml#case_id
 #[test]
 #[ignore]
@@ -286,38 +258,6 @@ fn sc_01_lifecycle_script_trap_exit126() -> Result<(), String> {
         verdict => {
             return Err(format!(
                 "lifecycle script execve must be dropped with EACCES (exit 126), got {verdict:?}"
-            ));
-        }
-    }
-    Ok(())
-}
-
-// see: cans/artifacts/test-plan/cases/supply_chain_security/sc_02_argv_high_entropy_obfuscation_kill.yaml#case_id
-#[test]
-#[ignore]
-fn sc_02_argv_high_entropy_obfuscation_kill() -> Result<(), String> {
-    let plugin = SupplyChainPlugin::new(SupplyChainConfig::default());
-    let ctx = handler_ctx([0u8; 16], 4200);
-    let payload = "R4vK7xPz2QmW9tLbYcN8fGhJ5sD_aXeU3vZrT6wAyBnC1oEiM0pSqO7kFdH2gJuL-V+ZxWcPqNmTbYvErfCgXdKsAhUoIeDwLjMzNyBtGcSapQok";
-    let event = exec_event(
-        4200,
-        100,
-        "/bin/sh",
-        vec!["sh".into(), "-c".into(), payload.to_string()],
-    );
-    match block_on(plugin.on_trap(&event, &ctx)).map_err(|err| format!("{err:?}"))? {
-        Verdict::Drop {
-            errno: Errno::Eacces,
-            reason,
-        } => {
-            assert!(
-                reason.contains("obfuscated argv denied"),
-                "deny must name the obfuscated argv kill: {reason}"
-            );
-        }
-        verdict => {
-            return Err(format!(
-                "high-entropy obfuscated argv (Shannon > 5.2 bits/char) must be dropped with EACCES, got {verdict:?}"
             ));
         }
     }

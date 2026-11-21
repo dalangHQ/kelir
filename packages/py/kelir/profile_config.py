@@ -107,6 +107,17 @@ class ShimProfile(BaseModel):
     task_freeze_timeout_ms: ProfileInt | None = None
     rejection_mode: str | None = None
     mask_proc_environ: ProfileBool | None = None
+    per_exec_cgroup: ProfileBool | None = None
+    deny_abi_compat: ProfileBool | None = None
+    blocked_syscalls: list[str] | None = None
+    blocked_socket_families: list[str] | None = None
+
+
+# see: cans/artifacts/examples/fixtures/kelir.yaml#session
+class SteeringProfile(BaseModel):
+    steer_on_deny: ProfileBool | None = None
+    steer_on_redirect: ProfileBool | None = None
+    inject_exec_stderr: ProfileBool | None = None
 
 
 class DriverProfile(BaseModel):
@@ -130,6 +141,7 @@ class SessionProfile(BaseModel):
     devices: DevicesProfile | None = None
     artifacts: ArtifactsProfile | None = None
     shim: ShimProfile | None = None
+    steering: SteeringProfile | None = None
     driver: DriverProfile | None = None
     storage: StorageProfile | None = None
 

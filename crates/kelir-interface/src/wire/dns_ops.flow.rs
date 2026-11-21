@@ -26,6 +26,7 @@ pub enum DnsRcode {
 pub enum DnsVerdict {
     Forward,
     Sinkhole { rcode: u8 },
+    Redirect { rewrite: String },
 }
 
 #[derive(Debug, Clone)]

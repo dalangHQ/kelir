@@ -731,6 +731,9 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     },
                     ssh_agent_bridge: cfg.ssh_agent_bridge,
                     dial_timeout_ms: cfg.dial_timeout_ms,
+                    dns_to_ip_pinning: cfg.dns_to_ip_pinning,
+                    connect_redirect: None,
+                    dns_redirect: None,
                     // L3-GAP: [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
                     l4_proxies: cfg
                         .l4_proxies
@@ -811,6 +814,8 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     LockScope::Globs(globs) => globs.clone(),
                 },
                 non_blocking: broker.non_blocking,
+                blocking_wait_timeout_ms:
+                    kelir_engine::planes::storage::DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
             }
         });
         let mut storage = kelir_engine::planes::storage::StorageConfig {
@@ -825,6 +830,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                 host_uid: cfg.idmap.host_uid,
             }),
             encapsulation: cfg.encapsulation,
+            default_permissions: false,
         };
         self.apply_fs_cfg(&mut storage);
         storage
@@ -841,6 +847,8 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     LockScope::Globs(globs) => globs.clone(),
                 },
                 non_blocking: broker.non_blocking,
+                blocking_wait_timeout_ms:
+                    kelir_engine::planes::storage::DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
             });
         }
     }

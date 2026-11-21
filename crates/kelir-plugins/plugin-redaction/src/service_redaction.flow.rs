@@ -33,9 +33,34 @@ pub struct MaskReadConfig {
 }
 
 // see: cans/plugins/redaction.md#Plugin-redaction
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SoftDeleteConfig {
+    pub enabled: bool,
+    pub trash_dir: String,
+}
+
+impl Default for SoftDeleteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            trash_dir: "/workspace/.kelir_trash".to_string(),
+        }
+    }
+}
+
+// see: cans/plugins/redaction.md#Plugin-redaction
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RedactionConfig {
     pub mask_read: MaskReadConfig,
+    pub soft_delete: SoftDeleteConfig,
+}
+
+// see: cans/plugins/redaction.md#Plugin-redaction
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuarantineManifest {
+    pub token: String,
+    pub original_path: String,
+    pub trash_path: String,
 }
 
 // see: cans/plugins/redaction.md#Write-snoops-(FsInterposer::on_fs_write)
@@ -90,14 +115,24 @@ pub trait RedactionService: Send + Sync {
 // see: cans/plugins/redaction.md#Invariants-and-policy-(redaction)
 pub struct Redactor {
     config: MaskReadConfig,
+    soft_delete: SoftDeleteConfig,
     snoops: Vec<SnoopRule>,
     carryover: Mutex<Vec<u8>>,
 }
 
 impl Redactor {
     pub fn new(config: MaskReadConfig, snoops: Vec<SnoopRule>) -> Self {
+        Self::with_soft_delete(config, snoops, SoftDeleteConfig::default())
+    }
+
+    pub fn with_soft_delete(
+        config: MaskReadConfig,
+        snoops: Vec<SnoopRule>,
+        soft_delete: SoftDeleteConfig,
+    ) -> Self {
         Self {
             config,
+            soft_delete,
             snoops,
             carryover: Mutex::new(Vec::new()),
         }
@@ -105,6 +140,46 @@ impl Redactor {
 
     pub fn config(&self) -> &MaskReadConfig {
         &self.config
+    }
+
+    pub fn soft_delete(&self) -> &SoftDeleteConfig {
+        &self.soft_delete
+    }
+
+    // see: cans/plugins/redaction.md#Plugin-redaction
+    pub fn quarantine_token(path: &Path, nonce: u64) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        path.as_os_str().hash(&mut hasher);
+        nonce.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
+    }
+
+    // see: cans/plugins/redaction.md#Plugin-redaction
+    pub fn quarantine_manifest(&self, path: &Path, nonce: u64) -> Option<QuarantineManifest> {
+        if !self.soft_delete.enabled {
+            return None;
+        }
+        let token = Self::quarantine_token(path, nonce);
+        let file_name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned());
+        let trash_path = match file_name {
+            Some(name) => format!("{}/{}_{}", self.soft_delete.trash_dir, token, name),
+            None => format!("{}/{}", self.soft_delete.trash_dir, token),
+        };
+        Some(QuarantineManifest {
+            token,
+            original_path: path.to_string_lossy().into_owned(),
+            trash_path,
+        })
+    }
+
+    // see: cans/plugins/redaction.md#Plugin-redaction
+    pub fn quarantine_target(&self, path: &Path, nonce: u64) -> Option<String> {
+        self.quarantine_manifest(path, nonce)
+            .map(|manifest| manifest.trash_path)
     }
 
     pub fn snoops(&self) -> &[SnoopRule] {
@@ -170,6 +245,16 @@ impl RedactionPlugin {
 
     pub fn with_config(config: MaskReadConfig) -> Self {
         Self::new(config, Vec::new())
+    }
+
+    pub fn with_redaction_config(config: RedactionConfig) -> Self {
+        Self {
+            service: Arc::new(Redactor::with_soft_delete(
+                config.mask_read,
+                Vec::new(),
+                config.soft_delete,
+            )),
+        }
     }
 
     pub fn service(&self) -> &Arc<Redactor> {

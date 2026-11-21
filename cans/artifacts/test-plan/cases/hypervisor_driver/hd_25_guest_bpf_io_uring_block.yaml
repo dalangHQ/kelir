@@ -33,7 +33,7 @@ setup:
     vault_secrets: []
 
 execution:
-  trigger: "guest_binary"
+  trigger: "rust_api"
   command: "guest: io_uring_setup(64, &params)"
   input_params:
     action: "bpf_syscall_gate"

@@ -55,6 +55,7 @@ pub enum ShimError {
     ElfParse { path: String },
     ExeDigest { path: String },
     TrapEncode,
+    CgroupV2 { exec_id: u64 },
 }
 
 impl fmt::Display for ShimError {
@@ -71,6 +72,10 @@ impl std::error::Error for ShimError {}
 pub struct DefenseFlags {
     pub mask_proc_environ: bool,
     pub block_abstract_unix_sockets: bool,
+    pub block_io_uring: bool,
+    pub block_keyrings: bool,
+    pub blocked_socket_families: [i32; 3],
+    pub deny_abi_compat: bool,
 }
 
 impl Default for DefenseFlags {
@@ -78,6 +83,10 @@ impl Default for DefenseFlags {
         Self {
             mask_proc_environ: true,
             block_abstract_unix_sockets: true,
+            block_io_uring: true,
+            block_keyrings: true,
+            blocked_socket_families: [libc::AF_ALG, libc::AF_RXRPC, libc::NETLINK_XFRM],
+            deny_abi_compat: true,
         }
     }
 }
@@ -109,7 +118,27 @@ pub fn defense_verdict(
     _sockaddr: Option<&[u8]>,
 ) -> TrapVerdict {
     // TODO (L3) [protocol_mux]: deny environ opens and abstract unix sockets per the defense flags, else pass.; slop: verdict always passes, so the defense flags silently stop enforcing.
+    // TODO (L3) [protocol_mux]: deny io_uring_setup/enter/register when block_io_uring and add_key/request_key/keyctl when block_keyrings.; slop: io_uring and keyring syscalls pass, the async-I/O and keyring bypasses stay open.
+    // TODO (L3) [protocol_mux]: deny socket families listed in blocked_socket_families and any trap whose arch fails the AUDIT_ARCH check when deny_abi_compat.; slop: exotic socket families and x32/int 0x80 traps pass, the ABI-bypass vectors stay open.
     TrapVerdict::Pass
+}
+
+// see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
+pub fn is_blocked_syscall(_syscall_nr: i64) -> bool {
+    // TODO (L3) [protocol_mux]: return true for io_uring_setup/enter/register and add_key/request_key/keyctl via libc::SYS_* per target arch.; slop: check always returns false, so blocked syscalls are never recognized.
+    false
+}
+
+// see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
+pub fn is_blocked_socket_family(_family: i32) -> bool {
+    // TODO (L3) [protocol_mux]: return true when family is listed in the caller's blocked_socket_families.; slop: check always returns false, so blocked socket families are never recognized.
+    false
+}
+
+// see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
+pub fn is_abi_compat_arch(_arch: u32) -> bool {
+    // TODO (L3) [protocol_mux]: return true for AUDIT_ARCH_I386 (int 0x80) and x32 (__X32_SYSCALL_BIT) traps, which never equal AUDIT_ARCH.; slop: check always returns false, so compat-ABI traps are never recognized.
+    false
 }
 
 // see: cans/11-protocol.md#Blocks-direct-memory-reads-against-/proc/[pid]/environ-and-process-vm-readv
@@ -149,6 +178,10 @@ fn trap_filter_program(_defense: &DefenseFlags) -> Vec<libc::sock_filter> {
     // L3-GAP: [hd_02_wx_mmu_prot_exec_trap]: gate-1 in-kernel allowlist fast path for harmless tools plus in-filter mprotect(PROT_EXEC)/memfd_create flag masking; slop: allowlist passes mprotect PROT_EXEC, Stage-2 fault never fires
     // see: cans/01-architecture.md#Shim-defense-flags-close-in-guest-kernel-pseudo-filesystem-leaks
     // TODO (L3) [protocol_mux]: build the seccomp BPF program trapping the monitored syscalls and returning USER_NOTIF.; slop: filter is never built, so no syscall is ever trapped.
+    // TODO (L3) [protocol_mux]: deny io_uring_setup/io_uring_enter/io_uring_register in the filter when block_io_uring, so async I/O cannot bypass trap inspection.; slop: io_uring syscalls pass the filter, async I/O escapes trap inspection.
+    // TODO (L3) [protocol_mux]: deny add_key/request_key/keyctl in the filter when block_keyrings.; slop: keyring syscalls pass the filter, guest keyring state escapes the shim.
+    // TODO (L3) [protocol_mux]: deny AF_ALG/AF_RXRPC/NETLINK_XFRM socket families in the filter when listed in blocked_socket_families.; slop: exotic socket families pass the filter, CVE-prone socket paths stay open.
+    // TODO (L3) [protocol_mux]: reject AUDIT_ARCH mismatches (x32, int 0x80) in the filter when deny_abi_compat, before any syscall dispatch.; slop: compat-ABI traps pass the filter, the x32/int 0x80 bypass stays open.
     Vec::new()
 }
 

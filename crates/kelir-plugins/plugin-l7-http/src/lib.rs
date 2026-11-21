@@ -12,13 +12,15 @@ pub mod service_l7_http_run;
 
 pub use l7_parser::{
     HttpRequest, HttpResponse, JsonRpcEnvelope, L7Message, L7ParseError, L7Parser,
-    MAX_L7_BODY_BYTES, SseEvent, content_length, parse_http_request, parse_http_response,
-    parse_json_rpc, split_headers, split_sse_frames, synthetic_403_receipt,
+    MAX_L7_BODY_BYTES, SseEvent, TokenUsage, content_length, inspect_sse_frames,
+    inspect_sse_tool_use, is_path_traversal, llm_retention_digest, normalize_token_usage,
+    parse_http_request, parse_http_response, parse_json_rpc, split_headers, split_sse_frames,
+    synthetic_403_receipt, synthetic_403_receipt_with_guidance,
 };
 pub use l7_tls::{HostKeyringDecryptor, TlsDecryptor};
 pub use service_l7_http::{
-    HttpPolicy, HttpPolicyService, HttpVerdict, L7HttpConfig, L7HttpPlugin, L7PolicyError,
-    SinkholeConfig, SinkholeRule,
+    DeclaredServiceConfig, HttpPolicy, HttpPolicyService, HttpVerdict, L7HttpConfig, L7HttpPlugin,
+    L7PolicyError, SinkholeConfig, SinkholeRule,
 };
 
 // see: cans/plugins/l7-http.md#Crate-dependencies-(l7-http)

@@ -19,6 +19,8 @@ class EgressProxyConfig:
     https_proxy: str | None = None
     all_proxy: str | None = None
     no_proxy: list[str] = field(default_factory=list)
+    block_tor: bool = True
+    deny_socks5_resolve: bool = True
 
 
 class EgressProxyPlugin(BasePlugin[None, None]):

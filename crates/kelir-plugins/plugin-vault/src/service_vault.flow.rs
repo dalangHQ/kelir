@@ -22,6 +22,81 @@ pub const VAULT_PLACEHOLDER_PREFIX: &str = "vault://";
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 pub const MAX_TOKEN_TTL_SECONDS: u32 = 900;
 
+// see: cans/plugins/vault.md#Plugin-vault
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CredSubEntry {
+    pub real: String,
+    pub fake: String,
+}
+
+// see: cans/plugins/vault.md#Plugin-vault
+#[derive(Debug, Clone, Default)]
+pub struct CredSubTable {
+    entries: Vec<CredSubEntry>,
+}
+
+impl CredSubTable {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn fake_for(real: &str) -> String {
+        real.chars()
+            .map(|c| {
+                if c.is_ascii_digit() {
+                    '9'
+                } else if c.is_ascii_uppercase() {
+                    'Z'
+                } else if c.is_ascii_lowercase() {
+                    'z'
+                } else {
+                    c
+                }
+            })
+            .collect()
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn register(&mut self, real: &str) -> String {
+        if let Some(entry) = self.entries.iter().find(|entry| entry.real == real) {
+            return entry.fake.clone();
+        }
+        let fake = Self::fake_for(real);
+        self.entries.push(CredSubEntry {
+            real: real.to_string(),
+            fake: fake.clone(),
+        });
+        fake
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn fake_token(&self, real: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|entry| entry.real == real)
+            .map(|entry| entry.fake.as_str())
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn swap_outbound(&self, text: &str) -> String {
+        let mut out = text.to_string();
+        for entry in &self.entries {
+            out = out.replace(&entry.real, &entry.fake);
+        }
+        out
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn scrub_inbound(&self, text: &str) -> String {
+        let mut out = text.to_string();
+        for entry in &self.entries {
+            out = out.replace(&entry.real, "[redacted]");
+        }
+        out
+    }
+}
+
 // see: cans/plugins/vault.md#Out-of-band-credential-brokerage
 #[derive(Debug, Clone)]
 pub struct TokenRequest {
@@ -116,6 +191,7 @@ pub struct CredentialBroker {
     session_id: Mutex<Option<String>>,
     outstanding: Mutex<HashMap<String, OutstandingToken>>,
     issuance_nonce: AtomicU64,
+    cred_sub: Mutex<CredSubTable>,
 }
 
 impl CredentialBroker {
@@ -125,7 +201,35 @@ impl CredentialBroker {
             session_id: Mutex::new(None),
             outstanding: Mutex::new(HashMap::new()),
             issuance_nonce: AtomicU64::new(0),
+            cred_sub: Mutex::new(CredSubTable::new()),
         }
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn register_credsub(&self, real: &str) -> Result<String, VaultError> {
+        let mut table = self
+            .cred_sub
+            .lock()
+            .map_err(|_| VaultError::Eperm("credential substitution table poisoned".into()))?;
+        Ok(table.register(real))
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn swap_outbound(&self, text: &str) -> Result<String, VaultError> {
+        let table = self
+            .cred_sub
+            .lock()
+            .map_err(|_| VaultError::Eperm("credential substitution table poisoned".into()))?;
+        Ok(table.swap_outbound(text))
+    }
+
+    // see: cans/plugins/vault.md#Plugin-vault
+    pub fn scrub_response(&self, text: &str) -> Result<String, VaultError> {
+        let table = self
+            .cred_sub
+            .lock()
+            .map_err(|_| VaultError::Eperm("credential substitution table poisoned".into()))?;
+        Ok(table.scrub_inbound(text))
     }
 
     fn lock_session(&self) -> Result<MutexGuard<'_, Option<String>>, VaultError> {

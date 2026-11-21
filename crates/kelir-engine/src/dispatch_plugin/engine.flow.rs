@@ -1,6 +1,8 @@
 // see: cans/02-plugin-model.md#Static-dispatch
 // see: cans/02-plugin-model.md#Unified-interposition-pipeline
 use super::*;
+use kelir_interface::handlers_plugin::{SignalContext, SignalTargetRelation};
+use kelir_interface::protocol_wire::ApprovalHoldTracker;
 use kelir_interface::telemetry::MetricRegistry;
 
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
@@ -69,6 +71,7 @@ pub struct PipelineEngine {
     pub(super) ffi_window_start_ms: AtomicU64,
     pub(super) ffi_window_ops: AtomicU64,
     pub(super) active_scope: Option<MountScope>,
+    pub(super) approval_holds: ApprovalHoldTracker,
     pub(super) sealed: bool,
 }
 
@@ -207,6 +210,7 @@ impl PipelineEngine {
             ffi_window_start_ms: AtomicU64::new(0),
             ffi_window_ops: AtomicU64::new(0),
             active_scope: None,
+            approval_holds: ApprovalHoldTracker::default(),
             sealed: false,
         }
     }
@@ -398,6 +402,23 @@ impl PipelineEngine {
 
     pub fn is_sealed(&self) -> bool {
         self.sealed
+    }
+
+    pub fn approval_hold_count(&self, now_ms: u64) -> usize {
+        self.approval_holds.pending_count(now_ms)
+    }
+
+    pub fn register_approval_hold(&mut self, now_ms: u64) -> Result<(), PluginError> {
+        if self.approval_holds.try_hold(now_ms) {
+            return Ok(());
+        }
+        Err(PluginError::Halt(
+            "approval hold cap reached: pending SuspendUntil::Approval holds at ceiling".into(),
+        ))
+    }
+
+    pub fn expire_approval_holds(&mut self, now_ms: u64) {
+        self.approval_holds.expire(now_ms);
     }
 
     pub fn bind_trap_scoped(&mut self, stage: Arc<dyn TrapInterposer>, scope: MountScope) {
@@ -863,22 +884,38 @@ impl PipelineEngine {
         Ok(Verdict::Pass)
     }
 
-    // see: cans/11-protocol.md#Signal-and-fork-interception
     pub async fn dispatch_signal(
         &self,
         sender: u32,
         target: u32,
         sig: i32,
     ) -> Result<Verdict, PluginError> {
+        let relation = if sender == target {
+            SignalTargetRelation::Self_
+        } else {
+            SignalTargetRelation::Peer
+        };
+        let ctx = SignalContext::new(sender, target, sig, 0, relation);
+        self.dispatch_signal_ctx(&ctx).await
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub async fn dispatch_signal_ctx(&self, ctx: &SignalContext) -> Result<Verdict, PluginError> {
+        if !ctx.scope_allows() {
+            return Ok(Verdict::Drop {
+                errno: Errno::Eperm,
+                reason: "EPOLICY: signaling kelir-shim PID 1 denied".into(),
+            });
+        }
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::Signal)?;
         if let Some(verdict) = fused
             .as_ref()
             .and_then(|crossing| crossing.non_pass_verdict())
         {
-            return Ok(verdict);
+            return SignalContext::validate_verdict(verdict);
         }
-        // TODO (L3) [plugin_engine]: signal carries no path or device payload, so trap-scope filtering lands with the shim signal boundary; slop: signal ring skips scope filter entirely
+        // TODO (L3) [plugin_engine]: MountScope carries no pid dimension, so per-interceptor signal scope filtering lands with the shim signal boundary; slop: every interceptor sees every signal, scope never narrows the signal ring
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
@@ -889,7 +926,8 @@ impl PipelineEngine {
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
-                let outcome = quarantine_unit(interceptor.on_signal(sender, target, sig)).await;
+                let outcome =
+                    quarantine_unit(interceptor.on_signal(ctx.sender, ctx.target, ctx.sig)).await;
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
@@ -902,6 +940,7 @@ impl PipelineEngine {
                     reason: "hook timeout".into(),
                 };
             }
+            let verdict = SignalContext::validate_verdict(verdict)?;
             if !matches!(verdict, Verdict::Pass) {
                 return Ok(verdict);
             }

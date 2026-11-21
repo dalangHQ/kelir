@@ -7,7 +7,9 @@ use kelir_interface::plugin_model::{
     KelirPlugin, MountScope, PipelineBinder, PluginDeps, VirtioDevice,
 };
 
-use crate::l7_parser::{HttpRequest, HttpResponse, L7ParseError, L7Parser, synthetic_403_receipt};
+use crate::l7_parser::{
+    HttpRequest, HttpResponse, L7ParseError, L7Parser, is_path_traversal, synthetic_403_receipt,
+};
 use crate::l7_tls::{HostKeyringDecryptor, TlsDecryptor};
 
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
@@ -74,9 +76,24 @@ fn host_matches(pattern: &str, name: &str) -> bool {
 
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeclaredServiceConfig {
+    pub name: String,
+    pub env_var: String,
+    pub upstream: String,
+    pub block_direct_egress: bool,
+    pub llm_dialect: String,
+    pub dlp_redact_prompts: bool,
+    pub inspect_sse_tool_use: bool,
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct L7HttpConfig {
     pub sinkhole: SinkholeConfig,
     pub protocol_inspection: bool,
+    pub declared_services: Vec<DeclaredServiceConfig>,
+    pub threat_feeds: Vec<String>,
+    pub hash_only_llm_retention: bool,
 }
 
 // see: cans/plugins/l7-http.md#Error-and-return-semantics-(l7-http)
@@ -156,6 +173,21 @@ impl HttpPolicy {
     pub fn request_path(request: &HttpRequest) -> &str {
         request.target.split('?').next().unwrap_or("")
     }
+
+    // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+    pub fn declared_service(&self, host: &str) -> Option<&DeclaredServiceConfig> {
+        self.config.declared_services.iter().find(|service| {
+            service
+                .upstream
+                .split("://")
+                .nth(1)
+                .unwrap_or(&service.upstream)
+                .split('/')
+                .next()
+                .unwrap_or("")
+                == host
+        })
+    }
 }
 
 #[async_trait]
@@ -172,6 +204,9 @@ impl HttpPolicyService for HttpPolicy {
         }
         let host = Self::request_host(request);
         let path = Self::request_path(request);
+        if is_path_traversal(path) {
+            return Ok(HttpVerdict::Deny);
+        }
         if self.config.sinkhole.verdict(host, &request.method, path) {
             Ok(HttpVerdict::Allow)
         } else {
@@ -191,6 +226,9 @@ impl L7HttpPlugin {
         Self::with_config(L7HttpConfig {
             sinkhole: SinkholeConfig::default(),
             protocol_inspection: true,
+            declared_services: Vec::new(),
+            threat_feeds: Vec::new(),
+            hash_only_llm_retention: false,
         })
     }
 

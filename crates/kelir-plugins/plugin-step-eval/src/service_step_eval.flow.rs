@@ -108,6 +108,7 @@ impl Default for StepEvalConfig {
                 require_signed_attribution: true,
                 require_separation_of_duties: true,
                 storage: StepDagStorage::ContentAddressed,
+                reviewer_ttl_seconds: 300,
             },
             step_evaluation: StepEvaluationConfig {
                 enabled: true,
@@ -278,6 +279,23 @@ impl StepEvaluator {
     // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
     pub fn dag_config(&self) -> Result<StepDagConfig, PluginError> {
         Ok(self.lock_dag()?.config().clone())
+    }
+
+    // TODO (L3) [lifecycle_checkpoint]: verify reviewer attribution against ApprovalAuth (WebAuthn/TOTP/OIDC method proof, role separation, non-empty reviewer/TTL) per cans/plugins/tool-guard.md#Approval-authorization; slop: reviewer accepted without auth-method proof, self-approval passes
+    pub fn align_reviewer_with_approval_auth(
+        &self,
+        attribution: &StepAttribution,
+        actor: &str,
+    ) -> Result<(), PluginError> {
+        crate::step_dag::check_reviewer_attribution(
+            attribution,
+            actor,
+            self.config.step_dag.reviewer_ttl_seconds,
+        )
+        .map_err(|error| PluginError::Halt(error.to_string()))?;
+        Err(PluginError::Halt(
+            "reviewer ApprovalAuth verification is TODO (L3)".into(),
+        ))
     }
 }
 

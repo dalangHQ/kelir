@@ -27,7 +27,8 @@ pub use boot_diversion::{IMDS_DESTINATION, ImdsBootDiversion};
 
 pub use metadata_endpoint::{CredentialBrokerCtx, MetadataEndpoint, VaultPlugin};
 pub use service_vault::{
-    CarrierInjector, MtlsMaterial, VAULT_PLACEHOLDER_PREFIX, load_mtls_material,
+    CarrierInjector, CredSubEntry, CredSubTable, MtlsMaterial, VAULT_PLACEHOLDER_PREFIX,
+    load_mtls_material,
 };
 pub use synthetic_env::{SyntheticEnvFile, VaultSyntheticFiles};
 
@@ -45,4 +46,6 @@ pub struct VaultConfig {
     pub token_ttl_seconds: u32,
     // see: cans/plugins/vault.md#Credential-descriptors-(vault)
     pub credentials: Vec<CredentialDescriptor>,
+    pub credsub_fake_tokens: bool,
+    pub scrub_responses: bool,
 }

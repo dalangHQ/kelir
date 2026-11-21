@@ -80,8 +80,37 @@ pub fn validate_profile_aot(path: &str) -> Result<AotReport, SpecError> {
     })
 }
 
+// see: cans/15-operations.md#Developer-CLI
+pub fn generate_profile(session: &str) -> Result<(), CliError> {
+    if session.trim().is_empty() {
+        return Err(CliError::usage(
+            "spec generate requires a session id: spec generate <session>",
+        ));
+    }
+    // TODO (L3) [plugin_engine]: synthesize a starter kelir.toml from the session ExecutionReceipt and EventBus logs (policygen).; slop: generate Ok, starter profile never synthesized from observed behavior
+    // TODO (L3) [plugin_engine]: compile observed ExecutionReceipt + EventBus logs for the session into a starter profile; slop: hand-written profile passes, observed behavior never compiled into one
+    Err(
+        format!("spec generate: synthesizing a starter profile from session `{session}` (L3)")
+            .into(),
+    )
+}
+
 pub fn run(args: &[String]) -> Result<(), CliError> {
     match args.first().map(String::as_str) {
+        Some("generate") => {
+            let Some(session) = args.get(1).map(String::as_str) else {
+                return Err(CliError::usage(
+                    "spec generate requires a session id: spec generate <session>",
+                ));
+            };
+            if args.len() > 2 {
+                return Err(CliError::usage(format!(
+                    "spec generate takes exactly one session id, got `{}`",
+                    args[2]
+                )));
+            }
+            generate_profile(session)
+        }
         Some("check") => {
             let path = args.get(1).map(String::as_str).unwrap_or("kelir.toml");
             let report = validate_profile_aot(path)?;
@@ -100,10 +129,10 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             Err(format!("spec export: canonical export of {path} (L3)").into())
         }
         Some(other) => Err(CliError::usage(format!(
-            "spec: unknown subcommand `{other}` (expected check or export)"
+            "spec: unknown subcommand `{other}` (expected check, export, or generate)"
         ))),
         None => Err(CliError::usage(
-            "spec requires a subcommand: check <file> or export <file>",
+            "spec requires a subcommand: check <file>, export <file>, or generate <session>",
         )),
     }
 }

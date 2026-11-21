@@ -53,6 +53,23 @@ fn check_guard_not_widened(
     Ok(())
 }
 
+fn check_list_kept(
+    path: &str,
+    base: Option<&Vec<String>>,
+    overlay: Option<&Vec<String>>,
+) -> Result<(), PluginError> {
+    if let (Some(base), Some(overlay)) = (base, overlay) {
+        for entry in base {
+            if !overlay.contains(entry) {
+                return Err(security_violation(format!(
+                    "overlay removes {path} entry {entry}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl SandboxProfile {
     // see: cans/plugins/profile.md#Session-identity-(profile)
     pub fn effective_tenant_id(&self) -> Option<String> {
@@ -212,6 +229,17 @@ impl SandboxProfile {
             step_dag: checkpoint.and_then(|c| c.step_dag.clone()),
             catalog: host.and_then(|h| h.catalog.clone()),
             telemetry_ring: host.and_then(|h| h.telemetry_ring.clone()),
+            per_exec_cgroup: shim.and_then(|s| s.per_exec_cgroup),
+            deny_abi_compat: shim.and_then(|s| s.deny_abi_compat),
+            blocked_syscalls: shim.and_then(|s| s.blocked_syscalls.clone()),
+            blocked_socket_families: shim.and_then(|s| s.blocked_socket_families.clone()),
+            steering: session.and_then(|s| s.steering.clone()),
+            dns_to_ip_pinning: wire.and_then(|w| w.dns_to_ip_pinning),
+            blocking_wait_timeout_ms: self
+                .storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|b| b.blocking_wait_timeout_ms),
         })
     }
 
@@ -336,6 +364,31 @@ impl SandboxProfile {
         {
             return Err(halt(
                 "host.telemetry_ring.sliding_window_depth must be greater than zero".to_string(),
+            ));
+        }
+        if let Some(shim) = self.session.as_ref().and_then(|s| s.shim.as_ref()) {
+            for (path, entries) in [
+                (
+                    "session.shim.blocked_syscalls",
+                    shim.blocked_syscalls.as_ref(),
+                ),
+                (
+                    "session.shim.blocked_socket_families",
+                    shim.blocked_socket_families.as_ref(),
+                ),
+            ] {
+                if let Some(entries) = entries
+                    && entries.iter().any(|entry| entry.is_empty())
+                {
+                    return Err(halt(format!("{path} must not contain empty entries")));
+                }
+            }
+        }
+        if let Some(broker) = self.storage.as_ref().and_then(|s| s.cow_broker.as_ref())
+            && broker.blocking_wait_timeout_ms == Some(0)
+        {
+            return Err(halt(
+                "storage.cow_broker.blocking_wait_timeout_ms must be greater than zero".to_string(),
             ));
         }
         Ok(())
@@ -579,6 +632,61 @@ impl SandboxProfile {
                 .as_ref()
                 .and_then(|h| h.telemetry_ring.as_ref())
                 .and_then(|r| r.sliding_window_depth),
+        )?;
+        let base_shim = base.session.as_ref().and_then(|s| s.shim.as_ref());
+        let shim = self.session.as_ref().and_then(|s| s.shim.as_ref());
+        check_guard_kept(
+            "session.shim.per_exec_cgroup",
+            base_shim.and_then(|s| s.per_exec_cgroup),
+            shim.and_then(|s| s.per_exec_cgroup),
+        )?;
+        check_guard_kept(
+            "session.shim.deny_abi_compat",
+            base_shim.and_then(|s| s.deny_abi_compat),
+            shim.and_then(|s| s.deny_abi_compat),
+        )?;
+        check_list_kept(
+            "session.shim.blocked_syscalls",
+            base_shim.and_then(|s| s.blocked_syscalls.as_ref()),
+            shim.and_then(|s| s.blocked_syscalls.as_ref()),
+        )?;
+        check_list_kept(
+            "session.shim.blocked_socket_families",
+            base_shim.and_then(|s| s.blocked_socket_families.as_ref()),
+            shim.and_then(|s| s.blocked_socket_families.as_ref()),
+        )?;
+        check_guard_kept(
+            "wire.dns_to_ip_pinning",
+            base.wire.as_ref().and_then(|w| w.dns_to_ip_pinning),
+            self.wire.as_ref().and_then(|w| w.dns_to_ip_pinning),
+        )?;
+        let base_steering = base.session.as_ref().and_then(|s| s.steering.as_ref());
+        let steering = self.session.as_ref().and_then(|s| s.steering.as_ref());
+        check_guard_kept(
+            "session.steering.steer_on_deny",
+            base_steering.and_then(|s| s.steer_on_deny),
+            steering.and_then(|s| s.steer_on_deny),
+        )?;
+        check_guard_kept(
+            "session.steering.steer_on_redirect",
+            base_steering.and_then(|s| s.steer_on_redirect),
+            steering.and_then(|s| s.steer_on_redirect),
+        )?;
+        check_guard_kept(
+            "session.steering.inject_exec_stderr",
+            base_steering.and_then(|s| s.inject_exec_stderr),
+            steering.and_then(|s| s.inject_exec_stderr),
+        )?;
+        check_ceiling(
+            "storage.cow_broker.blocking_wait_timeout_ms",
+            base.storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|b| b.blocking_wait_timeout_ms),
+            self.storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|b| b.blocking_wait_timeout_ms),
         )?;
         Ok(())
     }

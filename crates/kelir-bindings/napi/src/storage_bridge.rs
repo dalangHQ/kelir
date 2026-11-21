@@ -6,7 +6,8 @@ use napi::{Error, Result};
 
 use kelir::planes::storage_plane::SharedCacheConfig;
 use kelir_engine::planes::storage::{
-    IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation,
+    DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, IdmapConfig, LockBrokerWiring, StorageConfig,
+    WorkspaceEncapsulation,
 };
 
 use crate::builder::{NativeSharedCache, NativeStorageConfig};
@@ -39,6 +40,11 @@ fn shared_cache_of(entry: &NativeSharedCache) -> Result<SharedCacheConfig> {
         guest_mount: PathBuf::from(&entry.guest_mount),
         read_only: entry.read_only.unwrap_or(false),
     })
+}
+
+// see: cans/05-storage-plane.md#Storage-architecture
+pub fn blocking_wait_timeout_ms(cfg: &NativeStorageConfig) -> Option<u64> {
+    cfg.blocking_wait_timeout_ms.map(u64::from)
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
@@ -83,8 +89,11 @@ pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
                     .map(|cache| format!("{}/**", cache.guest_mount.display()))
                     .collect(),
                 non_blocking: false,
+                blocking_wait_timeout_ms: blocking_wait_timeout_ms(cfg)
+                    .unwrap_or(DEFAULT_BLOCKING_WAIT_TIMEOUT_MS),
             }),
         idmap,
         encapsulation,
+        default_permissions: false,
     })
 }

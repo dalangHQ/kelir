@@ -153,6 +153,8 @@ pub struct SessionProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shim: Option<ShimProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steering: Option<SteeringProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<DriverProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageProfile>,
@@ -311,6 +313,26 @@ pub struct ShimProfile {
     pub rejection_mode: Option<RejectionMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_proc_environ: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_exec_cgroup: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deny_abi_compat: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_syscalls: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_socket_families: Option<Vec<String>>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session.steering
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SteeringProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer_on_deny: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer_on_redirect: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inject_exec_stderr: Option<bool>,
 }
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -358,6 +380,8 @@ pub struct CowBrokerProfile {
     pub rollback_purge: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dir_merge_cache: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking_wait_timeout_ms: Option<u64>,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.outbox_deferral
@@ -391,6 +415,8 @@ pub struct WireProfile {
     pub outbox_deferral: Option<OutboxDeferralProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block_abstract_unix_sockets: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_to_ip_pinning: Option<bool>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -536,4 +562,11 @@ pub struct EffectiveConfig {
     pub step_dag: Option<StepDagProfile>,
     pub catalog: Option<CatalogProfile>,
     pub telemetry_ring: Option<TelemetryRingProfile>,
+    pub per_exec_cgroup: Option<bool>,
+    pub deny_abi_compat: Option<bool>,
+    pub blocked_syscalls: Option<Vec<String>>,
+    pub blocked_socket_families: Option<Vec<String>>,
+    pub steering: Option<SteeringProfile>,
+    pub dns_to_ip_pinning: Option<bool>,
+    pub blocking_wait_timeout_ms: Option<u64>,
 }

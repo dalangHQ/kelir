@@ -89,6 +89,9 @@ fn hash_verdict_kind(hasher: &mut blake3::Hasher, value: &VerdictKind) {
         VerdictKind::Patch => {
             hasher.update(&[5u8]);
         }
+        VerdictKind::Absorb => {
+            hasher.update(&[6u8]);
+        }
     }
 }
 

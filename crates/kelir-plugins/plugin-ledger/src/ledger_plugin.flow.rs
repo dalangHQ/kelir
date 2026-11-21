@@ -8,7 +8,8 @@ use kelir_interface::telemetry::{CausalDelta, MetricRegistry, MetricSnapshot};
 
 use crate::otlp_exporter::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfig};
 use crate::wal_ledger::{
-    DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, OtlpLedgerSink, WitnessClient,
+    AuditDropCounters, DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, OtlpLedgerSink,
+    WitnessClient,
 };
 use crate::{
     FinalReceipt, FinalizeRequest, HashingStandard, LedgerConfig, LedgerCtx, LedgerPlugin,
@@ -45,6 +46,8 @@ impl LedgerConfig {
             witness_cosigning_endpoint: None,
             otel: None,
             receipts: ReceiptConfig::default(),
+            strict: false,
+            ocsf_mapping: false,
         }
     }
 }
@@ -85,7 +88,23 @@ impl Default for MerkleWalConfig {
             record_pre_redaction_hash: true,
             include_hook_spans_in_root: true,
             witness_cosigning_endpoint: None,
+            kms_provider: None,
+            min_signing_key_bytes: 32,
+            verify_key_fingerprint: false,
         }
+    }
+}
+
+impl MerkleWalConfig {
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub fn validate(&self) -> Result<(), PluginError> {
+        if self.kms_provider.is_some() && self.min_signing_key_bytes < 32 {
+            return Err(PluginError::Halt(format!(
+                "merkle_wal.min_signing_key_bytes {} is below the 32-byte KMS floor",
+                self.min_signing_key_bytes
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -97,6 +116,7 @@ impl LedgerCtx {
             metrics,
             merkle: MerkleWalConfig::default(),
             chain: Arc::new(MerkleChain::new()),
+            strict: false,
         }
     }
 
@@ -106,6 +126,27 @@ impl LedgerCtx {
             .lock()
             .map_err(|_| PluginError::Halt("ledger denials lock poisoned".into()))?;
         *denials.entry(ppid).or_insert(0) += 1;
+        Ok(())
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn check_backpressure(&self, stalled: bool) -> Result<(), PluginError> {
+        if self.strict && stalled {
+            return Err(PluginError::Halt(
+                "ledger.strict backpressure halt: audit sink stalled".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub fn fail_closed_on_drops(&self, counters: &AuditDropCounters) -> Result<(), PluginError> {
+        if self.strict && counters.total() > 0 {
+            return Err(PluginError::Halt(format!(
+                "ledger.strict backpressure halt: {} audit records dropped",
+                counters.total()
+            )));
+        }
         Ok(())
     }
 
@@ -276,6 +317,7 @@ impl KelirPlugin for LedgerPlugin {
             metrics: self.metrics.clone(),
             merkle: self.merkle_wal.clone(),
             chain: Arc::clone(&self.chain),
+            strict: self.config.strict,
         }
     }
     fn name(&self) -> &'static str {

@@ -77,6 +77,74 @@ impl SinkholeConfig {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedirectEndpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+pub const DNS_PIN_DEFAULT_TTL_MS: u64 = 60_000;
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsPin {
+    pub domain: String,
+    pub ip: [u8; 4],
+    pub expires_ms: u64,
+}
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnsPinTable {
+    pub ttl_ms: u64,
+    pub pins: Vec<DnsPin>,
+}
+
+impl DnsPinTable {
+    pub fn new(ttl_ms: u64) -> Self {
+        Self {
+            ttl_ms,
+            pins: Vec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, domain: String, ip: [u8; 4], now_ms: u64) {
+        self.pins.retain(|pin| pin.domain != domain);
+        self.pins.push(DnsPin {
+            domain,
+            ip,
+            expires_ms: now_ms.saturating_add(self.ttl_ms),
+        });
+    }
+
+    pub fn lookup(&self, domain: &str, now_ms: u64) -> Option<[u8; 4]> {
+        self.pins
+            .iter()
+            .find(|pin| pin.domain == domain && now_ms < pin.expires_ms)
+            .map(|pin| pin.ip)
+    }
+
+    pub fn is_pinned(&self, ip: [u8; 4], now_ms: u64) -> bool {
+        self.pins
+            .iter()
+            .any(|pin| pin.ip == ip && now_ms < pin.expires_ms)
+    }
+
+    pub fn prune_expired(&mut self, now_ms: u64) {
+        self.pins.retain(|pin| now_ms < pin.expires_ms);
+    }
+
+    pub fn len(&self) -> usize {
+        self.pins.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pins.is_empty()
+    }
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
 #[derive(Debug, Clone)]
 pub struct WireWiring {
     pub sinkhole: SinkholeConfig,
@@ -93,6 +161,12 @@ pub struct WireWiring {
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
     // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub dns_to_ip_pinning: bool,
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub connect_redirect: Option<RedirectEndpoint>,
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub dns_redirect: Option<RedirectEndpoint>,
 }
 
 // see: cans/07-wire-plane.md#Upstream-dial-transport
@@ -108,6 +182,9 @@ impl Default for WireWiring {
             default_egress: String::new(),
             block_abstract_unix_sockets: false,
             l4_unix_diversions: Vec::new(),
+            dns_to_ip_pinning: false,
+            connect_redirect: None,
+            dns_redirect: None,
         }
     }
 }

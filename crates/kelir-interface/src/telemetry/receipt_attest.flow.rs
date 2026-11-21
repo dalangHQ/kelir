@@ -47,6 +47,7 @@ pub enum VerdictKind {
     Suspend,
     Abort,
     Patch,
+    Absorb,
 }
 
 // see: cans/10-attestation.md#Hook-trace

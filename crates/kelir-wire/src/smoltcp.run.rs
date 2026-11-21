@@ -64,6 +64,28 @@ impl RealNetOps {
         ))
     }
 
+    fn udp_sendto_policy(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
+        // TODO (L3) [wire_plane]: apply the per-target policy to unconnected UDP sendto/sendmmsg before the frame leaves the guest.; slop: unconnected UDP leaves unvetted, per-target policy never enforced.
+        Err(PluginError::Halt(
+            "TODO (L3): RealNetOps::udp_sendto_policy needs the unconnected UDP per-target policy"
+                .into(),
+        ))
+    }
+
+    fn dns_pin_lookup(&self, _ip: [u8; 4]) -> Result<bool, PluginError> {
+        // TODO (L3) [wire_plane]: look the destination IP up in the DnsPinTable on L4 ingress and deny unpinned direct IP dials.; slop: L4 ingress never consults the pin table, unpinned direct IP dials pass.
+        Err(PluginError::Halt(
+            "TODO (L3): RealNetOps::dns_pin_lookup needs the DnsPinTable L4 ingress lookup".into(),
+        ))
+    }
+
+    fn connect_redirect(&self, _ip: [u8; 4], _port: u16) -> Result<Option<[u8; 4]>, PluginError> {
+        // TODO (L3) [wire_plane]: redirect the connect to the pinned or configured target instead of the requested IP.; slop: connects always dial the requested IP, redirects never apply.
+        Err(PluginError::Halt(
+            "TODO (L3): RealNetOps::connect_redirect needs the connect redirect".into(),
+        ))
+    }
+
     fn intercept_inbound(&self, _frame: &mut [u8]) -> Result<FilterAction, PluginError> {
         // L3-GAP: [vr_11_virtio_net_smoltcp_frame_sink]: terminate the TCP stream in the embedded smoltcp stack; slop: host TAP created, frames never sink into smoltcp
         // TODO (L3) [wire_plane]: classify the inbound frame, run the socket-connect ring, and sink TCP into smoltcp.; slop: inbound frames bypass the socket-connect ring, unvetted TCP reaches smoltcp.
@@ -92,7 +114,7 @@ pub(crate) fn build_net_ops(
 }
 
 // see: cans/07-wire-plane.md#Userspace-network-stack
-// TODO (L3) [wire_plane]: resolve the connecting guest PID via the socket table instead of pid 0 on the socket-connect ring; slop: socket-connect ring runs with pid 0, PNACL enforcement blind
+// TODO (L3) [wire_plane]: resolve the connecting guest PID via TrapInterposer socket-tuple correlation, not a netlink socket table; slop: socket-connect ring runs with pid 0, PNACL enforcement blind
 // TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
 #[allow(dead_code)]
 fn remote_ipv4(_frame: &[u8]) -> Option<[u8; 4]> {

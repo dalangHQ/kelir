@@ -45,7 +45,8 @@ export type VerdictKind =
   | { readonly kind: "drop" }
   | { readonly kind: "suspend" }
   | { readonly kind: "abort" }
-  | { readonly kind: "patch" };
+  | { readonly kind: "patch" }
+  | { readonly kind: "absorb" };
 
 export interface HookSpan {
   readonly plugin: string;

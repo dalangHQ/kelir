@@ -108,6 +108,7 @@ impl Reconciler {
     pub fn commit(&self) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
         // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: per-entry temp+rename via StorageIo::atomic_rename; Host Inode Broker pre-checks active host flock descriptors; slop: in-place write, no temp+rename, inode unchanged
         // TODO (L3) [storage_plane]: commit the detected entries with per-entry temp+rename and return the commit stats.; slop: commit writes in place, a crash mid-commit leaves torn files.
+        // TODO (L3) [storage_plane]: never fall back to an in-place write when the rename fails with EPERM; abort fail-closed instead.; slop: EPERM falls back to an in-place write, the atomic-commit guarantee silently breaks.
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::commit needs the StorageIo rename primitive; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))
@@ -120,8 +121,35 @@ impl Reconciler {
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         // L3-GAP: [storage_plane]: openat2 RESOLVE_BENEATH via the platform root handle removes the resolve race; slop: resolve race open, openat2 RESOLVE_BENEATH unused
         // TODO (L3) [storage_plane]: prove target stays beneath the workspace root with no parent-dir or symlink escape.; slop: containment never proven, a symlink target escapes the workspace root.
+        // TODO (L3) [storage_plane]: deny symlink_cwd_deny escapes, where the escape runs through the process cwd rather than the path argument.; slop: cwd-based symlink escape passes the path-arg check, the workspace root is escaped.
+        // TODO (L3) [storage_plane]: reject /tmp to /workspace cross-mount moves with EXDEV instead of copying across mounts.; slop: cross-mount rename silently copies, mount boundaries stop meaning anything.
+        // TODO (L3) [storage_plane]: treat APFS/NTFS case-folding collisions as ambiguous and deny the write.; slop: case-colliding names overwrite each other, the guest and host disagree on which file exists.
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3): Reconciler::contain needs the containment check beneath the workspace root"
+                .into(),
+        ))
+    }
+
+    // see: cans/05-storage-plane.md#Containment
+    pub fn check_cross_mount(
+        &self,
+        _from: &Path,
+        _to: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        // TODO (L3) [storage_plane]: reject a /tmp to /workspace cross-mount move with EXDEV instead of copying across mounts.; slop: cross-mount rename silently copies, mount boundaries stop meaning anything.
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): Reconciler::check_cross_mount needs the cross-mount EXDEV check".into(),
+        ))
+    }
+
+    // see: cans/05-storage-plane.md#Containment
+    pub fn check_case_collision(
+        &self,
+        _target: &Path,
+    ) -> Result<(), kelir_interface::plugin_model::PluginError> {
+        // TODO (L3) [storage_plane]: deny the write when an APFS/NTFS case-folding collision makes the target name ambiguous.; slop: case-colliding names overwrite each other, the guest and host disagree on which file exists.
+        Err(kelir_interface::plugin_model::PluginError::Halt(
+            "TODO (L3): Reconciler::check_case_collision needs the APFS/NTFS case-folding check"
                 .into(),
         ))
     }
@@ -134,6 +162,7 @@ impl ReconcilerOps for Reconciler {
     ) -> Result<CommitStats, kelir_interface::plugin_model::PluginError> {
         // L3-GAP: [sp_08_reconciler_atomic_leaf_commit]: detect -> classify -> stage -> commit orchestration for non-empty broker state; idempotent replay; slop: in-place write, no temp+rename, inode unchanged
         // TODO (L3) [storage_plane]: run detect, classify, stage and commit in order for a non-empty broker state.; slop: orchestration never runs, reconcile reports success with nothing staged or committed.
+        // TODO (L3) [storage_plane]: never fall back to an in-place write when the rename fails with EPERM; abort fail-closed instead.; slop: EPERM falls back to an in-place write, the atomic-commit guarantee silently breaks.
         Err(kelir_interface::plugin_model::PluginError::Halt(
             "TODO (L3) [sp_08_reconciler_atomic_leaf_commit]: Reconciler::reconcile orchestration for staged entries; slop: in-place write, no temp+rename, inode unchanged".into(),
         ))

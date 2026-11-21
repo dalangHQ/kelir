@@ -634,6 +634,14 @@ impl NativeSessionHandle {
     }
 
     #[napi]
+    pub async fn steer(&self, exec_id: f64, message: String) -> Result<()> {
+        // TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame; slop: steer Ok, guidance never reaches the agent before exit
+        Err(missing(&format!(
+            "steer: exec {exec_id} guidance `{message}` flushes onto the EXEC sub-lane 0x02 before EOF (L3)"
+        )))
+    }
+
+    #[napi]
     pub async fn suspend(&self, reason: NativeSuspendReasonRecord) -> Result<()> {
         let path = suspend_image_path(&self.session_dir);
         self.vm

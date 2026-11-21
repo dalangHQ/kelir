@@ -375,6 +375,26 @@ impl TerminalHandle {
     pub fn notice(&self, _msg: &str) {}
 }
 
+// see: cans/11-protocol.md#Binary-exec-channel
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ExecHandle {
+    pub exec_id: u64,
+}
+
+impl ExecHandle {
+    pub fn new(exec_id: u64) -> Self {
+        Self { exec_id }
+    }
+
+    // TODO (L3) [terminal_plane]: flush msg onto EXEC sub-lane 0x02 before the exit EOF frame; slop: steering guidance never flushed, agent sees EOF without guidance.
+    pub fn steer(&self, exec_id: u64, msg: &str) -> Result<(), PluginError> {
+        let _ = (exec_id, msg);
+        Err(PluginError::Halt(
+            "EXEC steer pending (L3): sub-lane 0x02 guidance flush unbound".into(),
+        ))
+    }
+}
+
 // see: cans/08-lifecycle.md#Step-execution-stack
 // L3-GAP: [lc_base_snapshot_lifecycle]: pop slots on checkpoint commit/rollback; dispatch-side pre-exec hydration pushes them.; slop: slots never popped, base digest leaks into manifest
 #[derive(Debug, Clone, Default)]

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kelir_engine::dispatch_plugin::PipelineEngine;
-use kelir_engine::planes::storage::LockBrokerWiring;
+use kelir_engine::planes::storage::{DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, LockBrokerWiring};
 use kelir_interface::plugin_model::{
     FsInterposer, HandlerCtx, MountScope, PipelineBinder, PluginError,
 };
@@ -42,6 +42,7 @@ fn sp_15_host_inode_lock_broker_flock_bridge() -> Result<(), String> {
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: false,
+            blocking_wait_timeout_ms: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
         },
     );
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
@@ -129,6 +130,7 @@ fn sp_19_host_inode_flock_contention_ewouldblock() -> Result<(), String> {
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: true,
+            blocking_wait_timeout_ms: DEFAULT_BLOCKING_WAIT_TIMEOUT_MS,
         },
     );
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());

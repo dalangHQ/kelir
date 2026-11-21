@@ -15,7 +15,9 @@ pub mod mcp_service_run;
 pub mod schema;
 
 pub use ast::{JsonRpcId, JsonRpcRequest, JsonRpcResponse, MAX_MCP_FRAME_BYTES, McpFrameAssembler};
-pub use mcp_service::{McpConfig, McpCtx, McpEndpointService, McpPlugin};
+pub use mcp_service::{
+    McpConfig, McpCtx, McpEndpointService, McpPlugin, SAMPLING_CREATE_MESSAGE_METHOD,
+};
 pub use schema::WithParamsPredicate;
 
 // see: cans/plugins/mcp.md#Crate-dependencies-(mcp)

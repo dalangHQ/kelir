@@ -40,7 +40,7 @@ impl HvfDriver {
     }
 
     fn protect_fork(&self) -> Result<(), VmmError> {
-        // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: Mach copy-on-write + Stage-2 write protection via sys_driver::hv_vm_protect; slop: fork shares pages without Stage-2 write protection, child mutates parent
+        // TODO (L3) [lc_01_cow_fork_warm_memory_sharing]: in-process Stage-2 CoW fork via sys_driver::hv_vm_protect, never an OS fork() call on multi-threaded hosts; slop: OS fork() in a multi-threaded Tokio/NAPI host SIGABRTs before the child runs, and fork shares pages without Stage-2 write protection, child mutates parent
         Err(VmmError::Unsupported(
             "hvf fork: hv_vm_protect CoW fork (L3)".into(),
         ))
@@ -77,7 +77,7 @@ impl VmmDriver for HvfDriver {
 
     async fn fork(&self) -> Result<Box<dyn VmmDriver>, VmmError> {
         self.protect_fork()?;
-        // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: clone VM state via CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs; slop: child gets fresh state, warm parent memory not inherited
+        // TODO (L3) [lc_01_cow_fork_warm_memory_sharing]: clone VM state via in-process hv_vm_protect Stage-2 CoW fork in <15ms per cans/artifacts/code/vmm-driver-trait.rs, never an OS fork() call; slop: OS fork() in a multi-threaded host aborts, child gets fresh state, warm parent memory not inherited
         Err(VmmError::Unsupported(
             "hvf fork: CoW child driver (L3)".into(),
         ))

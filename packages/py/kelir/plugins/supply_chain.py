@@ -33,8 +33,11 @@ class WxJitConfig:
 class PackageGuardConfig:
     deny_lifecycle_scripts: bool = True
     managers: list[str] = field(default_factory=lambda: ["npm", "pip", "cargo"])
-    shannon_entropy_threshold_bits: float = 5.2
     bypass_runners: list[str] = field(default_factory=lambda: ["node", "python"])
+    resolve_lockfiles: bool = True
+    advisories: list[str] = field(default_factory=lambda: ["osv", "snyk", "socket", "deps_dev"])
+    strip_private_scopes: bool = True
+    vet_skills: bool = True
 
 
 @dataclass

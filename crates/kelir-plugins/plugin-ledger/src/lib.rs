@@ -40,9 +40,10 @@ pub use otlp_exporter::{OtlpEndpoint, OtlpError, OtlpExporter, OtlpExporterConfi
 pub use otlp_records::{OtlpCausalDeltaRecord, OtlpPhaseTimingRecord, OtlpReceiptRecord};
 pub use otlp_span::OtlpSpan;
 pub use wal_ledger::{
-    DualHash, LedgerSink, LocalMerkleDbSink, MerkleChain, MerkleInclusionProof, OtlpLedgerSink,
-    SignedTreeHead, WalRecord, WitnessClient, WitnessCosignature, dual_merkle_leaf,
-    dual_merkle_node, dual_merkle_root, inclusion_proof,
+    AuditDropClass, AuditDropCounters, AuditEventKind, DualHash, LedgerSink, LocalMerkleDbSink,
+    MerkleChain, MerkleInclusionProof, OcsfClassId, OtlpLedgerSink, SignedTreeHead, WalRecord,
+    WalSegmentHeader, WitnessClient, WitnessCosignature, crc32c, dual_merkle_leaf,
+    dual_merkle_node, dual_merkle_root, inclusion_proof, ocsf_class_id,
 };
 
 // see: cans/plugins/ledger.md#OpenTelemetry
@@ -76,6 +77,10 @@ pub struct LedgerConfig {
     pub witness_cosigning_endpoint: Option<String>,
     pub otel: Option<OtelConfig>,
     pub receipts: ReceiptConfig,
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub strict: bool,
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    pub ocsf_mapping: bool,
 }
 
 // see: cans/artifacts/examples/autonomous-swe-agent.rs#FinalizeRequest
@@ -111,6 +116,12 @@ pub struct MerkleWalConfig {
     pub record_pre_redaction_hash: bool,
     pub include_hook_spans_in_root: bool,
     pub witness_cosigning_endpoint: Option<String>,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub kms_provider: Option<String>,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub min_signing_key_bytes: u32,
+    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    pub verify_key_fingerprint: bool,
 }
 
 // see: cans/plugins/ledger.md#Invariants-and-policy-(ledger)
@@ -121,6 +132,8 @@ pub struct LedgerCtx {
     metrics: Option<Arc<MetricRegistry>>,
     merkle: MerkleWalConfig,
     chain: Arc<MerkleChain>,
+    // see: cans/plugins/ledger.md#Strict-audit-and-drop-accounting
+    strict: bool,
 }
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages

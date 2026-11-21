@@ -139,12 +139,13 @@ def _bridge_safe_config(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         },
         "storage": {
             "idmap", "shared_caches", "lock_broker", "encapsulation",
-            "dax_window",
+            "dax_window", "blocking_wait_timeout_ms",
         },
         "wire": {
             "sinkhole", "ssh_agent_bridge", "l4_proxies",
             "tap_filter", "userspace_netstack", "default_egress",
             "divert_ports", "dial_timeout_ms", "block_abstract_unix_sockets",
+            "dns_to_ip_pinning",
         },
     }[kind]
     unknown = set(kwargs) - known
@@ -363,16 +364,55 @@ class ExecveMutation:
 
 
 # see: cans/05-storage-plane.md#Interception-pipeline
+# see: cans/02-plugin-model.md#Unified-verdict
 @dataclass
 class PatchPayload:
     kind: str = "fs-path-redirect"
     target_path: str = ""
+    target_host: str = ""
+    target_port: int = 0
+    replacement_signal: int = 0
+    guidance: str = ""
 
     @classmethod
     def fs_path_redirect(cls, *, target_path: str) -> PatchPayload:
         return cls(target_path=target_path)
 
+    @classmethod
+    def net_redirect(
+        cls, *, target_host: str, target_port: int, guidance: str = ""
+    ) -> PatchPayload:
+        return cls(
+            kind="net-redirect",
+            target_host=target_host,
+            target_port=target_port,
+            guidance=guidance,
+        )
+
+    @classmethod
+    def signal_mutation(
+        cls, *, replacement_signal: int, guidance: str = ""
+    ) -> PatchPayload:
+        return cls(
+            kind="signal-mutation",
+            replacement_signal=replacement_signal,
+            guidance=guidance,
+        )
+
     def to_wire(self) -> dict[str, Any]:
+        if self.kind == "net-redirect":
+            return {
+                "kind": self.kind,
+                "target_host": self.target_host,
+                "target_port": self.target_port,
+                "guidance": self.guidance,
+            }
+        if self.kind == "signal-mutation":
+            return {
+                "kind": self.kind,
+                "replacement_signal": self.replacement_signal,
+                "guidance": self.guidance,
+            }
         return {"kind": self.kind, "target_path": self.target_path}
 
 
@@ -416,10 +456,13 @@ class Verdict:
         name: str | None = None,
         cbor: dict[str, Any] | None = None,
         attr: Any = None,
+        payload: Any = None,
     ) -> Verdict:
         # L3-GAP: [bindings_py]: serialize to FsInodeAttr / Custom payload; slop: patch attr stays untyped Any, Rust rejects FsInodeAttr shape
         if args and attr is None:
             attr = args[0]
+        if payload is not None:
+            attr = payload
         mutation = None
         if binary is not None or argv is not None or env is not None or unset_env is not None:
             mutation = ExecveMutation(

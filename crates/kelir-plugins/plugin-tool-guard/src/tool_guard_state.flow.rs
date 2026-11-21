@@ -14,8 +14,9 @@ use kelir_interface::protocol_wire::{StreamKind, SuspendUntil, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
-    AuditEvent, McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolTaint,
-    ToolsListResult, decode_tools_list,
+    ApprovalHold, AuditEvent, CrossServerDetector, McpFrame, McpMethod, ToolRegistry,
+    ToolRegistryService, ToolSchema, ToolTaint, ToolsListResult, classify_tool_capabilities,
+    confusable_tool_names, decode_tools_list, levenshtein, scan_tool_result,
 };
 use crate::{ToolGuardConfig, ToolSpec};
 use kelir_interface::byte_range::ByteRange;
@@ -29,6 +30,10 @@ impl Default for ToolGuardConfig {
             detect_semantic_rug_pull: true,
             strict_ast_parameter_validation: true,
             propagate_byte_range_taints: true,
+            detect_cross_server_exfil: true,
+            detect_confusable_names: true,
+            scan_tool_results: true,
+            approval_auth: crate::ApprovalAuthConfig::default(),
         }
     }
 }
@@ -41,6 +46,8 @@ struct TraceQuota {
 // see: cans/plugins/tool-guard.md#Call-quota
 struct ToolGuardState {
     traces: Mutex<HashMap<u32, TraceQuota>>,
+    cross_server: Mutex<CrossServerDetector>,
+    seq: Mutex<u64>,
 }
 
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
@@ -67,6 +74,8 @@ impl ToolGuardPlugin {
             registry: Arc::new(ToolRegistry::new()),
             state: Arc::new(ToolGuardState {
                 traces: Mutex::new(HashMap::new()),
+                cross_server: Mutex::new(CrossServerDetector::new()),
+                seq: Mutex::new(0),
             }),
             mcp: McpEndpointService::new(),
             host_specs: Vec::new(),
@@ -110,11 +119,69 @@ impl ToolGuardPlugin {
         &self,
         advertisement: &ToolsListResult,
     ) -> Result<(), PluginError> {
+        if self.config.detect_confusable_names {
+            let known = self.registry.tool_names()?;
+            for tool in &advertisement.tools {
+                let hits = confusable_tool_names(&tool.name, &known);
+                if !hits.is_empty() {
+                    return Err(PluginError::Halt(format!(
+                        "ESecurityViolation: confusable tool name {} shadows {}",
+                        tool.name,
+                        hits.join(", ")
+                    )));
+                }
+            }
+            for (i, first) in advertisement.tools.iter().enumerate() {
+                for second in advertisement.tools.iter().skip(i + 1) {
+                    if levenshtein(&first.name, &second.name) <= 2 {
+                        return Err(PluginError::Halt(format!(
+                            "ESecurityViolation: confusable tool names {} and {} in one advertisement",
+                            first.name, second.name
+                        )));
+                    }
+                }
+            }
+        }
         self.registry.ingest_tools_list(advertisement).await?;
         if self.config.pin_schemas && self.registry.locked_digest()?.is_none() {
             self.registry.lock_catalog().await?;
         }
         Ok(())
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn check_cross_server(&self, tool: &str, seq: u64) -> Result<bool, PluginError> {
+        let server = tool.split("__").next().unwrap_or(tool);
+        let capabilities = classify_tool_capabilities(tool);
+        let mut detector = self
+            .state
+            .cross_server
+            .lock()
+            .map_err(|_| PluginError::Halt("tool-guard cross-server table poisoned".into()))?;
+        Ok(detector.record(server, &capabilities, seq))
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn next_seq(&self) -> Result<u64, PluginError> {
+        let mut seq = self
+            .state
+            .seq
+            .lock()
+            .map_err(|_| PluginError::Halt("tool-guard sequence table poisoned".into()))?;
+        *seq = seq.saturating_add(1);
+        Ok(*seq)
+    }
+
+    // see: cans/plugins/tool-guard.md#Plugin-tool-guard
+    pub fn validate_approval_hold(
+        &self,
+        hold: &ApprovalHold,
+        pending_holds: u32,
+        now_unix: u64,
+    ) -> Result<(), PluginError> {
+        self.config
+            .approval_auth
+            .validate_hold(hold, pending_holds, now_unix)
     }
 
     async fn guard_tool_call(&self, trace: u32, payload: &[u8]) -> Result<Verdict, PluginError> {
@@ -165,6 +232,18 @@ impl ToolGuardPlugin {
                 until: SuspendUntil::Approval,
             });
         }
+        if self.config.detect_cross_server_exfil {
+            let seq = self.next_seq()?;
+            if self.check_cross_server(&schema.name, seq)? {
+                return Ok(Verdict::Drop {
+                    errno: Errno::Eperm,
+                    reason: format!(
+                        "tool {} reads on one server then sends on another",
+                        schema.name
+                    ),
+                });
+            }
+        }
         // see: cans/plugins/tool-guard.md#MCP-schema-matching-surface-(tool-guard)
         if !self
             .registry
@@ -191,7 +270,7 @@ impl ToolGuardPlugin {
     }
 
     async fn scrub_tool_response(&self, payload: &[u8]) -> Result<(), PluginError> {
-        let _ = payload;
+        scan_tool_result(payload, self.config.scan_tool_results)?;
         // L3-GAP: [gt_06_payload_secret_pattern_scrub]: strip host secrets from tool responses before model context ingestion per cans/plugins/tool-guard.md; slop: scrub returns Ok(()) unscrubbed, host secret reaches model context
         Ok(())
     }

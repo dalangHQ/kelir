@@ -117,9 +117,34 @@ impl LockBroker {
         // L3-GAP: [storage_plane]: match request.host_path against wiring.scope_globs before mediation; undeclared paths deny with EPERM; slop: undeclared path mediated, EPERM never denied
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: host fd cache lookup, flock delegation, EWOULDBLOCK on conflict; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: split SETLK (EWOULDBLOCK on conflict) from SETLKW (bounded waiter pool, EDEADLK on timeout) via acquire_setlk/acquire_setlkw.; slop: SETLKW returns EWOULDBLOCK like SETLK, blocking waiters break cargo, git, sqlite and npm.
         // TODO (L3) [storage_plane]: mediate the lock request through the interposer and the host flock delegation.; slop: lock mediated in memory only, no host flock and a contender lock succeeds.
         Err(PluginError::Halt(
             "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
+        ))
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn acquire_setlk(
+        &self,
+        _request: &LockRequest,
+        _ctx: &HandlerCtx,
+    ) -> Result<LockGrant, PluginError> {
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: delegate the non-blocking SETLK to host flock and return EWOULDBLOCK on conflict with no waiter parked.; slop: SETLK contention returns Ok, two holders take the same lock.
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: LockBroker::acquire_setlk needs host flock LOCK_NB delegation; slop: contention Ok or wrong errno, EWOULDBLOCK never returned".into(),
+        ))
+    }
+
+    // see: cans/05-storage-plane.md#Host-inode-lock-broker
+    pub fn acquire_setlkw(
+        &self,
+        _request: &LockRequest,
+        _ctx: &HandlerCtx,
+    ) -> Result<LockGrant, PluginError> {
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: park the blocking SETLKW on the bounded waiter pool and fail with EDEADLK after self.wiring.blocking_wait_timeout_ms.; slop: SETLKW returns EWOULDBLOCK, blocking waiters break cargo, git, sqlite and npm.
+        Err(PluginError::Halt(
+            "TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: LockBroker::acquire_setlkw needs the bounded waiter pool; slop: waiter blocks the host ring thread, the broker stalls".into(),
         ))
     }
 

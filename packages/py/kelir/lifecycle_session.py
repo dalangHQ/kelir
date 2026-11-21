@@ -42,6 +42,16 @@ class IngressStream:
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ingress respond (L3)")
 
 
+# see: cans/02-plugin-model.md#Unified-verdict
+class ExecHandle:
+    def __init__(self, session: Session, exec_id: int) -> None:
+        self._session = session
+        self.exec_id = exec_id
+
+    async def steer(self, message: str) -> None:
+        await self._session.steer(self.exec_id, message)
+
+
 class Session:
     def __init__(self) -> None:
         self._native: Any = None
@@ -160,6 +170,24 @@ class Session:
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
         # L3-GAP: [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process
         raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
+
+    # see: cans/02-plugin-model.md#Unified-verdict
+    async def steer(self, exec_id: int, message: str) -> None:
+        if isinstance(exec_id, bool) or not isinstance(exec_id, int):
+            raise EConfig("session steer expects an int exec_id")
+        if not isinstance(message, str) or not message:
+            raise EConfig("session steer expects a non-empty guidance message")
+        native = kelir._require_native(self._native, "session steer")
+        steer = getattr(native, "steer", None)
+        if steer is None:
+            # TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame once the native session exposes steer.; slop: steer raises, guidance never reaches the agent before exit.
+            raise EConfig(
+                "kelir native PyO3 bridge (_kelir) is missing: session steer (L3)"
+            )
+        steer(exec_id, message)
+
+    def exec_handle(self, exec_id: int) -> ExecHandle:
+        return ExecHandle(self, exec_id)
 
     async def suspend(self, reason: SuspendReason) -> None:
         if isinstance(reason, type) or not isinstance(

@@ -9,8 +9,8 @@ use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
 use kelir_interface::wire::net::{
-    FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, SinkholeRule, WireWiring,
-    link_local_route,
+    DNS_PIN_DEFAULT_TTL_MS, DnsPinTable, FrameDirection, LinkLocalRoute, NetOps, RedirectEndpoint,
+    SinkholeConfig, SinkholeRule, WireWiring, link_local_route,
 };
 use kelir_interface::wire::outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxFrame};
 use kelir_interface::wire::udp_nat::UdpNatOps;
@@ -39,6 +39,7 @@ pub struct WirePlane {
         Arc<Mutex<std::collections::HashMap<u16, kelir_transport::host_bind::HostListener>>>,
     metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
     wiring: Option<WireWiring>,
+    pin_table: DnsPinTable,
     outbox: Arc<Mutex<OutboxBuffer>>,
     parking: Arc<Mutex<ConnectionParking>>,
 }
@@ -67,6 +68,7 @@ impl WirePlane {
             host_listeners: Arc::new(Mutex::new(std::collections::HashMap::new())),
             metrics: Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
             wiring: None,
+            pin_table: DnsPinTable::new(DNS_PIN_DEFAULT_TTL_MS),
             outbox: Arc::new(Mutex::new(OutboxBuffer::default())),
             parking: Arc::new(Mutex::new(ConnectionParking::default())),
         }
@@ -183,6 +185,35 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#DNS-policy-filter
     pub fn wiring(&self) -> Option<&WireWiring> {
         self.wiring.as_ref()
+    }
+
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub fn pin_dns_answer(&mut self, domain: String, ip: [u8; 4], now_ms: u64) {
+        self.pin_table.insert(domain, ip, now_ms);
+    }
+
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub fn pinned_ip(&self, domain: &str, now_ms: u64) -> Option<[u8; 4]> {
+        self.pin_table.lookup(domain, now_ms)
+    }
+
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub fn is_pinned_ip(&self, ip: [u8; 4], now_ms: u64) -> bool {
+        self.pin_table.is_pinned(ip, now_ms)
+    }
+
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    pub fn connect_redirect(&self) -> Option<&RedirectEndpoint> {
+        self.wiring
+            .as_ref()
+            .and_then(|wiring| wiring.connect_redirect.as_ref())
+    }
+
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pub fn dns_redirect(&self) -> Option<&RedirectEndpoint> {
+        self.wiring
+            .as_ref()
+            .and_then(|wiring| wiring.dns_redirect.as_ref())
     }
 
     fn record_drop(&self, action: &kelir_interface::protocol_wire::FilterAction) {

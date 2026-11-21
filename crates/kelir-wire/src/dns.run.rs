@@ -42,6 +42,7 @@ impl DnsOps for RealDnsOps {
         // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: relay the query to the live upstream resolver; ServFail is the answer until the relay is wired; slop: resolv.conf change ignored, stale upstream kept
         // TODO (L3) [wire_plane]: run the dns-query ring, apply the sinkhole rules, and relay to the upstream resolver.; slop: queries bypass the dns-query ring and sinkhole, blocked names resolve upstream.
+        // TODO (L3) [wire_plane]: rewrite the answer via rewrite_redirect_answer when the verdict is DnsVerdict::Redirect.; slop: redirect verdicts fall through to the upstream answer, the redirect never applies.
         Err(PluginError::Halt(
             "TODO (L3): DnsOps::resolve_query needs the ring, sinkhole and upstream relay".into(),
         ))
@@ -76,6 +77,17 @@ fn host_resolver_nameservers() -> Vec<IpAddr> {
 fn parse_resolv_conf_nameservers(_text: &str) -> Vec<IpAddr> {
     // TODO (L3) [wire_plane]: parse the nameserver lines from the resolv.conf text.; slop: nameserver lines never parsed, the resolver keeps an empty upstream set.
     Vec::new()
+}
+
+// see: cans/07-wire-plane.md#DNS-policy-filter
+// see: cans/07-wire-plane.md#Sinkhole-rules
+// TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
+#[allow(dead_code)]
+fn rewrite_redirect_answer(_query: &DnsQuery, _target: &str) -> Result<DnsResponse, PluginError> {
+    // TODO (L3) [wire_plane]: rewrite the answer with the redirect target IP once Track A adds DnsVerdict::Redirect; the live verdict has only Forward and Sinkhole.; slop: redirect answers carry the upstream IP, the redirect never applies.
+    Err(PluginError::Halt(
+        "TODO (L3): rewrite_redirect_answer needs the DnsVerdict::Redirect answer rewrite".into(),
+    ))
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter

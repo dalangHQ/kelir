@@ -1,12 +1,12 @@
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/10-attestation.md#Execution-receipts
 use super::{WAL_RECORD_LEN, WalRecord, merkle_leaf};
 
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/10-attestation.md#Execution-receipts
 const _: () = assert!(WAL_RECORD_LEN == 176);
 
-// see: cans/plugins/ledger.md#Merkle-WAL-specification
+// see: cans/10-attestation.md#Execution-receipts
 impl WalRecord {
-    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    // see: cans/10-attestation.md#Execution-receipts
     pub fn pack(&self) -> [u8; WAL_RECORD_LEN] {
         let Self {
             seq,
@@ -25,7 +25,7 @@ impl WalRecord {
         bytes[112..176].copy_from_slice(signature);
         bytes
     }
-    // see: cans/plugins/ledger.md#Merkle-WAL-specification
+    // see: cans/10-attestation.md#Execution-receipts
     pub fn leaf_hash(&self) -> [u8; 32] {
         merkle_leaf(&self.pack())
     }

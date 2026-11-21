@@ -110,6 +110,7 @@ fn tenant_rewrite_config() -> DbProxyConfig {
                 to_schema: "tenant_123".to_string(),
             }],
             max_rewrites_per_conn: 3,
+            ..PgWireRewrite::default()
         },
         ..DbProxyConfig::default()
     }

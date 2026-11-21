@@ -1462,7 +1462,7 @@ cases:
   target_crate: crates/kelir
   target_tier: integration
   status: red
-  test_file: crates/kelir/tests/composition_seal_test.rs
+  test_file: crates/kelir-bundle/tests/composition_seal_test.rs
   test_fn: bound_fuse_ops_dispatches_synthetic_lookup
   reason: 'nextest ignored-only: synthetic Lookup refused: Plugin halted: TODO (L3): FuseOps::dispatch needs the per-opcode pipeline dispatch and FUSE reply marshalling; the bound-FuseOps synthetic dispatch is L3'
 - case_id: sp_14_in_flight_read_masking_pattern_replace
@@ -2131,6 +2131,14 @@ cases:
   test_file: crates/kelir-plugins/plugin-wire-ingress/tests/parking_l4_wire_test.rs
   test_fn: wp_17_wire_ingress_park_connection_suspends_session
   note: 'Partial: parking proven (decode round-trip + Parked + append-Parked + oversize Overflow + reset); is_suspended flag not asserted.'
+- case_id: wp_18_dns_to_ip_pinning_fail_closed
+  case_file: cases/wire_plane/wp_18_dns_to_ip_pinning_fail_closed.yaml
+  target_crate: crates/kelir-engine
+  target_tier: integration
+  status: gap
+  test_file: null
+  test_fn: null
+  reason: no DNS-to-IP pin table exists in the live tree; dns_to_ip_pinning is fixture config and spec text (cans/07-wire-plane.md) with no producer
 harness_tests:
 - file: crates/kelir-bundle/tests/plugin_profile_schema_test.rs
   reason: Plugin profile schema round-trip and overlay validation owned by kelir-bundle after the
@@ -2216,11 +2224,3 @@ harness_tests:
     converge); fused callback drop/order/pass-through/collapse plus unfused ring crossing
     per cans/02-plugin-model.md#Fused-trampoline (pe_07 case); no dedicated plan case covers
     the fused-trap suite yet.
-- case_id: wp_18_dns_to_ip_pinning_fail_closed
-  case_file: cases/wire_plane/wp_18_dns_to_ip_pinning_fail_closed.yaml
-  target_crate: crates/kelir-engine
-  target_tier: integration
-  status: gap
-  test_file: null
-  test_fn: null
-  reason: no DNS-to-IP pin table exists in the live tree; dns_to_ip_pinning is fixture config and spec text (cans/07-wire-plane.md) with no producer

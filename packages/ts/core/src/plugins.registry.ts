@@ -78,6 +78,12 @@ export interface PgWireRewrite {
   readonly upstream?: string;
   readonly schemaRewrites?: readonly PgSchemaRewrite[];
   readonly maxRewritesPerConn?: number;
+  readonly astParser?: string;
+  readonly requireWhereOnMutations?: boolean;
+  readonly denyModeInTx?: string;
+  readonly blockUnsafeIo?: boolean;
+  readonly catalogResolution?: boolean;
+  readonly syntheticCancelKeys?: boolean;
 }
 
 
@@ -111,6 +117,8 @@ export interface EgressProxyConfig extends PluginEnablement {
   readonly httpsProxy?: string;
   readonly allProxy?: string;
   readonly noProxy?: readonly string[];
+  readonly blockTor?: boolean;
+  readonly denySocks5Resolve?: boolean;
 }
 
 
@@ -132,9 +140,23 @@ export interface SinkholeConfig {
 }
 
 
+export interface DeclaredServiceConfig {
+  readonly name?: string;
+  readonly envVar?: string;
+  readonly upstream?: string;
+  readonly blockDirectEgress?: boolean;
+  readonly llmDialect?: string;
+  readonly dlpRedactPrompts?: boolean;
+  readonly inspectSseToolUse?: boolean;
+}
+
+
 export interface L7HttpConfig extends PluginEnablement {
   readonly sinkhole?: SinkholeConfig;
   readonly protocolInspection?: boolean;
+  readonly declaredServices?: readonly DeclaredServiceConfig[];
+  readonly threatFeeds?: readonly string[];
+  readonly hashOnlyLlmRetention?: boolean;
 }
 
 
@@ -170,6 +192,8 @@ export interface LedgerConfig extends PluginEnablement {
   readonly witnessCosigningEndpoint?: string;
   readonly otel?: OtelConfig;
   readonly receipts?: ReceiptConfig;
+  readonly strict?: boolean;
+  readonly ocsfMapping?: boolean;
 }
 
 
@@ -181,6 +205,8 @@ export function ledger<P = unknown>(config: LedgerConfig): KelirBuilder<"plugin"
 
 export interface McpConfig extends PluginEnablement {
   readonly maxFrameBytes?: number;
+  readonly denyServerSampling?: boolean;
+  readonly samplingAllowlist?: readonly string[];
 }
 
 
@@ -246,8 +272,15 @@ export interface MaskReadConfig {
 }
 
 
+export interface SoftDeleteConfig {
+  readonly enabled?: boolean;
+  readonly trashDir?: string;
+}
+
+
 export interface RedactionConfig extends PluginEnablement {
   readonly maskRead?: MaskReadConfig;
+  readonly softDelete?: SoftDeleteConfig;
 }
 
 
@@ -274,6 +307,7 @@ export interface StepDagConfig {
   readonly requireSignedAttribution?: boolean;
   readonly requireSeparationOfDuties?: boolean;
   readonly storage?: "content-addressed";
+  readonly reviewerTtlSeconds?: number;
 }
 
 
@@ -321,8 +355,11 @@ export interface WxJitConfig {
 export interface PackageGuardConfig {
   readonly denyLifecycleScripts?: boolean;
   readonly managers?: readonly string[];
-  readonly shannonEntropyThresholdBits?: number;
   readonly bypassRunners?: readonly string[];
+  readonly resolveLockfiles?: boolean;
+  readonly advisories?: readonly string[];
+  readonly stripPrivateScopes?: boolean;
+  readonly vetSkills?: boolean;
 }
 
 
@@ -378,6 +415,14 @@ export function tokenShield<P = unknown>(config: TokenShieldConfig): KelirBuilde
 }
 
 
+export interface ApprovalAuthConfig {
+  readonly denySelfApproval?: boolean;
+  readonly methods?: readonly string[];
+  readonly maxPendingHolds?: number;
+  readonly holdTtlSeconds?: number;
+}
+
+
 export interface ToolGuardConfig extends PluginEnablement {
   readonly maxInvocationsPerTrace?: number;
   readonly pinSchemas?: boolean;
@@ -385,6 +430,10 @@ export interface ToolGuardConfig extends PluginEnablement {
   readonly detectSemanticRugPull?: boolean;
   readonly strictAstParameterValidation?: boolean;
   readonly propagateByteRangeTaints?: boolean;
+  readonly detectCrossServerExfil?: boolean;
+  readonly detectConfusableNames?: boolean;
+  readonly scanToolResults?: boolean;
+  readonly approvalAuth?: ApprovalAuthConfig;
 }
 
 
@@ -418,6 +467,8 @@ export interface VaultConfig extends PluginEnablement {
   readonly metadataVsockPort?: number;
   readonly tokenTtlSeconds?: number;
   readonly credentials?: readonly CredentialDescriptor[];
+  readonly credsubFakeTokens?: boolean;
+  readonly scrubResponses?: boolean;
 }
 
 

@@ -74,6 +74,7 @@ pub(crate) fn verdict_kind_of(verdict: &Verdict) -> VerdictKind {
         Verdict::Drop { .. } => VerdictKind::Drop,
         Verdict::Suspend { .. } => VerdictKind::Suspend,
         Verdict::Abort { .. } => VerdictKind::Abort,
+        Verdict::Absorb => VerdictKind::Absorb,
         // TODO (L3) [plugin_engine]: Verdict is non_exhaustive for forward compat; unknown kinds degrade to Abort.; slop: forward-compat verdict aborts the trap instead of passing through.
         _ => VerdictKind::Abort,
     }

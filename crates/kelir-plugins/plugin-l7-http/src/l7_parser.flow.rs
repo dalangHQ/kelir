@@ -1,5 +1,8 @@
 // see: cans/plugins/l7-http.md#Plugin-l7-http
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
 use serde::{Deserialize, Serialize};
 
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
@@ -269,18 +272,118 @@ pub use crate::l7_tls::{HostKeyringDecryptor, TlsDecryptor};
 
 // see: cans/plugins/l7-http.md#Error-and-return-semantics-(l7-http)
 pub fn synthetic_403_receipt(reason: &str, pid: u32, binary: &str) -> HttpResponse {
-    let body = serde_json::json!({
+    synthetic_403_receipt_with_guidance(reason, pid, binary, None)
+}
+
+// see: cans/plugins/l7-http.md#Error-and-return-semantics-(l7-http)
+pub fn synthetic_403_receipt_with_guidance(
+    reason: &str,
+    pid: u32,
+    binary: &str,
+    guidance: Option<&str>,
+) -> HttpResponse {
+    let mut body = serde_json::json!({
         "error": "E_POLICY_DENIED",
         "reason": reason,
         "pid": pid,
         "binary": binary,
     });
+    if let (Some(body), Some(guidance)) = (body.as_object_mut(), guidance) {
+        body.insert(
+            "guidance".to_string(),
+            serde_json::Value::String(guidance.to_string()),
+        );
+    }
     HttpResponse {
         status: 403,
         reason: "Forbidden".to_string(),
         headers: vec![("content-type".to_string(), "application/json".to_string())],
         body: serde_json::to_vec(&body).unwrap_or_else(|_| Vec::new()),
     }
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+pub fn is_path_traversal(target: &str) -> bool {
+    let path = target.split('?').next().unwrap_or("");
+    path.split('/').any(|segment| {
+        segment == ".."
+            || segment.eq_ignore_ascii_case("%2e%2e")
+            || segment.eq_ignore_ascii_case(".%2e")
+            || segment.eq_ignore_ascii_case("%2e.")
+    })
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+pub fn normalize_token_usage(body: &[u8], dialect: &str) -> Option<TokenUsage> {
+    let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let usage = value.get("usage")?.as_object()?;
+    let number = |key: &str| usage.get(key).and_then(|value| value.as_u64());
+    match dialect {
+        "anthropic" => {
+            let prompt = number("input_tokens")?;
+            let completion = number("output_tokens").unwrap_or(0);
+            Some(TokenUsage {
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                total_tokens: prompt.saturating_add(completion),
+            })
+        }
+        _ => {
+            let prompt = number("prompt_tokens")?;
+            let completion = number("completion_tokens").unwrap_or(0);
+            Some(TokenUsage {
+                prompt_tokens: prompt,
+                completion_tokens: completion,
+                total_tokens: number("total_tokens")
+                    .unwrap_or_else(|| prompt.saturating_add(completion)),
+            })
+        }
+    }
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+pub fn inspect_sse_tool_use(event: &SseEvent) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(&event.data).ok()?;
+    if value.get("type").and_then(|kind| kind.as_str()) == Some("tool_use") {
+        return value
+            .get("name")
+            .and_then(|name| name.as_str())
+            .map(str::to_string);
+    }
+    let content = value.get("content")?.as_array()?;
+    content.iter().find_map(|block| {
+        if block.get("type").and_then(|kind| kind.as_str()) == Some("tool_use") {
+            block
+                .get("name")
+                .and_then(|name| name.as_str())
+                .map(str::to_string)
+        } else {
+            None
+        }
+    })
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+pub fn inspect_sse_frames(body: &[u8]) -> Vec<String> {
+    split_sse_frames(body)
+        .iter()
+        .filter_map(inspect_sse_tool_use)
+        .collect()
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+pub fn llm_retention_digest(body: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    body.hash(&mut hasher);
+    hasher.finish()
 }
 
 // see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)

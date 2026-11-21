@@ -146,6 +146,10 @@ class VerdictKindPatch(BaseModel):
     kind: Literal["patch"] = "patch"
 
 
+class VerdictKindAbsorb(BaseModel):
+    kind: Literal["absorb"] = "absorb"
+
+
 VerdictKind = (
     VerdictKindPass
     | VerdictKindForward
@@ -153,6 +157,7 @@ VerdictKind = (
     | VerdictKindSuspend
     | VerdictKindAbort
     | VerdictKindPatch
+    | VerdictKindAbsorb
 )
 
 class HookSpan(BaseModel):

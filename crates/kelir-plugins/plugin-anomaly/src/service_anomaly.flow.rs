@@ -44,6 +44,14 @@ pub const FEATURE_PARKED_CONNECTIONS: usize = 14;
 pub const FEATURE_OUTBOX_BYTES: usize = 15;
 
 // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnomalySignal {
+    RawIpWithoutDns,
+    DenialBurst,
+    PrivilegeDrift,
+}
+
+// see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetryRingConfig {
     pub feature_extraction: bool,
@@ -80,9 +88,29 @@ pub struct TelemetrySample {
     pub watchdog_fires: f32,
     pub parked_connections: f32,
     pub outbox_bytes: f32,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub raw_ip_without_dns: f32,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub denial_burst: f32,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub privilege_drift: f32,
 }
 
 impl TelemetrySample {
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub fn flagged_signals(&self) -> Vec<AnomalySignal> {
+        let mut signals = Vec::new();
+        if self.raw_ip_without_dns > 0.0 {
+            signals.push(AnomalySignal::RawIpWithoutDns);
+        }
+        if self.denial_burst > 0.0 {
+            signals.push(AnomalySignal::DenialBurst);
+        }
+        if self.privilege_drift > 0.0 {
+            signals.push(AnomalySignal::PrivilegeDrift);
+        }
+        signals
+    }
     // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
     pub fn as_array(&self) -> [f32; FEATURE_VECTOR_DIMS] {
         [
@@ -228,11 +256,13 @@ pub struct SurprisalEscalation {
 }
 
 // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AnomalyOutcome {
     pub feature_vector: FeatureVector,
     pub surprisal: f32,
     pub escalate: bool,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub signals: Vec<AnomalySignal>,
 }
 
 // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
@@ -260,13 +290,16 @@ impl AnomalyDetectionService {
             .ring
             .lock()
             .map_err(|_| AnomalyError::Eio("anomaly ring lock poisoned".into()))?;
+        let signals = sample.flagged_signals();
         ring.push(sample);
         let vector = ring.feature_vector(scales);
         let surprisal = self.surprisal(&vector);
+        let escalate = surprisal > self.threshold || !signals.is_empty();
         Ok(AnomalyOutcome {
             feature_vector: vector,
             surprisal,
-            escalate: surprisal > self.threshold,
+            escalate,
+            signals,
         })
     }
 

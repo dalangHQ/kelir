@@ -90,6 +90,22 @@ pub struct ExecveMutation {
     pub unset_env: Vec<String>,
 }
 
+// see: cans/11-protocol.md#Interposition-contract
+impl ExecveMutation {
+    pub fn deduped_set_env(&self) -> Vec<(String, String)> {
+        let mut seen: Vec<&str> = Vec::new();
+        let mut deduped: Vec<(String, String)> = Vec::new();
+        for (key, value) in &self.set_env {
+            if seen.contains(&key.as_str()) {
+                continue;
+            }
+            seen.push(key.as_str());
+            deduped.push((key.clone(), value.clone()));
+        }
+        deduped
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PatchPayload {
     ExecveMutation(ExecveMutation),
@@ -102,6 +118,15 @@ pub enum PatchPayload {
     },
     FsPathRedirect {
         target_path: String,
+    },
+    // see: cans/artifacts/code/messages.rs#PatchPayload
+    NetRedirect {
+        target_host: String,
+        target_port: u16,
+    },
+    // see: cans/artifacts/code/messages.rs#PatchPayload
+    SignalMutation {
+        replacement_signal: i32,
     },
     Custom {
         name: String,
@@ -118,6 +143,69 @@ pub enum SuspendUntil {
     Condition { poll_interval_ms: u64, handle: u64 },
 }
 
+// see: cans/08-lifecycle.md#External-suspension
+pub const MAX_PENDING_APPROVAL_HOLDS: u32 = 10;
+pub const APPROVAL_HOLD_TTL_MS: u64 = 300_000;
+
+// see: cans/08-lifecycle.md#External-suspension
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalHoldConfig {
+    pub max_pending_holds: u32,
+    pub hold_ttl_ms: u64,
+}
+
+impl Default for ApprovalHoldConfig {
+    fn default() -> Self {
+        Self {
+            max_pending_holds: MAX_PENDING_APPROVAL_HOLDS,
+            hold_ttl_ms: APPROVAL_HOLD_TTL_MS,
+        }
+    }
+}
+
+// see: cans/08-lifecycle.md#External-suspension
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalHoldTracker {
+    pub config: ApprovalHoldConfig,
+    pub holds: Vec<u64>,
+}
+
+impl ApprovalHoldTracker {
+    pub fn new(config: ApprovalHoldConfig) -> Self {
+        Self {
+            config,
+            holds: Vec::new(),
+        }
+    }
+
+    pub fn is_expired(&self, started_ms: u64, now_ms: u64) -> bool {
+        now_ms >= started_ms.saturating_add(self.config.hold_ttl_ms)
+    }
+
+    pub fn expire(&mut self, now_ms: u64) {
+        let ttl_ms = self.config.hold_ttl_ms;
+        self.holds
+            .retain(|started_ms| now_ms < started_ms.saturating_add(ttl_ms));
+    }
+
+    pub fn pending_count(&self, now_ms: u64) -> usize {
+        let ttl_ms = self.config.hold_ttl_ms;
+        self.holds
+            .iter()
+            .filter(|started_ms| now_ms < started_ms.saturating_add(ttl_ms))
+            .count()
+    }
+
+    pub fn try_hold(&mut self, now_ms: u64) -> bool {
+        self.expire(now_ms);
+        if self.holds.len() >= self.config.max_pending_holds as usize {
+            return false;
+        }
+        self.holds.push(now_ms);
+        true
+    }
+}
+
 // see: cans/02-plugin-model.md#Unified-verdict
 // see: cans/11-protocol.md#Verdict-method-mapping
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -126,9 +214,21 @@ pub enum Action {
     Pass,
     Forward,
     Drop { errno: Errno, reason: String },
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    Absorb,
     Suspend { until: SuspendUntil },
     Abort { reason: String },
     Patch(PatchPayload),
+}
+
+impl Action {
+    // see: cans/02-plugin-model.md#Unified-verdict
+    pub fn guidance(&self) -> Option<&str> {
+        match self {
+            Action::Drop { reason, .. } | Action::Abort { reason } => Some(reason.as_str()),
+            _ => None,
+        }
+    }
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict

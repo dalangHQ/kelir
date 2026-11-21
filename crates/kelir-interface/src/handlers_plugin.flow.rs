@@ -115,11 +115,64 @@ pub struct ConsoleContext {
 }
 
 // see: cans/11-protocol.md#Signal-and-fork-interception
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SignalTargetRelation {
+    Self_,
+    Children,
+    Session,
+    ShimPid1,
+    #[default]
+    Peer,
+}
+
+// see: cans/11-protocol.md#Signal-and-fork-interception
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SignalContext {
     pub sender: u32,
     pub target: u32,
     pub sig: i32,
+    pub syscall_nr: i64,
+    pub target_relation: SignalTargetRelation,
+}
+
+impl SignalContext {
+    pub fn new(
+        sender: u32,
+        target: u32,
+        sig: i32,
+        syscall_nr: i64,
+        target_relation: SignalTargetRelation,
+    ) -> Self {
+        Self {
+            sender,
+            target,
+            sig,
+            syscall_nr,
+            target_relation,
+        }
+    }
+
+    pub fn is_shim_pid1(&self) -> bool {
+        matches!(self.target_relation, SignalTargetRelation::ShimPid1)
+    }
+
+    pub fn scope_allows(&self) -> bool {
+        !self.is_shim_pid1()
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub fn validate_verdict(verdict: Verdict) -> Result<Verdict, PluginError> {
+        match &verdict {
+            Verdict::Patch(PatchPayload::SignalMutation { replacement_signal })
+                if !(1..=64).contains(replacement_signal) =>
+            {
+                Err(PluginError::Halt(format!(
+                    "EINVAL: SignalMutation replacement {replacement_signal} outside 1..=64"
+                )))
+            }
+            _ => Ok(verdict),
+        }
+    }
 }
 
 // see: cans/11-protocol.md#Signal-and-fork-interception

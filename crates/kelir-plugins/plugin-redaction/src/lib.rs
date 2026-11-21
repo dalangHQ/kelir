@@ -7,6 +7,7 @@ pub mod service_redaction;
 pub mod service_redaction_run;
 
 pub use service_redaction::{
-    MaskReadConfig, MaskReadRule, ReadMaskEngine, RedactionConfig, RedactionCtx, RedactionPlugin,
-    RedactionService, Redactor, SnoopOnWrite, SnoopRule,
+    MaskReadConfig, MaskReadRule, QuarantineManifest, ReadMaskEngine, RedactionConfig,
+    RedactionCtx, RedactionPlugin, RedactionService, Redactor, SnoopOnWrite, SnoopRule,
+    SoftDeleteConfig,
 };

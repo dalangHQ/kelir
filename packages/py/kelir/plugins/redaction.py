@@ -11,6 +11,7 @@ __all__ = [
     "MaskReadRule",
     "RedactionConfig",
     "RedactionPlugin",
+    "SoftDeleteConfig",
     "redaction",
     "redaction_builder",
 ]
@@ -30,8 +31,15 @@ class MaskReadConfig:
 
 
 @dataclass
+class SoftDeleteConfig:
+    enabled: bool = True
+    trash_dir: str = "/workspace/.kelir_trash"
+
+
+@dataclass
 class RedactionConfig:
     mask_read: MaskReadConfig = field(default_factory=lambda: MaskReadConfig())
+    soft_delete: SoftDeleteConfig = field(default_factory=lambda: SoftDeleteConfig())
 
 
 class RedactionPlugin(BasePlugin[None, None]):

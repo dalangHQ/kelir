@@ -89,6 +89,7 @@ class FsInodeAttr:
 class DnsVerdict(Enum):
     Forward = "forward"
     Sinkhole = "sinkhole"
+    Redirect = "redirect"
 
 
 # see: cans/05-storage-plane.md#FUSE-opcode-table

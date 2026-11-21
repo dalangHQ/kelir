@@ -43,6 +43,7 @@ pub struct NativeStorageConfig {
     pub shared_caches: Option<Vec<NativeSharedCache>>,
     pub lock_broker: Option<bool>,
     pub encapsulation: Option<String>,
+    pub blocking_wait_timeout_ms: Option<u32>,
 }
 
 // see: cans/04-terminal-plane.md#Headless-VT100-wireframe-grid
@@ -91,6 +92,7 @@ pub struct NativeWireConfig {
     pub l4_proxies: Option<Vec<NativeL4Proxy>>,
     pub tap_filter: Option<String>,
     pub block_abstract_unix_sockets: Option<bool>,
+    pub dns_to_ip_pinning: Option<bool>,
 }
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
@@ -117,6 +119,7 @@ pub struct NativeKelirBuilder {
     terminal_cfg: Option<NativeTerminalConfig>,
     storage_cfg: Option<NativeStorageConfig>,
     wire_cfg: Option<NativeWireConfig>,
+    wire_dns_to_ip_pinning: Option<bool>,
 }
 
 #[napi]
@@ -157,6 +160,7 @@ impl NativeKelirBuilder {
             terminal_cfg: None,
             storage_cfg: None,
             wire_cfg: None,
+            wire_dns_to_ip_pinning: None,
         }
     }
 
@@ -177,6 +181,7 @@ impl NativeKelirBuilder {
     // see: cans/07-wire-plane.md#DNS-policy-filter
     #[napi]
     pub fn set_wire_config(&mut self, config: NativeWireConfig) {
+        self.wire_dns_to_ip_pinning = config.dns_to_ip_pinning;
         self.wire_cfg = Some(config);
     }
 
@@ -309,7 +314,6 @@ impl NativeKelirBuilder {
                         .unwrap_or(false),
                 });
         let wire = self.wire_cfg.as_ref().map(|cfg| {
-            // see: cans/07-wire-plane.md#Sinkhole-rules
             let sinkhole = kelir_interface::wire::net::SinkholeConfig {
                 rules: cfg
                     .sinkhole
@@ -330,6 +334,9 @@ impl NativeKelirBuilder {
                 sinkhole,
                 ssh_agent_bridge: cfg.ssh_agent_bridge.unwrap_or(false),
                 dial_timeout_ms: u64::from(cfg.dial_timeout_ms.unwrap_or(5000)),
+                dns_to_ip_pinning: self.wire_dns_to_ip_pinning.unwrap_or(false),
+                connect_redirect: None,
+                dns_redirect: None,
                 l4_proxies: cfg
                     .l4_proxies
                     .as_ref()
@@ -366,6 +373,7 @@ impl NativeKelirBuilder {
             Some(cfg) => storage_config(cfg)?,
             None => kelir_engine::planes::storage::StorageConfig::default(),
         };
+        // TODO (L3) [plugin_engine]: per_exec_cgroup and deny_abi_compat are ShimProfile fields with no native shim-config surface on this builder; slop: seccomp fields accepted by the profile schema, never reach the shim
         // see: cans/01-architecture.md#Host-runtime
         let metrics = Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> = kelir_wire::dns_ops(

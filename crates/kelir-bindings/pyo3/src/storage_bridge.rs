@@ -8,7 +8,8 @@ use pyo3::types::{PyAny, PyDict, PyList};
 
 use kelir::planes::storage_plane::SharedCacheConfig;
 use kelir_engine::planes::storage::{
-    IdmapConfig, LockBrokerWiring, StorageConfig, WorkspaceEncapsulation,
+    DEFAULT_BLOCKING_WAIT_TIMEOUT_MS, IdmapConfig, LockBrokerWiring, StorageConfig,
+    WorkspaceEncapsulation,
 };
 
 // see: cans/05-storage-plane.md#Storage-architecture
@@ -16,6 +17,7 @@ use kelir_engine::planes::storage::{
 pub struct PyStorageProjection {
     pub config: StorageConfig,
     pub shared_caches: Vec<SharedCacheConfig>,
+    pub blocking_wait_timeout_ms: Option<u64>,
 }
 
 // see: cans/03-sdk-architecture.md#Prerequisite-gating-across-languages
@@ -74,8 +76,14 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
     let mut config = StorageConfig::default();
     let mut shared_caches: Vec<SharedCacheConfig> = Vec::new();
     let mut lock_broker_flag: Option<bool> = None;
+    let mut blocking_wait_timeout_ms: Option<u64> = None;
     for (key, value) in cfg.iter() {
         match key.to_string().as_str() {
+            "blocking_wait_timeout_ms" => {
+                blocking_wait_timeout_ms = Some(value.extract::<u64>().map_err(|_| {
+                    PyValueError::new_err("storage blocking_wait_timeout_ms is not a u64")
+                })?);
+            }
             "lock_broker" => {
                 lock_broker_flag = Some(
                     value
@@ -132,10 +140,13 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
                 .map(|cache| format!("{}/**", cache.guest_mount.display()))
                 .collect(),
             non_blocking: false,
+            blocking_wait_timeout_ms: blocking_wait_timeout_ms
+                .unwrap_or(DEFAULT_BLOCKING_WAIT_TIMEOUT_MS),
         });
     }
     Ok(PyStorageProjection {
         config,
         shared_caches,
+        blocking_wait_timeout_ms,
     })
 }

@@ -20,6 +20,7 @@ pub use service_step_eval::{
 };
 pub use step_dag::{
     StepAttribution, StepDag, StepDagConfig, StepDagError, StepDagStorage, StepNode,
+    check_reviewer_attribution,
 };
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
