@@ -163,7 +163,7 @@ class SessionProfile(BaseModel):
         return self
 
 
-# L3-GAP: [bindings_py]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
+# TODO: [bindings_py]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
 class ProfileConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -14,6 +14,19 @@ from typing import Any
 
 from kelir.generated.attest_telemetry import CausalDelta
 from kelir.sdk_errors import EConfig
+from kelir.service_caps_run import (
+    container_ingest_image as _run_container_ingest_image,
+    ledger_blake3_of_producing_process as _run_ledger_blake3,
+    ledger_count_denials as _run_ledger_count_denials,
+    ledger_finalize as _run_ledger_finalize,
+    ledger_flush as _run_ledger_flush,
+    ledger_get_causal_delta_from_parent as _run_ledger_causal_delta,
+    mesh_await_winner as _run_mesh_await_winner,
+    mesh_broadcast_winner as _run_mesh_broadcast_winner,
+    transaction_scope_commit as _run_transaction_commit,
+    transaction_scope_rollback_to_savepoint as _run_transaction_rollback_to,
+    transaction_scope_savepoint as _run_transaction_savepoint,
+)
 
 __all__ = [
     "Caps",
@@ -36,9 +49,6 @@ __all__ = [
 ]
 
 
-def _missing(what: str) -> EConfig:
-    return EConfig(f"kelir native PyO3 bridge (_kelir) is missing: {what} (L3)")
-
 
 @dataclass
 class LedgerFinalizeResult:
@@ -58,20 +68,16 @@ class DbCap:
 
 class LedgerCap:
     async def blake3_of_producing_process(self, path: Path | str) -> str:
-        # L3-GAP: [bindings_py]: resolve the producing process for path via the PyO3 _kelir bridge.; slop: process resolution returns fabricated ppid
-        raise _missing("ledger blake3_of_producing_process")
+        return await _run_ledger_blake3(path)
 
     async def flush(self) -> None:
-        # L3-GAP: [telemetry_audit]: force the ledger WAL flush and OTel export via the PyO3 _kelir bridge.; slop: WAL flush/OTel export no-ops, audit chain breaks
-        raise _missing("ledger flush")
+        return await _run_ledger_flush()
 
     async def count_denials(self, ppid: int) -> int:
-        # L3-GAP: [bindings_py]: count ledger denials for ppid via the PyO3 _kelir bridge.; slop: denial count returns zero, ledger denials hidden
-        raise _missing("ledger count_denials")
+        return await _run_ledger_count_denials(ppid)
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
-        # L3-GAP: [ar_09_causal_delta_aggregation_merkle]: fetch the ledger causal delta via the PyO3 _kelir bridge.; slop: ledger delta omits tombstones, audit desyncs
-        raise _missing("ledger get_causal_delta_from_parent")
+        return await _run_ledger_causal_delta()
 
     async def finalize(
         self,
@@ -79,8 +85,7 @@ class LedgerCap:
         include_delta: CausalDelta | None = None,
         include_merkle_root: bool = False,
     ) -> LedgerFinalizeResult:
-        # L3-GAP: [attestation_receipts]: finalize the ledger receipt via the PyO3 _kelir bridge.; slop: receipt finalized without BLAKE3 binding
-        raise _missing("ledger finalize")
+        return await _run_ledger_finalize(include_delta, include_merkle_root)
 
 
 class RepoPolicyCap:
@@ -108,20 +113,16 @@ class TransactionScope:
         exc_val: BaseException | None,
         exc_tb: Any,
     ) -> None:
-        # L3-GAP: [relational_transaction]: commit or roll back the 2PC scope via the PyO3 _kelir bridge.; slop: 2PC commit no-ops, partial commit looks atomic
-        return None
+        return await _run_transaction_commit()
 
     async def savepoint(self) -> Savepoint:
-        # L3-GAP: [storage_plane]: snapshot broker upper and tombstone state via the PyO3 _kelir bridge.; slop: broker snapshot returns empty upper, rollback loses state
-        raise _missing("transaction savepoint")
+        return await _run_transaction_savepoint()
 
     async def rollback_to_savepoint(self, savepoint: Savepoint) -> None:
-        # L3-GAP: [relational_transaction]: restore the savepoint blob via the PyO3 _kelir bridge.; slop: savepoint restore no-ops, rolled-back rows resurface
-        raise _missing("transaction rollback_to_savepoint")
+        return await _run_transaction_rollback_to(savepoint)
 
     async def commit(self) -> None:
-        # L3-GAP: [relational_transaction]: commit the 2PC scope via the PyO3 _kelir bridge.; slop: 2PC commit no-ops, partial commit looks atomic
-        raise _missing("transaction commit")
+        return await _run_transaction_commit()
 
 
 class TransactionCap:
@@ -144,14 +145,12 @@ Tx = TransactionScope
 
 class ContainerCap:
     async def ingest_image(self, tarball: Path | str) -> str:
-        # L3-GAP: [adapters_ingestion]: ingest the OCI tarball via the PyO3 _kelir bridge.; slop: OCI tarball accepted without layer digest check
-        raise _missing("container ingest_image")
+        return await _run_container_ingest_image(tarball)
 
 
 class MeshHandle:
     async def broadcast_winner(self, shard_id: int) -> None:
-        # L3-GAP: [protocol_mux]: broadcast the winning shard announcement over the peer federation streams via the PyO3 _kelir bridge.; slop: announcement unrouted, shards never converge
-        raise _missing("mesh broadcast_winner")
+        return await _run_mesh_broadcast_winner(shard_id)
 
     async def await_winner(
         self,
@@ -159,8 +158,10 @@ class MeshHandle:
         *,
         timeout_secs: float | None = None,
     ) -> int:
-        # L3-GAP: [protocol_mux]: await the winning shard announcement on the mesh listeners via the PyO3 _kelir bridge.; slop: no listener wait, winning shard never awaited, election never settles
-        raise _missing("mesh await_winner")
+        timeout_secs = timeout_secs if timeout_secs is not None else (
+            float(timeout) if isinstance(timeout, (int, float)) else None
+        )
+        return await _run_mesh_await_winner(timeout_secs)
 
 
 # see: cans/03-sdk-architecture.md#Service-lookup-across-languages

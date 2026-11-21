@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Self
 
 from kelir.generated.fusion_tables import RingEvent
-from kelir.plugin_fusion import (
+from kelir.plugin_fusion_flow import (
     FusedTrampoline,
     HookDescriptor,
     HookStage,

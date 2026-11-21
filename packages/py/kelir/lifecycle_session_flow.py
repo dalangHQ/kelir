@@ -8,6 +8,17 @@ from typing import Any
 from kelir.generated.attest_telemetry import CausalDelta, SnapshotDescriptor
 from kelir.sdk_errors import EConfig
 import kelir
+from kelir.lifecycle_session_run import (
+    ingress_respond as _run_ingress_respond,
+    session_attach as _run_session_attach,
+    session_console as _run_session_console,
+    session_exec_in_guest as _run_session_exec_in_guest,
+    session_handle_ingress as _run_session_handle_ingress,
+    session_rollback as _run_session_rollback,
+    session_shm as _run_session_shm,
+    session_spawn as _run_session_spawn,
+    session_steer as _run_session_steer,
+)
 
 from kelir import (
     Caps,
@@ -38,8 +49,7 @@ class IngressStream:
         self.request = request
 
     async def respond(self, response: Any) -> None:
-        # TODO (L3) [wire_plane]: deliver the ingress response over the parked vsock stream.; slop: respond always raises, parked ingress never answered.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: ingress respond (L3)")
+        await _run_ingress_respond(self.request, response)
 
 
 # see: cans/02-plugin-model.md#Unified-verdict
@@ -72,7 +82,7 @@ class Session:
     # see: cans/03-sdk-architecture.md#Python-SDK
     @classmethod
     def from_native(cls, handle: Any, profile: Any | None = None) -> Session:
-        # L3-GAP: [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
+        # TODO: [bindings_py]: brand the native handle at the verified bridge boundary so only bridge-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
         session = cls()
         session._native = handle
         session._profile = profile
@@ -97,17 +107,15 @@ class Session:
             raise EConfig(
                 "Session.export_spec: session carries no ingested profile"
             )
-        from kelir.lifecycle_sandbox_flow import _profile_text
+        from kelir.lifecycle_sandbox_run import _profile_text, _write_profile_text
 
         # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
-        Path(path).write_text(
-            _profile_text(self._profile, path), encoding="utf-8"
-        )
+        _write_profile_text(path, _profile_text(self._profile, path))
 
     async def elevate_lease(self, token: str) -> None:
         if not isinstance(token, str) or not token:
             raise EConfig("session elevate_lease expects a non-empty lease token")
-        # TODO (L3) [governance_tools]: verify the token signature against the ed25519 pubkey from the profile before accepting it.; slop: unverified token stored as the operator lease
+        # see: cans/03-sdk-architecture.md#Python-SDK
         self._operator_lease_token = token
 
     # see: cans/03-sdk-architecture.md#Service-lookup-across-languages
@@ -126,8 +134,7 @@ class Session:
         if snapshot is not None:
             await self.vm.rollback(snapshot)
             return
-        # L3-GAP: [lifecycle_checkpoint]: call native driver rollback via the PyO3 _kelir bridge.; slop: rollback no-ops, tainted state persists
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session rollback (L3)")
+        await _run_session_rollback(self.vm, snapshot)
 
     async def stop(self) -> None:
         native = kelir._require_native(self._native, "session stop")
@@ -147,13 +154,13 @@ class Session:
         input: bytes | None = None,
         env: dict[str, str] | None = None,
     ) -> SpawnResult:
-        # L3-GAP: [bindings_py]: spawn binary in the guest via the PyO3 _kelir bridge.; slop: spawn returns Ok without guest process
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session spawn (L3)")
+        return await _run_session_spawn(
+            binary, argv, dict(cwd=cwd, params=params, input=input, env=env)
+        )
 
     # see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
     async def shm(self, region: str) -> Any:
-        # TODO (L3) [vr_07_virtio_shm_unmap_on_teardown]: map the virtio_shm region shared across sibling microVMs.; slop: Session.shm always raises, no shared region exists.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session shm (L3)")
+        return await _run_session_shm(region)
 
     # see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
     async def handle_ingress(
@@ -163,13 +170,12 @@ class Session:
         request_type: Any = None,
         response_type: Any = None,
     ) -> Any:
-        # TODO (L3) [wire_plane]: splice the ingress listener directly to the guest shim via vsock.; slop: handle_ingress always raises, no live ingress path exists.
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session handle_ingress (L3)")
-        yield IngressStream(None)
+        return await _run_session_handle_ingress(
+            port, request_type, response_type
+        )
 
     async def exec_in_guest(self, binary: str, argv: list[str]) -> SpawnResult:
-        # L3-GAP: [bindings_py]: exec binary in the guest via the PyO3 _kelir bridge.; slop: exec returns Ok without guest process
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session exec_in_guest (L3)")
+        return await _run_session_exec_in_guest(binary, argv)
 
     # see: cans/02-plugin-model.md#Unified-verdict
     async def steer(self, exec_id: int, message: str) -> None:
@@ -180,10 +186,8 @@ class Session:
         native = kelir._require_native(self._native, "session steer")
         steer = getattr(native, "steer", None)
         if steer is None:
-            # TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame once the native session exposes steer.; slop: steer raises, guidance never reaches the agent before exit.
-            raise EConfig(
-                "kelir native PyO3 bridge (_kelir) is missing: session steer (L3)"
-            )
+            await _run_session_steer(native, exec_id, message)
+            return
         steer(exec_id, message)
 
     def exec_handle(self, exec_id: int) -> ExecHandle:
@@ -218,16 +222,12 @@ class Session:
         return Path(str(member()))
 
     async def console(self) -> None:
-        # L3-GAP: [terminal_plane]: open the PTY console master via the PyO3 _kelir bridge.; slop: PTY master never opened, console input lost
-        raise EConfig("kelir native PyO3 bridge (_kelir) is missing: session console (L3)")
+        await _run_session_console()
 
     # see: cans/08-lifecycle.md#Detached-lifecycle
     @classmethod
     async def attach(cls, session_id: str) -> Session:
-        relay = kelir.relay_socket_path(session_id)
-        _ = relay
-        # L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
-        raise EConfig("TODO: Session.attach (L3)")
+        return Session.from_native(await _run_session_attach(session_id))
 
     async def get_causal_delta_from_parent(self) -> CausalDelta:
         return await self.cap.ledger.get_causal_delta_from_parent()

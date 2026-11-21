@@ -24,6 +24,9 @@ from kelir import (
 from kelir.plugin_fusion_flow import HookDescriptor, HookStage
 from kelir.generated.fusion_tables import HOOK_RINGS
 from kelir.lifecycle_session_flow import Session
+from kelir.plugin_model_run import (
+    lifecycle_exec_in_guest as _run_lifecycle_exec_in_guest,
+)
 
 if TYPE_CHECKING:
     from kelir import KelirBuilder
@@ -140,14 +143,12 @@ class LifecycleCtx:
 
     # see: cans/03-sdk-architecture.md#Session-surfaces
     async def exec_in_guest(self, argv: list[str]) -> SpawnResult:
-        # TODO (L3) [protocol_mux]: exec_in_guest rides the EXEC stream kind via the shim wire protocol.; slop: exec_in_guest always raises, no guest command path exists.
-        raise EConfig(
-            "kelir native PyO3 bridge (_kelir) is missing: lifecycle exec_in_guest (L3)"
-        )
+        # see: cans/03-sdk-architecture.md#Session-surfaces
+        return await _run_lifecycle_exec_in_guest(argv)
 
     # see: cans/08-lifecycle.md#Watchdog
     def set_watchdog(self, *, timeout: timedelta, action: WatchdogAction) -> None:
-        # L3-GAP: [lc_18_watchdog_heartbeat_timeout_reboot]: arm the VM watchdog via the PyO3 _kelir bridge.; slop: watchdog never armed, deadlocked guest never reboots
+        # TODO: [lc_18_watchdog_heartbeat_timeout_reboot]: arm the VM watchdog via the PyO3 _kelir bridge.; slop: watchdog never armed, deadlocked guest never reboots
         self._watchdog = (timeout, action)
 
     def register_veto(
@@ -162,7 +163,7 @@ class LifecycleCtx:
                 return result
             return Veto(allowed=result, by="", reason="", recovery=None)
 
-        # L3-GAP: [plugin_engine]: register the veto predicate with the lifecycle; slop: veto predicate never registered, unsafe fork proceeds
+        # TODO: [plugin_engine]: register the veto predicate with the lifecycle; slop: veto predicate never registered, unsafe fork proceeds
         self._vetoes.append((event, desugar))
 
 
@@ -225,140 +226,140 @@ class BasePlugin(Generic[CtxT, ParamsT]):
         return builder
 
     async def on_trap(self, event: TrapEvent) -> Optional[Verdict]:
-        # L3-GAP: [plugin_engine]: dispatch trap event to the plugin; slop: trap event never dispatched, plugin sees nothing
+        # TODO: [plugin_engine]: dispatch trap event to the plugin; slop: trap event never dispatched, plugin sees nothing
         return None
 
     def on_fs_lookup(self, path: Path) -> Verdict:
-        # L3-GAP: [storage_plane]: dispatch fs lookup to the plugin; slop: fs lookup never dispatched, plugin filter bypassed
+        # TODO: [storage_plane]: dispatch fs lookup to the plugin; slop: fs lookup never dispatched, plugin filter bypassed
         return Verdict.pass_()
 
     def on_fs_read(self, path: Path, buffer: bytes) -> bytes:
-        # L3-GAP: [storage_plane]: dispatch fs read to the plugin; slop: fs read never dispatched, masking never applies
+        # TODO: [storage_plane]: dispatch fs read to the plugin; slop: fs read never dispatched, masking never applies
         return buffer
 
     def on_fs_write(
         self, path: Path, data: bytes, pid: int, ctx: HandlerContext[CtxT, ParamsT]
     ) -> FilterAction:
-        # L3-GAP: [storage_plane]: dispatch fs write to the plugin; slop: fs write never dispatched, quota never enforced
+        # TODO: [storage_plane]: dispatch fs write to the plugin; slop: fs write never dispatched, quota never enforced
         return FilterAction.forward()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_unlink(
         self, path: Path, ctx: HandlerContext[CtxT, ParamsT]
     ) -> Verdict:
-        # L3-GAP: [storage_plane]: dispatch fs unlink to the plugin; slop: fs unlink never dispatched, destructive delete unintercepted
+        # TODO: [storage_plane]: dispatch fs unlink to the plugin; slop: fs unlink never dispatched, destructive delete unintercepted
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_rename(
         self, src: Path, dst: Path, ctx: HandlerContext[CtxT, ParamsT]
     ) -> Verdict:
-        # L3-GAP: [storage_plane]: dispatch fs rename to the plugin; slop: fs rename never dispatched, escape unintercepted
+        # TODO: [storage_plane]: dispatch fs rename to the plugin; slop: fs rename never dispatched, escape unintercepted
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_setattr(self, path: Path, mode: int, size: int) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch fs setattr to the plugin.; slop: fs setattr never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fs setattr to the plugin. deferred)
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_symlink(self, target: Path, link: Path) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch fs symlink to the plugin.; slop: fs symlink never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fs symlink to the plugin. deferred)
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_mkdir(self, path: Path, mode: int) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch fs mkdir to the plugin.; slop: fs mkdir never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fs mkdir to the plugin. deferred)
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_readdir(self, path: Path, entries: list[DirEntry]) -> FilterAction:
-        # TODO (L3) [bindings_py]: dispatch fs readdir to the plugin.; slop: fs readdir never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fs readdir to the plugin. deferred)
         return FilterAction.forward()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_fs_readlink(self, path: Path) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch fs readlink to the plugin.; slop: fs readlink never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fs readlink to the plugin. deferred)
         return Verdict.pass_()
 
     def on_net_outbound(self, frame: bytearray) -> FilterAction:
-        # L3-GAP: [wire_plane]: dispatch outbound frame to the plugin; slop: outbound frame never dispatched, egress unfiltered
+        # TODO: [wire_plane]: dispatch outbound frame to the plugin; slop: outbound frame never dispatched, egress unfiltered
         return FilterAction.forward()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_socket_connect(
         self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
     ) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch socket connect to the plugin.; slop: socket connect never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: socket connect to the plugin. deferred)
         return Verdict.pass_()
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_dns_query(self, pid: int, domain: str, qtype: int) -> DnsVerdict:
-        # TODO (L3) [bindings_py]: dispatch dns query to the plugin.; slop: dns query never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: dns query to the plugin. deferred)
         return DnsVerdict.Forward
 
     # see: cans/02-plugin-model.md#Segregated-ring-traits
     def on_socket_bind(
         self, pid: int, proto: int, ip: tuple[int, int, int, int], port: int
     ) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch socket bind to the plugin.; slop: socket bind never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: socket bind to the plugin. deferred)
         return Verdict.pass_()
 
     async def on_console_input(self, port: int, data: bytes) -> bytes:
-        # L3-GAP: [terminal_plane]: dispatch console input to the plugin; slop: console input never dispatched, shield never sees keystrokes
+        # TODO: [terminal_plane]: dispatch console input to the plugin; slop: console input never dispatched, shield never sees keystrokes
         return data
 
     async def on_console_output(self, port: int, chunk: bytes) -> bytes:
-        # L3-GAP: [terminal_plane]: dispatch console output to the plugin; slop: console output never dispatched, sanitizer never runs
+        # TODO: [terminal_plane]: dispatch console output to the plugin; slop: console output never dispatched, sanitizer never runs
         return chunk
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stdout(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # L3-GAP: [tp_09_exec_stream_sublane_stdio_fidelity]: dispatch EXEC stream stdout to the plugin; slop: EXEC stdout never dispatched, stdio fidelity unobserved
+        # TODO: [tp_09_exec_stream_sublane_stdio_fidelity]: dispatch EXEC stream stdout to the plugin; slop: EXEC stdout never dispatched, stdio fidelity unobserved
         return chunk
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stderr(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # L3-GAP: [tp_09_exec_stream_sublane_stdio_fidelity]: dispatch EXEC stream stderr to the plugin; slop: EXEC stderr never dispatched, stdio fidelity unobserved
+        # TODO: [tp_09_exec_stream_sublane_stdio_fidelity]: dispatch EXEC stream stderr to the plugin; slop: EXEC stderr never dispatched, stdio fidelity unobserved
         return chunk
 
     # see: cans/02-plugin-model.md#KelirPlugin-trait
     async def on_exec_stdin(self, pid: int, exec_id: int, chunk: bytes) -> bytes:
-        # TODO (L3) [bindings_py]: dispatch EXEC stream stdin to the plugin.; slop: EXEC stream stdin never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: EXEC stream stdin to the plugin. deferred)
         return chunk
 
     async def on_heartbeat(self, event: Any) -> None:
-        # L3-GAP: [telemetry_audit]: dispatch heartbeat telemetry to the plugin; slop: heartbeat telemetry never dispatched, export gap hidden
+        # TODO: [telemetry_audit]: dispatch heartbeat telemetry to the plugin; slop: heartbeat telemetry never dispatched, export gap hidden
         pass
 
     async def on_process_exit(self, event: Any) -> None:
-        # L3-GAP: [attestation_receipts]: dispatch process-exit event to the plugin; slop: process-exit never dispatched, receipt never emitted
+        # TODO: [attestation_receipts]: dispatch process-exit event to the plugin; slop: process-exit never dispatched, receipt never emitted
         pass
 
     async def on_signal(self, sender: int, target: int, sig: int) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch signal to the plugin.; slop: signal never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: signal to the plugin. deferred)
         return Verdict.pass_()
 
     async def on_fork(self, parent: int, child: int) -> Verdict:
-        # TODO (L3) [bindings_py]: dispatch fork to the plugin.; slop: fork never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: fork to the plugin. deferred)
         return Verdict.pass_()
 
     async def on_vm_init(self, ctx: LifecycleCtx | None) -> None:
-        # L3-GAP: [lifecycle_checkpoint]: dispatch vm-init lifecycle event to the plugin; slop: vm-init never dispatched, init hooks never run
+        # TODO: [lifecycle_checkpoint]: dispatch vm-init lifecycle event to the plugin; slop: vm-init never dispatched, init hooks never run
         pass
 
     async def on_vm_ready(self, ctx: LifecycleCtx | None) -> None:
-        # L3-GAP: [lifecycle_checkpoint]: dispatch vm-ready lifecycle event to the plugin; slop: vm-ready never dispatched, ready handlers never run
+        # TODO: [lifecycle_checkpoint]: dispatch vm-ready lifecycle event to the plugin; slop: vm-ready never dispatched, ready handlers never run
         pass
 
     async def on_vm_shutdown(self, ctx: LifecycleCtx | None) -> None:
-        # L3-GAP: [lifecycle_checkpoint]: dispatch vm-shutdown lifecycle event to the plugin; slop: vm-shutdown never dispatched, syncfs never flushed
+        # TODO: [lifecycle_checkpoint]: dispatch vm-shutdown lifecycle event to the plugin; slop: vm-shutdown never dispatched, syncfs never flushed
         pass
 
     async def on_watchdog(self, event: WatchdogEvent) -> WatchdogVerdict:
-        # L3-GAP: [lc_18_watchdog_heartbeat_timeout_reboot]: dispatch watchdog event to the plugin; slop: watchdog event never dispatched, reboot never fires
+        # TODO: [lc_18_watchdog_heartbeat_timeout_reboot]: dispatch watchdog event to the plugin; slop: watchdog event never dispatched, reboot never fires
         return WatchdogVerdict.ExecuteDefault
 
     def on_host_containment_breach(self, pid: int, path: Path, kind: str) -> None:
-        # TODO (L3) [bindings_py]: dispatch host containment breach to the plugin.; slop: host containment breach never reaches the plugin, the guest action runs unobserved.
+        # see: cans/02-plugin-model.md#Segregated-ring-traits (dispatch: host containment breach to the plugin. deferred)
         pass

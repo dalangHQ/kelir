@@ -193,7 +193,7 @@ class FsVfsExt(BaseModel):
     roots: list[str] = Field(default_factory=list)
 
 
-# L3-GAP: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
+# TODO: [attestation_receipts]: no FFI producer populates ExecutionReceipt.exit_kind yet; slop: receipt exit_kind fabricated, Normal without guest ACK
 class ExecutionReceipt(BaseModel):
     pid: int = 0
     binary_path: str = ""

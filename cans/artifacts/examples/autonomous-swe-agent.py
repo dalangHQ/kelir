@@ -35,7 +35,7 @@ from kelir import (
     Verdict,
     WatchdogAction,
 )
-from kelir.plugin_model import LifecycleCtx
+from kelir.plugin_model_flow import LifecycleCtx
 from kelir.plugins.redaction import (
     MaskReadConfig, MaskReadRule, RedactionConfig, redaction,
 )

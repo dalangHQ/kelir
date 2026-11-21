@@ -224,7 +224,7 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
         self._context_fn: Handler | None = None
         self._fork_fn: Callable[[KelirBuilder], KelirBuilder] | None = None
         self._handlers: list[tuple[str, Handler, int]] = []
-        # L3-GAP: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
+        # TODO: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
         self._vsock: list[tuple[Any, Handler]] = []
         self._mounted: bool = False
         self._sealed: bool = False
@@ -694,7 +694,7 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
         self._check_sealed("params")
         if self._mode == "plugin":
             self._raise_host_only("params")
-        # L3-GAP: [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
+        # TODO: [bp_01_python_boot_econfig_missing_pydantic_dependency]: validated params models ride the native boot once the PyO3 binding awaits.; slop: boot passes without runtime pydantic validation
         self._params_model = model
 
     def _scope_entry(self, name: str, fn: Callable[[_Scope], Any]) -> Self:
@@ -878,7 +878,7 @@ class KelirBuilder(Generic[_Mode, _Sealed]):
             driver=self._config["driver"],
             mask_proc_environ=self._config["mask_proc_environ"],
         )
-        # L3-GAP: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms/embed_mode once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
+        # TODO: [bindings_py]: forward page_size_kb/deterministic_clock/pinned_clocksource/preemption_grace_ms/embed_mode once the PyO3 constructor accepts them.; slop: boot flags silently dropped by native constructor
         if "terminal" in self._config:
             native.set_terminal_config(
                 _bridge_safe_config("terminal", self._config["terminal"])

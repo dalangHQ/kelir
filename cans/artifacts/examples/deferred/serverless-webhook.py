@@ -22,7 +22,7 @@ from kelir import (
     PostExecAction,
     Verdict,
 )
-from kelir.plugin_model import LifecycleCtx
+from kelir.plugin_model_flow import LifecycleCtx
 from kelir.plugins.wire_ingress import (
     BacklogConfig,
     ListenConfig,

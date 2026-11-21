@@ -1,12 +1,9 @@
 # see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 from __future__ import annotations
 
-import importlib
-import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import tomli_w
 from pydantic import ValidationError
 
 from kelir.profile_config import ProfileConfig
@@ -53,18 +50,7 @@ def _builder_kwargs(model: ProfileConfig) -> dict[str, Any]:
 
 # see: cans/plugins/profile.md#Declarative-profile-execution
 def _parse_profile(origin: str, path: str) -> dict[str, Any]:
-    text = Path(path).read_text(encoding="utf-8")
-    loaded: dict[str, Any]
-    if path.endswith(".toml"):
-        loaded = tomllib.loads(text)
-    elif path.endswith((".yaml", ".yml")):
-        yaml = importlib.import_module("yaml")
-        loaded = yaml.safe_load(text)
-    else:
-        raise EConfig(
-            f"{origin}: unsupported profile extension for `{path}` (expected .toml, .yaml, or .yml)"
-        )
-    return loaded
+    return _parse_profile_text(origin, path, _read_profile_text(origin, path))
 
 
 # see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -75,12 +61,12 @@ def _profile_model(origin: str, profile: dict[str, Any]) -> ProfileConfig:
         raise EConfig(f"{origin}: invalid profile schema: {exc}") from exc
 
 
-def _profile_text(model: ProfileConfig, path: str) -> str:
-    data = model.model_dump(exclude_none=True)
-    if path.endswith((".yaml", ".yml")):
-        yaml = importlib.import_module("yaml")
-        return str(yaml.safe_dump(data, sort_keys=False))
-    return tomli_w.dumps(data)
+from kelir.lifecycle_sandbox_run import (  # see: cans/plugins/profile.md#Declarative-profile-execution
+    _parse_profile_text,
+    _profile_text,
+    _read_profile_text,
+    _write_profile_text,
+)
 
 
 class Sandbox:
@@ -197,9 +183,8 @@ class Sandbox:
         )
 
     async def export_spec(self, path: str) -> None:
-        # L3-GAP: [bindings_py]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
         # TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
-        Path(path).write_text(_profile_text(self._profile, path), encoding="utf-8")
+        _write_profile_text(path, _profile_text(self._profile, path))
 
     async def stop(self) -> None:
         if self._session is None:

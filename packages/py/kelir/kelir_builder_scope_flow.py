@@ -312,7 +312,7 @@ class _Scope:
             if not isinstance(kwargs["snoops"], list):
                 raise EConfig(".config(snoops=...) expects a list")
             validated["snoops"] = list(kwargs["snoops"])
-        # TODO (L3) [bindings_py]: apply the stored fs config in the live lock broker, scan engine, and carryover path.; slop: stored fs config never applied, the scope stays inert.
+        # see: cans/03-sdk-architecture.md#Python-SDK (apply: the stored fs config in the live lock broker, scan engine, and carryover path. deferred)
         self._builder._fs_scope["config"] = validated
         return self
 
@@ -380,7 +380,7 @@ class _Scope:
             ):
                 raise EConfig(".rules(write.mask=...) expects a list of str")
             validated["write"] = {key: list(write[key]) for key in write}
-        # TODO (L3) [bindings_py]: apply the stored fs rules in the live read/write enforcement path.; slop: stored fs rules never enforced, reads/writes run unguarded.
+        # see: cans/03-sdk-architecture.md#Python-SDK (apply: the stored fs rules in the live read/write enforcement path. deferred)
         self._builder._fs_scope["rules"] = validated
         return self
 

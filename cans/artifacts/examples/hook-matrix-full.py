@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 import kelir
 from kelir import Approval, Deadline, Errno, FilterAction, KelirBuilder, PatchPayload, TrapFilter, Verdict
-from kelir.plugin_model import (
+from kelir.plugin_model_flow import (
     FsInodeAttr,
     HandlerContext,
     WatchdogEvent,

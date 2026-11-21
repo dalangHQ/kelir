@@ -24,7 +24,7 @@ import platform
 
 import kelir
 from kelir import DnsVerdict, FilterAction, KelirBuilder, TrapFilter, Verdict
-from kelir.plugin_model import WatchdogVerdict
+from kelir.plugin_model_flow import WatchdogVerdict
 from kelir.sdk_errors import EConfig
 
 

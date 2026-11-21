@@ -12,7 +12,7 @@ from typing import Awaitable, Callable
 
 import kelir
 from kelir import Approval, Deadline, Errno, HandlerContext, KelirBuilder, ResourcePressure, TrapFilter, Verdict
-from kelir.plugin_model import (
+from kelir.plugin_model_flow import (
     LifecycleCtx,
     VetoEvent,
     WatchdogEvent,

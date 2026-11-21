@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import kelir
 from kelir import KelirBuilder, Session
-from kelir.plugin_model import LifecycleCtx, VetoEvent
+from kelir.plugin_model_flow import LifecycleCtx, VetoEvent
 from kelir.plugins.mesh import (
     MeshConfig, MeshPlugin, PeerIdentity, PeerListener,
 )
