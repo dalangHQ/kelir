@@ -269,12 +269,32 @@ pub use crate::l7_tls::{HostKeyringDecryptor, TlsDecryptor};
 
 // see: cans/plugins/l7-http.md#Error-and-return-semantics-(l7-http)
 pub fn synthetic_403_receipt(reason: &str, pid: u32, binary: &str) -> HttpResponse {
-    let body = serde_json::json!({
-        "error": "E_POLICY_DENIED",
-        "reason": reason,
-        "pid": pid,
-        "binary": binary,
-    });
+    synthetic_403_receipt_with_guidance(reason, pid, binary, None)
+}
+
+// see: blindess.patch.md#B: deny → redirect + guidance steering so the agent
+// does not burn tokens in blind retry loops against an opaque 403.
+pub fn synthetic_403_receipt_with_guidance(
+    reason: &str,
+    pid: u32,
+    binary: &str,
+    guidance: Option<&str>,
+) -> HttpResponse {
+    let body = match guidance {
+        Some(hint) => serde_json::json!({
+            "error": "E_POLICY_DENIED",
+            "reason": reason,
+            "pid": pid,
+            "binary": binary,
+            "guidance": hint,
+        }),
+        None => serde_json::json!({
+            "error": "E_POLICY_DENIED",
+            "reason": reason,
+            "pid": pid,
+            "binary": binary,
+        }),
+    };
     HttpResponse {
         status: 403,
         reason: "Forbidden".to_string(),
@@ -350,4 +370,81 @@ impl Default for L7Parser {
     fn default() -> Self {
         Self::new(true)
     }
+}
+
+// see: blindess.patch.md#B: declared-services `..` path-traversal rejection.
+/// Pure check: true when any `/`-separated segment of `target` equals `..`,
+/// which the proxy must reject with 403 before dialing the upstream.
+pub fn path_traversal_rejected(target: &str) -> bool {
+    let path = target.split('?').next().unwrap_or("");
+    path.split('/').any(|segment| segment == "..")
+}
+
+// see: blindess.patch.md#B: normalized token usage across LLM dialects.
+/// Pure OpenAI/Anthropic token-usage normalizer: maps provider-specific
+/// usage JSON onto the shared `{input_tokens, output_tokens}` shape.
+pub fn normalize_token_usage(dialect: &str, usage: &serde_json::Value) -> (u64, u64) {
+    let object = usage.as_object();
+    let pick = |names: &[&str]| -> u64 {
+        names
+            .iter()
+            .find_map(|name| object.and_then(|o| o.get(*name)).and_then(|v| v.as_u64()))
+            .unwrap_or(0)
+    };
+    match dialect {
+        // Anthropic: usage {input_tokens, output_tokens}
+        "anthropic" => (
+            pick(&["input_tokens"]),
+            pick(&["output_tokens"]),
+        ),
+        // OpenAI: usage {prompt_tokens, completion_tokens} (+ total_tokens)
+        "openai" => (
+            pick(&["prompt_tokens", "input_tokens"]),
+            pick(&["completion_tokens", "output_tokens"]),
+        ),
+        // Unknown dialect: fall back to the shared field names.
+        _ => (pick(&["input_tokens"]), pick(&["output_tokens"])),
+    }
+}
+
+// see: blindess.patch.md#B: real-time SSE tool_use chunk inspection.
+/// Pure scan of one SSE chunk string for an Anthropic/OpenAI-shaped
+/// `"type":"tool_use"` JSON block (whitespace between tokens tolerated),
+/// so streaming tool use is caught before guest read.
+pub fn sse_chunk_contains_tool_use(chunk: &str) -> bool {
+    if !chunk.contains("tool_use") {
+        return false;
+    }
+    // Whitespace-tolerant scan for the `"type": "tool_use"` pair.
+    let mut cursor = 0usize;
+    let bytes = chunk.as_bytes();
+    while let Some(found) = find_subslice(bytes, b"\"type\"", cursor) {
+        let mut scan = found + b"\"type\"".len();
+        while scan < bytes.len() && (bytes[scan] as char).is_ascii_whitespace() {
+            scan += 1;
+        }
+        if bytes.get(scan) == Some(&b':') {
+            scan += 1;
+            while scan < bytes.len() && (bytes[scan] as char).is_ascii_whitespace() {
+                scan += 1;
+            }
+            if chunk[scan..].starts_with("\"tool_use\"") {
+                return true;
+            }
+        }
+        cursor = found + 1;
+    }
+    false
+}
+
+// see: cans/plugins/l7-http.md#Invariants-and-policy-(l7-http)
+fn find_subslice(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    let start = from.min(haystack.len().saturating_sub(1));
+    haystack[start..]
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|offset| start + offset)
 }

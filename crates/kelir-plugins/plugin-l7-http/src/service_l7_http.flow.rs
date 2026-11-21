@@ -77,6 +77,42 @@ fn host_matches(pattern: &str, name: &str) -> bool {
 pub struct L7HttpConfig {
     pub sinkhole: SinkholeConfig,
     pub protocol_inspection: bool,
+    // see: blindess.patch.md#B: URLhaus/phishing (and Onionoo relay-IP) feeds
+    // synced by the L3 wire-plane job; the names are feed identifiers only.
+    pub threat_feeds: Vec<String>,
+    // see: blindess.patch.md#B: retain only salted hashes of LLM prompt/response
+    // bodies instead of plaintext, for post-hoc audit without retention leaks.
+    pub hash_only_llm_retention: bool,
+    // see: blindess.patch.md#B: declared API gateways with direct-egress blocks.
+    pub declared_services: Vec<DeclaredServiceConfig>,
+}
+
+// see: blindess.patch.md#B: one declared upstream service the guest must reach
+// through this proxy (gateway env var, upstream, L4 direct-egress block, LLM
+// dialect for usage normalization, DLP and SSE tool_use inspection toggles).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredServiceConfig {
+    pub name: String,
+    pub env_var: String,
+    pub upstream: String,
+    pub block_direct_egress: bool,
+    pub llm_dialect: String,
+    pub dlp_redact_prompts: bool,
+    pub inspect_sse_tool_use: bool,
+}
+
+impl Default for DeclaredServiceConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            env_var: String::new(),
+            upstream: String::new(),
+            block_direct_egress: true,
+            llm_dialect: "openai".to_string(),
+            dlp_redact_prompts: false,
+            inspect_sse_tool_use: false,
+        }
+    }
 }
 
 // see: cans/plugins/l7-http.md#Error-and-return-semantics-(l7-http)
@@ -191,6 +227,9 @@ impl L7HttpPlugin {
         Self::with_config(L7HttpConfig {
             sinkhole: SinkholeConfig::default(),
             protocol_inspection: true,
+            threat_feeds: Vec::new(),
+            hash_only_llm_retention: true,
+            declared_services: Vec::new(),
         })
     }
 
