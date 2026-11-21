@@ -1,5 +1,5 @@
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -466,3 +466,426 @@ impl ToolRegistryService for ToolRegistry {
         Ok(())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Capability classifier + sliding-window cross-server exfiltration detector
+// (pure L2; see blindess.patch.md#C: semantic read_then_send flows that
+// byte-range plugin-taint cannot see, adapted from agentsh session_analyzer).
+// ---------------------------------------------------------------------------
+
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolCapability {
+    Read,
+    Write,
+    Send,
+    Run,
+}
+
+// see: blindess.patch.md#C: capability-prefix classification (read/get/list vs
+// send/post/upload vs run/exec) over a sliding window.
+pub fn classify_capability(tool_name: &str) -> ToolCapability {
+    let lower = tool_name.to_ascii_lowercase();
+    for prefix in READ_CAPABILITY_PREFIXES {
+        if lower.starts_with(prefix) {
+            return ToolCapability::Read;
+        }
+    }
+    for prefix in SEND_CAPABILITY_PREFIXES {
+        if lower.starts_with(prefix) {
+            return ToolCapability::Send;
+        }
+    }
+    for prefix in WRITE_CAPABILITY_PREFIXES {
+        if lower.starts_with(prefix) {
+            return ToolCapability::Write;
+        }
+    }
+    for prefix in RUN_CAPABILITY_PREFIXES {
+        if lower.starts_with(prefix) {
+            return ToolCapability::Run;
+        }
+    }
+    // Unknown verbs carry no classification; treat as Run (fail-closed default
+    // matches agentsh: unrecognized verbs are the risky bucket).
+    ToolCapability::Run
+}
+
+// see: blindess.patch.md#C
+const READ_CAPABILITY_PREFIXES: &[&str] = &["read", "get", "list", "fetch", "query", "search"];
+// see: blindess.patch.md#C
+const SEND_CAPABILITY_PREFIXES: &[&str] = &["send", "post", "upload", "publish", "mail", "emit"];
+// see: blindess.patch.md#C
+const WRITE_CAPABILITY_PREFIXES: &[&str] = &["write", "put", "patch", "update", "delete", "edit"];
+// see: blindess.patch.md#C
+const RUN_CAPABILITY_PREFIXES: &[&str] = &["run", "exec", "spawn", "invoke", "apply", "eval"];
+
+// see: blindess.patch.md#C: one observed tool invocation inside the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolInvocation {
+    pub server: String,
+    pub tool: String,
+    pub capability: ToolCapability,
+}
+
+// see: blindess.patch.md#C: fixed-size sliding window of invocations; the
+// cross-server read_then_send pattern must be visible regardless of byte identity.
+#[derive(Debug, Clone)]
+pub struct SlidingInvocationWindow {
+    events: VecDeque<ToolInvocation>,
+    capacity: usize,
+}
+
+impl SlidingInvocationWindow {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            events: VecDeque::with_capacity(capacity),
+            capacity,
+        }
+    }
+
+    pub fn push(&mut self, event: ToolInvocation) {
+        if self.capacity == 0 {
+            return;
+        }
+        if self.events.len() == self.capacity {
+            self.events.pop_front();
+        }
+        self.events.push_back(event);
+    }
+
+    pub fn events(&self) -> &[ToolInvocation] {
+        self.events.as_slices().0
+    }
+
+    pub fn clear(&mut self) {
+        self.events.clear();
+    }
+}
+
+// see: blindess.patch.md#C: verdict of the cross-server exfiltration detector.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrossServerExfilVerdict {
+    pub denied: bool,
+    pub reason: String,
+}
+
+// see: blindess.patch.md#C: a Send on server B is denied when a Read on any
+// *other* server A is still inside the window — the LLM read secret data on A,
+// possibly paraphrased it, and is now exfiltrating through B.
+pub fn detect_read_then_send(
+    window: &SlidingInvocationWindow,
+    current: &ToolInvocation,
+) -> CrossServerExfilVerdict {
+    if current.capability == ToolCapability::Send {
+        for prior in window.events() {
+            if prior.capability == ToolCapability::Read && prior.server != current.server {
+                return CrossServerExfilVerdict {
+                    denied: true,
+                    reason: format!(
+                        "read_then_send: tool {} on server {} follows a read on server {} within the window",
+                        current.tool, current.server, prior.server
+                    ),
+                };
+            }
+        }
+    }
+    CrossServerExfilVerdict {
+        denied: false,
+        reason: String::new(),
+    }
+}
+
+// see: blindess.patch.md#C: entry point used by the guard pipeline; records the
+// invocation into the window and evaluates the pattern before the call runs.
+pub fn evaluate_cross_server_exfil(
+    window: &mut SlidingInvocationWindow,
+    server: &str,
+    tool: &str,
+) -> CrossServerExfilVerdict {
+    let current = ToolInvocation {
+        server: server.to_string(),
+        tool: tool.to_string(),
+        capability: classify_capability(tool),
+    };
+    let verdict = detect_read_then_send(window, &current);
+    window.push(current);
+    verdict
+}
+
+// ---------------------------------------------------------------------------
+// Confusable (typosquatted) tool names — Levenshtein distance on tools/list
+// ingestion (pure L2; see blindess.patch.md#C, agentsh name_similarity.go).
+// ---------------------------------------------------------------------------
+
+// see: blindess.patch.md#C
+pub const CONFUSABLE_NAME_MAX_DISTANCE: usize = 2;
+
+// see: blindess.patch.md#C: classic bounded Levenshtein DP, length-bounded so
+// comparisons stay linear in name size.
+pub fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    if a.len() == 0 {
+        return b.len();
+    }
+    if b.len() == 0 {
+        return a.len();
+    }
+    if (a.len() as isize - b.len() as isize).abs() as usize > CONFUSABLE_NAME_MAX_DISTANCE {
+        // Fast path: length delta alone exceeds the threshold.
+        return CONFUSABLE_NAME_MAX_DISTANCE + 1;
+    }
+    let mut previous: Vec<usize> = (0..=b.len()).collect();
+    let mut current = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        current[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            current[j + 1] = (current[j] + 1)
+                .min(previous[j + 1] + 1)
+                .min(previous[j] + cost);
+        }
+        std::mem::swap(&mut previous, &mut current);
+    }
+    previous[b.len()]
+}
+
+// see: blindess.patch.md#C: one flagged pair of Levenshtein-close tool names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfusableNamePair {
+    pub server_a: String,
+    pub tool_a: String,
+    pub server_b: String,
+    pub tool_b: String,
+    pub distance: usize,
+}
+
+// see: blindess.patch.md#C: compares a freshly ingested tool name against the
+// already-known catalog across servers; any pair within the distance threshold
+// is flagged so a typosquat cannot shadow a trusted tool.
+pub fn find_confusable_names(
+    known: &[(String, String)],
+    candidate_server: &str,
+    candidate_tool: &str,
+) -> Vec<ConfusableNamePair> {
+    let mut hits = Vec::new();
+    for (server, tool) in known {
+        if *server == candidate_server && *tool == candidate_tool {
+            continue;
+        }
+        let distance = levenshtein_distance(tool, candidate_tool);
+        if distance <= CONFUSABLE_NAME_MAX_DISTANCE && tool != candidate_tool {
+            hits.push(ConfusableNamePair {
+                server_a: server.clone(),
+                tool_a: tool.clone(),
+                server_b: candidate_server.to_string(),
+                tool_b: candidate_tool.to_string(),
+                distance,
+            });
+        }
+    }
+    hits
+}
+
+// ---------------------------------------------------------------------------
+// ApprovalAuth — role separation, self-approval denial, pending-hold cap & TTL
+// (pure L2; crypto verification of WebAuthn/TOTP/OIDC assertions stays L3).
+// ---------------------------------------------------------------------------
+
+// see: blindess.patch.md#C / cans/08-lifecycle.md: roles allowed to resolve a
+// human approval hold; the agent that created the hold is never an approver.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalRole {
+    Agent,
+    Approver,
+    Admin,
+}
+
+// see: blindess.patch.md#C: one pending approval hold tracked by the validator.
+#[derive(Debug, Clone)]
+pub struct PendingApprovalHold {
+    pub hold_id: String,
+    pub requester_role: ApprovalRole,
+    pub requester_id: String,
+    pub created_at_seconds: u64,
+}
+
+// see: blindess.patch.md#C: result of validating an approval resolution attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovalAuthVerdict {
+    pub allowed: bool,
+    pub reason: String,
+}
+
+// see: blindess.patch.md#C: pure validator over role separation, self-approval
+// denial, allowed methods, the pending-hold cap and the hold TTL.
+pub struct ApprovalAuthValidator {
+    pub deny_self_approval: bool,
+    pub methods: Vec<String>,
+    pub max_pending_holds: u32,
+    pub hold_ttl_seconds: u64,
+}
+
+impl ApprovalAuthValidator {
+    pub fn new(
+        deny_self_approval: bool,
+        methods: Vec<String>,
+        max_pending_holds: u32,
+        hold_ttl_seconds: u64,
+    ) -> Self {
+        Self {
+            deny_self_approval,
+            methods,
+            max_pending_holds,
+            hold_ttl_seconds,
+        }
+    }
+
+    // see: blindess.patch.md#C: may the requester open a new hold at all —
+    // pending holds must never be able to DoS the exec-slot budget.
+    pub fn validate_hold_cap(&self, pending: usize) -> ApprovalAuthVerdict {
+        if self.max_pending_holds == 0 {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: "approval holds are disabled (max_pending_holds is zero)".to_string(),
+            };
+        }
+        if pending >= self.max_pending_holds as usize {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: format!(
+                    "pending approval holds {pending} reached the cap {}",
+                    self.max_pending_holds
+                ),
+            };
+        }
+        ApprovalAuthVerdict {
+            allowed: true,
+            reason: String::new(),
+        }
+    }
+
+    // see: blindess.patch.md#C: a hold past its TTL is dead and must be
+    // resolved as expired, never silently approved.
+    pub fn hold_expired(&self, hold: &PendingApprovalHold, now_seconds: u64) -> bool {
+        now_seconds.saturating_sub(hold.created_at_seconds) > self.hold_ttl_seconds
+    }
+
+    // see: blindess.patch.md#C: role separation + self-approval denial for a
+    // resolution attempt on a (still-live) hold.
+    pub fn validate_resolution(
+        &self,
+        hold: &PendingApprovalHold,
+        resolver_role: &ApprovalRole,
+        resolver_id: &str,
+        method: &str,
+        now_seconds: u64,
+    ) -> ApprovalAuthVerdict {
+        if self.hold_expired(hold, now_seconds) {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: format!("hold {} expired its {}s TTL", hold.hold_id, self.hold_ttl_seconds),
+            };
+        }
+        if matches!(resolver_role, ApprovalRole::Agent) {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: "agent role may never resolve a human approval hold".to_string(),
+            };
+        }
+        if self.deny_self_approval
+            && resolver_id == hold.requester_id
+            && resolver_role == &hold.requester_role
+        {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: format!(
+                    "self-approval denied: {} resolved its own hold {}",
+                    resolver_id, hold.hold_id
+                ),
+            };
+        }
+        if self.methods.is_empty() || !self.methods.iter().any(|m| m == method) {
+            return ApprovalAuthVerdict {
+                allowed: false,
+                reason: format!("approval method {method} is not in the allowed set"),
+            };
+        }
+        ApprovalAuthVerdict {
+            allowed: true,
+            reason: String::new(),
+        }
+    }
+}
+
+// TODO (L3) [governance_tools]: verify WebAuthn/TOTP/OIDC assertion signatures and challenge nonces for approval resolutions.; slop: unsigned approval assertions pass as authenticated, anyone resolves holds as admin.
+
+// ---------------------------------------------------------------------------
+// JSON-RPC -32001 error synthesis (see cans/plugins/tool-guard.md gt_09).
+// ---------------------------------------------------------------------------
+
+// see: cans/artifacts/test-plan/cases/governance_tools/gt_09_verdict_drop_jsonrpc_error_synthesis
+pub const JSON_RPC_TOOL_GUARD_ERROR_CODE: i64 = -32001;
+
+// see: gt_09: the error.data shape every tool-guard denial carries so the LLM
+// sees errno, reason, guidance, and an optional redirect_tool steering target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolGuardErrorData {
+    pub errno: String,
+    pub reason: String,
+    pub guidance: String,
+    pub redirect_tool: Option<String>,
+}
+
+impl ToolGuardErrorData {
+    pub fn new(errno: &str, reason: &str, guidance: &str, redirect_tool: Option<String>) -> Self {
+        Self {
+            errno: errno.to_string(),
+            reason: reason.to_string(),
+            guidance: guidance.to_string(),
+            redirect_tool,
+        }
+    }
+
+    // see: gt_09: render the JSON-RPC error object with code -32001.
+    pub fn to_json_rpc_error(&self, id: Option<&JsonRpcId>) -> Value {
+        let mut data = serde_json::Map::new();
+        data.insert("errno".to_string(), Value::String(self.errno.clone()));
+        data.insert("reason".to_string(), Value::String(self.reason.clone()));
+        data.insert("guidance".to_string(), Value::String(self.guidance.clone()));
+        if let Some(redirect) = &self.redirect_tool {
+            data.insert(
+                "redirect_tool".to_string(),
+                Value::String(redirect.clone()),
+            );
+        }
+        let mut error = serde_json::Map::new();
+        error.insert(
+            "code".to_string(),
+            Value::Number(serde_json::Number::from(JSON_RPC_TOOL_GUARD_ERROR_CODE)),
+        );
+        error.insert("message".to_string(), Value::String(self.reason.clone()));
+        error.insert("data".to_string(), Value::Object(data));
+        let mut object = serde_json::Map::new();
+        object.insert("jsonrpc".to_string(), Value::String("2.0".to_string()));
+        match id {
+            Some(JsonRpcId::Number(number)) => {
+                object.insert(
+                    "id".to_string(),
+                    Value::Number(serde_json::Number::from(*number)),
+                );
+            }
+            Some(JsonRpcId::Text(text)) => {
+                object.insert("id".to_string(), Value::String(text.clone()));
+            }
+            None => {
+                object.insert("id".to_string(), Value::Null);
+            }
+        }
+        object.insert("error".to_string(), Value::Object(error));
+        Value::Object(object)
+    }
+}
+
+// TODO (L3) [governance_tools]: scan tool results for hidden-instruction / prompt-injection payloads before model context ingestion.; slop: injected instructions ride tool results into the model, guard reports clean.

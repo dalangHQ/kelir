@@ -14,8 +14,9 @@ use kelir_interface::protocol_wire::{StreamKind, SuspendUntil, Verdict};
 use plugin_mcp::{McpCtx, McpEndpointService};
 
 use crate::service_tool_guard::{
-    AuditEvent, McpFrame, McpMethod, ToolRegistry, ToolRegistryService, ToolSchema, ToolTaint,
-    ToolsListResult, decode_tools_list,
+    AuditEvent, McpFrame, McpMethod, SlidingInvocationWindow, ToolRegistry,
+    ToolRegistryService, ToolSchema, ToolTaint, ToolsListResult,
+    decode_tools_list, evaluate_cross_server_exfil, find_confusable_names,
 };
 use crate::{ToolGuardConfig, ToolSpec};
 use kelir_interface::byte_range::ByteRange;
@@ -29,6 +30,10 @@ impl Default for ToolGuardConfig {
             detect_semantic_rug_pull: true,
             strict_ast_parameter_validation: true,
             propagate_byte_range_taints: true,
+            detect_cross_server_exfil: true,
+            detect_confusable_names: true,
+            scan_tool_results: true,
+            approval_auth: crate::ApprovalAuthConfig::default(),
         }
     }
 }
@@ -43,12 +48,21 @@ struct ToolGuardState {
     traces: Mutex<HashMap<u32, TraceQuota>>,
 }
 
+// see: blindess.patch.md#C: sliding window of classified tool invocations for
+// the cross-server read_then_send detector.
+struct ExfilWindowState {
+    window: Mutex<SlidingInvocationWindow>,
+    // (server, tool) pairs ingested from tools/list, for confusable-name checks.
+    known_tools: Mutex<Vec<(String, String)>>,
+}
+
 // see: cans/plugins/tool-guard.md#Plugin-tool-guard
 #[derive(Clone)]
 pub struct ToolGuardPlugin {
     config: ToolGuardConfig,
     registry: Arc<ToolRegistry>,
     state: Arc<ToolGuardState>,
+    exfil: Arc<ExfilWindowState>,
     mcp: McpEndpointService,
     host_specs: Vec<ToolSpec>,
 }
@@ -67,6 +81,10 @@ impl ToolGuardPlugin {
             registry: Arc::new(ToolRegistry::new()),
             state: Arc::new(ToolGuardState {
                 traces: Mutex::new(HashMap::new()),
+            }),
+            exfil: Arc::new(ExfilWindowState {
+                window: Mutex::new(SlidingInvocationWindow::new(16)),
+                known_tools: Mutex::new(Vec::new()),
             }),
             mcp: McpEndpointService::new(),
             host_specs: Vec::new(),
@@ -108,8 +126,35 @@ impl ToolGuardPlugin {
     // see: cans/plugins/tool-guard.md#Immutable-schema-locking
     pub async fn ingest_advertisement(
         &self,
+        server: &str,
         advertisement: &ToolsListResult,
     ) -> Result<(), PluginError> {
+        // see: blindess.patch.md#C: Levenshtein confusable-name check on tools/list ingestion.
+        if self.config.detect_confusable_names {
+            let mut known = self
+                .exfil
+                .known_tools
+                .lock()
+                .map_err(|_| PluginError::Halt("tool-guard known-tools table poisoned".into()))?;
+            for schema in &advertisement.tools {
+                let hits = find_confusable_names(&known, server, &schema.name);
+                if !hits.is_empty() {
+                    let detail = hits
+                        .iter()
+                        .map(|hit| {
+                            format!("{}@{} vs {}@{} (d={})", hit.tool_a, hit.server_a, hit.tool_b, hit.server_b, hit.distance)
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ");
+                    return Err(PluginError::Halt(format!(
+                        "ESecurityViolation: confusable tool name on server {server}: {detail}"
+                    )));
+                }
+            }
+            for schema in &advertisement.tools {
+                known.push((server.to_string(), schema.name.clone()));
+            }
+        }
         self.registry.ingest_tools_list(advertisement).await?;
         if self.config.pin_schemas && self.registry.locked_digest()?.is_none() {
             self.registry.lock_catalog().await?;
@@ -117,7 +162,12 @@ impl ToolGuardPlugin {
         Ok(())
     }
 
-    async fn guard_tool_call(&self, trace: u32, payload: &[u8]) -> Result<Verdict, PluginError> {
+    async fn guard_tool_call(
+        &self,
+        trace: u32,
+        server: &str,
+        payload: &[u8],
+    ) -> Result<Verdict, PluginError> {
         let frame = McpFrame::decode(payload)?;
         // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if frame.method == McpMethod::Unparsed {
@@ -141,6 +191,21 @@ impl ToolGuardPlugin {
                 reason: format!("tool {tool} exceeded max_invocations_per_trace"),
             });
         }
+        // see: blindess.patch.md#C: sliding-window cross-server read_then_send detector.
+        if self.config.detect_cross_server_exfil {
+            let mut window = self
+                .exfil
+                .window
+                .lock()
+                .map_err(|_| PluginError::Halt("tool-guard exfil window poisoned".into()))?;
+            let verdict = evaluate_cross_server_exfil(&mut window, server, &tool);
+            if verdict.denied {
+                return Ok(Verdict::Drop {
+                    errno: Errno::Eperm,
+                    reason: verdict.reason,
+                });
+            }
+        }
         let schema = match self.registry.lookup_schema(&tool).await {
             Ok(Some(schema)) => schema,
             Ok(None) => {
@@ -151,11 +216,12 @@ impl ToolGuardPlugin {
             }
             Err(err) => return Err(err),
         };
-        self.evaluate_tool_call(&frame, &schema).await
+        self.evaluate_tool_call(server, &frame, &schema).await
     }
 
     async fn evaluate_tool_call(
         &self,
+        _server: &str,
         frame: &McpFrame,
         schema: &ToolSchema,
     ) -> Result<Verdict, PluginError> {
@@ -287,15 +353,20 @@ impl PluginDeps for ToolGuardPlugin {
 #[async_trait]
 impl ConsoleInterposer for ToolGuardPlugin {
     async fn on_console_input(&self, port: u32, bytes: &[u8]) -> Result<Vec<u8>, PluginError> {
-        // L3-GAP: [governance_tools]: trace quota eviction once the console surface grows a close hook per cans/plugins/tool-guard.md; slop: trace quota never evicted, closed-trace budget leaks into next trace
+        // see: cans/plugins/tool-guard.md#Total-tool-call-interposition
         if !self.interposes_port(port) {
             return Ok(bytes.to_vec());
         }
-        match self.guard_tool_call(port, bytes).await? {
+        // Server attribution for cross-server checks is derived from the MCP
+        // console port until per-server framing lands (L3).
+        let server = format!("mcp-console-{port}");
+        match self.guard_tool_call(trace_or_port(port), &server, bytes).await? {
             Verdict::Pass | Verdict::Patch(_) => Ok(bytes.to_vec()),
-            Verdict::Drop { errno, reason } => {
-                Err(PluginError::Halt(format!("{}: {}", errno.as_str(), reason)))
-            }
+            Verdict::Drop { errno, reason } => Err(PluginError::Halt(format!(
+                "{}: {}",
+                errno.as_str(),
+                reason
+            ))),
             // L3-GAP: [gt_09_verdict_drop_jsonrpc_error_synthesis]: synthesize the JSON-RPC error object (code -32001) and the approval suspend per cans/plugins/tool-guard.md; slop: Suspend maps to Halt, connection closes, no -32001 framed error
             Verdict::Suspend { .. } => Err(PluginError::Halt(
                 "tool-guard approval suspend pending (L3)".into(),
@@ -317,10 +388,19 @@ impl ConsoleInterposer for ToolGuardPlugin {
         if frame.method == McpMethod::ToolsList {
             // see: cans/plugins/tool-guard.md#Immutable-schema-locking
             let advertisement: ToolsListResult = decode_tools_list(chunk)?;
-            self.ingest_advertisement(&advertisement).await?;
+            let server = format!("mcp-console-{port}");
+            self.ingest_advertisement(&server, &advertisement).await?;
             return Ok(chunk.to_vec());
+        }
+        if self.config.scan_tool_results {
+            // TODO (L3) [governance_tools]: scan tool results for hidden-instruction / prompt-injection payloads before model context ingestion.; slop: injected instructions ride tool results into the model, guard reports clean.
         }
         self.scrub_tool_response(chunk).await?;
         Ok(chunk.to_vec())
     }
+}
+
+// see: cans/plugins/tool-guard.md#Total-tool-call-interposition
+fn trace_or_port(port: u32) -> u32 {
+    port
 }
