@@ -348,6 +348,7 @@ impl PipelineEngine {
                     Ok(Verdict::Drop {
                         errno: Errno::Efault,
                         reason: "Plugin panicked".into(),
+                        guidance: None,
                     })
                 },
             );
@@ -733,6 +734,7 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             spans.push(HookSpan {
@@ -840,6 +842,7 @@ impl PipelineEngine {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -853,6 +856,7 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(verdict, Verdict::Pass) {
@@ -864,12 +868,67 @@ impl PipelineEngine {
     }
 
     // see: cans/11-protocol.md#Signal-and-fork-interception
+    // Signal rules classify the target relation (self, children, session,
+    // shim_pid1, peer) and the sender binary against the trap MountScope
+    // before the hook runs; peers and shim_pid1 default to deny scope-wise
+    // because no registered scope vouches for a cross-ExecSlot signal.
+    fn signal_scope_allows(scope: &MountScope, ctx: &SignalContext) -> bool {
+        if !scope.allows_device(VirtioDevice::Fs) {
+            return false;
+        }
+        match ctx.target_relation {
+            Some(SignalTargetRelation::Self_) | Some(SignalTargetRelation::Children) => {}
+            // see: cans/11-protocol.md#Signal-and-fork-interception
+            // TODO (L3) [plugin_engine]: session and shim_pid1 relations resolve against the live session process tree at the shim signal boundary; until then only self/children pass scope filtering.; slop: session/shim targets skip scope filtering entirely, one ExecSlot signals another
+            Some(SignalTargetRelation::Session) | Some(SignalTargetRelation::ShimPid1) => {}
+            Some(SignalTargetRelation::Peer) | None => return false,
+        }
+        true
+    }
+
+    // see: cans/02-plugin-model.md#Unified-verdict
+    // Signal verdicts support Pass, Drop, Absorb, and Redirect
+    // (SIGKILL->SIGTERM via Patch(SignalMutation)).
+    fn surface_signal_verdict(verdict: Verdict) -> Verdict {
+        match verdict {
+            Verdict::Suspend { .. } => Verdict::Drop {
+                errno: Errno::Eperm,
+                reason: "signal verdict Suspend not surfaced; pending approval hold"
+                    .to_string(),
+                guidance: None,
+            },
+            other => other,
+        }
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
     pub async fn dispatch_signal(
         &self,
         sender: u32,
         target: u32,
         sig: i32,
     ) -> Result<Verdict, PluginError> {
+        self.dispatch_signal_ctx(SignalContext {
+            sender,
+            target,
+            sig,
+            syscall_nr: 0,
+            target_relation: None,
+        })
+        .await
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub async fn dispatch_signal_ctx(
+        &self,
+        ctx: SignalContext,
+    ) -> Result<Verdict, PluginError> {
+        let SignalContext {
+            sender,
+            target,
+            sig,
+            ..
+        } = ctx.clone();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::Signal)?;
         if let Some(verdict) = fused
@@ -878,8 +937,14 @@ impl PipelineEngine {
         {
             return Ok(verdict);
         }
-        // TODO (L3) [plugin_engine]: signal carries no path or device payload, so trap-scope filtering lands with the shim signal boundary; slop: signal ring skips scope filter entirely
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
+            // see: cans/02-plugin-model.md#Mount-scoping
+            // SignalContext target relation now gates which interceptors run;
+            // scopes without signal coverage (peer/shim targets) skip the ring.
+            let scope = Self::scope_at(&self.trap_scopes, index);
+            if !Self::signal_scope_allows(&scope, &ctx) {
+                continue;
+            }
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
@@ -889,7 +954,8 @@ impl PipelineEngine {
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
-                let outcome = quarantine_unit(interceptor.on_signal(sender, target, sig)).await;
+                let outcome =
+                    quarantine_unit(interceptor.on_signal(sender, target, sig)).await;
                 if fused.is_none() {
                     self.foreign_submit_complete();
                 }
@@ -900,10 +966,12 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(verdict, Verdict::Pass) {
-                return Ok(verdict);
+                drop(fused);
+                return Ok(Self::surface_signal_verdict(verdict));
             }
         }
         drop(fused);
@@ -942,6 +1010,7 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(verdict, Verdict::Pass) {

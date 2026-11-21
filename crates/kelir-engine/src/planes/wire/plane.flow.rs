@@ -266,6 +266,7 @@ impl WirePlane {
                 let action = FilterAction::Drop {
                     errno: Errno::Eperm,
                     reason: "link-local 169.254.0.0/16 quarantined pre-policy".into(),
+                    guidance: None,
                 };
                 self.record_drop(&action);
                 return Ok(action);

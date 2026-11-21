@@ -18,6 +18,7 @@ use crate::driver_interface::{
 };
 pub use crate::handlers_plugin::{
     ConsoleContext, ExecContext, FsContext, HandlerCtx, Has, HostContext, NetContext,
+    SessionContext, SignalContext, SignalTargetRelation,
 };
 use crate::handles_lifecycle::VmHandle;
 use crate::protocol_wire::{

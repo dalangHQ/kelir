@@ -30,6 +30,7 @@ impl PipelineEngine {
                     || {
                         Ok(FilterAction::Abort {
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -43,6 +44,7 @@ impl PipelineEngine {
                 action = FilterAction::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(action, FilterAction::Forward) {
@@ -76,6 +78,7 @@ impl PipelineEngine {
                     || {
                         Ok(FilterAction::Abort {
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -131,6 +134,7 @@ impl PipelineEngine {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -144,6 +148,7 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(verdict, Verdict::Pass) {
@@ -237,6 +242,7 @@ impl PipelineEngine {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -250,6 +256,7 @@ impl PipelineEngine {
                 verdict = Verdict::Drop {
                     errno: Errno::Etimeout,
                     reason: "hook timeout".into(),
+                    guidance: None,
                 };
             }
             if !matches!(verdict, Verdict::Pass) {

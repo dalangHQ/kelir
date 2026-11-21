@@ -38,8 +38,8 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::{
     ConsoleInterposer, FfiDispatchQueue, FsInterposer, HandlerCtx, HostInterposer, LifecycleCtx,
     LifecycleEvent, LifecycleParticipant, LockBrokerCoordination, MountScope, NetInterposer,
-    ParkedConnectionReset, PipelineBinder, StreamFrameSink, SystemTelemetryParticipant,
-    TokenRevocation, TrapInterposer, VirtioDevice,
+    ParkedConnectionReset, PipelineBinder, SignalContext, SignalTargetRelation, StreamFrameSink,
+    SystemTelemetryParticipant, TokenRevocation, TrapInterposer, VirtioDevice,
 };
 use kelir_interface::protocol_wire::{
     EXEC_STREAM_STDERR, EXEC_STREAM_STDOUT, FilterAction, Heartbeat, ProcessExit, TrapEvent,

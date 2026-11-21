@@ -18,6 +18,7 @@ impl PipelineEngine {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );
@@ -49,6 +50,7 @@ impl PipelineEngine {
                         Ok(Verdict::Drop {
                             errno: Errno::Efault,
                             reason: "Plugin panicked".into(),
+                            guidance: None,
                         })
                     },
                 );

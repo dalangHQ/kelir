@@ -49,6 +49,7 @@ where
         Err(_) => Ok(Verdict::Drop {
             errno: Errno::Efault,
             reason: "Plugin panicked".into(),
+            guidance: None,
         }),
     }
 }
