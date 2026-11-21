@@ -1,9 +1,9 @@
 // see: cans/01-architecture.md#Host-runtime
 #![forbid(unsafe_code)]
-// L3-GAP: [protocol_mux]: wire CustomActionEntry/StreamKindServiceEntry/SdkStreamServiceSink into live stream dispatch; slop: stream services registered but never consumed
+// TODO: [protocol_mux] fill in the L3 wave; wire CustomActionEntry/StreamKindServiceEntry/SdkStreamServiceSink into live stream dispatch; slop: stream services registered but never consumed
 #![allow(dead_code)]
 
-// L3-GAP: [plugin_engine]: tests/ facade integration tests per cans/artifacts/config/project-structure.txt.; slop: facade tests assert Ok(()), no session exercised
+// TODO: [plugin_engine] fill in the L3 wave; tests/ facade integration tests per cans/artifacts/config/project-structure.txt.; slop: facade tests assert Ok(()), no session exercised
 pub use kelir_interface as interface;
 pub use kelir_interface::driver_interface;
 

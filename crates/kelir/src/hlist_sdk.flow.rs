@@ -72,7 +72,7 @@ where
 // see: cans/03-sdk-architecture.md#Rust-SDK
 pub trait Satisfies<Other> {}
 
-// L3-GAP: [plugin_engine]: order-insensitive Satisfies is E0207-blocked as written (Has<Need, Index> leaves Index unconstrained); the witness-threaded arity-2 form compiles but callers cannot name the witness, so it needs a builder-API contract change, not a lane fix.; slop: plugin order stays positional, mounting out of dependency order fails the build
+// TODO: [plugin_engine] fill in the L3 wave; order-insensitive Satisfies is E0207-blocked as written (Has<Need, Index> leaves Index unconstrained); the witness-threaded arity-2 form compiles but callers cannot name the witness, so it needs a builder-API contract change, not a lane fix.; slop: plugin order stays positional, mounting out of dependency order fails the build
 impl<Plugins: HList> Satisfies<HNil> for Plugins {}
 
 impl<Head, Tail, OtherTail> Satisfies<HCons<Head, OtherTail>> for HCons<Head, Tail>

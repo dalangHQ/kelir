@@ -104,7 +104,7 @@ impl From<&TrapFilter> for FilterSnapshot {
 }
 
 // see: cans/02-plugin-model.md#Filter-before-FFI-gate
-// L3-GAP: [pe_06_filter_before_ffi_gate_latency]: pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.; slop: every event crosses FFI, scope checked in Python/JS
+// TODO: [pe_06_filter_before_ffi_gate_latency] fill in the L3 wave; pattern glob matching semantics per cans/02-plugin-model.md#Filter-before-FFI-gate.; slop: every event crosses FFI, scope checked in Python/JS
 pub(crate) fn filter_matches(filter: &FilterSnapshot, event: &TrapEvent) -> bool {
     if filter
         .binary

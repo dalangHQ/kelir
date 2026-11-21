@@ -174,7 +174,7 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         self.core.receipt(pid)
     }
 
-    // TODO (L3) [governance_tools]: verify the ed25519 signature on the lease token before storing it; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
+    // TODO: [governance_tools] fill in the L3 wave; verify the ed25519 signature on the lease token before storing it; presence-only until then; slop: unverified lease tokens count as valid; presence-only check.
     pub fn elevate_lease(&mut self, token: impl Into<String>) -> Result<(), PluginError> {
         self.operator_lease = Some(token.into());
         Ok(())
@@ -243,17 +243,17 @@ impl<Plugins: HList, Params> Session<Plugins, Params> {
         _port: u16,
         _sock_path: &str,
     ) -> Result<IngressChannel<Req, Res>, PluginError> {
-        // TODO (L3) [wire_plane]: splice the ingress listener directly to the guest shim via vsock.; slop: handle_ingress always Halts, no live ingress path exists.
+        // TODO: [wire_plane] fill in the L3 wave; splice the ingress listener directly to the guest shim via vsock.; slop: handle_ingress always Halts, no live ingress path exists.
         Err(PluginError::Halt(
-            "TODO (L3): Session::handle_ingress needs the live wire-ingress splice".into(),
+            "Session::handle_ingress is deferred to the L3 wave: needs the live wire-ingress splice".into(),
         ))
     }
 
     // see: cans/plugins/mesh.md#CoW-swarm-mesh-federation
     pub async fn shm(&self, _region: &str) -> Result<ShmMapping, PluginError> {
-        // TODO (L3) [vr_07_virtio_shm_unmap_on_teardown]: map the virtio_shm region shared across sibling microVMs.; slop: Session::shm always Halts, no shared region exists.
+        // TODO: [vr_07_virtio_shm_unmap_on_teardown] fill in the L3 wave; map the virtio_shm region shared across sibling microVMs.; slop: Session::shm always Halts, no shared region exists.
         Err(PluginError::Halt(
-            "TODO (L3): Session::shm needs the live virtio_shm mapping".into(),
+            "Session::shm is deferred to the L3 wave: needs the live virtio_shm mapping".into(),
         ))
     }
 
@@ -431,7 +431,7 @@ impl Default for SpawnResult {
 }
 
 impl SpawnResult {
-    // TODO (L3) [attestation_receipts]: fill receipt and exit_kind from the live guest exec result; None and Normal until then; slop: spawn results carry no receipt and Normal exit; exec outcomes unreported.
+    // TODO: [attestation_receipts] fill in the L3 wave; fill receipt and exit_kind from the live guest exec result; None and Normal until then; slop: spawn results carry no receipt and Normal exit; exec outcomes unreported.
     pub fn receipt(&self) -> Option<&ExecutionReceipt> {
         self.receipt.as_ref()
     }
@@ -462,9 +462,9 @@ impl<Req, Res> IngressStream<Req, Res> {
 
     // see: cans/plugins/wire-ingress.md#Plugin-wire-ingress
     pub async fn respond(&mut self, _res: Res) -> Result<(), PluginError> {
-        // TODO (L3) [wire_plane]: deliver the ingress response over the parked vsock stream.; slop: respond always Halts, parked ingress never answered.
+        // TODO: [wire_plane] fill in the L3 wave; deliver the ingress response over the parked vsock stream.; slop: respond always Halts, parked ingress never answered.
         Err(PluginError::Halt(
-            "TODO (L3): IngressStream::respond needs the live wire-ingress splice".into(),
+            "IngressStream::respond is deferred to the L3 wave: needs the live wire-ingress splice".into(),
         ))
     }
 }
@@ -479,9 +479,9 @@ pub struct ShmMapping {
 pub struct VsockHandle;
 
 impl VsockHandle {
-    // L3-GAP: [wire_plane]: open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.; slop: channel Ok, multiplexed vsock bytes never flow
+    // TODO: [wire_plane] fill in the L3 wave; open the multiplexed vsock channel for the stream kind per cans/03-sdk-architecture.md#Session-surfaces.; slop: channel Ok, multiplexed vsock bytes never flow
     pub async fn channel(&self, _kind: u16) -> Result<VsockChannel, PluginError> {
-        Err(PluginError::Halt("TODO (L3): VsockHandle::channel".into()))
+        Err(PluginError::Halt("VsockHandle::channel is deferred to the L3 wave".into()))
     }
 }
 
@@ -591,7 +591,7 @@ impl SpawnBuilder {
 
 // see: cans/11-protocol.md#Per-command-rlimits
 fn encode_exec_control_limits(limits: Option<&ProcessLimits>) -> Vec<u8> {
-    // L3-GAP: [protocol_mux]: serialize the rlimit descriptor onto EXEC control sub-lane 0x03.; slop: rlimit dropped, EXEC sub-lane 0x03 never carries it
+    // TODO: [protocol_mux] fill in the L3 wave; serialize the rlimit descriptor onto EXEC control sub-lane 0x03.; slop: rlimit dropped, EXEC sub-lane 0x03 never carries it
     let _ = limits;
     Vec::new()
 }
@@ -636,9 +636,9 @@ impl Future for SpawnBuilder {
         };
         match transport.dispatch_exec(&request) {
             Ok(()) => {
-                // L3-GAP: [protocol_mux]: the SpawnResult (exit code, stdout, stderr) lands with live guest exec; dispatch accepted the request but no result channel exists yet.; slop: spawn Ok without a guest result
+                // TODO: [protocol_mux] fill in the L3 wave; the SpawnResult (exit code, stdout, stderr) lands with live guest exec; dispatch accepted the request but no result channel exists yet.; slop: spawn Ok without a guest result
                 Poll::Ready(Err(PluginError::Halt(
-                    "TODO (L3): guest exec result".into(),
+                    "guest exec result is deferred to the L3 wave".into(),
                 )))
             }
             Err(error) => Poll::Ready(Err(error)),

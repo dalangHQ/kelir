@@ -7,7 +7,7 @@ pub use kelir_interface::storage::FsReconcileRequest;
 pub use kelir_engine::planes::storage::{IdmapConfig, WorkspaceEncapsulation};
 
 // see: cans/05-storage-plane.md#Storage-architecture
-// TODO (L3) [plugin_engine]: real container image caching via external kelir-pack.; slop: cache hit fabricated, no kelir-pack digest or blob fetch
+// TODO: [plugin_engine] fill real container image caching via external kelir-pack in the L3 wave; slop: cache hit fabricated, no kelir-pack digest or blob fetch
 #[derive(Debug, Clone, Default)]
 pub struct SharedCacheConfig {
     pub host_path: PathBuf,

@@ -75,14 +75,14 @@ type StreamServiceFuture =
 
 type BoxedStreamService = Box<dyn Fn(Vec<u8>) -> StreamServiceFuture + Send + Sync>;
 
-// L3-GAP: [protocol_mux]: the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
+// TODO: [protocol_mux] fill in the L3 wave; the kind schema validates request payloads once stream dispatch consumes live frames.; slop: unvalidated payload dispatched, schema never enforced
 pub(crate) struct StreamKindServiceEntry {
     pub(crate) kind: u16,
     pub(crate) schema: serde_json::Value,
     pub(crate) handler: BoxedStreamService,
 }
 
-// L3-GAP: [protocol_mux]: the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
+// TODO: [protocol_mux] fill in the L3 wave; the boxed service future awaits and replies on the stream mux once dispatch consumes live frames.; slop: service future dropped, reply never crosses mux
 struct SdkStreamServiceSink {
     handler: BoxedStreamService,
 }
@@ -97,7 +97,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
         _payload: &[u8],
     ) -> Result<(), PluginError> {
         Err(PluginError::Halt(
-            "TODO (L3) [protocol_mux]: stream kind service dispatch; slop: dispatch Ok without stream kind, frames misrouted".into(),
+            "protocol_mux]: stream kind service dispatch; slop: dispatch Ok without stream kind, frames misrouted (deferred to the L3 wave)".into(),
         ))
     }
 }
@@ -106,7 +106,7 @@ impl StreamFrameSink for SdkStreamServiceSink {
 pub struct CompositeBundle;
 
 // see: cans/02-plugin-model.md#Composite-plugin-hierarchy
-// L3-GAP: [plugin_engine]: carries the nested plugin tree the profile facade flattens at boot.; slop: nested tree flattened by hand, profile boot unproven
+// TODO: [plugin_engine] fill in the L3 wave; carries the nested plugin tree the profile facade flattens at boot.; slop: nested tree flattened by hand, profile boot unproven
 impl CompositePlugin for CompositeBundle {
     fn unpack(
         self: Box<Self>,
@@ -648,7 +648,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
 {
     async fn finish_boot(mut self) -> Result<Session<Plugins, Params>, PluginError> {
         // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
-        // L3-GAP: [hd_fast_boot_backend_change]: plumb FastBootMode into DriverRouter::load_native_driver.; slop: cold boot asserted, driver_id change unchecked
+        // TODO: [hd_fast_boot_backend_change] fill in the L3 wave; plumb FastBootMode into DriverRouter::load_native_driver.; slop: cold boot asserted, driver_id change unchecked
         let _ = (self.fast_boot, self.dax_window);
         let storage = self.storage_config();
         let Some(config) = self.config.take() else {
@@ -698,12 +698,12 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
         let metrics = std::sync::Arc::new(kelir_interface::telemetry::MetricRegistry::new());
         let engine = engine.with_metrics(metrics.clone());
         // see: cans/01-architecture.md#Host-runtime
-        // L3-GAP: [composition_root]: share the session Arc<PipelineEngine> with the wire ops once Session holds the Arc; slop: dns-query/socket-connect rings run on a bare engine, no plugin bindings
+        // TODO: [composition_root] fill in the L3 wave; share the session Arc<PipelineEngine> with the wire ops once Session holds the Arc; slop: dns-query/socket-connect rings run on a bare engine, no plugin bindings
         let wire_engine = std::sync::Arc::new(kelir_engine::dispatch_plugin::PipelineEngine::new());
         let dns_ops: Arc<dyn kelir_interface::wire::dns::DnsOps> =
             kelir_wire::dns_ops(std::sync::Arc::clone(&wire_engine));
-        // L3-GAP: [composition_root]: bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
-        // L3-GAP: [composition_root]: bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
+        // TODO: [composition_root] fill in the L3 wave; bind RealFuseOps once Session shares Arc<PipelineEngine>; slop: FUSE dispatch unreachable from the session, dispatcher built only in tests
+        // TODO: [composition_root] fill in the L3 wave; bind the kelir-storage Reconciler once the host broker journal anchors broker_dir; slop: StoragePlane::reconcile fails closed without it, terminate flush never commits
         let checkpoint_ops = kelir_checkpoint::checkpoint_ops(metrics.clone());
         let plane_wiring = kelir_engine::session_lifecycle::PlaneWiring {
             host_config: registration.host_cfg.clone(),
@@ -734,7 +734,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     dns_to_ip_pinning: cfg.dns_to_ip_pinning,
                     connect_redirect: None,
                     dns_redirect: None,
-                    // L3-GAP: [wire_plane]: wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
+                    // TODO: [wire_plane] fill in the L3 wave; wire mTLS injection at the host connection boundary per cans/07-wire-plane.md.; slop: plaintext host connection accepted, mTLS never injected
                     l4_proxies: cfg
                         .l4_proxies
                         .iter()

@@ -28,7 +28,7 @@ pub struct L4Proxy {
     pub listen_port: u16,
     pub destination: String,
     pub forward_unix_socket: Option<PathBuf>,
-    // TODO (L3) [wp_12_l4_diversion_passthrough_tls]: raw packet splicing and streaming TLS termination at the diverted upstream dial.; slop: splicing stubbed, TLS terminated with custom CA or plaintext inspected
+    // TODO: [wp_12_l4_diversion_passthrough_tls] fill raw packet splicing and streaming TLS termination at the diverted upstream dial in the L3 wave; slop: splicing stubbed, TLS terminated with custom CA or plaintext inspected
     pub inject_mtls: Option<MtlsConfig>,
 }
 
