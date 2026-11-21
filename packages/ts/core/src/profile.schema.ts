@@ -108,6 +108,22 @@ const ProfileSchema = Type.Object(
             task_freeze_timeout_ms: Type.Optional(Type.Integer()),
             rejection_mode: Type.Optional(Type.String()),
             mask_proc_environ: Type.Optional(Type.Boolean()),
+            // Leaf cgroup v2 isolates pids.max/memory.max per ExecSlot
+            per_exec_cgroup: Type.Optional(Type.Boolean()),
+            // Enforces native AUDIT_ARCH; rejects x32/compat syscalls
+            deny_abi_compat: Type.Optional(Type.Boolean()),
+            blocked_syscalls: Type.Optional(Type.Array(Type.String())),
+            blocked_socket_families: Type.Optional(Type.Array(Type.String())),
+          }),
+        ),
+        steering: Type.Optional(
+          Type.Object({
+            // Emits structured agent guidance on Drop
+            steer_on_deny: Type.Optional(Type.Boolean()),
+            // Announces Patch redirects on EXEC/L7/SQL
+            steer_on_redirect: Type.Optional(Type.Boolean()),
+            // Flushes steering lines to EXEC sub-lane 0x02
+            inject_exec_stderr: Type.Optional(Type.Boolean()),
           }),
         ),
         driver: Type.Optional(
@@ -118,6 +134,14 @@ const ProfileSchema = Type.Object(
         storage: Type.Optional(
           Type.Object({
             dax_window: Type.Optional(Type.String()),
+            lock_broker: Type.Optional(
+              Type.Object({
+                enabled: Type.Optional(Type.Boolean()),
+                non_blocking: Type.Optional(Type.Boolean()),
+                // Bounded SETLKW waiter pool ceiling before EDEADLK
+                blocking_wait_timeout_ms: Type.Optional(Type.Integer()),
+              }),
+            ),
           }),
         ),
       }),
@@ -310,6 +334,7 @@ export function wireConfigFromProfile(
     return undefined;
   }
   const proxies = asRecord(wire.l4_diversion)?.proxies;
+  const dns = asRecord(wire.dns);
   return {
     l4Proxies: Array.isArray(proxies)
       ? proxies.flatMap((entry): L4ProxyConfig[] => {
@@ -317,6 +342,8 @@ export function wireConfigFromProfile(
           return proxy === undefined ? [] : [proxy];
         })
       : undefined,
+    // Correlates allowed domain answers to TTL-bounded L4 IPs
+    dnsToIpPinning: asBool(dns?.dns_to_ip_pinning),
   };
 }
 
