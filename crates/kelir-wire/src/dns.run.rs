@@ -42,6 +42,8 @@ impl DnsOps for RealDnsOps {
         // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: serialize the synthetic NXDOMAIN answer into wire_bytes; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         // L3-GAP: [wp_09_dns_gateway_host_state_tracking]: relay the query to the live upstream resolver; ServFail is the answer until the relay is wired; slop: resolv.conf change ignored, stale upstream kept
         // TODO (L3) [wire_plane]: run the dns-query ring, apply the sinkhole rules, and relay to the upstream resolver.; slop: queries bypass the dns-query ring and sinkhole, blocked names resolve upstream.
+        // TODO (L3) [wire_plane]: rewrite the answer when the dns-query ring returns DnsVerdict::Redirect, swapping the matched answer records for the redirect target and re-serializing wire_bytes before the guest reply.; slop: Redirect verdict ignored, the guest caches the unsteered upstream answer.
+        // TODO (L3) [wire_plane]: populate the kelir-engine DnsPinTable with each allowed answer so later direct IP dials at L4 ingress admit only pinned addresses within the answer TTL.; slop: pin table never populated, direct IP dials to allowed domains drop fail-closed or bypass unvetted.
         Err(PluginError::Halt(
             "TODO (L3): DnsOps::resolve_query needs the ring, sinkhole and upstream relay".into(),
         ))

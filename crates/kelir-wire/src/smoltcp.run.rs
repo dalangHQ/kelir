@@ -77,6 +77,9 @@ impl RealNetOps {
         // L3-GAP: [wp_02_synthetic_dns_nxdomain_enforcement]: synthesize the answer frame into the guest ingress ring once the DNS wire parser lands; slop: query forwarded upstream, ServFail not synthetic NXDOMAIN
         // L3-GAP: [wp_04_userspace_netstack_unprivileged_dial]: run policy + NAT over the outbound TCP stream via the smoltcp stack; slop: dial needs CAP_NET_ADMIN or iptables, not plain socket
         // TODO (L3) [wire_plane]: classify the outbound frame and run the DNS, UDP NAT and TCP policy paths.; slop: outbound frames skip DNS, UDP NAT and TCP policy, guest traffic leaves unvetted.
+        // TODO (L3) [wire_plane]: evaluate unconnected UDP sendto and sendmmsg frames against egress policy per destination target, not per socket, so one unconnected socket cannot fan out to unvetted peers.; slop: policy evaluated once per socket, a single allowed peer admits the whole fan-out.
+        // TODO (L3) [wire_plane]: on L4 ingress, admit direct IP dials only when the target IPv4 is pinned in the kelir-engine DnsPinTable (TTL-bounded DNS-to-IP pins); unpinned dials drop fail-closed.; slop: raw-IP bypass admitted, IP-rotating CDN dials break or leak.
+        // TODO (L3) [wire_plane]: apply the wiring connect_redirect rewrite of the target endpoint before the upstream TCP dial leaves the smoltcp stack.; slop: connect redirect never applied, diverted streams dial the denied upstream anyway.
         Err(PluginError::Halt(
             "TODO (L3): RealNetOps::intercept_outbound needs the outbound frame interception"
                 .into(),
@@ -92,7 +95,7 @@ pub(crate) fn build_net_ops(
 }
 
 // see: cans/07-wire-plane.md#Userspace-network-stack
-// TODO (L3) [wire_plane]: resolve the connecting guest PID via the socket table instead of pid 0 on the socket-connect ring; slop: socket-connect ring runs with pid 0, PNACL enforcement blind
+// TODO (L3) [wire_plane]: resolve the connecting guest PID via TrapInterposer socket-tuple correlation (matching the guest connect() trap to the (ip, port) 4-tuple) instead of pid 0 on the socket-connect ring; netlink SOCK_DIAG cannot inspect a guest kernel's socket table from the host.; slop: socket-connect ring runs with pid 0, PNACL enforcement blind
 // TODO (L3) [wire_plane]: remove this allow when the stubbed L3 callers land and read this item again.; slop: allow outlives the L3 callers, dead-code lint stays suppressed and the stubbed item looks wired while nothing reads it.
 #[allow(dead_code)]
 fn remote_ipv4(_frame: &[u8]) -> Option<[u8; 4]> {
