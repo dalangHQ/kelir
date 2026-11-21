@@ -5,6 +5,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "proot_driver.flow.rs"]
 pub mod proot_driver;
+#[path = "proot_driver.run.rs"]
+pub mod proot_driver_run;
 
 pub struct ProotDriver {
     allow_emulated_fallback: bool,

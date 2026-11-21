@@ -21,12 +21,6 @@ impl OpenVmmDriver {
         self.partition_handle
     }
 
-    fn create_partition(&mut self) -> Result<(), VmmError> {
-        // TODO: [hd_07_openvmm_apic_restore_sequence]: create the WHP partition via WHvCreatePartition and commit Local APIC state before the TSC deadline; slop: TSC deadline set before APIC commit, restore order never logged (deferred to L3)
-        Err(VmmError::Unsupported(
-            "openvmm boot: WHvCreatePartition".into(),
-        ))
-    }
 }
 
 #[async_trait::async_trait]

@@ -11,6 +11,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "rustvmm_driver.flow.rs"]
 pub mod rustvmm_driver;
+#[path = "rustvmm_driver.run.rs"]
+pub mod rustvmm_driver_run;
 
 pub struct RustVmmDriver {
     #[cfg(target_os = "linux")]

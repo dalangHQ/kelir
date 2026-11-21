@@ -6,6 +6,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "openvmm_driver.flow.rs"]
 pub mod openvmm_driver;
+#[path = "openvmm_driver.run.rs"]
+pub mod openvmm_driver_run;
 
 pub struct OpenVmmDriver {
     partition_handle: usize,

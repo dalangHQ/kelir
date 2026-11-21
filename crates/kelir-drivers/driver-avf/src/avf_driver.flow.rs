@@ -21,10 +21,6 @@ impl AvfDriver {
         self.avf_fd
     }
 
-    fn open_node(&mut self) -> Result<(), VmmError> {
-        // TODO: [hd_08_avf_pkvm_boundary_enforcement]: connect /dev/avf or the pKVM node; slop: un-donated memory maps without E_PKVM_NON_DONATED_MEMORY fault (deferred to L3)
-        Err(VmmError::Unsupported("avf boot: /dev/avf open".into()))
-    }
 }
 
 #[async_trait::async_trait]

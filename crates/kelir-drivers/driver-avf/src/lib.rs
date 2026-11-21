@@ -5,6 +5,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "avf_driver.flow.rs"]
 pub mod avf_driver;
+#[path = "avf_driver.run.rs"]
+pub mod avf_driver_run;
 
 pub struct AvfDriver {
     avf_fd: i32,

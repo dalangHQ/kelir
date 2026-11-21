@@ -10,6 +10,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "hvf_driver.flow.rs"]
 pub mod hvf_driver;
+#[path = "hvf_driver.run.rs"]
+pub mod hvf_driver_run;
 
 pub struct HvfDriver {
     vcpu_ids: Vec<sys_driver::hv_vcpu_t>,

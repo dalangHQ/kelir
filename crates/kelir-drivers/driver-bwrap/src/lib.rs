@@ -7,6 +7,8 @@ use kelir_interface::driver_interface::{EntropyBackend, VmConfig};
 
 #[path = "bwrap_driver.flow.rs"]
 pub mod bwrap_driver;
+#[path = "bwrap_driver.run.rs"]
+pub mod bwrap_driver_run;
 
 pub struct BwrapDriver {
     allow_emulated_fallback: bool,
