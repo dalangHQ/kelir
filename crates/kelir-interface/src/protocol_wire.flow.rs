@@ -90,6 +90,48 @@ pub struct ExecveMutation {
     pub unset_env: Vec<String>,
 }
 
+impl ExecveMutation {
+    // see: cans/11-protocol.md#Env-injection-limits
+    // set_env strips duplicate keys from envp first to prevent getenv shadowing:
+    // POSIX getenv() returns the first match, so prepending set_env pairs onto an
+    // envp that still carries the same key leaves the guest reading the stale
+    // original value. Pure L2: mutates only the passed-in vectors.
+    pub fn dedup_envp_keys(envp: &mut Vec<(String, String)>, set_env: &[(String, String)]) {
+        let injected: std::collections::HashSet<&str> = set_env
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        // keep the first occurrence order except for keys we are about to prepend
+        let mut seen = std::collections::HashSet::new();
+        envp.retain(|(key, _)| {
+            if injected.contains(key.as_str()) {
+                return false;
+            }
+            seen.insert(key.clone())
+        });
+        envp.extend(set_env.iter().cloned());
+    }
+}
+
+// see: cans/07-wire-plane.md#Egress-side-effect-outbox
+// see: cans/02-plugin-model.md#Optional-redirect-steering
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NetRedirect {
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub guidance: Option<String>,
+}
+
+// see: cans/11-protocol.md#Signal-and-fork-interception
+// see: cans/02-plugin-model.md#Optional-redirect-steering
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignalMutation {
+    pub new_sig: i32,
+    #[serde(default)]
+    pub guidance: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PatchPayload {
     ExecveMutation(ExecveMutation),
@@ -103,10 +145,34 @@ pub enum PatchPayload {
     FsPathRedirect {
         target_path: String,
     },
+    // see: cans/07-wire-plane.md#Egress-side-effect-outbox
+    NetRedirect(NetRedirect),
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    SignalMutation(SignalMutation),
     Custom {
         name: String,
         cbor: ciborium::value::Value,
     },
+}
+
+// see: cans/plugins/tool-guard.md#Approval-authorization
+// see: cans/08-lifecycle.md#Cooperative-multi-tasking
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApprovalHoldPolicy {
+    /// Per-session cap on concurrent pending holds so approvals cannot DoS
+    /// max_exec_slots with never-released suspensions.
+    pub max_pending_holds: u32,
+    /// Default expiry TTL in milliseconds; stale holds expire fail-closed.
+    pub hold_ttl_ms: u64,
+}
+
+impl Default for ApprovalHoldPolicy {
+    fn default() -> Self {
+        Self {
+            max_pending_holds: 10,
+            hold_ttl_ms: 300_000,
+        }
+    }
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict
@@ -114,6 +180,9 @@ pub enum PatchPayload {
 pub enum SuspendUntil {
     Deadline(u64),
     Approval,
+    /// Approval hold with explicit per-session policy: the hold-slot cap and
+    /// expiry TTL that bound `SuspendUntil::Approval` suspensions.
+    ApprovalBounded(ApprovalHoldPolicy),
     Handshake,
     Condition { poll_interval_ms: u64, handle: u64 },
 }
@@ -125,10 +194,32 @@ pub enum SuspendUntil {
 pub enum Action {
     Pass,
     Forward,
-    Drop { errno: Errno, reason: String },
+    Drop {
+        errno: Errno,
+        reason: String,
+        #[serde(default)]
+        guidance: Option<String>,
+    },
     Suspend { until: SuspendUntil },
-    Abort { reason: String },
+    Abort {
+        reason: String,
+        #[serde(default)]
+        guidance: Option<String>,
+    },
     Patch(PatchPayload),
+}
+
+// see: cans/10-attestation.md#Boundary-opacity
+/// L7/EXEC steering surface: structured refusal guidance (why the operation
+/// was denied and how the agent may recover) plus the optional tool name the
+/// operator steers the agent toward. Core L3/L4 stays errno-opaque; these
+/// fields ride the L7/TTY payload, never raw bus errors.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SteeringGuidance {
+    #[serde(default)]
+    pub guidance: Option<String>,
+    #[serde(default)]
+    pub redirect_tool: Option<String>,
 }
 
 // see: cans/02-plugin-model.md#Unified-verdict

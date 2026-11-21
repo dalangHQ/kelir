@@ -64,6 +64,7 @@ pub fn hook_timeout_action() -> Action {
     Action::Drop {
         errno: Errno::Ewouldblock,
         reason: "hook timeout".to_string(),
+        guidance: None,
     }
 }
 

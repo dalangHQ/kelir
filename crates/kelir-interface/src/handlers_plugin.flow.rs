@@ -436,7 +436,11 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     }
 
     pub fn drop(&self, errno: Errno, reason: String) -> Verdict {
-        Verdict::Drop { errno, reason }
+        Verdict::Drop {
+            errno,
+            reason,
+            guidance: None,
+        }
     }
 
     pub fn suspend(&self, until: SuspendUntil) -> Verdict {
@@ -459,7 +463,10 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     }
 
     pub fn abort(&self, reason: String) -> Verdict {
-        Verdict::Abort { reason }
+        Verdict::Abort {
+            reason,
+            guidance: None,
+        }
     }
 
     // see: cans/10-attestation.md#Execution-receipts
