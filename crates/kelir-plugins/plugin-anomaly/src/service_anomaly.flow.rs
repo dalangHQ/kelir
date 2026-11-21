@@ -80,6 +80,13 @@ pub struct TelemetrySample {
     pub watchdog_fires: f32,
     pub parked_connections: f32,
     pub outbox_bytes: f32,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    // Behavioral signals: raw-IP egress without DNS, denial bursts, privilege
+    // drift. Flags ride alongside the 16-dimensional vector; they do not
+    // resize FEATURE_VECTOR_DIMS.
+    pub raw_ip_without_dns: bool,
+    pub denial_burst: bool,
+    pub privilege_drift: bool,
 }
 
 impl TelemetrySample {
@@ -104,6 +111,54 @@ impl TelemetrySample {
             self.outbox_bytes,
         ]
     }
+}
+
+// see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+// Behavioral signal flags extracted per observation window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AnomalySignals {
+    pub raw_ip_without_dns: bool,
+    pub denial_burst: bool,
+    pub privilege_drift: bool,
+}
+
+impl AnomalySignals {
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub fn any(&self) -> bool {
+        self.raw_ip_without_dns || self.denial_burst || self.privilege_drift
+    }
+}
+
+// see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+// Pure L2 raw-IP-without-DNS detector: an egress window that dialed a raw IP
+// while no DNS resolution was observed for it in the same window.
+pub fn raw_ip_egress_without_dns(
+    raw_ip_dials: u32,
+    dns_resolutions: u32,
+) -> bool {
+    raw_ip_dials > 0 && dns_resolutions == 0
+}
+
+// see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+// Pure L2 denial-burst detector: consecutive windows with elevated denial
+// rate beyond burst_threshold signal a policy-probing loop.
+pub fn denial_burst(denial_rate: f32, window: &[TelemetrySample]) -> bool {
+    const DEFAULT_BURST_WINDOWS: usize = 3;
+    if denial_rate <= 0.0 || window.len() < DEFAULT_BURST_WINDOWS {
+        return false;
+    }
+    window
+        .iter()
+        .rev()
+        .take(DEFAULT_BURST_WINDOWS)
+        .all(|sample| sample.denial_rate >= denial_rate && sample.denial_rate > 0.0)
+}
+
+// see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+// Pure L2 privilege-drift detector: setuid/exec-privilege transitions
+// observed while privilege-bearing executions rise in the window.
+pub fn privilege_drift(privileged_execs: u32, baseline_privileged_execs: u32) -> bool {
+    privileged_execs > baseline_privileged_execs
 }
 
 // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
@@ -151,6 +206,11 @@ impl TelemetryRing {
     // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
     pub fn is_empty(&self) -> bool {
         self.samples.is_empty()
+    }
+
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    pub fn samples(&self) -> &[TelemetrySample] {
+        self.samples.as_slices().0
     }
 
     // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
@@ -233,6 +293,9 @@ pub struct AnomalyOutcome {
     pub feature_vector: FeatureVector,
     pub surprisal: f32,
     pub escalate: bool,
+    // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+    // Behavioral signals extracted pure-L2 alongside the numeric vector.
+    pub signals: AnomalySignals,
 }
 
 // see: cans/plugins/anomaly.md#Service-exports-(anomaly)
@@ -263,12 +326,22 @@ impl AnomalyDetectionService {
         ring.push(sample);
         let vector = ring.feature_vector(scales);
         let surprisal = self.surprisal(&vector);
+        // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
+        // Pure L2 behavioral signal extraction riding the same sample.
+        let signals = AnomalySignals {
+            raw_ip_without_dns: sample.raw_ip_without_dns,
+            denial_burst: sample.denial_burst || denial_burst(sample.denial_rate, ring.samples()),
+            privilege_drift: sample.privilege_drift,
+        };
         Ok(AnomalyOutcome {
             feature_vector: vector,
             surprisal,
-            escalate: surprisal > self.threshold,
+            escalate: surprisal > self.threshold || signals.any(),
+            signals,
         })
     }
+
+    // TODO (L3) [telemetry_audit]: bind raw_ip_without_dns, denial_burst, and privilege_drift to the live wire/trap telemetry sources (TrapInterposer socket-tuple correlation for raw-IP dials, denial verdict streams, privilege transition traps); slop: signals stay hardcoded false from the guest, raw-IP exfiltration and denial probes go unflagged
 
     // TODO (L3) [telemetry_audit]: replace max-component scoring with the statistical surprisal model; slop: scoring stays max-component; subtle anomalies pass as normal.
     // see: cans/plugins/anomaly.md#Invariants-and-policy-(anomaly)
