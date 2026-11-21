@@ -30,6 +30,10 @@ pub enum HostProbe {
     Avf,
     Whp,
     KelirPack,
+    // see: cans/13-cli.md#Host-pre-flight-commands
+    SeccompInstall,
+    WaitKillable,
+    Userfaultfd,
 }
 
 impl HostProbe {
@@ -43,6 +47,10 @@ impl HostProbe {
             HostProbe::Avf => "avf",
             HostProbe::Whp => "whp",
             HostProbe::KelirPack => "kelir-pack",
+            // see: cans/13-cli.md#Host-pre-flight-commands
+            HostProbe::SeccompInstall => "seccomp-install",
+            HostProbe::WaitKillable => "wait-killable",
+            HostProbe::Userfaultfd => "userfaultfd",
         }
     }
 }
@@ -265,6 +273,34 @@ fn probe_whp() -> ProbeOutcome {
     ProbeOutcome::NotImplemented("WHP partition probe (L3)".to_string())
 }
 
+// see: cans/13-cli.md#Host-pre-flight-commands
+// Static /dev and uname checks lie in restricted clouds (Firecracker,
+// AppArmor, nested containers) under Class 2 drivers; the doctor probes below
+// verify the kernel behaviorally instead.
+fn probe_seccomp_install() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: seccomp_install_probe installs a no-op seccomp filter in a forked child and reports the kernel errno (EACCES under blocklists, ENOSYS on stripped kernels); slop: restricted clouds report kvm-capable, seccomp silently blocked, traps never fire
+    ProbeOutcome::NotImplemented(
+        "seccomp_install_probe needs a live child-process filter install (L3)".to_string(),
+    )
+}
+
+// see: cans/13-cli.md#Host-pre-flight-commands
+fn probe_wait_killable() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: wait_killable_probe ptrace-attaches to a forked child and checks whether the kernel honors WAITKILLABLE (uninterruptible-safe) kill delivery under seccomp/YAMA restrictions; slop: SIGKILL silently swallowed, guest trap exit paths reported ready while actually unkillable
+    ProbeOutcome::NotImplemented(
+        "wait_killable_probe needs a live ptrace WAITKILLABLE check (L3)".to_string(),
+    )
+}
+
+// see: cans/13-cli.md#Host-pre-flight-commands
+// see: cans/08-lifecycle.md#CoW-fork
+fn probe_userfaultfd() -> ProbeOutcome {
+    // TODO (L3) [hypervisor_driver]: userfaultfd probe opens /dev/userfaultfd via syscall (not a static /dev stat), registers a range, and reports EPERM/ENOSYS verbatim — a static /dev check lies in restricted clouds; slop: CoW checkpointing reported supported, userfaultfd registration EPERM at fork
+    ProbeOutcome::NotImplemented(
+        "userfaultfd probe needs a live registration attempt (L3)".to_string(),
+    )
+}
+
 // see: cans/15-operations.md#Developer-CLI
 fn hypervisor_probe(hypervisor: &str) -> Option<(HostProbe, ProbeOutcome)> {
     match hypervisor {
@@ -292,6 +328,12 @@ pub fn probe_host() -> DoctorReport {
     if cfg!(target_os = "linux") {
         probes.push((HostProbe::PageSize, probe_page_size()));
         probes.push((HostProbe::Pidfd, probe_pidfd()));
+        // see: cans/13-cli.md#Host-pre-flight-commands
+        // behavioral probes: static /dev/uname checks lie under Class 2
+        // (driver-bwrap/proot) in restricted clouds
+        probes.push((HostProbe::SeccompInstall, probe_seccomp_install()));
+        probes.push((HostProbe::WaitKillable, probe_wait_killable()));
+        probes.push((HostProbe::Userfaultfd, probe_userfaultfd()));
     } else if cfg!(target_os = "macos") {
         probes.push((HostProbe::PageSize, probe_page_size()));
     } else if probes.is_empty() {
