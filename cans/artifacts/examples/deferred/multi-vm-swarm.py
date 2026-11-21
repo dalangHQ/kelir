@@ -11,13 +11,13 @@ from dataclasses import dataclass
 import kelir
 from kelir import KelirBuilder, Session
 from kelir.plugin_model_flow import LifecycleCtx, VetoEvent
-from kelir.plugins.mesh import (
+from kelir.plugins.mesh_flow import (
     MeshConfig, MeshPlugin, PeerIdentity, PeerListener,
 )
-from kelir.plugins.supply_chain import (
+from kelir.plugins.supply_chain_flow import (
     PackageGuardConfig, SupplyChainConfig, SupplyChainPlugin, WxJitConfig,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.ledger_flow import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
 

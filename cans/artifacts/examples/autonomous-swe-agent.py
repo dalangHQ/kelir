@@ -36,25 +36,25 @@ from kelir import (
     WatchdogAction,
 )
 from kelir.plugin_model_flow import LifecycleCtx
-from kelir.plugins.redaction import (
+from kelir.plugins.redaction_flow import (
     MaskReadConfig, MaskReadRule, RedactionConfig, redaction,
 )
-from kelir.plugins.terminal_guard import (
+from kelir.plugins.terminal_guard_flow import (
     PromptRuleConfig, TerminalGuardConfig, terminal_guard,
 )
-from kelir.plugins.token_shield import TokenShieldConfig, token_shield
-from kelir.plugins.vault import CredentialDescriptor, VaultConfig, VaultPlugin
+from kelir.plugins.token_shield_flow import TokenShieldConfig, token_shield
+from kelir.plugins.vault_flow import CredentialDescriptor, VaultConfig, VaultPlugin
 from kelir.storage_planes import IdmapConfig, SharedCacheConfig
-from kelir.wire_planes import (
+from kelir.wire_planes_flow import (
     L4Proxy, MtlsConfig, SinkholeConfig, SinkholeRule
 )
-from kelir.plugins.chaos import (
+from kelir.plugins.chaos_flow import (
     ChaosConfig,
     StorageFaultRule,
     NetworkFaultRule,
     ChaosPlugin,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.ledger_flow import (
     LedgerConfig,
     LedgerPlugin,
     OtelConfig,

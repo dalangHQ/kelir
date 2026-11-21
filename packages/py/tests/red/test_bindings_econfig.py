@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 
 from kelir import KelirBuilder
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 
 def bp_01_python_boot_econfig_missing_pydantic_dependency() -> None:

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from kelir.generated.attest_telemetry import CausalDelta
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 from kelir.service_caps_run import (
     container_ingest_image as _run_container_ingest_image,
     ledger_blake3_of_producing_process as _run_ledger_blake3,

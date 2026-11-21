@@ -9,7 +9,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Generic, Literal, NoReturn, Self, TypeVar, cast, overload
 
 from kelir.builder_scopes import _VERB_ARITY, _VERB_RINGS
-from kelir.wire_planes import WireConfig
+from kelir.wire_planes_flow import WireConfig
 from kelir.service_caps_flow import materialize_cap
 from kelir.plugin_fusion_flow import (
     FusedTrampoline,
@@ -19,7 +19,7 @@ from kelir.plugin_fusion_flow import (
     RingEvent,
     TrapFilterSnapshot,
 )
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 from kelir.kelir_builder_scope_flow import (
     Handler,
     VsockServiceEntry,
@@ -27,7 +27,7 @@ from kelir.kelir_builder_scope_flow import (
     _Scope,
     _wrap_trap_deny,
 )
-from kelir.profile_config import ProfileConfig
+from kelir.profile_config_flow import ProfileConfig
 
 if TYPE_CHECKING:
     from kelir.kelir_builder_scope_flow import (

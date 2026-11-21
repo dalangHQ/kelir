@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 __all__ = [
     "L4Proxy",

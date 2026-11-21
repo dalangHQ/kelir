@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 
 from kelir import KelirBuilder
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 from kelir.plugin_fusion_flow import (
     FusedTrampoline,
     HookDescriptor,

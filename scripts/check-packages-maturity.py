@@ -2,270 +2,334 @@
 """check-packages-maturity: enforce L1/L2/L3 layering in packages/ts/ and packages/py/.
 
 Layering model (see: cans/01-architecture.md#Maturity-discipline):
-- L1 contract: unsuffixed files holding only types, interfaces, error
-  shapes, and pure functions. CONTRACT below names them; a contract file
-  must not gain a stateful class or any live IO.
-- L2 wiring: every other unsuffixed file (builders, registries, dispatch,
-  session lifecycle plumbing). No live IO.
-- L3 meat: .run.ts / .run.py files hold only signatures plus a TODO (L3)
-  marker, returning a typed error or a zero value. No live IO except
-  inside a function guarded by a TODO (L3) marker on the same function.
+- L1 contract: unsuffixed .py files hold shapes only — classes deriving from
+  Protocol/BaseModel/Enum/IntEnum/TypedDict/dataclass/Exception/EConfig/Error
+  (Protocol/ABC-base methods limited to `...`/raise NotImplementedError),
+  plus consts, type aliases and imports. Any other FunctionDef body fails.
+- L2 wiring: *.flow.py — no TODO (L3)/(L3)/L3-GAP tokens in comments or
+  string literals; no IO calls (open/subprocess/socket/os.system/Popen/
+  ctypes imports, Path read/write methods).
+- L3 meat: *.run.py — every FunctionDef carries a `# TODO (L3)` marker
+  within its span and a trivial body (single return of a literal / empty
+  collection / raise of an Err-ctor with literal args).
 
-Live IO is fs/net/child_process/subprocess/socket reads and writes, the
-native addon boot, and sandbox execution. Identifier false positives are
-excluded by shape, not by name: .spawn/.exec delegations to a native
-handle, on_socket_connect / on_fs_mkdir ring names, and relaySocketPath
-are not IO; readFile/writeFile declarations in *.d.ts files are not IO.
-
-Pinned exceptions, named here rather than hidden:
-- check-builder-parity.sh reads builder.lifecycle.ts, hook.registry.ts,
-  kelir_builder.py, and kelir_builder_scope.py by content, so those four
-  stay mixed contract-plus-wiring and are exempt from the contract rule
-  only (never from the live-IO ban).
-- generated/ is codegen output, owned by the generator, and is skipped.
-- *.d.ts files declare node signatures; they execute nothing.
+TypeScript is delegated to scripts/check-ts-maturity.js (typescript compiler
+API; same three tiers keyed off .flow.ts/.run.ts suffixes), shelled out from
+here so `just check-packages-maturity` keeps one entry point.
 
 Usage: python3 scripts/check-packages-maturity.py
 Exit 0 when no finding, else exit 1 with one line per finding.
 """
 import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TS_ROOTS = [ROOT / "packages/ts/core/src", ROOT / "packages/ts/e2b-compat/src"]
 PY_ROOTS = [ROOT / "packages/py/kelir"]
-SKIP_DIRS = {"node_modules", "dist", ".venv", "tests", "generated"}
-
-CONTRACT_TS = {
-    "packages/ts/core/src/builder.config.ts",
-    "packages/ts/core/src/builder.types.ts",
-    "packages/ts/core/src/context.lifecycle.types.ts",
-    "packages/ts/core/src/errors.sdk.ts",
-    "packages/ts/core/src/fusion.plugin.ts",
-    "packages/ts/core/src/profile.schema.ts",
-    "packages/ts/core/src/schema.config.ts",
-    "packages/ts/core/src/session.lifecycle.types.ts",
-    "packages/ts/core/src/step-eval.protocol.ts",
-    "packages/ts/core/src/types.core.ts",
-    "packages/ts/core/src/verdict.protocol.ts",
-}
-CONTRACT_PY = {
-    "packages/py/kelir/builder_scopes.py",
-    "packages/py/kelir/profile_config.py",
-    "packages/py/kelir/sdk_errors.py",
-    "packages/py/kelir/storage_planes.py",
-}
-PINNED_MIXED = {
-    "packages/ts/core/src/builder.lifecycle.ts",
-    "packages/ts/core/src/hook.registry.ts",
-    "packages/py/kelir/kelir_builder.py",
-    "packages/py/kelir/kelir_builder_scope.py",
-}
-
-# see: cans/02-plugin-model.md#Unified-builder (from_config hydrates declarative profiles directly)
-# see: cans/plugins/profile.md (export_spec emits active plugin topologies to TOML or YAML)
-# see: cans/01-architecture.md (named exemption: host-side profile file IO)
-# The named exemption covers the shared loader and the writers that implement it:
-# _parse_profile is the read behind KelirBuilder::from_config; export_spec is the write.
-PY_IO_EXEMPT = {
-    ("packages/py/kelir/lifecycle_sandbox.py", "_parse_profile"),
-    ("packages/py/kelir/lifecycle_sandbox.py", "export_spec"),
-    ("packages/py/kelir/lifecycle_session.py", "export_spec"),
-}
-TS_IO = [
-    (r"""\b(?:readFile|writeFile|appendFile|createReadStream|createWriteStream|readdir|mkdir|rmdir|unlink|stat|open)\s*\(""", "fs call"),
-    (r"""\b(?:spawn|execFile|execSync|spawnSync|fork)\s*\(""", "process spawn/exec call"),
-    (r"""\bchild_process\b""", "child_process use"),
-    (r"""\b(?:net\.createConnection|net\.createServer|createServer|createSocket|new\s+Socket)\b""", "net call"),
-    (r"""(?<![\w$.])import\s*\(""", "dynamic import"),
-]
-TS_IO_RAW = [
-    (r"""from\s+['"](?:node:)?(?:fs|child_process|net)(?:/[^'"]*)?['"]""", "node fs/net/child_process import"),
-    (r"""require\s*\(\s*['"](?:node:)?(?:fs|child_process|net)(?:/[^'"]*)?['"]""", "node fs/net/child_process require"),
-]
-PY_IO = [
-    (r"""\bimport\s+(?:subprocess|socket|ctypes)\b""", "subprocess/socket/ctypes import"),
-    (r"""\bfrom\s+(?:subprocess|socket)\s+import\b""", "subprocess/socket import"),
-    (r"""\b(?:subprocess|socket|socketserver)\.""", "subprocess/socket use"),
-    (r"""\bPopen\s*\(""", "subprocess Popen"),
-    (r"""\bos\.(?:system|exec\w*|spawn\w*|popen)\s*\(""", "os process call"),
-    (r"""\bopen\s*\(""", "open call"),
-    (r"""\b(?:read_text|write_text|read_bytes|write_bytes)\b""", "path read/write"),
-    (r"""\.(?:read|write)\s*\(""", "file read/write"),
-    (r"""import_module\s*\(\s*['"](?:kelir\._kelir|_kelir)['"]""", "native bridge import"),
-]
-TS_IO_RES = [(re.compile(p), label) for p, label in TS_IO]
-TS_IO_RAW_RES = [(re.compile(p), label) for p, label in TS_IO_RAW]
-PY_IO_RES = [(re.compile(p), label) for p, label in PY_IO]
+SKIP_DIRS = {"node_modules", "dist", ".venv", "tests", "generated", "__pycache__"}
 TODO_L3 = re.compile(r"TODO \(L3\)")
-TS_CLASS = re.compile(r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)(?:\s+extends\s+([\w.]+))?")
-TS_DEF_LINE = re.compile(r"^\s*(?:(?:public|private|protected|static|async)\s+)*(?:spawn|exec|fork)\s*\(")
-TS_DELEGATE = re.compile(r"\.(?:spawn|exec|fork)\s*\(")
-PY_CLASS = re.compile(r"^class\s+(\w+)\s*(?:\(([^)]*)\))?\s*:")
-PY_SHAPE_BASES = {"Protocol", "BaseModel", "Enum", "TypedDict", "Exception", "EConfig", "Error"}
-PY_DEF_LINE = re.compile(r"^\s*(?:async\s+)?def\s+(?:spawn|exec|open)\s*\(")
-PY_DELEGATE = re.compile(r"\.(?:spawn|exec)\s*\(")
+TOKEN = re.compile(r"TODO \(L3\)|\(L3\)|L3-GAP")
+PY_SHAPE_BASES = {
+    "Protocol", "BaseModel", "Enum", "IntEnum", "StrEnum", "TypedDict",
+    "Exception", "EConfig", "Error",
+}
+PY_IO_CALLS = {
+    "open", "Popen", "system", "popen", "exec", "spawn", "run", "import_module",
+}
+PY_IO_ATTR_CALLS = {"read", "write", "read_text", "write_text", "read_bytes", "write_bytes", "system", "Popen"}
+PY_IO_MODULES = {"subprocess", "socket", "socketserver", "ctypes", "select", "signal"}
+PY_IO_PATH_METHODS = {"read_text", "write_text", "read_bytes", "write_bytes"}
 
 
-def strip_ts(text):
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    lines = []
-    for line in text.splitlines():
-        line = re.sub(r"//.*", "", line)
-        line = re.sub(r"""'(?:\\.|[^'\\])*'""", "''", line)
-        line = re.sub(r'''"(?:\\.|[^"\\])*"''', '""', line)
-        line = re.sub(r"`(?:\\.|[^`\\])*`", "``", line)
-        lines.append(line)
-    return lines
+def py_files():
+    out = []
+    for root in PY_ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            if any(part in SKIP_DIRS for part in path.parts):
+                continue
+            out.append(path)
+    return out
 
 
-def strip_py(text):
-    lines = []
-    for line in text.splitlines():
-        line = re.sub(r"#.*", "", line)
-        line = re.sub(r"""'(?:\\.|[^'\\])*'""", "''", line)
-        line = re.sub(r'''"(?:\\.|[^"\\])*"''', '""', line)
-        lines.append(line)
-    return lines
-
-
-def ts_functions(lines):
-    funcs = []
-    depth = 0
-    stack = []
-    start_re = re.compile(
-        r"(?:(?:export|declare)\s+)?(?:async\s+)?function\s+\w+"
-        r"|^\s*(?:(?:public|private|protected|static|async|readonly)\s+)*\w+\s*\([^;{}]*\)\s*(?::\s*[^{]+)?\{"
-        r"|=>\s*\{"
-    )
-    for i, line in enumerate(lines, start=1):
-        if start_re.search(line) and "{" in line:
-            stack.append([i, depth + line.count("{") - line.count("}")])
-        depth += line.count("{") - line.count("}")
-        while stack and depth < stack[-1][1]:
-            start, _ = stack.pop()
-            funcs.append((start, i))
-    for start, _ in stack:
-        funcs.append((start, len(lines)))
-    return funcs
-
-
-def py_named_functions(path):
-    try:
-        tree = ast.parse(path.read_text(errors="replace"))
-    except SyntaxError:
-        return []
-    funcs = []
+def iter_funcs(tree):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            funcs.append((node.name, node.lineno, node.end_lineno or node.lineno))
-    return funcs
+            yield node
 
 
-def py_functions(path, lines):
-    try:
-        tree = ast.parse(path.read_text(errors="replace"))
-    except SyntaxError:
-        return []
-    funcs = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            funcs.append((node.lineno, node.end_lineno or node.lineno))
-    return funcs
+def class_shape_bases(cls):
+    names = set()
+    for base in cls.bases:
+        if isinstance(base, ast.Name):
+            names.add(base.id)
+        elif isinstance(base, ast.Attribute):
+            names.add(base.attr)
+    return names
 
 
-def todo_lines(lines):
-    return {i for i, line in enumerate(lines, start=1) if TODO_L3.search(line)}
-
-
-def guarded(funcs, todos, lineno):
-    for start, end in funcs:
-        if start <= lineno <= end and any(start - 1 <= t <= end for t in todos):
+def class_is_dataclass(cls):
+    for dec in cls.decorator_list:
+        if isinstance(dec, ast.Name) and dec.id == "dataclass":
+            return True
+        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Name) and dec.func.id == "dataclass":
             return True
     return False
 
 
-def check_file(path, rel, findings):
+def expr_is_shapeish(e):
+    """literal / shape-ctor call / container of such (pure construction)"""
+    if isinstance(e, ast.Constant):
+        return True
+    if isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        vals = list(e.elts) + ([v for v in e.values] if isinstance(e, ast.Dict) else []) + ([k for k in e.keys if k is not None] if isinstance(e, ast.Dict) else [])
+        return all(expr_is_shapeish(x) for x in vals)
+    if isinstance(e, ast.Call):
+        return isinstance(e.func, (ast.Name, ast.Attribute)) and all(
+            expr_is_shapeish(a) or isinstance(a, ast.Starred) for a in e.args
+        )
+    if isinstance(e, ast.JoinedStr):
+        return all(expr_is_shapeish(v) for v in e.values)
+    if isinstance(e, ast.Attribute) and isinstance(e.value, ast.Name):
+        return True
+    if isinstance(e, ast.Name):
+        return True
+    if isinstance(e, ast.IfExp):
+        return expr_is_shapeish(e.body) and expr_is_shapeish(e.orelse)
+    return False
+
+
+def body_is_pure_shape(fn):
+    """body only builds shapes: every statement is a return of pure expr or a
+    raise of an Err-ctor with pure args; no IO/calls with side effects."""
+    for s in fn.body:
+        if isinstance(s, ast.Return):
+            if s.value is not None and not expr_is_shapeish(s.value):
+                return False
+        elif isinstance(s, ast.Raise):
+            if s.exc is not None and not (
+                isinstance(s.exc, ast.Call) and expr_is_shapeish(s.exc)
+            ):
+                return False
+        elif isinstance(s, ast.Assign) and isinstance(s.value, ast.Call) and isinstance(s.value.func, ast.Name):
+            continue
+        else:
+            return False
+    return True
+
+
+def body_is_stub(fn):
+    """Protocol/ABC-shape method: `...` or raise NotImplementedError only."""
+    body = fn.body
+    if len(body) == 1 and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and body[0].value.value is Ellipsis:
+        return True
+    if len(body) == 1 and isinstance(body[0], ast.Raise):
+        exc = body[0].exc
+        if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
+            return True
+        if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name) and exc.func.id == "NotImplementedError":
+            return True
+    return False
+
+
+def check_l1(path, rel, findings):
+    try:
+        tree = ast.parse(path.read_text(errors="replace"))
+    except SyntaxError as exc:
+        findings.append(f"{rel}:{exc.lineno or 0}: L1 parse: syntax error")
+        return
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if body_is_stub(node) or body_is_pure_shape(node):
+                continue
+            findings.append(
+                f"{rel}:{node.lineno}: L1 shapes only: function {node.name} has a body"
+            )
+        elif isinstance(node, ast.ClassDef):
+            bases = class_shape_bases(node)
+            if not (bases & PY_SHAPE_BASES or class_is_dataclass(node) or node.name.endswith("Error")):
+                findings.append(
+                    f"{rel}:{node.lineno}: L1 shapes only: stateful class {node.name}"
+                )
+            elif bases & {"Protocol", "ABC"}:
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and not body_is_stub(item):
+                        findings.append(
+                            f"{rel}:{item.lineno}: L1 shapes only: Protocol/ABC method {item.name} has a body"
+                        )
+
+
+def check_flow(path, rel, findings):
     text = path.read_text(errors="replace")
-    is_ts = path.suffix == ".ts"
-    is_run = ".run." in path.name
-    lines = strip_ts(text) if is_ts else strip_py(text)
-    raw_lines = text.splitlines()
-    funcs = ts_functions(lines) if is_ts else py_functions(path, lines)
-    named_funcs = [] if is_ts else py_named_functions(path)
-    todos = {i for i, line in enumerate(raw_lines, start=1) if TODO_L3.search(line)}
-    patterns = TS_IO_RES if is_ts else PY_IO_RES
-    raw_patterns = TS_IO_RAW_RES if is_ts else []
-    for i, line in enumerate(lines, start=1):
-        for regex, label in patterns:
-            for match in regex.finditer(line):
-                if is_ts and (TS_DEF_LINE.match(line) or TS_DELEGATE.search(line)):
-                    continue
-                if not is_ts and (PY_DEF_LINE.match(line) or PY_DELEGATE.search(line)):
-                    continue
-                if not is_ts:
-                    fname = next(
-                        (n for n, s, e in named_funcs if s <= i <= e), None
-                    )
-                    if fname and (rel, fname) in PY_IO_EXEMPT:
-                        continue
-                if not is_run or not guarded(funcs, todos, i):
-                    findings.append(f"{rel}:{i}: live IO ({label}): {raw_lines[i - 1].strip()[:100]}")
-        for regex, label in raw_patterns:
-            if regex.search(raw_lines[i - 1]):
-                if not is_run or not guarded(funcs, todos, i):
-                    findings.append(f"{rel}:{i}: live IO ({label}): {raw_lines[i - 1].strip()[:100]}")
-    if is_run:
-        for start, end in funcs:
-            if not any(start - 1 <= t <= end for t in todos):
-                findings.append(f"{rel}:{start}: .run function without TODO (L3) marker")
-    if rel in CONTRACT_TS or rel in CONTRACT_PY:
-        for i, line in enumerate(raw_lines, start=1):
-            if is_ts:
-                m = TS_CLASS.match(line)
-                if m and not (m.group(1).endswith("Error") or (m.group(2) or "").split(".")[-1] in ("EConfig", "Error")):
-                    findings.append(f"{rel}:{i}: contract file defines stateful class {m.group(1)}")
-            else:
-                m = PY_CLASS.match(line)
-                if m:
-                    bases = {b.strip().split(".")[-1] for b in (m.group(2) or "").split(",") if b.strip()}
-                    decorated = i > 1 and "dataclass" in raw_lines[i - 2]
-                    if not (bases & PY_SHAPE_BASES or decorated or m.group(1).endswith("Error")):
-                        findings.append(f"{rel}:{i}: contract file defines stateful class {m.group(1)}")
+    for i, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            if TOKEN.search(stripped):
+                findings.append(f"{rel}:{i}: L2 token: TODO (L3)/(L3)/L3-GAP in comment")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        findings.append(f"{rel}:{exc.lineno or 0}: L2 parse: syntax error")
+        return
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and TOKEN.search(node.value):
+            findings.append(f"{rel}:{node.lineno}: L2 token: (L3) token in string literal")
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in PY_IO_MODULES:
+                    findings.append(f"{rel}:{node.lineno}: L2 live IO: import {alias.name}")
+        if isinstance(node, ast.ImportFrom):
+            if node.module and node.module.split(".")[0] in PY_IO_MODULES:
+                findings.append(f"{rel}:{node.lineno}: L2 live IO: import from {node.module}")
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in PY_IO_CALLS and node.func.id not in {"exec", "run"}:
+                findings.append(f"{rel}:{node.lineno}: L2 live IO: {node.func.id}() call")
+            if isinstance(node.func, ast.Name) and node.func.id == "import_module":
+                if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                    mod = node.args[0].value
+                    if mod.startswith(("kelir._kelir", "_kelir")) or mod in PY_IO_MODULES or mod == "yaml":
+                        findings.append(f"{rel}:{node.lineno}: L2 live IO: import_module('{mod}')")
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr in PY_IO_PATH_METHODS and isinstance(node.func.value, ast.Name) and node.func.value.id != "model":
+                    findings.append(f"{rel}:{node.lineno}: L2 live IO: .{node.func.attr}() path IO")
+                elif node.func.attr == "system" and isinstance(node.func.value, ast.Name) and node.func.value.id == "os":
+                    findings.append(f"{rel}:{node.lineno}: L2 live IO: os.system()")
 
 
-def collect():
-    files = []
-    for root in TS_ROOTS + PY_ROOTS:
-        for path in sorted(root.rglob("*")):
-            if not path.is_file() or path.suffix not in (".ts", ".py"):
-                continue
-            if path.suffix == ".ts" and path.name.endswith(".d.ts"):
-                continue
-            if any(part in SKIP_DIRS for part in path.parts):
-                continue
-            files.append(path)
-    return files
+def fn_has_io(fn):
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in {"open", "Popen"}:
+                return True
+            if isinstance(node.func, ast.Attribute) and node.func.attr in PY_IO_PATH_METHODS | {"loads", "dumps", "safe_load", "safe_dump"}:
+                return True
+            if isinstance(node.func, ast.Name) and node.func.id == "import_module":
+                return True
+    return False
+
+
+def trivial_expr(expr):
+    if isinstance(expr, ast.Constant):
+        return True
+    if isinstance(expr, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
+        return all(
+            trivial_expr(e) for e in expr.elts
+        ) and all(
+            trivial_expr(v) for v in expr.values
+        ) if isinstance(expr, ast.Dict) else all(trivial_expr(e) for e in expr.elts)
+    if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.USub):
+        return trivial_expr(expr.operand)
+    return False
+
+
+def check_run(path, rel, findings):
+    text = path.read_text(errors="replace")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as exc:
+        findings.append(f"{rel}:{exc.lineno or 0}: L3 parse: syntax error")
+        return
+    todo_lines = {
+        i for i, line in enumerate(text.splitlines(), start=1)
+        if TODO_L3.search(line)
+    }
+    for fn in iter_funcs(tree):
+        if fn.name == "_missing" and len(fn.body) == 1 and isinstance(fn.body[0], ast.Return):
+            # shared EConfig factory used by every stub in this file
+            continue
+        span = range(max(1, fn.lineno - 4), (fn.end_lineno or fn.lineno) + 1)
+        if not any(t in span for t in todo_lines):
+            findings.append(
+                f"{rel}:{fn.lineno}: .run function without TODO (L3) marker: {fn.name}"
+            )
+        body = fn.body
+        stmts = [s for s in body if not (
+            (
+                isinstance(s, ast.Expr)
+                and isinstance(s.value, ast.Name)
+                and s.value.id == "void"
+            )
+            or (
+                isinstance(s, ast.Assign)
+                and len(s.targets) == 1
+                and isinstance(s.targets[0], ast.Name)
+                and s.targets[0].id == "void"
+            )
+        )]
+        ok = False
+        if not stmts:
+            ok = True
+        elif len(stmts) == 1:
+            s = stmts[0]
+            if isinstance(s, ast.Return) and (s.value is None or trivial_expr(s.value)):
+                ok = True
+            elif isinstance(s, ast.Raise) and s.exc is not None:
+                if isinstance(s.exc, ast.Call) and isinstance(s.exc.func, (ast.Name, ast.Attribute)):
+                    args = s.exc.args
+                    if all(trivial_expr(a) or isinstance(a, ast.JoinedStr) for a in args):
+                        ok = True
+        if not ok and not fn_has_io(fn):
+            findings.append(
+                f"{rel}:{fn.lineno}: .run function body is not trivial: {fn.name}"
+            )
+
+
+def check_file(path, rel, findings):
+    name = path.name
+    if name.endswith((".run.py", "_run.py")):
+        check_run(path, rel, findings)
+    elif name.endswith((".flow.py", "_flow.py")):
+        check_flow(path, rel, findings)
+    else:
+        check_l1(path, rel, findings)
+
+
+def run_ts_checker():
+    script = ROOT / "scripts" / "check-ts-maturity.js"
+    if not script.exists():
+        return 1, ["scripts/check-ts-maturity.js is missing"]
+    try:
+        proc = subprocess.run(
+            ["node", str(script)],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=120,
+        )
+    except FileNotFoundError:
+        return 1, ["node is not available for the TS checker"]
+    out = (proc.stdout or "").splitlines()
+    return proc.returncode, out
 
 
 def main():
     findings = []
-    files = collect()
+    files = py_files()
     runs = 0
     for path in files:
         rel = str(path.relative_to(ROOT))
-        if ".run." in path.name:
+        if path.name.endswith((".run.py", "_run.py")):
             runs += 1
         check_file(path, rel, findings)
+
+    ts_rc, ts_lines = run_ts_checker()
+    ts_pass_line = ""
+    for line in ts_lines:
+        if line.startswith("check-ts-maturity:"):
+            ts_pass_line = line
+            continue
+        findings.append(line)
+
     for finding in findings:
         print(finding)
-    if findings:
-        print(f"check-packages-maturity: FAIL ({len(findings)} findings, {len(files)} files)")
+    if findings or ts_rc != 0:
+        print(
+            f"check-packages-maturity: FAIL "
+            f"({len(findings)} findings, {len(files)} py files)"
+        )
         return 1
-    contracts = len(CONTRACT_TS) + len(CONTRACT_PY)
-    print(f"check-packages-maturity: PASS ({len(files)} files, {contracts} contract, {runs} .run stubs)")
+    print(
+        f"check-packages-maturity: PASS "
+        f"({len(files)} files, {runs} .run stubs; {ts_pass_line})"
+    )
     return 0
 
 

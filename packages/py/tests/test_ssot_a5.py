@@ -28,8 +28,8 @@ from kelir.plugin_model_flow import (
     plugin_error_to_filter_action,
     plugin_error_to_verdict,
 )
-from kelir.plugins.ledger import LedgerPlugin
-from kelir.sdk_errors import EConfig
+from kelir.plugins.ledger_flow import LedgerPlugin
+from kelir.sdk_errors_flow import EConfig
 
 
 async def _echo(request: bytes) -> bytes:

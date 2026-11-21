@@ -40,7 +40,7 @@ from kelir.plugin_fusion_flow import (
     TrapFilterSnapshot,
 )
 from kelir import VsockServiceEntry
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 if TYPE_CHECKING:
     from kelir.model_plugin import BasePlugin

@@ -9,14 +9,14 @@ from typing import Literal
 
 import kelir
 from kelir import BaseModel, Field, HandlerContext, KelirBuilder, PostExecAction, TrapFilter, Verdict
-from kelir.plugins.db_proxy import (
+from kelir.plugins.db_proxy_flow import (
     DbProxyConfig, DbProxyPlugin, EphemeralCredentials, PgSchemaRewrite,
     PgWireRewrite, SqliteOverVsock, net_l7_sql,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.ledger_flow import (
     LedgerConfig, LedgerPlugin, ReceiptConfig,
 )
-from kelir.plugins.transaction import (
+from kelir.plugins.transaction_flow import (
     TransactionConfig, TransactionPlugin,
 )
 

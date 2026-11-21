@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from kelir.generated.attest_telemetry import CausalDelta
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 
 def _missing(what: str) -> EConfig:

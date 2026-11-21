@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from kelir.generated.attest_telemetry import CausalDelta, SnapshotDescriptor
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 import kelir
 from kelir.lifecycle_session_run import (
     ingress_respond as _run_ingress_respond,

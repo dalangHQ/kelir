@@ -8,7 +8,7 @@ import platform
 
 import kelir
 from kelir import FilterAction, KelirBuilder
-from kelir.plugins.chaos import (
+from kelir.plugins.chaos_flow import (
     ChaosConfig,
     NetworkFaultRule,
     StorageFaultRule,

@@ -5,7 +5,7 @@ import inspect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Self
 
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 if TYPE_CHECKING:
     from kelir.kelir_builder_flow import KelirBuilder

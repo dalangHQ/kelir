@@ -25,7 +25,7 @@ import platform
 import kelir
 from kelir import DnsVerdict, FilterAction, KelirBuilder, TrapFilter, Verdict
 from kelir.plugin_model_flow import WatchdogVerdict
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 
 async def _pass_trap(_c) -> Verdict:

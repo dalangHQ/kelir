@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from kelir.profile_config import ProfileConfig
-from kelir.sdk_errors import EConfig as EConfig
+from kelir.profile_config_flow import ProfileConfig
+from kelir.sdk_errors_flow import EConfig as EConfig
 
 if TYPE_CHECKING:
     from kelir import (

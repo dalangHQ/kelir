@@ -8,7 +8,7 @@ from typing import Any
 
 import tomli_w
 
-from kelir.sdk_errors import EConfig
+from kelir.sdk_errors_flow import EConfig
 
 
 # TODO (L3) [profile_ingestion]: read the profile file bytes and pick toml/yaml by extension.; slop: profile read never lands, from_config throws instead of loading

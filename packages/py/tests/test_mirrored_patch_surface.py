@@ -24,8 +24,8 @@ from kelir import (
 from kelir.generated.attest_telemetry import ExitKindNormal, ExitKindSignal
 from kelir.plugin_fusion_flow import RingEvent
 from kelir.plugin_model_flow import BasePlugin, hook_descriptors
-from kelir.sdk_errors import EConfig
-from kelir.wire_planes import WireConfig
+from kelir.sdk_errors_flow import EConfig
+from kelir.wire_planes_flow import WireConfig
 
 
 class QuarantinePlugin(BasePlugin[None, None]):

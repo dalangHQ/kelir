@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
 
-from kelir.sdk_errors import EConfig as EConfig
+from kelir.sdk_errors_flow import EConfig as EConfig
 from kelir.generated.attest_telemetry import (
     ExecutionReceipt,
     SnapshotDescriptor,

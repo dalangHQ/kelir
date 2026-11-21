@@ -23,7 +23,7 @@ from kelir import (
     Verdict,
 )
 from kelir.plugin_model_flow import LifecycleCtx
-from kelir.plugins.wire_ingress import (
+from kelir.plugins.wire_ingress_flow import (
     BacklogConfig,
     ListenConfig,
     ParkingConfig,
@@ -31,14 +31,14 @@ from kelir.plugins.wire_ingress import (
     WireIngressConfig,
     WireIngressPlugin,
 )
-from kelir.plugins.mcp import McpConfig, McpPlugin
-from kelir.plugins.tool_guard import (
+from kelir.plugins.mcp_flow import McpConfig, McpPlugin
+from kelir.plugins.tool_guard_flow import (
     ToolGuardConfig, ToolGuardPlugin,
 )
-from kelir.plugins.ledger import (
+from kelir.plugins.ledger_flow import (
     LedgerConfig, LedgerPlugin, OtelConfig, ReceiptConfig,
 )
-from kelir.wire_planes import WireConfig
+from kelir.wire_planes_flow import WireConfig
 
 
 @dataclass

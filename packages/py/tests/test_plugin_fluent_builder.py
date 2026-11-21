@@ -16,9 +16,9 @@ from kelir.plugin_model_flow import (
     hook_descriptors,
 )
 from kelir.plugin_fusion_flow import FusedTrampoline, RingEvent
-from kelir.plugins.chaos import ChaosConfig, chaos_builder
-from kelir.plugins.ledger import LedgerPlugin, ledger_builder
-from kelir.sdk_errors import EConfig
+from kelir.plugins.chaos_flow import ChaosConfig, chaos_builder
+from kelir.plugins.ledger_flow import LedgerPlugin, ledger_builder
+from kelir.sdk_errors_flow import EConfig
 
 
 async def _trap(event: TrapEvent) -> Verdict:
