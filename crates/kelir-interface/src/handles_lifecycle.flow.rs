@@ -367,6 +367,24 @@ impl FsHandle {
     }
 }
 
+// see: cans/11-protocol.md#Binary-exec-channel
+#[derive(Debug, Clone, Default)]
+pub struct ExecHandle;
+
+impl ExecHandle {
+    // see: cans/11-protocol.md#Binary-exec-channel
+    // EXEC sub-lane 0x02 guidance flush before EOF: steers an in-flight exec
+    // (e.g. Drop/Redirect guidance surfaced to the guest agent) onto its
+    // stderr stream so the notice lands before the channel hits exit EOF.
+    // TODO (L3) [terminal_plane]: flush steering message `msg` onto exec `exec_id` EXEC sub-lane 0x02 before EOF; slop: steer() returns Err and the guidance is silently dropped, the agent never reads why the exec was denied.
+    pub fn steer(&self, exec_id: u64, msg: &str) -> Result<(), PluginError> {
+        let _ = (exec_id, msg);
+        Err(PluginError::Halt(
+            "ExecHandle::steer pending (L3): EXEC sub-lane 0x02 guidance flush".into(),
+        ))
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TerminalHandle;
 

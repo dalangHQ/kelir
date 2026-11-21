@@ -115,11 +115,26 @@ pub struct ConsoleContext {
 }
 
 // see: cans/11-protocol.md#Signal-and-fork-interception
+// on_signal traps kill, tkill, tgkill, rt_sigqueueinfo, rt_tgsigqueueinfo,
+// and pidfd_send_signal; `syscall_nr` carries the trapping syscall number and
+// `target_relation` classifies the target so rules can gate peer/shim kills.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignalTargetRelation {
+    Self_,
+    Children,
+    Session,
+    ShimPid1,
+    Peer,
+}
+
+// see: cans/11-protocol.md#Signal-and-fork-interception
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SignalContext {
     pub sender: u32,
     pub target: u32,
     pub sig: i32,
+    pub syscall_nr: i64,
+    pub target_relation: Option<SignalTargetRelation>,
 }
 
 // see: cans/11-protocol.md#Signal-and-fork-interception
@@ -236,6 +251,25 @@ impl<Plugins, Params> HandlerCtx<Plugins, Params> {
     // see: cans/11-protocol.md#Signal-and-fork-interception
     pub fn with_signal(mut self, ctx: SignalContext) -> Self {
         self.signal_ctx = Some(ctx);
+        self
+    }
+
+    // see: cans/11-protocol.md#Signal-and-fork-interception
+    pub fn with_signal_syscall(
+        mut self,
+        sender: u32,
+        target: u32,
+        sig: i32,
+        syscall_nr: i64,
+        target_relation: SignalTargetRelation,
+    ) -> Self {
+        self.signal_ctx = Some(SignalContext {
+            sender,
+            target,
+            sig,
+            syscall_nr,
+            target_relation: Some(target_relation),
+        });
         self
     }
 
