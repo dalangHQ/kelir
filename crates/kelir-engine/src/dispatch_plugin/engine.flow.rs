@@ -318,7 +318,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
+    // TODO: [plugin_engine] fill in the L3 wave; fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
     fn fused_ring(&self, ring: TrampolineRing) -> bool {
         self.trampoline.as_ref().is_some_and(|descriptor| {
             descriptor
@@ -329,7 +329,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // plugin_engine]: marshal the ring event payload through the fused dispatcher's single traversal and rendezvous its folded foreign verdict into the engine fold; slop: fused traversal verdict stays Pass, foreign verdict never gates dispatch
+    // TODO: [plugin_engine] fill in the L3 wave; marshal the ring event payload through the fused dispatcher's single traversal and rendezvous its folded foreign verdict into the engine fold; slop: fused traversal verdict stays Pass, foreign verdict never gates dispatch
     pub(super) fn fused_crossing(
         &self,
         ring: TrampolineRing,
@@ -739,7 +739,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the trap past its deadline.
+            // TODO: [plugin_engine] fill in the L3 wave; true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the trap past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -801,7 +801,7 @@ impl PipelineEngine {
             _ => ctx,
         };
         self.metrics.record_exec();
-        // plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
+        // TODO: [plugin_engine] fill in the L3 wave; in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
@@ -851,7 +851,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // TODO: [plugin_engine] fill in the L3 wave; true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.host_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -915,14 +915,14 @@ impl PipelineEngine {
         {
             return SignalContext::validate_verdict(verdict);
         }
-        // plugin_engine]: MountScope carries no pid dimension, so per-interceptor signal scope filtering lands with the shim signal boundary; slop: every interceptor sees every signal, scope never narrows the signal ring
+        // TODO: [plugin_engine] fill in the L3 wave; MountScope carries no pid dimension, so per-interceptor signal scope filtering lands with the shim signal boundary; slop: every interceptor sees every signal, scope never narrows the signal ring
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the signal past its deadline.
+            // TODO: [plugin_engine] fill in the L3 wave; true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the signal past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -959,14 +959,14 @@ impl PipelineEngine {
         {
             return Ok(verdict);
         }
-        // plugin_engine]: fork carries no path or device payload, so trap-scope filtering lands with the shim fork boundary; slop: fork ring skips scope filter entirely
+        // TODO: [plugin_engine] fill in the L3 wave; fork carries no path or device payload, so trap-scope filtering lands with the shim fork boundary; slop: fork ring skips scope filter entirely
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the fork past its deadline.
+            // TODO: [plugin_engine] fill in the L3 wave; true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the fork past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {

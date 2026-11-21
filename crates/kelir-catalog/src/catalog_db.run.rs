@@ -1,5 +1,5 @@
 // see: cans/06-storage-catalog.md#Entity-model
-// L3-GAP: [storage_plane]: live PostgreSQL catalog boot needs a postgres client session against the configured endpoint; the SQLite fallback is the offline path until then.; slop: postgres backend accepted at config time, boot against a dead endpoint unproven
+// TODO (L3) [storage_plane]: live PostgreSQL catalog boot needs a postgres client session against the configured endpoint; the SQLite fallback is the offline path until then.; slop: postgres backend accepted at config time, boot against a dead endpoint unproven
 use crate::{CatalogDb, CatalogError};
 
 // see: cans/06-storage-catalog.md#Entity-model

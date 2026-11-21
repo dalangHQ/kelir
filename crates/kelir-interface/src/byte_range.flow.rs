@@ -1,8 +1,5 @@
 // see: cans/plugins/taint.md#Invariants-and-policy-(taint)
 // see: cans/02-plugin-model.md#Facade-blindness
-// Shared byte-range label contract: the primitive shape both plugin-taint
-// (producer) and plugin-tool-guard (consumer) speak; core holds no
-// byte-range semantics, only the neutral carrier type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ByteRange {
     pub start: usize,

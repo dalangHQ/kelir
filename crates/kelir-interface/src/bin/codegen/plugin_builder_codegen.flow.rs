@@ -99,8 +99,6 @@ fn context_ident(rhs: &str) -> Option<String> {
 }
 
 // see: cans/02-plugin-model.md#Unified-builder
-// Deps are declared as the providing plugin's Context type (e.g. HCons<SqlProxyCtx, HNil>);
-// scan every plugin crate once so a Context type resolves to the plugin that mounts it.
 fn scan_context_types(src: &Path, plugin_name: &str) -> Result<Vec<(String, String)>, String> {
     let mut out = Vec::new();
     let mut entries: Vec<PathBuf> = Vec::new();

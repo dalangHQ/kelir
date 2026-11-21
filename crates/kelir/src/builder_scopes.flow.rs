@@ -967,8 +967,6 @@ impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
 
 // see: cans/02-plugin-model.md#Nested-scopes
 // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
-// Plugin-mode builders expose vsock() only: seal validates a mounted
-// plugin's vsock spec, so the spec must be reachable on the plugin.
 impl<Plugins: HList, Params: 'static, Ctx, Deps: HList>
     KelirBuilder<Plugin, Unsealed, Ctx, Deps, Plugins, Params>
 {

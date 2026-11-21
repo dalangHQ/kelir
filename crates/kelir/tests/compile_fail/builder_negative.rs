@@ -2,7 +2,6 @@
 // see: cans/02-plugin-model.md#Nested-scopes
 // see: cans/02-plugin-model.md#One-validation,-at-seal-and-boot
 // see: fluent-chain.work-order.md Part 1 §4.4 (comment-pinned negative
-// vectors migrated out of unified-builder-surface.rs)
 #[test]
 fn builder_negative() {
     let t = trybuild::TestCases::new();

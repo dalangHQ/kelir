@@ -6,8 +6,6 @@ use kelir_interface::plugin_model::PluginError;
 use kelir_interface::plugin_model::PluginRegistration;
 
 // see: cans/artifacts/test-plan/cases/plugin_engine/pe_02_cyclic_dependency_graph_abort.yaml#case_id
-// A registration name may declare dependency edges directly:
-// "plugin_a -> plugin_b" mounts plugin_a requiring plugin_b.
 fn registration_edges(name: &str) -> Vec<(String, String)> {
     let segments: Vec<&str> = name.split("->").map(str::trim).collect();
     segments
