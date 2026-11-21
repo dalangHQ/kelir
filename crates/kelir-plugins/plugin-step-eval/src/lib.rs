@@ -19,7 +19,8 @@ pub use service_step_eval::{
     StepEvaluationCtx, StepEvaluationService, StepEvaluator, StepSlot, StepVerdict,
 };
 pub use step_dag::{
-    StepAttribution, StepDag, StepDagConfig, StepDagError, StepDagStorage, StepNode,
+    ApprovalAuthError, ApprovalAuthPolicy, StepAttribution, StepDag, StepDagConfig, StepDagError,
+    StepDagStorage, StepNode,
 };
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)

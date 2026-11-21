@@ -108,6 +108,7 @@ impl Default for StepEvalConfig {
                 require_signed_attribution: true,
                 require_separation_of_duties: true,
                 storage: StepDagStorage::ContentAddressed,
+                approval_auth: Default::default(),
             },
             step_evaluation: StepEvaluationConfig {
                 enabled: true,
@@ -251,6 +252,22 @@ impl StepEvaluator {
     // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
     pub fn is_gate_path(&self, path: &str) -> bool {
         path == self.config.sentinel_path
+    }
+
+    // TODO (L3) [lifecycle_checkpoint]: align reviewer attribution with ApprovalAuth on live approval holds: register pending holds on the engine's SuspendUntil::Approval slots, enforce role separation against the resolved reviewer identity, and expire stale holds past hold_ttl_seconds before a step commits; slop: self-approvals resolve steps, hold-cap DoS starves max_exec_slots, expired holds still commit
+    pub fn approval_auth_gate(
+        &self,
+        attribution: &StepAttribution,
+        actor: &str,
+        pending_holds: u32,
+        held_for_seconds: u64,
+    ) -> Result<(), PluginError> {
+        let policy = self.dag.lock().map(|dag| dag.config().approval_auth.clone()).map_err(
+            |_| PluginError::Halt("step dag slot poisoned".into()),
+        )?;
+        policy
+            .validate_attribution(attribution, actor, pending_holds, held_for_seconds)
+            .map_err(|error| PluginError::Halt(error.to_string()))
     }
 
     // TODO (L3) [lifecycle_checkpoint]: detect PTY idle quiescence for step boundaries; no case id pins the heuristic yet; slop: step boundaries never detect PTY idle; steps commit on timer instead of quiescence.
