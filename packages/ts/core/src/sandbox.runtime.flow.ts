@@ -133,7 +133,7 @@ export class Sandbox {
   }
 
   async exportSpec(path: string): Promise<void> {
-    // L3-GAP: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
+    // TODO: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
     // TODO (L2) [profile_ingestion]: overlay programmatic plane descriptors over the ingested profile before export.; slop: post-ingestion descriptor overrides silently absent from the export
     await writeProfileText(
       path,

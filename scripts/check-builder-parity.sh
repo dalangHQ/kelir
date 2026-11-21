@@ -9,8 +9,8 @@ ROOT="$PWD"
 YAML="$ROOT/scripts/builder-parity-verbs.yaml"
 RS_BUILDER="crates/kelir/src/builder_sdk.flow.rs crates/kelir/src/builder_plugin.flow.rs"
 RS_SCOPES="crates/kelir/src/builder_scopes.flow.rs"
-TS_BUILDER="packages/ts/core/src/builder.lifecycle.ts"
-TS_SCOPES="packages/ts/core/src/hook.registry.ts"
+TS_BUILDER="packages/ts/core/src/builder.lifecycle.flow.ts"
+TS_SCOPES="packages/ts/core/src/hook.registry.flow.ts"
 PY_FILE="packages/py/kelir/kelir_builder.py"
 PY_SCOPE_FILE="packages/py/kelir/kelir_builder_scope.py"
 GATE_FAIL=0
@@ -330,7 +330,7 @@ check_ts_scoped_return() {
         $0 ~ verb && $0 ~ "\\): " scope "<Ctx" { found=1 }
         END { exit !found }
     '; then
-        fail "ts: .$verb in $stype does not return $stype (hook.registry.ts)"
+        fail "ts: .$verb in $stype does not return $stype (hook.registry.flow.ts)"
     fi
 }
 

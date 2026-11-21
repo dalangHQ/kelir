@@ -115,7 +115,7 @@ export type SuspendUntil =
 const conditionPredicates = new Map<number, (session: unknown) => boolean>();
 let nextConditionHandle = 1;
 
-// TODO (L3) [bindings_ts]: native bridge — condition predicates stay JS-side in a module map until the FFI bridge can carry callable predicates across the boundary.; slop: condition predicates never cross to the native bridge.
+// TODO [bindings_ts]: native bridge — condition predicates stay JS-side in a module map until the FFI bridge can carry callable predicates across the boundary.; slop: condition predicates never cross to the native bridge.
 export const SuspendUntil: {
   readonly approval: SuspendUntil;
   readonly handshake: SuspendUntil;

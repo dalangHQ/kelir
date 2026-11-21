@@ -112,7 +112,7 @@ export interface PolicyHandle {
 
 export interface MeshHandle {
   readonly peers?: readonly string[];
-  // L3-GAP: [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
+  // TODO: [protocol_mux]: awaitWinner stays native-pending until the mesh winner-election wait lands per cans/plugins/mesh.md#CoW-swarm-mesh-federation.; slop: no listener wait, winning shard never awaited, election never settles
   awaitWinner(timeoutMs: number): Promise<number>;
   broadcastWinner(shardId: number): Promise<void>;
 }
@@ -197,7 +197,7 @@ export interface TrapContext {
   patch(mutation: PatchInput): Verdict;
   suspend(until: SuspendUntil): Verdict;
   abort(reason?: string): Verdict;
-  // TODO (L3) [governance_tools]: verify the presented operator lease against the pinned ed25519 pubkey once the native handler context carries lease state; slop: operator lease never verified against the pinned pubkey; presence-only check.
+  // TODO [governance_tools]: verify the presented operator lease against the pinned ed25519 pubkey once the native handler context carries lease state; slop: operator lease never verified against the pinned pubkey; presence-only check.
   hasValidOperatorLease(): boolean;
   cap<T>(name: string): T | undefined;
 }

@@ -1005,7 +1005,7 @@ export class HookRegistry<Ctx = unknown> {
       port: number,
     ) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the socket-connect ring; the descriptor records the handler until the native bridge carries it.; slop: socket-connect handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the socket-connect ring; the descriptor records the handler until the native bridge carries it.; slop: socket-connect handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "socket-connect" as RingEvent,
       stage: "single",
@@ -1026,7 +1026,7 @@ export class HookRegistry<Ctx = unknown> {
   onDnsQuery(
     handler: (pid: number, domain: string, qtype: number) => DnsVerdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the dns-query ring; the descriptor records the handler until the native bridge carries it.; slop: dns-query handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the dns-query ring; the descriptor records the handler until the native bridge carries it.; slop: dns-query handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "dns-query" as RingEvent,
       stage: "single",
@@ -1047,7 +1047,7 @@ export class HookRegistry<Ctx = unknown> {
       port: number,
     ) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the socket-bind ring; the descriptor records the handler until the native bridge carries it.; slop: socket-bind handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the socket-bind ring; the descriptor records the handler until the native bridge carries it.; slop: socket-bind handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "socket-bind" as RingEvent,
       stage: "single",
@@ -1175,7 +1175,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsSetattr(
     handler: (path: string, mode: number, size: number) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fs-setattr ring; the descriptor records the handler until the native bridge carries it.; slop: fs-setattr handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fs-setattr ring; the descriptor records the handler until the native bridge carries it.; slop: fs-setattr handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fs-setattr" as RingEvent,
       stage: "single",
@@ -1191,7 +1191,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsSymlink(
     handler: (target: string, link: string) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fs-symlink ring; the descriptor records the handler until the native bridge carries it.; slop: fs-symlink handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fs-symlink ring; the descriptor records the handler until the native bridge carries it.; slop: fs-symlink handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fs-symlink" as RingEvent,
       stage: "single",
@@ -1207,7 +1207,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsMkdir(
     handler: (path: string, mode: number) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fs-mkdir ring; the descriptor records the handler until the native bridge carries it.; slop: fs-mkdir handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fs-mkdir ring; the descriptor records the handler until the native bridge carries it.; slop: fs-mkdir handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fs-mkdir" as RingEvent,
       stage: "single",
@@ -1223,7 +1223,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsReaddir(
     handler: (path: string, entries: DirEntry[]) => FilterAction,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fs-readdir ring; the descriptor records the handler until the native bridge carries it.; slop: fs-readdir handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fs-readdir ring; the descriptor records the handler until the native bridge carries it.; slop: fs-readdir handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fs-readdir" as RingEvent,
       stage: "single",
@@ -1239,7 +1239,7 @@ export class HookRegistry<Ctx = unknown> {
   onFsReadlink(
     handler: (path: string) => Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fs-readlink ring; the descriptor records the handler until the native bridge carries it.; slop: fs-readlink handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fs-readlink ring; the descriptor records the handler until the native bridge carries it.; slop: fs-readlink handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fs-readlink" as RingEvent,
       stage: "single",
@@ -1336,7 +1336,7 @@ export class HookRegistry<Ctx = unknown> {
       chunk: Uint8Array,
     ) => Promise<Uint8Array> | Uint8Array,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the exec-stdin ring; the descriptor records the handler until the native bridge carries it.; slop: exec-stdin handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the exec-stdin ring; the descriptor records the handler until the native bridge carries it.; slop: exec-stdin handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "exec-stdin" as RingEvent,
       stage: "single",
@@ -1382,7 +1382,7 @@ export class HookRegistry<Ctx = unknown> {
       sig: number,
     ) => Promise<Verdict> | Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the signal ring; the descriptor records the handler until the native bridge carries it.; slop: signal handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the signal ring; the descriptor records the handler until the native bridge carries it.; slop: signal handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "signal" as RingEvent,
       stage: "single",
@@ -1401,7 +1401,7 @@ export class HookRegistry<Ctx = unknown> {
       child: number,
     ) => Promise<Verdict> | Verdict,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the fork ring; the descriptor records the handler until the native bridge carries it.; slop: fork handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the fork ring; the descriptor records the handler until the native bridge carries it.; slop: fork handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "fork" as RingEvent,
       stage: "single",
@@ -1573,7 +1573,7 @@ export class HookRegistry<Ctx = unknown> {
       kind: string,
     ) => Promise<void> | void,
   ): this {
-    // TODO (L3) [bindings_ts]: live dispatch of the host-containment-breach ring; the descriptor records the handler until the native bridge carries it.; slop: host-containment-breach handlers never fire, the ring runs handler-less.
+    // TODO [bindings_ts]: live dispatch of the host-containment-breach ring; the descriptor records the handler until the native bridge carries it.; slop: host-containment-breach handlers never fire, the ring runs handler-less.
     this.addHook({
       ring: "host-containment-breach" as RingEvent,
       stage: "single",
@@ -1641,7 +1641,7 @@ export class HookRegistry<Ctx = unknown> {
     schema: Schema<unknown>,
     handler: (request: Uint8Array) => Promise<Uint8Array> | Uint8Array,
   ): this {
-    // TODO (L3) [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: validate the request bytes against schema once the stream dispatch decodes them; slop: unvalidated request bytes reach the stream handler.
+    // TODO [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: validate the request bytes against schema once the stream dispatch decodes them; slop: unvalidated request bytes reach the stream handler.
     void schema;
     this.addHook({
       ring: RingEvent.VsockService,

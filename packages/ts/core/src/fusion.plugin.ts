@@ -2,8 +2,6 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { EConfig } from "./errors.sdk.flow.js";
-import { LifecycleEvent } from "./verdict.protocol.flow.js";
 import type { NativeSessionHandle } from "./session.lifecycle.types.flow.js";
 import {
   RingEvent,
@@ -40,20 +38,6 @@ export interface HookDescriptor {
   run(event: unknown): unknown;
 }
 
-export function lifecycleTagFor(event: LifecycleEvent): LifecycleTag {
-  switch (event) {
-    case LifecycleEvent.VmInit:
-      return "vm-init";
-    case LifecycleEvent.VmReady:
-      return "vm-ready";
-    case LifecycleEvent.VmShutdown:
-      return "vm-shutdown";
-    default:
-      throw new EConfig(
-        `lifecycle event ${String(event)} has no fused trampoline ring`,
-      );
-  }
-}
 
 export interface FusedHookRun {
   readonly ring: RingEvent;
@@ -187,40 +171,8 @@ export const NATIVE_ADDON_SPECIFIERS: readonly string[] = [
   "./native/kelir.node",
 ];
 
-// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
-export class NativeAddonMissingError extends EConfig {
-  constructor(message: string) {
-    super(message);
-    this.name = "NativeAddonMissingError";
-  }
-}
 
-// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
-export class NativeAddonAbiMismatchError extends EConfig {
-  readonly expectedAbiVersion: number;
-  readonly foundAbiVersion: number;
 
-  constructor(expected: number, found: number) {
-    super(
-      `kelir native NAPI addon ABI version mismatch: expected ${expected}, found ${found}`,
-    );
-    this.name = "NativeAddonAbiMismatchError";
-    this.expectedAbiVersion = expected;
-    this.foundAbiVersion = found;
-  }
-}
-
-// see: cans/03-sdk-architecture.md#TypeScript-SDK
-export function verifyNativeAddonAbi(addon: NativeAddonBinding): void {
-  const found: unknown =
-    typeof addon.abiVersion === "function" ? addon.abiVersion() : undefined;
-  if (found !== KELIR_ADDON_ABI_VERSION) {
-    throw new NativeAddonAbiMismatchError(
-      KELIR_ADDON_ABI_VERSION,
-      typeof found === "number" ? found : -1,
-    );
-  }
-}
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 export { loadNativeAddon } from "./fusion.plugin.run.js";

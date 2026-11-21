@@ -58,8 +58,8 @@ RS_BUILDER_FILES = [
     ROOT / "crates" / "kelir" / "src" / "builder_scopes.flow.rs",
 ]
 TS_BUILDER_FILES = [
-    ROOT / "packages" / "ts" / "core" / "src" / "builder.lifecycle.ts",
-    ROOT / "packages" / "ts" / "core" / "src" / "hook.registry.ts",
+    ROOT / "packages" / "ts" / "core" / "src" / "builder.lifecycle.flow.ts",
+    ROOT / "packages" / "ts" / "core" / "src" / "hook.registry.flow.ts",
 ]
 PY_BUILDER_FILES = [
     ROOT / "packages" / "py" / "kelir" / "kelir_builder.py",

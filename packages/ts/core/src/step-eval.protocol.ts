@@ -1,7 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/plugins/step-eval.md#Plugin-step-eval
 
-import type { Session } from "./session.lifecycle.flow.js";
 import type { PidLineage } from "./context.lifecycle.types.flow.js";
 import type { SnapshotDescriptor, TrapInfo } from "./types.core.flow.js";
 
@@ -60,14 +59,4 @@ export type StepEvaluationOutcome = "passed" | "reverted" | "dropped";
 export interface StepEvaluationResult {
   readonly outcome: StepEvaluationOutcome;
   readonly reason?: string;
-}
-
-export async function runStepEvaluationLoop(
-  session: Session,
-  evaluator: VerificationEvaluator,
-): Promise<StepEvaluationResult> {
-  void session;
-  void evaluator;
-  // L3-GAP: [lc_03_step_evaluation_taint_rollback]: pre-step checkpoint, intent analysis, post-condition receipt verification, rollback on failure.; slop: step passes without RAM/upper revert check
-  throw new Error("TODO: runStepEvaluationLoop (L3)");
 }

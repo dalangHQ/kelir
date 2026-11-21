@@ -12,6 +12,57 @@ import type {
   HookDescriptor,
 } from "./fusion.plugin.js";
 
+import { LifecycleEvent } from "./verdict.protocol.flow.js";
+import { KELIR_ADDON_ABI_VERSION, type NativeAddonBinding } from "./fusion.plugin.js";
+import type { LifecycleTag } from "./generated/fusion.tables.generated.js";
+
+export function lifecycleTagFor(event: LifecycleEvent): LifecycleTag {
+  switch (event) {
+    case LifecycleEvent.VmInit:
+      return "vm-init";
+    case LifecycleEvent.VmReady:
+      return "vm-ready";
+    case LifecycleEvent.VmShutdown:
+      return "vm-shutdown";
+    default:
+      throw new EConfig(
+        `lifecycle event ${String(event)} has no fused trampoline ring`,
+      );
+  }
+}
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+export class NativeAddonMissingError extends EConfig {
+  constructor(message: string) {
+    super(message);
+    this.name = "NativeAddonMissingError";
+  }
+}
+// see: cans/03-sdk-architecture.md#Distribution-and-error-invariants
+export class NativeAddonAbiMismatchError extends EConfig {
+  readonly expectedAbiVersion: number;
+  readonly foundAbiVersion: number;
+
+  constructor(expected: number, found: number) {
+    super(
+      `kelir native NAPI addon ABI version mismatch: expected ${expected}, found ${found}`,
+    );
+    this.name = "NativeAddonAbiMismatchError";
+    this.expectedAbiVersion = expected;
+    this.foundAbiVersion = found;
+  }
+}
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
+export function verifyNativeAddonAbi(addon: NativeAddonBinding): void {
+  const found: unknown =
+    typeof addon.abiVersion === "function" ? addon.abiVersion() : undefined;
+  if (found !== KELIR_ADDON_ABI_VERSION) {
+    throw new NativeAddonAbiMismatchError(
+      KELIR_ADDON_ABI_VERSION,
+      typeof found === "number" ? found : -1,
+    );
+  }
+}
+// see: cans/03-sdk-architecture.md#TypeScript-SDK
 export class FusedTrampoline {
   private constructor(readonly chains: readonly FusedRingChain[]) {}
 
@@ -50,7 +101,7 @@ export class FusedTrampoline {
     return this.chains.find((chain) => chain.ring === ring)?.hooks.length ?? 0;
   }
 
-  // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
+  // TODO: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: compile each fused chain into the single flat closure that runs it per ring event.; slop: descriptor claims fused while hooks cross per hook
   describe(): FusedTrampolineDescriptor {
     return {
       rings: this.chains.map((chain) => ({

@@ -40,6 +40,7 @@ import {
   type ProfileSpec,
 } from "./profile.schema.flow.js";
 import { writeProfileText } from "./profile.schema.run.js";
+import { sessionAttach } from "./session.lifecycle.run.js";
 
 // see: cans/08-lifecycle.md#Detached-lifecycle
 export async function relaySocketPath(sessionId: string): Promise<string> {
@@ -55,7 +56,7 @@ export async function relaySocketPath(sessionId: string): Promise<string> {
 
 function missingPlaneError(plane: string): EConfig {
   return new EConfig(
-    `kelir native bridge is missing the ${plane} plane (L3)`,
+    `kelir native bridge is missing the ${plane} plane`,
   );
 }
 
@@ -119,7 +120,7 @@ export class Session {
   private leaseTokenValue: string | undefined;
 
   constructor(native: NativeSessionHandle, profile?: ProfileSpec) {
-    // L3-GAP: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
+    // TODO: [bt_04_napi_boot_before_fuse_hooks_fails_closed]: brand the native handle at the verified addon boundary so only addon-produced handles construct a Session.; slop: Session constructed from an unverified handle, boot check bypassed
     this.native = native;
     this.profileSpec = profile;
     this.driverName = native.driverName;
@@ -284,9 +285,9 @@ export class Session {
   async steer(execId: number, message: string): Promise<void> {
     const steer = this.native.steer;
     if (steer === undefined) {
-      // TODO (L3) [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame once the native session exposes steer; slop: steer throws, guidance never reaches the agent before exit.
+      // TODO [terminal_plane]: flush steering guidance onto the EXEC sub-lane 0x02 before the exit EOF frame once the native session exposes steer; slop: steer throws, guidance never reaches the agent before exit.
       throw new EConfig(
-        "kelir native bridge is missing the steer method on the session handle (L3)",
+        "kelir native bridge is missing the steer method on the session handle",
       );
     }
     return steer.call(this.native, execId, message);
@@ -301,7 +302,7 @@ export class Session {
 
   // see: cans/01-architecture.md#Dynamic-policy-rules-permit-signed-operator-lease-overrides
   async elevateLease(lease: string): Promise<void> {
-    // TODO (L3) [governance_tools]: verify the ed25519 signature against the pinned operator pubkey and forward the lease to the native session once the NAPI session exposes it; slop: lease never forwarded to the native session; unverified token counts as valid.
+    // TODO [governance_tools]: verify the ed25519 signature against the pinned operator pubkey and forward the lease to the native session once the NAPI session exposes it; slop: lease never forwarded to the native session; unverified token counts as valid.
     this.leaseTokenValue = lease;
   }
 
@@ -345,10 +346,7 @@ export class Session {
 
   // see: cans/08-lifecycle.md#Detached-lifecycle
   static async attach(sessionId: string): Promise<Session> {
-    const relay = await relaySocketPath(sessionId);
-    void relay;
-    // L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state.; slop: attach skips lease check, binds dead relay.sock
-    throw new EConfig("TODO: Session.attach (L3)");
+    return sessionAttach(sessionId);
   }
 
   async getCausalDeltaFromParent(): Promise<CausalDelta> {

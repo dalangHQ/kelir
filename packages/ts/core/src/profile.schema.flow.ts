@@ -146,7 +146,7 @@ const ProfileSchema = Type.Object(
 
 export type ProfileSpec = Static<typeof ProfileSchema>;
 
-// L3-GAP: [bindings_ts]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
+// TODO: [bindings_ts]: route non-session namespaces to their ConfigurablePlugin schema owners per cans/plugins/profile.md#Inversion-of-Control-configuration-router.; slop: non-session namespace silently dropped from config
 export function parseProfile(
   text: string,
   format: ProfileFormat,
@@ -233,7 +233,7 @@ export function shimConfigFromProfile(
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#session
-// TODO (L3) [bindings_ts]: forward the steering profile into the native shim once the NAPI builder accepts a shim config; the profile values stay TypeScript-side until then.; slop: steering stays TypeScript-side, the native shim never sees it.
+// TODO [bindings_ts]: forward the steering profile into the native shim once the NAPI builder accepts a shim config; the profile values stay TypeScript-side until then.; slop: steering stays TypeScript-side, the native shim never sees it.
 export function steeringConfigFromProfile(
   profile: ProfileSpec,
 ): SteeringConfig | undefined {
@@ -300,7 +300,7 @@ export function terminalConfigFromProfile(
 }
 
 // see: cans/05-storage-plane.md#Storage-architecture
-// TODO (L3) [bindings_ts]: forward blockingWaitTimeoutMs into the native storage config once the builder pick-list passes it to NAPI; the profile value stays TypeScript-side until then.; slop: SETLKW timeout stays TypeScript-side, the native lock broker never sees it.
+// TODO [bindings_ts]: forward blockingWaitTimeoutMs into the native storage config once the builder pick-list passes it to NAPI; the profile value stays TypeScript-side until then.; slop: SETLKW timeout stays TypeScript-side, the native lock broker never sees it.
 export function storageConfigFromProfile(
   profile: ProfileSpec,
 ): (StorageConfig & { readonly blockingWaitTimeoutMs?: number }) | undefined {
@@ -363,7 +363,7 @@ function l4ProxyFromEntry(entry: unknown): L4ProxyConfig | undefined {
 }
 
 // see: cans/07-wire-plane.md#DNS-policy-filter
-// TODO (L3) [bindings_ts]: forward dnsToIpPinning into the native wire config once the NAPI builder accepts it; the profile value stays TypeScript-side until then.; slop: DNS pinning stays TypeScript-side, the native wire plane never sees it.
+// TODO [bindings_ts]: forward dnsToIpPinning into the native wire config once the NAPI builder accepts it; the profile value stays TypeScript-side until then.; slop: DNS pinning stays TypeScript-side, the native wire plane never sees it.
 export function wireConfigFromProfile(
   profile: ProfileSpec,
 ): (WireConfig & { readonly dnsToIpPinning?: boolean }) | undefined {
@@ -447,7 +447,7 @@ function toTomlTables(value: TomlValue): TomlValue {
   return value;
 }
 
-// L3-GAP: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
+// TODO: [bindings_ts]: full-fidelity round-trip of arbitrary profile sections once plugin namespace schemas register.; slop: profile sections lost in round-trip, namespace silently dropped
 export function serializeProfile(
   profile: ProfileSpec,
   format: ProfileFormat,

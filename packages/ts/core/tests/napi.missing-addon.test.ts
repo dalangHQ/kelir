@@ -4,8 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-import { EConfig } from "../dist/errors.sdk.js";
-import { kelir } from "../dist/builder.lifecycle.js";
+import { EConfig } from "../dist/errors.sdk.flow.js";
+import { kelir } from "../dist/builder.lifecycle.flow.js";
 
 async function napiAddonShipped(): Promise<boolean> {
   const specifier = "../dist/native/kelir.node";

@@ -188,7 +188,7 @@ export class KelirBuilder<
     return this.registry.contextFns;
   }
 
-  // L3-GAP: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
+  // TODO: [plugin_engine]: the engine dispatch reads these entries once register_interceptors wiring lands per cans/02-plugin-model.md#Static-dispatch.; slop: interceptors never registered, traps bypass filter chain
   get vsockServices(): readonly VsockServiceEntry[] {
     return [
       ...this.registry.vsockEntries,
@@ -913,8 +913,8 @@ export class KelirBuilder<
       nsPerInstruction: this.kelirConfig.nsPerInstruction,
       entropySeed: this.kelirConfig.entropySeed,
     });
-    // L3-GAP: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
-    // TODO (L3) [bindings_ts]: forward ffiBoundary.embedMode once the native constructor accepts it; the embed mode stays TypeScript-side until then; slop: embed mode stays TypeScript-side; the native constructor never sees it.
+    // TODO: [bindings_ts]: forward pageSizeKb/deterministicClock/pinnedClocksource/preemptionGraceMs once the native constructor accepts them.; slop: boot flags silently dropped by native constructor
+    // TODO [bindings_ts]: forward ffiBoundary.embedMode once the native constructor accepts it; the embed mode stays TypeScript-side until then; slop: embed mode stays TypeScript-side; the native constructor never sees it.
     if (this.terminalCfg) {
       nativeBuilder.setTerminalConfig({
         cols: this.terminalCfg.cols,
@@ -945,7 +945,7 @@ export class KelirBuilder<
         sinkhole:
           explicitRules !== undefined ? { rules: explicitRules } : undefined,
         sshAgentBridge: this.wireCfg.sshAgentBridge,
-        // TODO (L3) [wire_plane]: forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then; slop: unix-socket diversions stay TypeScript-side; the NAPI wire config never sees them.
+        // TODO [wire_plane]: forward forwardUnixSocket diversions once the NAPI wire config accepts them; divert entries stay TypeScript-side until then; slop: unix-socket diversions stay TypeScript-side; the NAPI wire config never sees them.
         l4Proxies: this.wireCfg.l4Proxies
           ?.filter(
             (proxy): proxy is L4ProxyConfig & { readonly destination: string } =>
@@ -961,10 +961,10 @@ export class KelirBuilder<
         blockAbstractUnixSockets: this.wireCfg.blockAbstractUnixSockets,
       });
     }
-    // TODO (L3) [bindings_ts]: forward host/checkpoint plane configs once the NAPI builder accepts them.; slop: host and checkpoint descriptors stay TypeScript-side
-    // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
+    // TODO [bindings_ts]: forward host/checkpoint plane configs once the NAPI builder accepts them.; slop: host and checkpoint descriptors stay TypeScript-side
+    // TODO: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: the params schema stays TypeScript-side; the native params model bridge lands with typed context threading.; slop: params schema stays unvalidated stub, boot passes bad params
     if (this.paramsSchema) {
-      // L3-GAP: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
+      // TODO: [bt_01_typescript_boot_econfig_missing_typebox_dependency]: forward the pinned params schema once the native params model bridge exists.; slop: pinned params schema never forwarded, native validates nothing
     }
     for (const registration of this.pluginRegistrations) {
       nativeBuilder.addPlugin(registration.name, registration.enabled);
@@ -975,7 +975,7 @@ export class KelirBuilder<
         "kelir native NAPI trampoline table is not one entry per ring event",
       );
     }
-    // L3-GAP: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
+    // TODO: [bt_03_typescript_fused_trampoline_single_crossing_chained_hooks]: rendezvous the JS return value into a Verdict and marshal the ring event payload across the threadsafe boundary; slop: JS hook runs fire-and-forget, its verdict never gates dispatch
     const nativeSession = await nativeBuilder.boot();
     const session = new Session(nativeSession, this.profileSpec);
     // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
