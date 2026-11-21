@@ -26,6 +26,11 @@ pub enum DnsRcode {
 pub enum DnsVerdict {
     Forward,
     Sinkhole { rcode: u8 },
+    // see: cans/07-wire-plane.md#Synthetic-DNS-gateway
+    // dns_redirect rewrites matched query names or answers before the guest
+    // reply leaves the synthetic gateway; `target` names the replacement
+    // upstream the answer is redirected to.
+    Redirect { target: String },
 }
 
 #[derive(Debug, Clone)]
