@@ -99,11 +99,32 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             // L3-GAP: [plugin_engine]: emit the canonical kelir.toml or kelir.yaml for the profile.; slop: hand-written toml passes, canonical profile never emitted
             Err(format!("spec export: canonical export of {path} (L3)").into())
         }
+        // see: cans/13-cli.md#Policy-generation-commands
+        // see: cans/15-operations.md#Spec-validation
+        Some("generate") => {
+            let session = args.get(1).map(String::as_str).ok_or_else(|| {
+                CliError::usage("spec generate requires a session id argument")
+            })?;
+            if session.is_empty() {
+                return Err(CliError::usage(
+                    "spec generate requires a non-empty session id argument",
+                ));
+            }
+            if args.len() > 2 {
+                return Err(CliError::usage(
+                    "spec generate takes exactly one session id and no further flags",
+                ));
+            }
+            // TODO (L3) [plugin_engine]: compile the observed ExecutionReceipt and EventBus logs of session `<session>` into a starter kelir.toml — collapse path globs, /24 egress CIDRs, and observed MCP tool hashes above their thresholds, flag risky commands, then emit the profile-then-lock starter policy; slop: synthesized profile drifts from the observed session, unsafe commands pass as allowed, starter policy never emitted
+            Err(format!(
+                "spec generate: synthesizing a starter profile from the audit log of session {session} (L3)"
+            ).into())
+        }
         Some(other) => Err(CliError::usage(format!(
-            "spec: unknown subcommand `{other}` (expected check or export)"
+            "spec: unknown subcommand `{other}` (expected check, export, or generate)"
         ))),
         None => Err(CliError::usage(
-            "spec requires a subcommand: check <file> or export <file>",
+            "spec requires a subcommand: check <file>, export <file>, or generate <session>",
         )),
     }
 }

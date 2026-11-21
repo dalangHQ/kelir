@@ -17,6 +17,8 @@ pub mod cli_error;
 mod dispatch;
 #[path = "doctor_cli.flow.rs"]
 pub mod doctor_cli;
+#[path = "emergency_cli.flow.rs"]
+pub mod emergency_cli;
 #[path = "fixtures_cli.flow.rs"]
 pub mod fixtures_cli;
 #[path = "graph_cli.flow.rs"]
@@ -30,6 +32,8 @@ pub mod parity_cli;
 pub mod registry_cli;
 #[path = "rings_cli.flow.rs"]
 pub mod rings_cli;
+#[path = "report_cli.flow.rs"]
+pub mod report_cli;
 #[path = "scaffold_cli.flow.rs"]
 pub mod scaffold_cli;
 #[path = "setup_cli.flow.rs"]
