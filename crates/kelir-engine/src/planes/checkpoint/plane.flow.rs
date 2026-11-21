@@ -96,7 +96,7 @@ impl CheckpointPlane {
     }
 
     // see: cans/08-lifecycle.md#Delta-chain-compaction
-    // TODO (L3) [lc_20_portable_snapshot_archive_export]: flatten stacked WorkingDeltas in a single-pass block copy on export per CompactionConfig.; slop: deltas stacked verbatim, export unverified against trailer digest
+    // TODO: [lc_20_portable_snapshot_archive_export] fill in the L3 wave; flatten stacked WorkingDeltas in a single-pass block copy on export per CompactionConfig.; slop: deltas stacked verbatim, export unverified against trailer digest
     pub fn compact_delta_blocks(&self, _lineage: PidLineage) -> Result<u64, PluginError> {
         Ok(0)
     }

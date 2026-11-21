@@ -94,7 +94,7 @@ impl HostPlane {
     }
 
     // see: cans/01-architecture.md#Host-memory-pressure-watcher
-    // TODO (L3) [hd_16_virtio_balloon_pressure_reclaim]: epoll the cgroup v2 memory.pressure fd and translate squeeze levels into balloon inflation.; slop: pressure never read, balloon never inflated, frames stay resident
+    // TODO: [hd_16_virtio_balloon_pressure_reclaim] fill in the L3 wave; epoll the cgroup v2 memory.pressure fd and translate squeeze levels into balloon inflation.; slop: pressure never read, balloon never inflated, frames stay resident
     pub fn cgroup_pressure_events(&self) -> Result<Vec<PressureEvent>, PluginError> {
         Ok(Vec::new())
     }

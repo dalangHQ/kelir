@@ -2,7 +2,7 @@
 use super::*;
 
 impl PipelineEngine {
-    // L3-GAP: [plugin_engine]: pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
+    // TODO: [plugin_engine] fill in the L3 wave; pressure/keyring dispatch carries no path or device input, so no scope filter can evaluate here yet; slop: pressure dispatch skips scope filter entirely
     pub fn dispatch_host_pressure(&self, level: u32) -> Result<Verdict, PluginError> {
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::HostPressure)?;

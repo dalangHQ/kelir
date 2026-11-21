@@ -68,7 +68,7 @@ pub fn decode_early_boot_exit(bytes: &[u8], hypervisor_fault: Option<&str>) -> O
         return Some(ExitKind::HypervisorFault(fault.to_string()));
     }
     let text = String::from_utf8_lossy(bytes);
-    // L3-GAP: [attestation_receipts]: further kernel panic signatures beyond the canonical "Kernel panic" line; slop: panic missed, exit kind misreported as Normal
+    // TODO: [attestation_receipts] fill in the L3 wave; further kernel panic signatures beyond the canonical "Kernel panic" line; slop: panic missed, exit kind misreported as Normal
     text.lines()
         .find(|line| line.contains("Kernel panic"))
         .map(|line| ExitKind::KernelPanic(line.to_string()))

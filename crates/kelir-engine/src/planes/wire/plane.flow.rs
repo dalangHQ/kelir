@@ -132,7 +132,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#DNS-policy-filter
-    // L3-GAP: [wire_plane]: the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
+    // TODO: [wire_plane] fill in the L3 wave; the ssh agent bridge mounts, vault placeholders hydrate, and l4 proxies open host listeners; slop: agent bridge unmounted, placeholders dry, listeners closed
     pub fn with_wiring(self, wiring: WireWiring) -> Self {
         self.dns_ops.apply_wiring(&wiring);
         self.net_ops.apply_wiring(&wiring);
@@ -311,7 +311,7 @@ impl WirePlane {
     }
 
     // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
-    // L3-GAP: [wire_plane]: vCPU loop must act on this; slop: surfaced action never acted on, vCPU ignores verdict
+    // TODO: [wire_plane] fill in the L3 wave; vCPU loop must act on this; slop: surfaced action never acted on, vCPU ignores verdict
     pub fn surface_action(
         &self,
         action: kelir_interface::protocol_wire::FilterAction,
@@ -371,7 +371,7 @@ impl WirePlane {
     // see: cans/07-wire-plane.md#Rollback-interaction
     // see: cans/07-wire-plane.md#Socket-lifecycle
     pub fn quiesce(&self) -> Result<(), PluginError> {
-        // L3-GAP: [wp_03_rollback_socket_termination_econnreset]: close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
+        // TODO: [wp_03_rollback_socket_termination_econnreset] fill in the L3 wave; close live host-side L4 sockets with SO_LINGER zero, emit RST to peers, drain splicing buffers; slop: rollback Ok, host sockets open, no RST, send succeeds
         self.udp_nat_ops.quiesce()?;
         let mut forwards = self
             .port_forwards

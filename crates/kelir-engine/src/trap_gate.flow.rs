@@ -11,11 +11,11 @@ pub const TRUSTED_PREFIXES: &[&str] = &["/usr/bin", "/bin", "/usr/lib"];
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum GateError {
-    #[error("gate-1 BPF program load pending (L3)")]
+    #[error("gate-1 BPF program load pending: ")]
     BpfLoadPending,
-    #[error("gate-1 BPF program match pending (L3)")]
+    #[error("gate-1 BPF program match pending: ")]
     BpfMatchPending,
-    #[error("canonical resolve pending (L3)")]
+    #[error("canonical resolve pending: ")]
     CanonicalResolvePending,
 }
 
@@ -25,12 +25,12 @@ pub struct BpfProgram {
 
 impl BpfProgram {
     pub fn load() -> Result<Self, GateError> {
-        // L3-GAP: [supply_chain_security]: compile and load the gate-1 BPF allowlist program; no program exists until then; slop: gate-1 program never loaded, allowlist unenforced
+        // TODO: [supply_chain_security] fill in the L3 wave; compile and load the gate-1 BPF allowlist program; no program exists until then; slop: gate-1 program never loaded, allowlist unenforced
         Err(GateError::BpfLoadPending)
     }
 
     pub fn matches(&self, event: &TrapEvent) -> Result<bool, GateError> {
-        // L3-GAP: [supply_chain_security]: run the loaded gate-1 program against the event binary/argv; slop: event passes without BPF match, gate unenforced
+        // TODO: [supply_chain_security] fill in the L3 wave; run the loaded gate-1 program against the event binary/argv; slop: event passes without BPF match, gate unenforced
         let _ = (self.fd, event);
         Err(GateError::BpfMatchPending)
     }
@@ -45,7 +45,7 @@ pub enum GateDecision {
 
 // see: cans/11-protocol.md#Trap-fast-path
 pub fn resolve_canonical(event: &TrapEvent) -> Result<ResolvedBinary, GateError> {
-    // L3-GAP: [pe_17_shell_c_command_unwrap_drops_git_push_force]: unwrap interpreters to the terminal binary; no resolver exists until then; slop: shell -c payload never unwrapped, git push passes
+    // TODO: [pe_17_shell_c_command_unwrap_drops_git_push_force] fill in the L3 wave; unwrap interpreters to the terminal binary; no resolver exists until then; slop: shell -c payload never unwrapped, git push passes
     let _ = event;
     Err(GateError::CanonicalResolvePending)
 }
@@ -76,7 +76,7 @@ impl TrapGateEvaluator {
     // see: cans/11-protocol.md#Trap-fast-path
     pub fn evaluate(&self, event: &TrapEvent, scope: &MountScope) -> GateDecision {
         if let Some(program) = &self.bpf_program {
-            // L3-GAP: [supply_chain_security]: gate-1 BPF match decides Skip here; no program is loaded until L3; slop: Skip decided without BPF program, trap passes
+            // TODO: [supply_chain_security] fill in the L3 wave; gate-1 BPF match decides Skip here; no program is loaded until L3; slop: Skip decided without BPF program, trap passes
             if matches!(program.matches(event), Ok(true)) {
                 return GateDecision::Skip;
             }
@@ -110,7 +110,7 @@ impl TrapGateEvaluator {
 
     // see: cans/11-protocol.md#Trap-fast-path
     fn is_trusted(&self, _event: &TrapEvent) -> bool {
-        // L3-GAP: [pe_20_same_path_different_identity_never_matches]: canonical (st_dev, st_ino, binary_blake3); path prefixes never establish trust; slop: path-string match, same path different identity matches
+        // TODO: [pe_20_same_path_different_identity_never_matches] fill in the L3 wave; canonical (st_dev, st_ino, binary_blake3); path prefixes never establish trust; slop: path-string match, same path different identity matches
         false
     }
 
@@ -132,7 +132,7 @@ impl TrapGateEvaluator {
         if !scope.allows_path(Path::new(&event.binary_path)) {
             return false;
         }
-        // L3-GAP: [plugin_engine]: scope.devices match needs the event-to-device mapping; undecided until then; slop: device match undecided, out-of-scope device passes
+        // TODO: [plugin_engine] fill in the L3 wave; scope.devices match needs the event-to-device mapping; undecided until then; slop: device match undecided, out-of-scope device passes
         let _ = &scope.devices;
         true
     }

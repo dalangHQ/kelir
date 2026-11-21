@@ -21,7 +21,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // TODO: [plugin_engine] fill in the L3 wave; true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let action = {
@@ -121,7 +121,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -173,7 +173,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -227,7 +227,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.net_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {

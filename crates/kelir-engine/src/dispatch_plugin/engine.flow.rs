@@ -118,12 +118,12 @@ impl PipelineBinder for PipelineEngine {
         service: Arc<dyn VsockServiceHandler>,
         scope: MountScope,
     ) {
-        // TODO (L3) [plugin_engine]: scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
+        // TODO: [plugin_engine] fill in the L3 wave; scope is stored; dispatch-time enforcement lands with vsock dispatch; slop: scope stored never enforced at vsock dispatch
         let scope = self.effective_scope(scope);
         self.vsock_services.push((spec, service, scope));
     }
     // see: cans/02-plugin-model.md#Segregated-ring-traits
-    // TODO (L3) [plugin_engine]: scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
+    // TODO: [plugin_engine] fill in the L3 wave; scopes are stored; dispatch-time enforcement for the lifecycle and telemetry rings lands with the veto gate; slop: lifecycle/telemetry rings bypass veto gate
     fn bind_lifecycle_scoped(&mut self, stage: Arc<dyn LifecycleParticipant>, scope: MountScope) {
         let scope = self.effective_scope(scope);
         self.lifecycle_interceptors.push(stage);
@@ -246,7 +246,7 @@ impl PipelineEngine {
             self.ffi_window_ops.store(1, Ordering::Release);
             return Ok(());
         }
-        // TODO (L3) [plugin_engine]: exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
+        // TODO: [plugin_engine] fill in the L3 wave; exact token-bucket accounting; the 1s window below is the pre-insertion rate gate; slop: rate gate counts window only, bucket never exact
         let ops = self.ffi_window_ops.fetch_add(1, Ordering::AcqRel);
         if ops >= u64::from(self.ffi_rate_per_sec) {
             return Err(PluginError::Halt(format!(
@@ -318,7 +318,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
+    // plugin_engine]: fused descriptor ordinals bind 1:1 onto the native interposer chain; ring-level matching is the L2 handoff boundary; slop: descriptor ordinals unbound to interposer chain
     fn fused_ring(&self, ring: TrampolineRing) -> bool {
         self.trampoline.as_ref().is_some_and(|descriptor| {
             descriptor
@@ -329,7 +329,7 @@ impl PipelineEngine {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // TODO (L3) [plugin_engine]: marshal the ring event payload through the fused dispatcher's single traversal and rendezvous its folded foreign verdict into the engine fold; slop: fused traversal verdict stays Pass, foreign verdict never gates dispatch
+    // plugin_engine]: marshal the ring event payload through the fused dispatcher's single traversal and rendezvous its folded foreign verdict into the engine fold; slop: fused traversal verdict stays Pass, foreign verdict never gates dispatch
     pub(super) fn fused_crossing(
         &self,
         ring: TrampolineRing,
@@ -592,14 +592,14 @@ impl PipelineEngine {
         if self.sealed {
             return Err(PluginError::Halt("pipeline already sealed".into()));
         }
-        // TODO (L3) [protocol_mux]: surface the structured EKindConflict/EPortConflict envelope from the artifacts; slop: collision aborts with a Halt prefix, not the structured envelope
+        // TODO: [protocol_mux] fill in the L3 wave; surface the structured EKindConflict/EPortConflict envelope from the artifacts; slop: collision aborts with a Halt prefix, not the structured envelope
         for (index, (spec, _, _)) in self.vsock_services.iter().enumerate() {
             if self.vsock_services[..index]
                 .iter()
                 .any(|(bound, _, _)| bound.port == spec.port)
             {
                 return Err(PluginError::Halt(format!(
-                    "vsock port already bound: {}",
+"vsock port already bound: {}",
                     spec.port
                 )));
             }
@@ -739,7 +739,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the trap past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the trap past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -801,7 +801,7 @@ impl PipelineEngine {
             _ => ctx,
         };
         self.metrics.record_exec();
-        // TODO (L3) [plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
+        // plugin_engine]: in_flight_execs stays exact only once the L3 exec path guarantees a ProcessExit per exec_started; slop: in-flight count drifts, ProcessExit never guaranteed
         self.metrics.exec_finished();
         // see: cans/02-plugin-model.md#Foreign-plugin-proxy
         let fused = self.fused_crossing(TrampolineRing::ProcessExit)?;
@@ -827,7 +827,7 @@ impl PipelineEngine {
         Ok(())
     }
 
-    // L3-GAP: [plugin_engine]: host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
+    // TODO: [plugin_engine] fill in the L3 wave; host scope.devices has no VirtioDevice mapping; only the path filter is enforced here; slop: device scope unchecked, path filter only
     pub fn dispatch_host_lsm_exec(
         &self,
         path: &std::path::Path,
@@ -851,7 +851,7 @@ impl PipelineEngine {
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook returns.; slop: overrunning hook holds the ring past its deadline.
             let deadline = self.host_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -915,14 +915,14 @@ impl PipelineEngine {
         {
             return SignalContext::validate_verdict(verdict);
         }
-        // TODO (L3) [plugin_engine]: MountScope carries no pid dimension, so per-interceptor signal scope filtering lands with the shim signal boundary; slop: every interceptor sees every signal, scope never narrows the signal ring
+        // plugin_engine]: MountScope carries no pid dimension, so per-interceptor signal scope filtering lands with the shim signal boundary; slop: every interceptor sees every signal, scope never narrows the signal ring
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the signal past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the signal past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {
@@ -959,14 +959,14 @@ impl PipelineEngine {
         {
             return Ok(verdict);
         }
-        // TODO (L3) [plugin_engine]: fork carries no path or device payload, so trap-scope filtering lands with the shim fork boundary; slop: fork ring skips scope filter entirely
+        // plugin_engine]: fork carries no path or device payload, so trap-scope filtering lands with the shim fork boundary; slop: fork ring skips scope filter entirely
         for (index, interceptor) in self.trap_interceptors.iter().enumerate() {
             if fused.is_none() {
                 // see: cans/01-architecture.md#FFI-boundary-economics
                 self.try_foreign_submit()?;
             }
             // see: cans/02-plugin-model.md#Per-ring-timeouts
-            // TODO (L3) [plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the fork past its deadline.
+            // plugin_engine]: true preemption; the deadline is checked after the hook future resolves.; slop: overrunning hook holds the fork past its deadline.
             let deadline = self.trap_regs.get(index).and_then(|reg| reg.timeout);
             let started = Instant::now();
             let verdict = {

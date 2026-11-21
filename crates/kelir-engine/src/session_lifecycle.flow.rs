@@ -88,7 +88,7 @@ pub struct PluginContextRecord {
 }
 
 // see: cans/03-sdk-architecture.md#Service-lookup-across-languages
-// L3-GAP: [plugin_engine]: per-plugin ring/custom-action/stream-kind attribution lands when the engine tags bindings with the registering plugin; slop: bindings unattributed to plugin, ring accounting wrong
+// TODO: [plugin_engine] fill in the L3 wave; per-plugin ring/custom-action/stream-kind attribution lands when the engine tags bindings with the registering plugin; slop: bindings unattributed to plugin, ring accounting wrong
 #[derive(Debug, Clone)]
 pub struct PluginContextSurface {
     pub enabled: bool,
@@ -112,7 +112,7 @@ struct DetachedSpawnTransport {
 }
 
 // see: cans/11-protocol.md#Binary-exec-channel
-// L3-GAP: [protocol_mux]: encode the EXEC frame on the bound stream kind and dispatch it over the session transport, storing request.params_bytes in the session exec-params store under the allocated (exec_id, stream_id).; slop: EXEC frame never encoded, guest exec never dispatched
+// TODO: [protocol_mux] fill in the L3 wave; encode the EXEC frame on the bound stream kind and dispatch it over the session transport, storing request.params_bytes in the session exec-params store under the allocated (exec_id, stream_id).; slop: EXEC frame never encoded, guest exec never dispatched
 impl kelir_interface::spawn_transport::SpawnTransport for DetachedSpawnTransport {
     fn dispatch_exec(
         &self,
@@ -120,7 +120,7 @@ impl kelir_interface::spawn_transport::SpawnTransport for DetachedSpawnTransport
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let _ = request;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3): guest exec dispatch".into(),
+            ": guest exec dispatch: ".into(),
         ))
     }
 }
@@ -138,10 +138,10 @@ impl Session {
         session_id: &[u8; 16],
     ) -> Result<Self, kelir_interface::plugin_model::PluginError> {
         let relay = Self::relay_socket_path(session_id)?;
-        // L3-GAP: [lc_15_detached_session_reconnect_relay]: connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state; slop: attach Ok without relay.sock ping/pong round-trip
+        // TODO: [lc_15_detached_session_reconnect_relay] fill in the L3 wave; connect to relay.sock, verify the catalog lease is live, and rebuild the session from the runner-owned state; slop: attach Ok without relay.sock ping/pong round-trip
         let _ = relay;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [lc_15_detached_session_reconnect_relay]: Session::attach; slop: attach Ok without relay.sock ping/pong round-trip".into(),
+            "lc_15_detached_session_reconnect_relay]: Session::attach; slop: attach Ok without relay.sock ping/pong round-trip: ".into(),
         ))
     }
 
@@ -236,10 +236,10 @@ impl Session {
         &self,
         handoff: kelir_transport::MemoryHandoff,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // L3-GAP: [lc_21_detached_scm_rights_parent_sigkill_abort]: pass the shared-memory descriptor via SCM_RIGHTS and close the parent end after the handoff ack; slop: handoff Ok, parent fd open, orphan row left
+        // TODO: [lc_21_detached_scm_rights_parent_sigkill_abort] fill in the L3 wave; pass the shared-memory descriptor via SCM_RIGHTS and close the parent end after the handoff ack; slop: handoff Ok, parent fd open, orphan row left
         let _ = handoff;
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [lc_21_detached_scm_rights_parent_sigkill_abort]: Session::memory_handoff; slop: handoff Ok, parent fd open, orphan row left".into(),
+            "lc_21_detached_scm_rights_parent_sigkill_abort]: Session::memory_handoff; slop: handoff Ok, parent fd open, orphan row left: ".into(),
         ))
     }
 }
@@ -252,7 +252,7 @@ impl Session {
     }
 
     // see: cans/02-plugin-model.md#Foreign-plugin-proxy
-    // L3-GAP: [plugin_engine]: the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: descriptor ordinals unbound to a compiled closure, callbacks invoked per hook in ordinal order
+    // TODO: [plugin_engine] fill in the L3 wave; the AOT-fused trampoline closure marshals the whole hook chain across this single crossing at the native-to-foreign boundary; slop: descriptor ordinals unbound to a compiled closure, callbacks invoked per hook in ordinal order
     pub fn boot_with_plugins(
         config: kelir_interface::driver_interface::VmConfig,
         plugins: &[crate::plugin_registry::PluginRegistration],
@@ -356,7 +356,7 @@ impl Session {
             .with_terminal(Arc::clone(&terminal))
             .with_checkpoint(Arc::clone(&session_checkpoint_plane));
         metrics.set_active_vcpus(u32::from(config.vcpus));
-        // L3-GAP: [hd_01_nohardware_vmm_fatal_abort]: DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM
+        // TODO: [hd_01_nohardware_vmm_fatal_abort] fill in the L3 wave; DriverRouter probes KVM/HVF/AVF and completes the driver boot handshake; vm_handle stays unbound until a backend loads; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM
         let driver = match crate::vmm::DriverRouter::load_native_driver(
             config.driver_policy.driver.as_deref(),
             matches!(
@@ -368,25 +368,25 @@ impl Session {
             Ok(loaded) => Some(Arc::new(tokio::sync::Mutex::new(loaded))),
             Err(DriverError::Unsupported(_)) => {
                 // see: cans/01-architecture.md#Page-size-dynamic-boot-selection
-                // L3-GAP: [hypervisor_driver]: consumed by driver-rustvmm/hvf kernel-fixture page-size selection; slop: page size unconsumed, driver boot ignores config
+                // TODO: [hypervisor_driver] fill in the L3 wave; consumed by driver-rustvmm/hvf kernel-fixture page-size selection; slop: page size unconsumed, driver boot ignores config
                 if config.page_size_kb != 4 {
                     tracing::warn!(
-                        "page_size_kb={} set but the driver backend returned Unsupported; unconsumed (L3)",
+                        "page_size_kb={} set but the driver backend returned Unsupported; unconsumed: ",
                         config.page_size_kb
                     );
                 }
                 // see: cans/08-lifecycle.md#Clock-invariants
-                // L3-GAP: [hypervisor_driver]: consumed by driver-rustvmm kvm-clock boot-param injection; slop: clocksource unconsumed, guest clock unpinned
+                // TODO: [hypervisor_driver] fill in the L3 wave; consumed by driver-rustvmm kvm-clock boot-param injection; slop: clocksource unconsumed, guest clock unpinned
                 if let Some(clocksource) = config.pinned_clocksource.as_deref() {
                     tracing::warn!(
-                        "pinned_clocksource={clocksource} set but the driver backend returned Unsupported; unconsumed (L3)"
+                        "pinned_clocksource={clocksource} set but the driver backend returned Unsupported; unconsumed: "
                     );
                 }
                 // see: cans/08-lifecycle.md#Host-crash-reaper
-                // L3-GAP: [lc_12_host_reaper_pdeathsig_enforcement]: consumed by the driver host-crash reaper preemption window; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL
+                // TODO: [lc_12_host_reaper_pdeathsig_enforcement] fill in the L3 wave; consumed by the driver host-crash reaper preemption window; slop: no pdeathsig arm, orphan hypervisor survives parent SIGKILL
                 if config.preemption_grace_ms != 0 {
                     tracing::warn!(
-                        "preemption_grace_ms={} set but the driver backend returned Unsupported; unconsumed (L3)",
+                        "preemption_grace_ms={} set but the driver backend returned Unsupported; unconsumed: ",
                         config.preemption_grace_ms
                     );
                 }
@@ -479,7 +479,7 @@ impl Session {
 
     // see: cans/02-plugin-model.md#Core-context-keys
     pub fn vm_handle(&self) -> VmHandle {
-        // L3-GAP: [hd_01_nohardware_vmm_fatal_abort]: unbound until the native driver loads; driver ops fail with the typed unbound error; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM
+        // TODO: [hd_01_nohardware_vmm_fatal_abort] fill in the L3 wave; unbound until the native driver loads; driver ops fail with the typed unbound error; slop: silent emulated fallback or Unsupported, never E_NOHARDWAREVMM
         match &self.driver {
             Some(driver) => VmHandle::new(DriverVmControl::shared(driver)),
             None => VmHandle::default(),
@@ -508,7 +508,7 @@ impl Session {
     }
 
     // see: cans/01-architecture.md#Early-boot-diagnostics
-    // L3-GAP: [hd_04_cold_boot_budget_enforcement]: the supervisor scrapes only when the boot budget expires without VmReady or on hypervisor fault transitions; slop: boot Ok past 50ms budget, VmReady deadline unenforced
+    // TODO: [hd_04_cold_boot_budget_enforcement] fill in the L3 wave; the supervisor scrapes only when the boot budget expires without VmReady or on hypervisor fault transitions; slop: boot Ok past 50ms budget, VmReady deadline unenforced
     pub fn early_boot_exit(&self) -> Option<kelir_interface::telemetry::ExitKind> {
         self.uart.decode_exit_kind()
     }
@@ -538,7 +538,7 @@ impl Session {
         async move {
             let Some(driver) = driver else {
                 return Err(kelir_interface::plugin_model::PluginError::Halt(format!(
-                    "shm mapping is TODO (L3): no VMM driver loaded for region `{region}`"
+                    "shm mapping deferred to the L3 wave: no VMM driver loaded for region `{region}`"
                 )));
             };
             let handle = driver
@@ -565,8 +565,8 @@ impl Session {
     pub fn fork(
         &self,
     ) -> impl Future<Output = Result<Self, kelir_interface::plugin_model::PluginError>> + Send {
-        // L3-GAP: [lc_01_cow_fork_warm_memory_sharing]: backend drivers implement the native CoW clone behind VmmDriver::fork; slop: fork memcpy clones RAM, dirty pages nonzero, over 10ms
-        // L3-GAP: [pe_13_fork_state_specialization_isolation]: rebind vsock channels and wire wiring onto the child engine; the SDK layer rebinds the plugin graph via fork_state; slop: child pipeline loses interceptors, fork_state not rebound
+        // TODO: [lc_01_cow_fork_warm_memory_sharing] fill in the L3 wave; backend drivers implement the native CoW clone behind VmmDriver::fork; slop: fork memcpy clones RAM, dirty pages nonzero, over 10ms
+        // TODO: [pe_13_fork_state_specialization_isolation] fill in the L3 wave; rebind vsock channels and wire wiring onto the child engine; the SDK layer rebinds the plugin graph via fork_state; slop: child pipeline loses interceptors, fork_state not rebound
         let incarnation_id = mint_uuid_v7();
         // see: cans/08-lifecycle.md#CoW-fork
         let parent_driver = self.driver.clone();
@@ -699,17 +699,17 @@ impl Session {
         }
         let Some(driver) = self.driver.as_ref() else {
             return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "driver not loaded: hardware rollback needs a booted VMM (L3)".into(),
+                "driver not loaded: hardware rollback needs a booted VMM: ".into(),
             ));
         };
         self.wire.quiesce()?;
         if let Some(ingress) = self.engine.parked_connection_reset() {
             let reset = ingress.reset_parked_connections()?;
-            // L3-GAP: [wp_03_rollback_socket_termination_econnreset]: emit TCP RST for each reset connection id once the host proxy owns the parked sockets per cans/plugins/wire-ingress.md; slop: rollback Ok, host sockets open, no RST, send succeeds
+            // TODO: [wp_03_rollback_socket_termination_econnreset] fill in the L3 wave; emit TCP RST for each reset connection id once the host proxy owns the parked sockets per cans/plugins/wire-ingress.md; slop: rollback Ok, host sockets open, no RST, send succeeds
             let _ = reset;
         }
         self.storage.discard()?;
-        // L3-GAP: [lc_23_replay_deterministic_seed_reproduces_step_windows]: reset session-local RNG position and virtual clock position to the snapshot; slop: single seeded run asserted, step windows never compared
+        // TODO: [lc_23_replay_deterministic_seed_reproduces_step_windows] fill in the L3 wave; reset session-local RNG position and virtual clock position to the snapshot; slop: single seeded run asserted, step windows never compared
         driver
             .lock()
             .await
@@ -727,7 +727,7 @@ impl Session {
     pub fn dispatch_clock_resync(
         &mut self,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // L3-GAP: [lc_11_lid_sleep_clock_resync_snap]: subscribe IOPMrootDomain (macOS) / systemd-logind (Linux) host power events and invoke this on sleep/wake; slop: wake Ok without guest clock snap to host wall clock
+        // TODO: [lc_11_lid_sleep_clock_resync_snap] fill in the L3 wave; subscribe IOPMrootDomain (macOS) / systemd-logind (Linux) host power events and invoke this on sleep/wake; slop: wake Ok without guest clock snap to host wall clock
         let wall_clock_ns = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_nanos() as u64)
@@ -755,14 +755,14 @@ impl Session {
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
-    // L3-GAP: [lc_02_suspend_zero_rss_purge]: backend drivers implement the suspend-image write; Session advances state only after driver success; slop: suspend flips state, RSS unpurged, no image flush
+    // TODO: [lc_02_suspend_zero_rss_purge] fill in the L3 wave; backend drivers implement the suspend-image write; Session advances state only after driver success; slop: suspend flips state, RSS unpurged, no image flush
     pub async fn suspend(
         &mut self,
         reason: kelir_interface::driver_interface::SuspendReason,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let Some(driver) = self.driver.as_ref() else {
             return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "driver suspend is TODO (L3) [lc_02_suspend_zero_rss_purge]: no VMM driver loaded; slop: suspend flips state, RSS unpurged, no image flush".into(),
+                "driver suspend is lc_02_suspend_zero_rss_purge]: no VMM driver loaded; slop: suspend flips state, RSS unpurged, no image flush: ".into(),
             ));
         };
         let path = session_dir(&self.session_id)?.join("suspend.img");
@@ -773,24 +773,24 @@ impl Session {
             .await
             .map_err(|error| {
                 kelir_interface::plugin_model::PluginError::Halt(format!(
-                    "driver suspend is TODO (L3) [lc_02_suspend_zero_rss_purge]: {error}; slop: suspend flips state, RSS unpurged, no image flush"
+                    "driver suspend is lc_02_suspend_zero_rss_purge]: {error}; slop: suspend flips state, RSS unpurged, no image flush: "
                 ))
             })?;
         self.advance_lifecycle(LifecycleState::Suspended(reason))
     }
 
     // see: cans/08-lifecycle.md#Hypervisor-primitives
-    // L3-GAP: [lc_02_suspend_zero_rss_purge]: backend drivers implement the suspended-image restore; Session advances state only after driver success; slop: suspend flips state, RSS unpurged, no image flush
+    // TODO: [lc_02_suspend_zero_rss_purge] fill in the L3 wave; backend drivers implement the suspended-image restore; Session advances state only after driver success; slop: suspend flips state, RSS unpurged, no image flush
     pub async fn resume(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
         let Some(driver) = self.driver.as_ref() else {
             return Err(kelir_interface::plugin_model::PluginError::Halt(
-                "driver resume is TODO (L3) [lc_02_suspend_zero_rss_purge]: no VMM driver loaded; slop: suspend flips state, RSS unpurged, no image flush".into(),
+                "driver resume is lc_02_suspend_zero_rss_purge]: no VMM driver loaded; slop: suspend flips state, RSS unpurged, no image flush: ".into(),
             ));
         };
         let path = session_dir(&self.session_id)?.join("suspend.img");
         driver.lock().await.resume(&path).await.map_err(|error| {
             kelir_interface::plugin_model::PluginError::Halt(format!(
-                "driver resume is TODO (L3) [lc_02_suspend_zero_rss_purge]: {error}; slop: suspend flips state, RSS unpurged, no image flush"
+                "driver resume is lc_02_suspend_zero_rss_purge]: {error}; slop: suspend flips state, RSS unpurged, no image flush: "
             ))
         })?;
         self.advance_lifecycle(LifecycleState::Running)
@@ -800,13 +800,13 @@ impl Session {
         &mut self,
         timeout_ms: u64,
     ) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // L3-GAP: [lc_04_draining_state_rejection_ebusy]: drain in-flight frames until quiescent or timeout_ms elapses; slop: in-flight killed, new exec allowed, no EBUSY
+        // TODO: [lc_04_draining_state_rejection_ebusy] fill in the L3 wave; drain in-flight frames until quiescent or timeout_ms elapses; slop: in-flight killed, new exec allowed, no EBUSY
         let _ = timeout_ms;
         self.advance_lifecycle(LifecycleState::Draining)
     }
 
     // see: cans/artifacts/code/plugin-trait.rs#LifecycleCtx
-    // L3-GAP: [lc_18_watchdog_heartbeat_timeout_reboot]: a real policy plugin arms the watchdog from on_vm_init; boot warns while none does; slop: reboot claimed, vCPU registers never reset, count unchecked
+    // TODO: [lc_18_watchdog_heartbeat_timeout_reboot] fill in the L3 wave; a real policy plugin arms the watchdog from on_vm_init; boot warns while none does; slop: reboot claimed, vCPU registers never reset, count unchecked
     pub async fn run_lifecycle_hook(
         &mut self,
         event: LifecycleEvent,
@@ -895,7 +895,7 @@ impl Session {
 
     // see: cans/08-lifecycle.md#Pre-teardown-flush
     pub async fn stop(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // L3-GAP: [lifecycle_checkpoint]: MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000 and the shim ACK gate before vCPU teardown per cans/08-lifecycle.md#Pre-teardown-flush; slop: shutdown without MSG_SHUTDOWN_REQUEST, teardown unacked
+        // TODO: [lifecycle_checkpoint] fill in the L3 wave; MSG_SHUTDOWN_REQUEST{timeout_ms} on Control 0x0000 and the shim ACK gate before vCPU teardown per cans/08-lifecycle.md#Pre-teardown-flush; slop: shutdown without MSG_SHUTDOWN_REQUEST, teardown unacked
         self.run_lifecycle_hook(LifecycleEvent::VmShutdown).await?;
         self.flush_workspace_before_terminate()?;
         self.advance_lifecycle(LifecycleState::Terminated)?;
@@ -924,7 +924,7 @@ impl Session {
         if timeout == Duration::ZERO {
             return self.kill();
         }
-        // L3-GAP: [lifecycle_checkpoint]: the bounded wait targets MSG_SHUTDOWN_ACK on Control 0x0000; it bounds the graceful hook path today per cans/08-lifecycle.md#Pre-teardown-flush; slop: graceful wait without ACK gate, flush skipped
+        // TODO: [lifecycle_checkpoint] fill in the L3 wave; the bounded wait targets MSG_SHUTDOWN_ACK on Control 0x0000; it bounds the graceful hook path today per cans/08-lifecycle.md#Pre-teardown-flush; slop: graceful wait without ACK gate, flush skipped
         match tokio::time::timeout(timeout, self.stop()).await {
             Ok(result) => result,
             Err(_expired) => self.kill(),
@@ -932,7 +932,7 @@ impl Session {
     }
 
     pub fn kill(&mut self) -> Result<(), kelir_interface::plugin_model::PluginError> {
-        // L3-GAP: [lc_10_abrupt_kill_dirty_shutdown_receipt]: hard driver terminate without drain or flush; slop: kill returns Normal exit 0, no HardKilled receipt
+        // TODO: [lc_10_abrupt_kill_dirty_shutdown_receipt] fill in the L3 wave; hard driver terminate without drain or flush; slop: kill returns Normal exit 0, no HardKilled receipt
         self.advance_lifecycle(LifecycleState::Terminated)?;
         self.teardown_catalog()
     }
@@ -949,9 +949,9 @@ impl Session {
         Box<dyn tokio::io::AsyncRead + Send + Sync + Unpin>,
         kelir_interface::plugin_model::PluginError,
     > {
-        // L3-GAP: [lc_20_portable_snapshot_archive_export]: stream the .kelir-snap archive from the driver; slop: export Ok without trailer BLAKE3 digest, manifest unchecked
+        // TODO: [lc_20_portable_snapshot_archive_export] fill in the L3 wave; stream the .kelir-snap archive from the driver; slop: export Ok without trailer BLAKE3 digest, manifest unchecked
         Err(kelir_interface::plugin_model::PluginError::Halt(
-            "TODO (L3) [lc_20_portable_snapshot_archive_export]: Session::export_snapshot; slop: export Ok without trailer BLAKE3 digest, manifest unchecked".into(),
+            "lc_20_portable_snapshot_archive_export]: Session::export_snapshot; slop: export Ok without trailer BLAKE3 digest, manifest unchecked: ".into(),
         ))
     }
 }

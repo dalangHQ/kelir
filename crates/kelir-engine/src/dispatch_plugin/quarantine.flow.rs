@@ -23,7 +23,7 @@ impl<F: Future> Future for Quarantined<F> {
                 "quarantined future polled after completion".into(),
             )));
         };
-        // L3-GAP: [lc_03_step_evaluation_taint_rollback]: log the panic payload and backtrace to the host ledger and roll back the active plugin-step-eval StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
+        // TODO: [lc_03_step_evaluation_taint_rollback] fill in the L3 wave; log the panic payload and backtrace to the host ledger and roll back the active plugin-step-eval StepSlot; slop: panic logs without StepSlot rollback, tainted state kept
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             Future::poll(inner.as_mut(), cx)
         })) {
@@ -75,7 +75,7 @@ pub(crate) fn verdict_kind_of(verdict: &Verdict) -> VerdictKind {
         Verdict::Suspend { .. } => VerdictKind::Suspend,
         Verdict::Abort { .. } => VerdictKind::Abort,
         Verdict::Absorb => VerdictKind::Absorb,
-        // TODO (L3) [plugin_engine]: Verdict is non_exhaustive for forward compat; unknown kinds degrade to Abort.; slop: forward-compat verdict aborts the trap instead of passing through.
+        // TODO: [plugin_engine] fill in the L3 wave; Verdict is non_exhaustive for forward compat; unknown kinds degrade to Abort.; slop: forward-compat verdict aborts the trap instead of passing through.
         _ => VerdictKind::Abort,
     }
 }
