@@ -8,6 +8,22 @@ use kelir_interface::plugin_model::PluginError;
 use crate::profile_schema::EffectiveConfig;
 use crate::sandbox_runtime::SandboxProfile;
 
+// see: cans/plugins/profile.md#Driver-engine-schema-(profile)
+// TODO: [hypervisor_driver] fill to_full_vm_config in the L3 wave; consume max_vcpus, balloon, devices, watchdog timeout/action/cadence, kernel_boot_params, and shim once VmConfig grows driver fields.; slop: VmConfig fields silently dropped, driver boot unpinned
+pub fn to_full_vm_config(profile: &SandboxProfile) -> VmConfig {
+    let _ = profile;
+    VmConfig::default()
+}
+
+// see: cans/plugins/profile.md#Driver-engine-schema-(profile)
+// TODO: [hd_fast_boot_backend_change] fill route_fast_boot_and_dax_window in the L3 wave; route driver.fast_boot and storage.dax_window through KelirBuilder.; slop: fast_boot/dax flags dropped, cold path taken silently
+pub fn route_fast_boot_and_dax_window(profile: &SandboxProfile) -> Result<(), PluginError> {
+    let _ = profile;
+    Err(PluginError::Halt(
+        "route_fast_boot_and_dax_window: deferred to the L3 wave".into(),
+    ))
+}
+
 fn halt(message: String) -> PluginError {
     PluginError::Halt(message)
 }
