@@ -118,6 +118,9 @@ impl LockBroker {
         // L3-GAP: [sp_15_host_inode_lock_broker_flock_bridge]: flock LOCK_SH/LOCK_EX/LOCK_NB constants live in the enclave; slop: in-memory lock table, no host flock, contender succeeds
         // L3-GAP: [sp_19_host_inode_flock_contention_ewouldblock]: host fd cache lookup, flock delegation, EWOULDBLOCK on conflict; slop: contention Ok or wrong errno, EWOULDBLOCK never returned
         // TODO (L3) [storage_plane]: mediate the lock request through the interposer and the host flock delegation.; slop: lock mediated in memory only, no host flock and a contender lock succeeds.
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: split the dispatch on request.blocking: non-blocking SETLK delegates to host flock(2) with LOCK_NB and returns EWOULDBLOCK on conflict without parking a host ring thread.; slop: SETLKW conflated with SETLK, blocking POSIX waiters break on EWOULDBLOCK.
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: blocking SETLKW parks the guest waiter on a bounded waiter pool sized by wiring.blocking_wait_timeout_ms instead of denying, so cargo/git/sqlite/npm lock contention resolves instead of failing.; slop: F_SETLKW returns EWOULDBLOCK, POSIX blocking wait semantics violated.
+        // TODO (L3) [sp_19_host_inode_flock_contention_ewouldblock]: a SETLKW waiter that exceeds the bounded pool ceiling or wiring.blocking_wait_timeout_ms times out with EDEADLK, never holding a host ring thread.; slop: waiters block a host ring thread forever, the host deadlocks with the guest.
         Err(PluginError::Halt(
             "TODO (L3) [sp_15_host_inode_lock_broker_flock_bridge]: LockBroker::acquire needs flock delegation in kelir-drivers/kelir-transport enclave; slop: in-memory lock table, no host flock, contender succeeds".into(),
         ))
