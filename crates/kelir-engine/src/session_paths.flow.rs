@@ -22,6 +22,41 @@ pub fn session_dir(
 }
 
 // see: cans/01-architecture.md#Host-state-root
+// TODO: [lifecycle_checkpoint] fill in the L3 wave; the runtime child janitor sweeps orphaned session dirs on startup; slop: orphaned session dirs never swept, disk leaks
+pub fn sweep_orphaned_session_dirs() -> Result<(), kelir_interface::plugin_model::PluginError> {
+    Err(kelir_interface::plugin_model::PluginError::Halt(
+        "sweep_orphaned_session_dirs: deferred to the L3 wave".into(),
+    ))
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
+// TODO: [lc_16_session_incarnation_cas_guard] fill in the L3 wave; swap the minted boot_id and now-based start_time_ns for the OS host_boot_id and proc start_time per cans/08-lifecycle.md#Cross-platform-incarnation-proof; slop: destructive verb skips incarnation CAS, stale row deleted
+pub fn register_incarnation_proof_row(
+    session_id: [u8; 16],
+    incarnation_id: [u8; 16],
+    tenant_id: &str,
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    let _ = (session_id, incarnation_id, tenant_id);
+    Err(kelir_interface::plugin_model::PluginError::Halt(
+        "register_incarnation_proof_row: deferred to the L3 wave".into(),
+    ))
+}
+
+// see: cans/06-storage-catalog.md#Entity-model
+// TODO: [lc_14_detached_session_lease_heartbeat] fill in the L3 wave; detached boots upgrade the row to lease_kind='lease' with runner child pid and expires_at per cans/08-lifecycle.md#Detached-lifecycle; slop: detached row stays Ephemeral, expires_at never advances
+pub fn upgrade_detached_lease_row(
+    session_id: [u8; 16],
+    tenant_id: &str,
+    runner_pid: i64,
+    expires_at_unix: i64,
+) -> Result<(), kelir_interface::plugin_model::PluginError> {
+    let _ = (session_id, tenant_id, runner_pid, expires_at_unix);
+    Err(kelir_interface::plugin_model::PluginError::Halt(
+        "upgrade_detached_lease_row: deferred to the L3 wave".into(),
+    ))
+}
+
+// see: cans/01-architecture.md#Host-state-root
 pub fn reap_ephemeral_session_dir(
     session_id: &[u8; 16],
 ) -> Result<(), kelir_interface::plugin_model::PluginError> {
