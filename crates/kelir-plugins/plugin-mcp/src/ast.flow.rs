@@ -120,6 +120,17 @@ pub fn parse_json_rpc_response(payload: &[u8]) -> Result<JsonRpcResponse, Plugin
     Ok(JsonRpcResponse { id, result, error })
 }
 
+// see: cans/plugins/mcp.md#MCP-contract
+// The MCP "sampling" feature lets a server call back into the client's LLM via
+// `sampling/createMessage`; blindess.patch.md#C flags this as a rogue-server control
+// channel, so the method must be identifiable at the AST boundary for policy denial.
+pub const MCP_SAMPLING_METHOD: &str = "sampling/createMessage";
+
+// see: cans/plugins/mcp.md#Invariants-and-policy-(mcp)
+pub fn is_sampling_create_message(method: &str) -> bool {
+    method == MCP_SAMPLING_METHOD
+}
+
 // see: cans/11-protocol.md#Stream-mux-framing
 #[derive(Debug, Default)]
 pub struct McpFrameAssembler {

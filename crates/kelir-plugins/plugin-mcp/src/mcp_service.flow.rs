@@ -74,6 +74,12 @@ impl McpEndpointService {
         if let Ok(mut last) = self.state.last_request_id.lock() {
             *last = request.id.clone();
         }
+        if crate::ast::is_sampling_create_message(&request.method) {
+            return Err(PluginError::Halt(
+                "ESecurityViolation: server-initiated sampling/createMessage is denied by policy"
+                    .into(),
+            ));
+        }
         let _ = request;
         // L3-GAP: [governance_tools]: bridge JSON-RPC frames between MCP_CONSOLE and /run/kelir/mcp.sock per cans/plugins/mcp.md; slop: frames never bridged, MCP client isolated, tool calls never interposed
         Err(PluginError::Halt(format!(
@@ -124,22 +130,40 @@ impl StreamFrameSink for McpCtxStreamSink {
 }
 
 // see: cans/plugins/mcp.md#MCP-contract
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConfig {
     pub max_frame_bytes: u64,
+    // see: blindess.patch.md#C: server-initiated sampling lets a rogue MCP server drive the
+    // client's LLM, so sampling/createMessage is denied by default.
+    pub deny_server_sampling: bool,
+    pub sampling_allowlist: Vec<String>,
 }
 
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
             max_frame_bytes: 16_777_216,
+            deny_server_sampling: true,
+            sampling_allowlist: Vec::new(),
         }
     }
 }
 
 impl McpConfig {
     pub fn new(max_frame_bytes: u64) -> Self {
-        Self { max_frame_bytes }
+        Self {
+            max_frame_bytes,
+            deny_server_sampling: true,
+            sampling_allowlist: Vec::new(),
+        }
+    }
+
+    // see: cans/plugins/mcp.md#Invariants-and-policy-(mcp)
+    // A sampling/createMessage request is only admitted when server-initiated sampling
+    // is enabled AND the originating server is explicitly allowlisted.
+    pub fn sampling_allowed_for(&self, server: &str) -> bool {
+        !self.deny_server_sampling
+            && self.sampling_allowlist.iter().any(|entry| entry == server)
     }
 }
 
