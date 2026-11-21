@@ -173,6 +173,12 @@ impl DnsPinTable {
             .map(|pin| &pin.ip)
     }
 
+    /// All currently-pinned IPs (used by the L4 ingress admission check, which matches
+    /// dialed IPs against live pins without a name at hand).
+    pub fn lookup_all_ips(&self) -> Vec<Ipv4Addr> {
+        self.pins.iter().map(|pin| pin.ip).collect()
+    }
+
     /// Drop pins whose TTL has elapsed relative to `now_ms` and advance the clock base.
     pub fn evict_expired(&mut self, now_ms: u64) {
         self.now_ms = now_ms;

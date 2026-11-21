@@ -9,7 +9,7 @@ use kelir_interface::protocol_wire::FilterAction;
 use kelir_interface::wire::dns::{DnsOps, DnsQuery, DnsResponse};
 use kelir_interface::wire::l4::{L4DivertOps, L4Stream};
 use kelir_interface::wire::net::{
-    FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, SinkholeRule, WireWiring,
+    DnsPinTable, FrameDirection, LinkLocalRoute, NetOps, SinkholeConfig, SinkholeRule, WireWiring,
     link_local_route,
 };
 use kelir_interface::wire::outbox::{OutboxBuffer, OutboxDeferralConfig, OutboxFrame};
@@ -39,8 +39,26 @@ pub struct WirePlane {
         Arc<Mutex<std::collections::HashMap<u16, kelir_transport::host_bind::HostListener>>>,
     metrics: Arc<kelir_interface::telemetry::MetricRegistry>,
     wiring: Option<WireWiring>,
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    pin_table: Arc<Mutex<DnsPinTable>>,
     outbox: Arc<Mutex<OutboxBuffer>>,
     parking: Arc<Mutex<ConnectionParking>>,
+}
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+// Pure L2 membership check: a direct IP dial is admitted only when some live pin entry's
+// IP equals the dial target; absent pins fail closed (Drop EPERM) per the wiring struct.
+// TODO (L3) [wire_plane]: reverse pin index (IP -> name) so dial admission does not scan
+// every entry per dial; no index exists yet; slop: L4 ingress scans the whole pin table
+// per dial, latency ceiling blown on rotating CDN answers.
+fn pin_table_admits_dial(
+    pin_table: &DnsPinTable,
+    dial_target_ip: &std::net::Ipv4Addr,
+) -> bool {
+    pin_table
+        .lookup_all_ips()
+        .iter()
+        .any(|pinned_ip| pinned_ip == dial_target_ip)
 }
 
 // see: cans/07-wire-plane.md#Wire-architecture
@@ -67,6 +85,7 @@ impl WirePlane {
             host_listeners: Arc::new(Mutex::new(std::collections::HashMap::new())),
             metrics: Arc::new(kelir_interface::telemetry::MetricRegistry::new()),
             wiring: None,
+            pin_table: Arc::new(Mutex::new(DnsPinTable::default())),
             outbox: Arc::new(Mutex::new(OutboxBuffer::default())),
             parking: Arc::new(Mutex::new(ConnectionParking::default())),
         }
@@ -278,6 +297,33 @@ impl WirePlane {
             .intercept_ethernet_frame(FrameDirection::Outbound, frame)?;
         self.record_drop(&action);
         Ok(self.surface_action(action))
+    }
+
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    // Pure L2 logic over the wiring struct: when dns_to_ip_pinning is enabled, a direct IP
+    // dial absent from the pin table drops fail-closed at L4 ingress (EPERM).
+    pub(crate) fn l4_ingress_pin_check(&self, dial_target_ip: &std::net::Ipv4Addr) -> bool {
+        // L4 ingress decision: direct IP dials absent from the pin table drop fail-closed
+        // when wiring.dns_to_ip_pinning is set; only IPs pinned by admitted DNS answers pass.
+        // The pin table is keyed by name, so the L3 dial path must map the dialed IP back to
+        // a pinned name before this gate can admit it.
+        // TODO (L3) [wire_plane]: correlate dialed IP to pinned name (reverse pin index) at
+        // L4 ingress; no reverse index exists yet; slop: direct IP dial never matches a pin,
+        // fail-closed drops even legitimately resolved rotating CDN IPs.
+        let Some(wiring) = self.wiring.as_ref() else {
+            // No wiring applied yet: fail closed rather than admit raw-IP dials.
+            return false;
+        };
+        if !wiring.dns_to_ip_pinning {
+            return true;
+        }
+        let Ok(pin_table) = self.pin_table.lock() else {
+            // Poisoned pin table: fail closed rather than admit raw-IP dials.
+            return false;
+        };
+        // Pure L2 membership check over the wiring struct: a dial is admitted only when
+        // some live pin entry's IP equals the dial target; absent pins fail closed.
+        pin_table_admits_dial(&pin_table, dial_target_ip)
     }
 
     // see: cans/07-wire-plane.md#Frame-drop-and-forward-semantics
