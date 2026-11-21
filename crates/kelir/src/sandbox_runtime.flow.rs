@@ -191,6 +191,7 @@ pub(crate) fn wire_plane_config(profile: &SandboxProfile) -> Option<WireConfig> 
         tap_filter: TapFilter::AllowUdpProxied,
         userspace_netstack: wire.userspace_netstack.unwrap_or(false),
         default_egress: wire.default_egress.clone().unwrap_or_default(),
+        dns_to_ip_pinning: wire.dns_to_ip_pinning.unwrap_or(false),
         dial_timeout_ms: 5000,
     })
 }

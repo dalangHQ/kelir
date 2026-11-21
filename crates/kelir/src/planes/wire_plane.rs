@@ -51,4 +51,9 @@ pub struct WireConfig {
     pub userspace_netstack: bool,
     // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.default_egress
     pub default_egress: String,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.dns_to_ip_pinning
+    // Pure passthrough of the profile knob: allowed DNS answers populate a
+    // TTL-bounded pin table so direct IP dials absent from it drop fail-closed
+    // at L4 ingress. The pin table itself lives in the engine wire plane.
+    pub dns_to_ip_pinning: bool,
 }

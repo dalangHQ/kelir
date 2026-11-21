@@ -153,6 +153,8 @@ pub struct SessionProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shim: Option<ShimProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steering: Option<SteeringProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub driver: Option<DriverProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage: Option<StorageProfile>,
@@ -311,6 +313,32 @@ pub struct ShimProfile {
     pub rejection_mode: Option<RejectionMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_proc_environ: Option<bool>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.shim.per_exec_cgroup
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_exec_cgroup: Option<bool>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.shim.deny_abi_compat
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deny_abi_compat: Option<bool>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.shim.blocked_syscalls
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_syscalls: Option<Vec<String>>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#session.shim.blocked_socket_families
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_socket_families: Option<Vec<String>>,
+}
+
+// see: cans/artifacts/examples/fixtures/kelir.yaml#session.steering
+// Opt-in deny/redirect steering surface: structured guidance on Drop, Patch
+// redirect announcements, and EXEC sub-lane 0x02 stderr injection.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SteeringProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer_on_deny: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer_on_redirect: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inject_exec_stderr: Option<bool>,
 }
 
 // see: cans/plugins/profile.md#Session-compute-schema-(profile)
@@ -358,6 +386,10 @@ pub struct CowBrokerProfile {
     pub rollback_purge: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dir_merge_cache: Option<bool>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#storage.cow_broker.blocking_wait_timeout_ms
+    // Bounded SETLKW waiter-pool ceiling before EDEADLK (lock broker).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocking_wait_timeout_ms: Option<u64>,
 }
 
 // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.outbox_deferral
@@ -391,6 +423,10 @@ pub struct WireProfile {
     pub outbox_deferral: Option<OutboxDeferralProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block_abstract_unix_sockets: Option<bool>,
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.dns_to_ip_pinning
+    // Correlates allowed domain answers to TTL-bounded L4 IP pins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_to_ip_pinning: Option<bool>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -527,11 +563,18 @@ pub struct EffectiveConfig {
     pub granular_task_freeze: Option<bool>,
     pub task_freeze_timeout_ms: Option<u64>,
     pub rejection_mode: Option<RejectionMode>,
+    pub per_exec_cgroup: Option<bool>,
+    pub deny_abi_compat: Option<bool>,
+    pub blocked_syscalls: Option<Vec<String>>,
+    pub blocked_socket_families: Option<Vec<String>>,
+    pub steering: Option<SteeringProfile>,
     pub cow_broker: Option<CowBrokerProfile>,
+    pub blocking_wait_timeout_ms: Option<u64>,
     pub userspace_netstack: Option<bool>,
     pub default_egress: Option<String>,
     pub l4_diversion: Option<L4DiversionProfile>,
     pub l7_protocol_inspection: Option<bool>,
+    pub dns_to_ip_pinning: Option<bool>,
     pub outbox_deferral: Option<OutboxDeferralProfile>,
     pub step_dag: Option<StepDagProfile>,
     pub catalog: Option<CatalogProfile>,

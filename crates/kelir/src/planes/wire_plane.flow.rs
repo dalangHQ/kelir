@@ -14,6 +14,7 @@ impl Default for WireConfig {
             tap_filter: TapFilter::default(),
             userspace_netstack: false,
             default_egress: String::new(),
+            dns_to_ip_pinning: false,
         }
     }
 }

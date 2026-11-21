@@ -203,11 +203,22 @@ impl SandboxProfile {
             granular_task_freeze: shim.and_then(|s| s.granular_task_freeze),
             task_freeze_timeout_ms: shim.and_then(|s| s.task_freeze_timeout_ms),
             rejection_mode: shim.and_then(|s| s.rejection_mode),
+            per_exec_cgroup: shim.and_then(|s| s.per_exec_cgroup),
+            deny_abi_compat: shim.and_then(|s| s.deny_abi_compat),
+            blocked_syscalls: shim.and_then(|s| s.blocked_syscalls.clone()),
+            blocked_socket_families: shim.and_then(|s| s.blocked_socket_families.clone()),
+            steering: session.and_then(|s| s.steering.clone()),
             cow_broker: self.storage.as_ref().and_then(|s| s.cow_broker.clone()),
+            blocking_wait_timeout_ms: self
+                .storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|c| c.blocking_wait_timeout_ms),
             userspace_netstack: wire.and_then(|w| w.userspace_netstack),
             default_egress: wire.and_then(|w| w.default_egress.clone()),
             l4_diversion: wire.and_then(|w| w.l4_diversion.clone()),
             l7_protocol_inspection: wire.and_then(|w| w.l7_protocol_inspection),
+            dns_to_ip_pinning: wire.and_then(|w| w.dns_to_ip_pinning),
             outbox_deferral: wire.and_then(|w| w.outbox_deferral.clone()),
             step_dag: checkpoint.and_then(|c| c.step_dag.clone()),
             catalog: host.and_then(|h| h.catalog.clone()),
@@ -336,6 +347,14 @@ impl SandboxProfile {
         {
             return Err(halt(
                 "host.telemetry_ring.sliding_window_depth must be greater than zero".to_string(),
+            ));
+        }
+        if let Some(cow_broker) = self.storage.as_ref().and_then(|s| s.cow_broker.as_ref())
+            && cow_broker.blocking_wait_timeout_ms == Some(0)
+        {
+            return Err(halt(
+                "storage.cow_broker.blocking_wait_timeout_ms must be greater than zero"
+                    .to_string(),
             ));
         }
         Ok(())
@@ -580,6 +599,67 @@ impl SandboxProfile {
                 .and_then(|h| h.telemetry_ring.as_ref())
                 .and_then(|r| r.sliding_window_depth),
         )?;
+        // Monotonic hardening: a child overlay may never disable these guards
+        // nor drop entries from the inherited block lists.
+        let base_shim = base.session.as_ref().and_then(|s| s.shim.as_ref());
+        let shim = self.session.as_ref().and_then(|s| s.shim.as_ref());
+        check_guard_kept(
+            "session.shim.per_exec_cgroup",
+            base_shim.and_then(|s| s.per_exec_cgroup),
+            shim.and_then(|s| s.per_exec_cgroup),
+        )?;
+        check_guard_kept(
+            "session.shim.deny_abi_compat",
+            base_shim.and_then(|s| s.deny_abi_compat),
+            shim.and_then(|s| s.deny_abi_compat),
+        )?;
+        check_list_entries_kept(
+            "session.shim.blocked_syscalls",
+            base_shim.and_then(|s| s.blocked_syscalls.as_deref()),
+            shim.and_then(|s| s.blocked_syscalls.as_deref()),
+        )?;
+        check_list_entries_kept(
+            "session.shim.blocked_socket_families",
+            base_shim.and_then(|s| s.blocked_socket_families.as_deref()),
+            shim.and_then(|s| s.blocked_socket_families.as_deref()),
+        )?;
+        check_guard_kept(
+            "wire.dns_to_ip_pinning",
+            base.wire.as_ref().and_then(|w| w.dns_to_ip_pinning),
+            self.wire.as_ref().and_then(|w| w.dns_to_ip_pinning),
+        )?;
+        check_ceiling(
+            "storage.cow_broker.blocking_wait_timeout_ms",
+            base.storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|c| c.blocking_wait_timeout_ms),
+            self.storage
+                .as_ref()
+                .and_then(|s| s.cow_broker.as_ref())
+                .and_then(|c| c.blocking_wait_timeout_ms),
+        )?;
         Ok(())
     }
+}
+
+// see: cans/plugins/profile.md#Monotonic-limits
+// An overlay may append entries to a deny list but may never remove an entry
+// the base profile already blocks.
+fn check_list_entries_kept(
+    path: &str,
+    base: Option<&[String]>,
+    overlay: Option<&[String]>,
+) -> Result<(), PluginError> {
+    if let Some(base_list) = base {
+        let overlay_list = overlay.unwrap_or(&[]);
+        for entry in base_list {
+            if !overlay_list.contains(entry) {
+                return Err(security_violation(format!(
+                    "overlay removes {path} entry `{entry}` present in the base profile"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
