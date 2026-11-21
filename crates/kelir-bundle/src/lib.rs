@@ -76,70 +76,13 @@ pub use plugin_profile_schema::{
 };
 
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-pub mod tool_guard_ext {
-    use kelir::hlist_sdk::HList;
-    use kelir::{Host, KelirBuilder, Unsealed};
-    use plugin_tool_guard::{ToolGuardPlugin, ToolSpec};
-
-    // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-    pub trait ToolGuardExt: Sized {
-        fn tool(self, spec: ToolSpec) -> Self;
-    }
-
-    // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
-    impl<Plugins: HList, Params: 'static, Ctx, Deps: HList> ToolGuardExt
-        for KelirBuilder<Host, Unsealed, Ctx, Deps, Plugins, Params>
-    {
-        fn tool(self, spec: ToolSpec) -> Self {
-            let plugin = ToolGuardPlugin::new().tool(spec);
-            self.mount_instance(plugin)
-        }
-    }
-}
-
+#[path = "tool_guard_ext.flow.rs"]
+pub mod tool_guard_ext;
 // see: cans/plugins/tool-guard.md#Host-extensible-hook-pipeline
 pub use tool_guard_ext::ToolGuardExt;
 
 // see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
-pub mod ledger_ext {
-    use kelir::hlist_sdk::{HList, NoParams};
-    use kelir::interface::handlers_plugin::Capability;
-    use kelir::interface::plugin_model::PluginError;
-    use kelir::session_lifecycle::Session;
-    use plugin_ledger::LedgerCtx;
-
-    // see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
-    pub trait LedgerSessionExt: Sized {
-        // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
-        async fn get_causal_delta_from_parent(
-            &self,
-        ) -> Result<kelir::interface::telemetry::CausalDelta, PluginError>;
-
-        // see: cans/plugins/ledger.md#Ledger-handler-API
-        async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError>;
-    }
-
-    // see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
-    impl<Plugins, Params> LedgerSessionExt for Session<Plugins, Params>
-    where
-        Plugins: HList + Capability<LedgerCtx>,
-    {
-        // see: cans/plugins/ledger.md#Causal-delta-access-(ledger)
-        async fn get_causal_delta_from_parent(
-            &self,
-        ) -> Result<kelir::interface::telemetry::CausalDelta, PluginError> {
-            let ledger = self.cap::<LedgerCtx>().ok_or_else(|| {
-                PluginError::Halt("ECONFIG: ledger capability not mounted".into())
-            })?;
-            ledger.get_causal_delta_from_parent().await
-        }
-
-        // see: cans/plugins/ledger.md#Ledger-handler-API
-        async fn count_denials(&self, ppid: u32) -> Result<u64, PluginError> {
-            let ledger = self.cap::<LedgerCtx>().ok_or_else(|| {
-                PluginError::Halt("ECONFIG: ledger capability not mounted".into())
-            })?;
-            ledger.count_denials(ppid).await
-        }
-    }
-}
+#[path = "ledger_ext.flow.rs"]
+pub mod ledger_ext;
+// see: cans/plugins/ledger.md#Canonical-accessor-(SSOT-A1-pin)
+pub use ledger_ext::LedgerSessionExt;

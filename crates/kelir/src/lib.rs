@@ -63,15 +63,5 @@ pub use session_lifecycle::{
     ClockHandle, FsHandle, IngressChannel, IngressStream, Session, ShmMapping, SpawnOpts,
     SpawnResult, StepStack, TerminalHandle, VmHandle, VsockChannel, VsockHandle,
 };
-pub use tokio::fs;
-pub use tokio::task::JoinSet;
-pub use tokio::time;
+pub use runtime::{JoinSet, block_on, fs, time};
 pub use trap_filter::TrapFilter;
-
-// see: cans/03-sdk-architecture.md#Full-surface-examples
-pub fn block_on<F: Future<Output = T>, T>(future: F) -> std::io::Result<T> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    Ok(runtime.block_on(future))
-}
