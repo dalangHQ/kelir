@@ -18,3 +18,4 @@ workspace = true
 
 [package.metadata.kelir]
 allowed_levels = ["L1", "L2", "L3"]
+role = "tooling"
