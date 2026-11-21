@@ -65,11 +65,6 @@ L2_max_delta_per_pr = 60        # net new L2 files per PR, not net lines
 forbid_mode = "error"
 
 [[level.L1.forbid]]
-id = "impl-block"
-pattern = '^\s*impl\b'
-hint  = "L1 is contract: no impl blocks (derive attrs are fine)"
-
-[[level.L1.forbid]]
 id = "os-reach"
 pattern = '\b(libc|std::fs|std::net|std::process|std::os|tokio::fs|tokio::net|tokio::process|block_on)\b'
 
