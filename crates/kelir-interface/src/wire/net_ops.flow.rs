@@ -93,6 +93,17 @@ pub struct WireWiring {
     // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
     // TODO (L3) [wire_plane]: dial the unix socket per diversion and splice the guest TCP stream; no unix dial exists yet; slop: guest TCP streams never divert to unix sockets; the diversion stays unconnected.
     pub l4_unix_diversions: Vec<(u16, PathBuf)>,
+    // see: cans/07-wire-plane.md#DNS-to-IP-admission
+    // see: cans/artifacts/examples/fixtures/kelir.yaml#wire.dns_to_ip_pinning
+    // Correlates allowed domain answers to TTL-bounded L4 IPs so domain rules govern
+    // subsequent direct TCP/UDP dials without opening a raw-IP bypass hole.
+    pub dns_to_ip_pinning: bool,
+    // see: cans/07-wire-plane.md#Transparent-L4-stream-diversion
+    // Upstream host:port the L4 connect path is redirected to instead of the dialed target.
+    pub connect_redirect: Option<String>,
+    // see: cans/07-wire-plane.md#DNS-policy-filter
+    // Rewrite target for matched DNS queries/answers (DnsVerdict::Redirect target).
+    pub dns_redirect: Option<String>,
 }
 
 // see: cans/07-wire-plane.md#Upstream-dial-transport
@@ -108,7 +119,64 @@ impl Default for WireWiring {
             default_egress: String::new(),
             block_abstract_unix_sockets: false,
             l4_unix_diversions: Vec::new(),
+            dns_to_ip_pinning: false,
+            connect_redirect: None,
+            dns_redirect: None,
         }
+    }
+}
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+// Pure L2 TTL-bounded DNS-to-IP pin table: every admitted DNS answer for a name pins the
+// resolved IP with the answer's TTL, so subsequent direct L4 dials to that IP are admitted
+// while raw-IP dials that never resolved through the DNS policy filter fail closed.
+// Internal clock base is the last `evict_expired` mark; pins carry absolute expiry_ms.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DnsPinTable {
+    pins: Vec<DnsPinEntry>,
+    now_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DnsPinEntry {
+    name: String,
+    ip: Ipv4Addr,
+    expiry_ms: u64,
+}
+
+// see: cans/07-wire-plane.md#DNS-to-IP-admission
+impl DnsPinTable {
+    /// Pin `name` to `ip` for `ttl_ms` measured from the last `evict_expired` clock mark,
+    /// replacing any prior pin for that name (rotating CDN answers refresh active pins).
+    pub fn pin(&mut self, name: impl Into<String>, ip: Ipv4Addr, ttl_ms: u64) {
+        let name = name.into();
+        let expiry_ms = self.now_ms.saturating_add(ttl_ms);
+        match self.pins.iter_mut().find(|pin| pin.name == name) {
+            Some(existing) => {
+                existing.ip = ip;
+                existing.expiry_ms = expiry_ms;
+            }
+            None => self.pins.push(DnsPinEntry {
+                name,
+                ip,
+                expiry_ms,
+            }),
+        }
+    }
+
+    /// Look up the currently-pinned IP for `name`; run `evict_expired` first so stale
+    /// TTL-expired pins read as absent.
+    pub fn lookup(&self, name: &str) -> Option<&Ipv4Addr> {
+        self.pins
+            .iter()
+            .find(|pin| pin.name == name)
+            .map(|pin| &pin.ip)
+    }
+
+    /// Drop pins whose TTL has elapsed relative to `now_ms` and advance the clock base.
+    pub fn evict_expired(&mut self, now_ms: u64) {
+        self.now_ms = now_ms;
+        self.pins.retain(|pin| pin.expiry_ms > now_ms);
     }
 }
 
