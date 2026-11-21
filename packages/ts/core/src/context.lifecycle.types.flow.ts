@@ -8,8 +8,8 @@ import type {
   SpawnResult,
   TrapInfo,
   WatchdogAction,
-} from "./types.core.js";
-import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.js";
+} from "./types.core.flow.js";
+import type { SuspendUntil, Verdict, VetoEvent } from "./verdict.protocol.flow.js";
 
 export interface VmHandle {
   checkpoint(name: string): Promise<SnapshotDescriptor>;

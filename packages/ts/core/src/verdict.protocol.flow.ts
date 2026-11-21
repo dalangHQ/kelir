@@ -29,7 +29,7 @@ export enum Errno {
   ETIMEDOUT = "ETIMEDOUT",
 }
 
-import type { PatchInput } from "./types.core.js";
+import type { PatchInput } from "./types.core.flow.js";
 
 export type Verdict =
   | { readonly kind: "pass" }

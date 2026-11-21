@@ -1,6 +1,6 @@
 // see: cans/plugins/profile.md#Declarative-profile-execution
 
-import { EConfig } from "./errors.sdk.js";
+import { EConfig } from "./errors.sdk.flow.js";
 
 // TODO (L3) [bindings_ts]: read the profile file from disk once the file bridge lands; slop: profile read never lands, from_config throws instead of loading.
 export async function readProfileText(path: string): Promise<string> {

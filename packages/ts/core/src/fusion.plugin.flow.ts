@@ -1,6 +1,6 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { EConfig } from "./errors.sdk.js";
+import { EConfig } from "./errors.sdk.flow.js";
 import {
   LIFECYCLE_TAGS,
   RingEvent,

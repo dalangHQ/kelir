@@ -3,10 +3,10 @@
 // see: cans/02-plugin-model.md#Host-only-verbs
 // see: cans/artifacts/code/typescript-accumulation.ts#runtime
 
-import type { Schema } from "./schema.config.js";
-import { validateSchema } from "./schema.config.js";
-import type { HandlerContext } from "./context.lifecycle.types.js";
-import { HookRegistry } from "./hook.registry.js";
+import type { Schema } from "./schema.config.flow.js";
+import { validateSchema } from "./schema.config.flow.js";
+import type { HandlerContext } from "./context.lifecycle.types.flow.js";
+import { HookRegistry } from "./hook.registry.flow.js";
 import type {
   KelirPlugin,
   MountScope,
@@ -24,10 +24,10 @@ import type {
   HostScope,
   LifecycleScope,
   TelemetryScope,
-} from "./hook.registry.js";
-import { Session } from "./session.lifecycle.js";
-import { EConfig } from "./errors.sdk.js";
-import { TrapFilter } from "./trap.protocol.js";
+} from "./hook.registry.flow.js";
+import { Session } from "./session.lifecycle.flow.js";
+import { EConfig } from "./errors.sdk.flow.js";
+import { TrapFilter } from "./trap.protocol.flow.js";
 import {
   FusedTrampoline,
   RingEvent,
@@ -72,12 +72,12 @@ import {
   type CheckpointPlaneConfig,
   type HostPlaneConfig,
   type ProfileSpec,
-} from "./profile.schema.js";
+} from "./profile.schema.flow.js";
 export type {
   CheckpointPlaneConfig,
   HostPlaneConfig,
   ProfileSpec,
-} from "./profile.schema.js";
+} from "./profile.schema.flow.js";
 
 import type {
   MountRecord,

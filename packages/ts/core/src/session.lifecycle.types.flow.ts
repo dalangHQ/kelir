@@ -6,7 +6,7 @@ import type {
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
-} from "./types.core.js";
+} from "./types.core.flow.js";
 import type {
   PidLineage,
   ShmMapping,
@@ -14,8 +14,8 @@ import type {
   StorageHandle,
   VsockHandle,
   WireHandle,
-} from "./context.lifecycle.types.js";
-import type { SuspendReason } from "./verdict.protocol.js";
+} from "./context.lifecycle.types.flow.js";
+import type { SuspendReason } from "./verdict.protocol.flow.js";
 
 // see: cans/03-sdk-architecture.md#Native-Engine-Planes-on-Session
 export interface NativeTerminalHandle {

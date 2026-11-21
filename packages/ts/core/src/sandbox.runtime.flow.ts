@@ -1,19 +1,19 @@
 // see: cans/03-sdk-architecture.md#Sandbox-high-level-facade
 
-import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.js";
+import { KelirBuilder, type KelirConfig } from "./builder.lifecycle.flow.js";
 
 type HostBuilder = KelirBuilder<"host", "unsealed", string, unknown, never, unknown>;
-import { Session } from "./session.lifecycle.js";
-import type { SuspendReason } from "./verdict.protocol.js";
-import { EConfig } from "./errors.sdk.js";
-import type { SnapshotDescriptor, SpawnResult } from "./types.core.js";
+import { Session } from "./session.lifecycle.flow.js";
+import type { SuspendReason } from "./verdict.protocol.flow.js";
+import { EConfig } from "./errors.sdk.flow.js";
+import type { SnapshotDescriptor, SpawnResult } from "./types.core.flow.js";
 import {
   configFromProfile,
   profileFormatForPath,
   readProfile,
   serializeProfile,
   type ProfileSpec,
-} from "./profile.schema.js";
+} from "./profile.schema.flow.js";
 import { writeProfileText } from "./profile.schema.run.js";
 
 export interface SandboxOptions {

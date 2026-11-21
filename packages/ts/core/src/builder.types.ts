@@ -1,9 +1,9 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
-import type { HandlerContext } from "./context.lifecycle.types.js";
-import type { PluginContext } from "./hook.registry.js";
+import type { HandlerContext } from "./context.lifecycle.types.flow.js";
+import type { PluginContext } from "./hook.registry.flow.js";
 import type { PostExecAction } from "./step-eval.protocol.js";
-import type { Verdict } from "./verdict.protocol.js";
-import type { KelirBuilder } from "./builder.lifecycle.js";
+import type { Verdict } from "./verdict.protocol.flow.js";
+import type { KelirBuilder } from "./builder.lifecycle.flow.js";
 
 export type TrapHandlerResult = Verdict | PostExecAction;
 

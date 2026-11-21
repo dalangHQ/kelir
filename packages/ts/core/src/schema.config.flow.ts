@@ -2,7 +2,7 @@
 
 import { Type, type TAnySchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { EConfig } from "./errors.sdk.js";
+import { EConfig } from "./errors.sdk.flow.js";
 
 export interface Schema<T = unknown> {
   readonly __type?: T;

@@ -1,8 +1,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/02-plugin-model.md#Foreign-plugin-proxy
 
-import type { LifecycleContext, TrapContext } from "./context.lifecycle.types.js";
-import { EConfig } from "./errors.sdk.js";
+import type { LifecycleContext, TrapContext } from "./context.lifecycle.types.flow.js";
+import { EConfig } from "./errors.sdk.flow.js";
 import type { Buffer } from "node:buffer";
 import {
   LIFECYCLE_TAGS,
@@ -12,16 +12,16 @@ import {
   type LifecycleTag,
   type TrapFilterSnapshot,
 } from "./fusion.plugin.js";
-import type { Schema } from "./schema.config.js";
+import type { Schema } from "./schema.config.flow.js";
 import type { LockBrokerConfig } from "./builder.config.js";
-import type { Session } from "./session.lifecycle.js";
-import type { KelirBuilder } from "./builder.lifecycle.js";
-import { unknownSchema, validateSchema } from "./schema.config.js";
+import type { Session } from "./session.lifecycle.flow.js";
+import type { KelirBuilder } from "./builder.lifecycle.flow.js";
+import { unknownSchema, validateSchema } from "./schema.config.flow.js";
 import type {
   FilterAction,
   DnsVerdict,
   Verdict,
-} from "./verdict.protocol.js";
+} from "./verdict.protocol.flow.js";
 import type {
   DirEntry,
   HeartbeatEvent,
@@ -30,7 +30,7 @@ import type {
   TrapInfo,
   WatchdogEvent,
   WatchdogVerdict,
-} from "./types.core.js";
+} from "./types.core.flow.js";
 
 export interface KelirPlugin {
   readonly name: string;

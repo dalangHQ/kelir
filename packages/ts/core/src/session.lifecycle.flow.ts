@@ -5,11 +5,11 @@ import type {
   SnapshotDescriptor,
   SpawnOptions,
   SpawnResult,
-} from "./types.core.js";
+} from "./types.core.flow.js";
 import {
   fromNativeCausalDelta,
   fromNativeSnapshotDescriptor,
-} from "./types.core.js";
+} from "./types.core.flow.js";
 import type {
   CheckpointHandle,
   HostHandle,
@@ -21,24 +21,24 @@ import type {
   VmHandle,
   VsockHandle,
   WireHandle,
-} from "./context.lifecycle.types.js";
+} from "./context.lifecycle.types.flow.js";
 import type {
   ExecHandle,
   IngressStream,
   NativeSessionHandle,
-} from "./session.lifecycle.types.js";
+} from "./session.lifecycle.types.flow.js";
 import {
   toNativePidLineage,
   toNativeSnapshotDescriptor,
-} from "./session.lifecycle.types.js";
-import type { SuspendReason } from "./verdict.protocol.js";
-import { EConfig } from "./errors.sdk.js";
+} from "./session.lifecycle.types.flow.js";
+import type { SuspendReason } from "./verdict.protocol.flow.js";
+import { EConfig } from "./errors.sdk.flow.js";
 import { loadNativeAddon } from "./fusion.plugin.js";
 import {
   profileFormatForPath,
   serializeProfile,
   type ProfileSpec,
-} from "./profile.schema.js";
+} from "./profile.schema.flow.js";
 import { writeProfileText } from "./profile.schema.run.js";
 
 // see: cans/08-lifecycle.md#Detached-lifecycle

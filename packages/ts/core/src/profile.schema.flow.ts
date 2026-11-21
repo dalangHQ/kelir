@@ -6,7 +6,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { Section, stringify as stringifyToml } from "@ltd/j-toml";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { EConfig } from "./errors.sdk.js";
+import { EConfig } from "./errors.sdk.flow.js";
 import { readProfileText } from "./profile.schema.run.js";
 import { parse as parseToml } from "@ltd/j-toml";
 import type {

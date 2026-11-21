@@ -2,9 +2,9 @@
 // see: cans/01-architecture.md#Foreign-runtime-embedding
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import { EConfig } from "./errors.sdk.js";
-import { LifecycleEvent } from "./verdict.protocol.js";
-import type { NativeSessionHandle } from "./session.lifecycle.types.js";
+import { EConfig } from "./errors.sdk.flow.js";
+import { LifecycleEvent } from "./verdict.protocol.flow.js";
+import type { NativeSessionHandle } from "./session.lifecycle.types.flow.js";
 import {
   RingEvent,
   type HookStage,

@@ -1,8 +1,8 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 
-import type { ChaosHandle, ContainerHandle, DbProxyHandle, LedgerHandle, MeshHandle, TransactionHandle } from "./context.lifecycle.types.js";
-import { createPlugin } from "./builder.lifecycle.js";
-import type { KelirBuilder } from "./builder.lifecycle.js";
+import type { ChaosHandle, ContainerHandle, DbProxyHandle, LedgerHandle, MeshHandle, TransactionHandle } from "./context.lifecycle.types.flow.js";
+import { createPlugin } from "./builder.lifecycle.flow.js";
+import type { KelirBuilder } from "./builder.lifecycle.flow.js";
 
 export interface PluginEnablement {
   readonly enabled?: boolean;

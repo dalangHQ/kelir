@@ -1,9 +1,9 @@
 // see: cans/03-sdk-architecture.md#TypeScript-SDK
 // see: cans/plugins/step-eval.md#Plugin-step-eval
 
-import type { Session } from "./session.lifecycle.js";
-import type { PidLineage } from "./context.lifecycle.types.js";
-import type { SnapshotDescriptor, TrapInfo } from "./types.core.js";
+import type { Session } from "./session.lifecycle.flow.js";
+import type { PidLineage } from "./context.lifecycle.types.flow.js";
+import type { SnapshotDescriptor, TrapInfo } from "./types.core.flow.js";
 
 // see: cans/plugins/step-eval.md#Invariants-and-policy-(step-eval)
 export enum PostExecAction {

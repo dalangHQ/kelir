@@ -3,10 +3,10 @@
 // see: cans/10-attestation.md#Execution-receipts
 // see: cans/11-protocol.md#Wire-framing
 
-export * from "./telemetry.attest.generated.js";
+export * from "./telemetry.attest.generated.flow.js";
 export * from "./generated/protocol.wire.generated.js";
 
-import type { ExecutionReceipt, ExitKind } from "./telemetry.attest.generated.js";
+import type { ExecutionReceipt, ExitKind } from "./telemetry.attest.generated.flow.js";
 
 export interface SpawnOptions {
   readonly cwd?: string;
