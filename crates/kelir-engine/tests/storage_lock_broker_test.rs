@@ -42,6 +42,7 @@ fn sp_15_host_inode_lock_broker_flock_bridge() -> Result<(), String> {
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: false,
+            ..LockBrokerWiring::default()
         },
     );
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());
@@ -129,6 +130,7 @@ fn sp_19_host_inode_flock_contention_ewouldblock() -> Result<(), String> {
         LockBrokerWiring {
             scope_globs: vec!["**/*".to_string()],
             non_blocking: true,
+            ..LockBrokerWiring::default()
         },
     );
     let ctx = HandlerCtx::new([0u8; 16], 42, (), Vec::new());

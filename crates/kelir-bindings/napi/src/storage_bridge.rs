@@ -83,8 +83,10 @@ pub fn storage_config(cfg: &NativeStorageConfig) -> Result<StorageConfig> {
                     .map(|cache| format!("{}/**", cache.guest_mount.display()))
                     .collect(),
                 non_blocking: false,
+                ..LockBrokerWiring::default()
             }),
         idmap,
         encapsulation,
+        ..StorageConfig::default()
     })
 }

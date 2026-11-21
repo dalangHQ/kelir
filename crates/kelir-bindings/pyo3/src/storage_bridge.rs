@@ -132,6 +132,7 @@ pub fn storage_config(cfg: &Bound<'_, PyDict>) -> PyResult<PyStorageProjection> 
                 .map(|cache| format!("{}/**", cache.guest_mount.display()))
                 .collect(),
             non_blocking: false,
+            ..LockBrokerWiring::default()
         });
     }
     Ok(PyStorageProjection {

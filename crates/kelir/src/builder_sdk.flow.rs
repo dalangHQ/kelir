@@ -811,6 +811,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     LockScope::Globs(globs) => globs.clone(),
                 },
                 non_blocking: broker.non_blocking,
+                ..kelir_engine::planes::storage::LockBrokerWiring::default()
             }
         });
         let mut storage = kelir_engine::planes::storage::StorageConfig {
@@ -825,6 +826,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                 host_uid: cfg.idmap.host_uid,
             }),
             encapsulation: cfg.encapsulation,
+            ..kelir_engine::planes::storage::StorageConfig::default()
         };
         self.apply_fs_cfg(&mut storage);
         storage
@@ -841,6 +843,7 @@ impl<SealState, Plugins: HList + RegisterCaps, Params: 'static, Ctx, Deps: HList
                     LockScope::Globs(globs) => globs.clone(),
                 },
                 non_blocking: broker.non_blocking,
+                ..kelir_engine::planes::storage::LockBrokerWiring::default()
             });
         }
     }
